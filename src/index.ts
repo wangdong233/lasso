@@ -68,7 +68,7 @@ async function runMcpServer(): Promise<void> {
   logger.info({
     evt: "lasso_start",
     run_id: runId,
-    version: "0.2.0-dev",
+    version: "0.3.0-dev",
     zhipu_key_present: !!config.zhipuApiKey,
     brave_key_present: !!process.env.BRAVE_API_KEYS || !!process.env.BRAVE_API_KEY,
     cdp_port: config.cdpPort,
@@ -134,7 +134,7 @@ async function runMcpServer(): Promise<void> {
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
-    version: "0.2.0-dev",
+    version: "0.3.0-dev",
   });
 
   registerSearchTool(

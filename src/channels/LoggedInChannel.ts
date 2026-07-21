@@ -21,6 +21,8 @@ import type { McpClient } from "../subprocess/McpClient.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { logger } from "../util/logger.js";
+import { HighRiskGate } from "../browse/HighRiskGate.js";
+import type { HighRiskGateLike } from "../browse/StepEngine.js";
 
 /** 2FA / 登录表单关键词集（粗筛，v0.3 升级 selector-based 探测）。 */
 const TWOFA_KEYWORDS = [
@@ -108,5 +110,24 @@ export class LoggedInChannel extends BrowseChannel {
       return { ...s, note: "NEEDS_MANUAL_2FA" };
     }
     return s;
+  }
+
+  // ============================================================
+  // v0.3 Phase D（parse3 §3.5）：high-risk pattern gate 注入点
+  // ============================================================
+  /**
+   * 仅 logged_in 启用 HighRiskGate（携带身份 → 风险高，parse3 §3.5）。
+   *
+   * 设计：
+   *  - HeadlessChannel 不重写此方法 → 走默认 null（公开页风险低 + 无身份）
+   *  - gate 懒获取 McpClient（每次 assessStep 调一次，避免 channel 未起时绑定失败）
+   *  - HIGH_RISK_PATTERNS 表在 HighRiskGate 模块顶级 const（INV-14 anti-gaming），
+   *    不从 config / env 读
+   *
+   * 命中 high-risk pattern（drag-drop / RTE / tree-view / data-grid / toast）→
+   * StepEngine 立即 stop("manual_abort")，不进 fallback chain。
+   */
+  protected override createHighRiskGate(): HighRiskGateLike | null {
+    return new HighRiskGate(() => this.getMcpClient());
   }
 }

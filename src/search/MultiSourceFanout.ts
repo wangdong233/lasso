@@ -7,16 +7,23 @@
  *
  * allocateLimit：按 quotaRemaining 比例 × 语言启发式（CJK vs EN）分配 limit 到各源。
  *
+ * v0.3 Phase D 新增（parse3 §3.6，F3.1.12）：可选 RpmLimiter 集成。
+ *   - 调用前 limiter.allow(source, rpm_max)；超限 → 跳过 + partial_failures reason="rpm_limited:N/M"
+ *   - 成功后 limiter.record(source)（仅 worked 记账；429/timeout 不占窗口配额）
+ *   - 默认不注入 → 保持 v0.2 行为（兼容）
+ *
  * 简单性铁律（01）：本模块是纯函数 + Promise.allSettled，无新状态，无副作用；
  *   partial_failures 只透传不改 outcome，让外层 decider 单一范式判定（INV-4）。
  *
- * 借鉴：parse2 §3.3.1；10 §2.3 limit 跨源分配；mcp-web-search 三源 fallback 风格。
+ * 借鉴：parse2 §3.3.1；10 §2.3 limit 跨源分配；mcp-web-search 三源 fallback 风格；
+ *   parse3 §3.6 RpmLimiter 滑动窗主动降级。
  */
 import type {
   AttributedResult,
   InteractResult,
   SearchResult,
 } from "../types.js";
+import type { RpmLimiter } from "../util/rpm-limiter.js";
 
 // ============================================================
 // 类型
@@ -32,6 +39,20 @@ export interface FanoutSource {
 export interface FanoutPartialFailure {
   channel: string;
   error: string;
+}
+
+/**
+ * v0.3 Phase D：fanOutSearch 的 RPM 限频配置（parse3 §3.6）。
+ * 全部 optional —— 不传时 fanOutSearch 保持 v0.2 行为（不限频）。
+ */
+export interface FanoutRpmOptions {
+  /** 共享的滑动窗限频器（per-process 单例，由 caller 持有） */
+  limiter: RpmLimiter;
+  /**
+   * source.name → rpm_max 映射；缺失的源不限频（走 limiter.defaultMax）。
+   * 例：{ "search.brave": 5 } 表示 brave 60s 窗口内最多 5 次调用。
+   */
+  maxBySource?: Record<string, number>;
 }
 
 // ============================================================
@@ -62,6 +83,11 @@ export async function fanOutSearch(
     channelName: string,
     subLimit: number,
   ) => Promise<InteractResult<SearchResult>>,
+  /**
+   * v0.3 Phase D（parse3 §3.6）：可选 RPM 限频。
+   * 不传 = v0.2 行为（不限频）。传了但 maxBySource 不含某源 → 该源走 limiter.defaultMax。
+   */
+  rpmOptions?: FanoutRpmOptions,
 ): Promise<InteractResult<SearchResult>> {
   // 边界：无源直接 unknown（防御，外层 caller 应保证 ≥1 源）
   if (sources.length === 0) {
@@ -75,11 +101,52 @@ export async function fanOutSearch(
     };
   }
 
+  // ------------------------------------------------------------
+  // v0.3 Phase D：RPM 预检 —— 超限的源跳过 + 记 partial_failure
+  // ------------------------------------------------------------
+  /** 跳过的源（RPM 超限），与 settled 的 partialFailures 合并 */
+  const rpmSkipped: FanoutPartialFailure[] = [];
+  /** 实际下发的源（保序：与 sources 子集一致） */
+  const activeSources: FanoutSource[] = [];
+  for (const s of sources) {
+    if (rpmOptions) {
+      const cap = rpmOptions.maxBySource?.[s.name];
+      // cap===undefined → limiter.allow 走 defaultMax；若 defaultMax=Infinity → 永远 allow
+      if (!rpmOptions.limiter.allow(s.name, cap)) {
+        const current = rpmOptions.limiter.currentUsage(s.name);
+        rpmSkipped.push({
+          channel: s.name,
+          error: `rpm_limited:${current}/${cap ?? "infinity"}`,
+        });
+        continue;
+      }
+    }
+    activeSources.push(s);
+  }
+
+  // 边界：所有源都被 RPM 跳过 → outcome=unknown + 全部记 partial_failures
+  // （外层 FallbackDecider 可识别此情形：所有源瞬时频率过高，应换路径或退避）
+  if (activeSources.length === 0) {
+    return {
+      outcome: "unknown",
+      data: null,
+      served_by: sources.map((s) => s.name).join(","),
+      fallback_used: false,
+      retrieval_method: "multi_source_fanout",
+      error: "all_sources_rpm_limited",
+      partial_failures: rpmSkipped.map((p) => ({
+        channel: p.channel,
+        error: p.error,
+        timestamp: Date.now(),
+      })),
+    };
+  }
+
   const settled = await Promise.allSettled(
-    sources.map((s) => executor(s.name, s.capacity)),
+    activeSources.map((s) => executor(s.name, s.capacity)),
   );
 
-  const partialFailures: FanoutPartialFailure[] = [];
+  const partialFailures: FanoutPartialFailure[] = [...rpmSkipped];
   /** 内部带 served_by 的聚合（attribution 留作后处理） */
   const aggregated: AttributedResult[] = [];
   /** 实际 worked 的源名（用作 served_by 合并字符串） */
@@ -87,7 +154,7 @@ export async function fanOutSearch(
 
   for (let i = 0; i < settled.length; i++) {
     const s = settled[i];
-    const sourceName = sources[i].name;
+    const sourceName = activeSources[i].name;
     if (s.status === "rejected") {
       partialFailures.push({
         channel: sourceName,
@@ -102,6 +169,10 @@ export async function fanOutSearch(
         error: r.error ?? r.outcome,
       });
       continue;
+    }
+    // worked → 记 RPM（仅成功调用占窗口配额，parse3 §3.6）
+    if (rpmOptions) {
+      rpmOptions.limiter.record(sourceName);
     }
     workedSources.push(sourceName);
     for (let j = 0; j < r.data.results.length; j++) {

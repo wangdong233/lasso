@@ -21,7 +21,7 @@
  *   {
  *     ready: bool,
  *     timestamp: ISO,
- *     lasso_version: "0.2.0-dev",
+ *     lasso_version: "0.3.0-dev",
  *     checks: [{ name, status: 'pass'|'fail'|'warn', detail, next_step? }, ...],
  *     blockers: string[]   // status='fail' 的 name 列表
  *   }
@@ -46,7 +46,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.2.0-dev";
+export const LASSO_VERSION = "0.3.0-dev";
 
 // ============================================================
 // 类型

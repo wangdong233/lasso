@@ -1,5 +1,5 @@
 /**
- * QuotaLedger —— 单 provider 多 Key 配额账本（parse2 §3.2.1）。
+ * QuotaLedger —— 单 provider 多 Key 配额账本（parse2 §3.2.1 + parse3 §3.6 v0.3 RPM 字段）。
  *
  * 选 Key 策略（F3.1.7 limit 跨源分配前置）：
  *  - pickKey() 返回余量最多且未 exhausted 的 Key（贪心）
@@ -8,7 +8,9 @@
  *
  * 配额模型适配（10 §2.8）：
  *  - monthly   → resetAt 月初，余量 = quota_per_month - used
- *  - rpm       → resetAt = now + 60s（v0.2 不实装精确窗口，留 schema）
+ *  - rpm       → resetAt = now + 60s（v0.2 不实装精确窗口，留 schema）；
+ *               **v0.3 升级**：rpm_max + rpm_window_ms 字段暴露给 MultiSourceFanout 用，
+ *               配合 RpmLimiter 主动按滑动窗限频（parse3 §3.6 F3.1.12）。
  *  - token     → v0.2 退化成 monthly（按请求计数，近似）；v0.3 升级 token 精确计
  *  - request   → 同 monthly（按请求计）
  *
@@ -18,7 +20,7 @@
  *
  * 持久化：v0.2 内存态（进程重启清零，免费层配额足够）；v0.6+ 可选落盘 ~/.cache/lasso/quota/。
  *
- * 借鉴：10 §2.8 provider schema 扩展；04 §4.2 Brave 多 Key 扩容路径。
+ * 借鉴：10 §2.8 provider schema 扩展；04 §4.2 Brave 多 Key 扩容路径；parse3 §3.6 RPM 字段。
  */
 import { logger } from "../util/logger.js";
 
@@ -39,6 +41,22 @@ export class QuotaLedger {
     keys: readonly string[],
     private readonly quotaPerMonth: number,
     private readonly model: "monthly" | "rpm" | "token" | "request" = "monthly",
+    /**
+     * v0.3 Phase D（parse3 §3.6，F3.1.12）：60s 滑动窗内最大调用数。
+     *  - undefined / 未传 → 不限频（v0.2 行为，兼容）
+     *  - 0                → 禁用该 provider（不允许任何调用）
+     *  - 正整数            → MultiSourceFanout 走 RpmLimiter 主动降级
+     *
+     * 与 monthly 配额正交：rpm_max 看「瞬时频率」，quotaPerMonth 看「月总额度」。
+     *
+     * 注：字段名加下划线前缀避免与 public getter（rpmMax / rpmWindowMs）重名。
+     */
+    private readonly _rpmMax?: number,
+    /**
+     * 滑动窗大小（默认 60000ms = 1 分钟，与「RPM」语义对齐）。
+     * 仅当 rpmMax 设了才有意义。
+     */
+    private readonly _rpmWindowMs: number = 60_000,
   ) {
     this.currentMonthStart = startOfMonthUTC(Date.now());
     for (const k of keys) {
@@ -121,6 +139,23 @@ export class QuotaLedger {
   /** 配额模型（doctor 显示用）。 */
   get quotaModel(): string {
     return this.model;
+  }
+
+  /**
+   * v0.3 Phase D（parse3 §3.6）：RPM 滑动窗最大调用数。
+   *  - undefined → 不限频（v0.2 行为）
+   *  - 正整数    → MultiSourceFanout 据此调 RpmLimiter.allow(name, rpmMax)
+   */
+  get rpmMax(): number | undefined {
+    return this._rpmMax;
+  }
+
+  /**
+   * v0.3 Phase D：RPM 滑动窗大小（ms，默认 60000）。
+   * MultiSourceFanout 可据此构造 RpmLimiter(windowMs = rpmWindowMs)。
+   */
+  get rpmWindowMs(): number {
+    return this._rpmWindowMs;
   }
 
   /** 暴露 Key 数量（doctor + 测试用）。 */

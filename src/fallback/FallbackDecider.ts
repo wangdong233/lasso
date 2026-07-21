@@ -20,6 +20,7 @@
 import type { InteractResult } from "../types.js";
 import { CircuitBreaker } from "./CircuitBreaker.js";
 import { isFallbackWorthy } from "./outcome.js";
+import type { BudgetTracker } from "./BudgetTracker.js";
 
 // ============================================================
 // 计划 & 执行器
@@ -57,10 +58,16 @@ export class FallbackDecider {
    *  - executor 返回 / 抛异常 → 按上面语义处理
    * 所有 channel 耗尽仍无 worked/didnt → 返回 outcome=didnt,
    * retrieval_method="fallback_exhausted"。
+   *
+   * v0.3（parse3 §3.7）：可选第 3 参 budget 用于跨 channel 聚合 partial_failures。
+   *  - 每次 fallback 尝试 outcome≠worked 时 recordPartial() 入 budget
+   *  - plan 跑完 flushInto() 透传到最终 InteractResult.partial_failures
+   *  - budget=null（缺省）→ 完全等价 v0.2 行为（兼容承诺：349 tests 不改 1 行）
    */
   async runWithFallback<T>(
     plan: FallbackPlan,
     executor: ChannelExecutor<T>,
+    budget?: BudgetTracker | null,
   ): Promise<InteractResult<T>> {
     const chain = [plan.primary, ...plan.fallbacks];
     const actions_and_results: NonNullable<
@@ -75,6 +82,10 @@ export class FallbackDecider {
         actions_and_results.push({
           channel: channelName,
           outcome: "error",
+          error: "circuit_open",
+        });
+        budget?.recordPartial({
+          channel: channelName,
           error: "circuit_open",
         });
         continue;
@@ -99,9 +110,10 @@ export class FallbackDecider {
           outcome: "error",
           error: thrownError,
         });
+        budget?.recordPartial({ channel: channelName, error: thrownError });
         if (!isFallbackWorthy("unknown", thrownError)) {
           // 明确的"否"信号被抛出（如 NEEDS_MANUAL_2FA）——终止链
-          return {
+          const terminal: InteractResult<T> = {
             outcome: "didnt",
             data: null,
             served_by: channelName,
@@ -110,6 +122,7 @@ export class FallbackDecider {
             error: thrownError,
             actions_and_results,
           };
+          return budget ? budget.flushInto(terminal) : terminal;
         }
         continue;
       }
@@ -121,30 +134,51 @@ export class FallbackDecider {
         outcome: r.outcome,
         error: r.error,
       });
+      if (r.outcome !== "worked") {
+        budget?.recordPartial({
+          channel: channelName,
+          error: r.error ?? r.outcome,
+        });
+      }
 
       if (r.outcome === "worked") {
         breaker?.recordSuccess();
-        return { ...r, fallback_used: i > 0, actions_and_results };
+        const terminal: InteractResult<T> = {
+          ...r,
+          fallback_used: i > 0,
+          actions_and_results,
+        };
+        return budget ? budget.flushInto(terminal) : terminal;
       }
 
       if (r.outcome === "didnt") {
         // channel 自己工作正常，只是 negative answer
         breaker?.recordSuccess();
-        return { ...r, fallback_used: i > 0, actions_and_results };
+        const terminal: InteractResult<T> = {
+          ...r,
+          fallback_used: i > 0,
+          actions_and_results,
+        };
+        return budget ? budget.flushInto(terminal) : terminal;
       }
 
       // outcome === "unknown"
       breaker?.recordFailure();
       if (!isFallbackWorthy(r.outcome, r.error)) {
         // unknown 但明确"不该 fallback"（2FA / 404 / 403 / NXDOMAIN 被误报成 unknown）
-        return { ...r, fallback_used: i > 0, actions_and_results };
+        const terminal: InteractResult<T> = {
+          ...r,
+          fallback_used: i > 0,
+          actions_and_results,
+        };
+        return budget ? budget.flushInto(terminal) : terminal;
       }
       // 否则 continue 试下一个 channel
     }
 
     // 所有 channel 耗尽 / 全部熔断：返回 didnt + fallback_exhausted
     const lastChannel = chain[chain.length - 1] ?? plan.primary;
-    return {
+    const exhausted: InteractResult<T> = {
       outcome: "didnt",
       data: null,
       served_by: lastChannel,
@@ -153,6 +187,7 @@ export class FallbackDecider {
       error: "all_channels_failed_or_skipped",
       actions_and_results,
     };
+    return budget ? budget.flushInto(exhausted) : exhausted;
   }
 }
 

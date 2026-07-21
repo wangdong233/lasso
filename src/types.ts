@@ -73,6 +73,11 @@ export interface SearchResult {
  *  - state_id    : 短指针（UUID），CC 用它回查完整状态（不发整页 50k+ tokens 回去）
  *  - content_path: 完整快照的磁盘绝对路径（~/.cache/lasso/<run_id>/<channel>-<state_id>.{json,html,png}）
  *  - preview     : ≤1k tokens 预览（首屏文本 / 截图占位）
+ *
+ * v0.3 扩展（全可选，v0.2 兼容）：
+ *  - stopped_at     : chain 中止时的精确边界（仅 steps 路径产生）
+ *  - bounded_output : chain 结果超 48KiB 时落盘 + 16KiB preview + @oN ref
+ *  - chain          : 小 chain 的完整 actions_and_results 审计链
  */
 export interface BrowseResult {
   url: string;
@@ -82,6 +87,12 @@ export interface BrowseResult {
   preview: string;
   title?: string;
   final_url?: string; // 重定向后
+  /** v0.3：chain 中止边界（仅 steps 路径产生；v0.2 单 action 不填） */
+  stopped_at?: import("./browse/steps-types.js").StoppedAt;
+  /** v0.3：bounded output 落盘信息（chain result 超 48KiB 时填） */
+  bounded_output?: import("./util/output-envelope.js").BoundedOutput;
+  /** v0.3：完整 chain 结果（actions_and_results 审计链；仅小 chain 直传） */
+  chain?: import("./browse/steps-types.js").ChainResult;
 }
 
 // ============================================================

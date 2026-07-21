@@ -37,8 +37,18 @@ import type {
   Outcome,
 } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
-import { writeState } from "../util/state-store.js";
+import { writeState, withOperation } from "../util/state-store.js";
 import { logger } from "../util/logger.js";
+import type { ExpectCondition } from "../types.js";
+import type { Step, StepPartial, ChainResult } from "../browse/steps-types.js";
+import {
+  expectPoll,
+  type ConditionSnapshot,
+  type ExpectPollOptions,
+} from "../browse/ExpectPoll.js";
+import { StepEngine, type HighRiskGateLike } from "../browse/StepEngine.js";
+import { BudgetTracker } from "../fallback/BudgetTracker.js";
+import { applyOutputEnvelope } from "../util/output-envelope.js";
 
 // ============================================================
 // 类型
@@ -112,10 +122,46 @@ export abstract class BrowseChannel extends UiChannel {
   }
 
   /**
-   * 主入口（parse1 §3.5）。
+   * 主入口（parse1 §3.5；v0.3 入口分流 parse3 §3.1）。
+   *
+   * 入口分流：
+   *  - options.steps 非空 → 转发到 StepEngine.runChain（v0.3 新路径）
+   *  - 否则               → v0.2 单 action 路径（不动）
+   *
+   * INV-12：两条路径都经 withOperation() ALS 包裹（请求级隔离 + StateStore.epoch 派生）。
    * 永不抛异常——所有失败路径走 InteractResult。
    */
   async browse(
+    url: string,
+    action: string,
+    options: BrowseOptions,
+  ): Promise<InteractResult<BrowseResult>> {
+    // --------------------------------------------------------------
+    // v0.3 入口分流：options.steps 非空 → StepEngine.runChain
+    // --------------------------------------------------------------
+    if (Array.isArray(options.steps) && options.steps.length > 0) {
+      // resourceKey：channel 全名 + url（粗粒度隔离；StepEngine 内每个 step 独立 stateId）
+      const resourceId = `${this.name}:${url}`;
+      // epoch = 0（v0.3 不接 ResourceScheduler；parse3 §4.3 推迟到 v0.5+）
+      return withOperation(resourceId, 0, async () => {
+        const chain = await this.runChain(url, options.steps as Step[]);
+        return this.wrapChainResult(chain);
+      });
+    }
+
+    // --------------------------------------------------------------
+    // v0.2 单 action 路径（保留；INV-12 包裹）
+    // --------------------------------------------------------------
+    const resourceId = `${this.name}:${url}`;
+    return withOperation(resourceId, 0, async () =>
+      this.browseSingle(url, action, options),
+    );
+  }
+
+  /**
+   * v0.2 单 action 路径（原 browse() 实装，零行为变更；仅迁出便于 browse() 入口分流）。
+   */
+  private async browseSingle(
     url: string,
     action: string,
     options: BrowseOptions,
@@ -171,6 +217,225 @@ export abstract class BrowseChannel extends UiChannel {
         error: msg,
       };
     }
+  }
+
+  // ============================================================
+  // v0.3: runChain + wrapChainResult（parse3 §3.1 + §3.4，Phase C 落地）
+  // ============================================================
+  /**
+   * 构造 StepEngine + 跑 chain。子类（LoggedInChannel）可重写 createHighRiskGate()
+   * 注入 gate（Phase D）；默认返回 null（headless 不启用）。
+   *
+   * 注意：chain 级 budget（120s）实例化在此处（每 chain 一个新 BudgetTracker），
+   * 由本方法拥有；外层 FallbackDecider 的 BudgetTracker 是另一回事（per-fallback-plan）。
+   */
+  async runChain(url: string, steps: Step[]): Promise<InteractResult<ChainResult>> {
+    const budget = new BudgetTracker();
+    const gate = this.createHighRiskGate();
+    const engine = new StepEngine(this, budget, gate);
+    return engine.runChain(url, steps);
+  }
+
+  /**
+   * 工厂方法：子类重写返回 HighRiskGate 实例（Phase D）。
+   * 默认 null = 不启用（HeadlessChannel 用默认；LoggedInChannel Phase D 重写）。
+   */
+  protected createHighRiskGate(): HighRiskGateLike | null {
+    return null;
+  }
+
+  /**
+   * 把 ChainResult 包装成 BrowseResult 形状，再走 boundedOutput envelope。
+   * - chain 成功 → data 含完整 actions_and_results（可能触发 48KiB 落盘）
+   * - chain 失败 → data.stopped_at 暴露终止边界；CC 据此判断是否换路径
+   */
+  private wrapChainResult(
+    chain: InteractResult<ChainResult>,
+  ): InteractResult<BrowseResult> {
+    if (!chain.data) {
+      // chain 异常路径（不应发生，但兜底）：保留 outcome + error
+      return {
+        outcome: chain.outcome,
+        data: null,
+        served_by: chain.served_by,
+        fallback_used: chain.fallback_used,
+        retrieval_method: chain.retrieval_method,
+        error: chain.error,
+        partial_failures: chain.partial_failures,
+      };
+    }
+
+    // 把 ChainResult 序列化为 JSON，过 applyOutputEnvelope
+    // （48KiB 上限：大 chain 会落盘 + 返回 preview + @oN ref）
+    const json = JSON.stringify(chain.data);
+    const envelope = applyOutputEnvelope(json, "chain result too large: narrow selectors or split into smaller steps");
+
+    // actions_and_results 的最后一个 result 提供 state_id（兼容 v0.2 BrowseResult.state_id）
+    const lastResult = chain.data.actions_and_results.at(-1)?.results[0];
+    const finalStateId = lastResult?.state_id;
+
+    return {
+      outcome: chain.outcome,
+      data: {
+        url: chain.data.final_url ?? "",
+        action: "chain",
+        state_id: finalStateId,
+        content_path: undefined,
+        // preview 始终走 v0.2 的 4000-char 上限契约；完整 chain 数据走 data.chain / data.bounded_output
+        preview: truncatePreview(envelope.preview),
+        final_url: chain.data.final_url,
+        // chain 专属字段（v0.3 扩展；v0.2 调用方不读）
+        ...(chain.data.stopped_at ? { stopped_at: chain.data.stopped_at } : {}),
+        ...(envelope.truncated ? { bounded_output: envelope } : {}),
+        // 小 chain 直接把 actions_and_results 放 data.chain；大 chain 走 bounded_output.read_text
+        ...(!envelope.truncated ? { chain: chain.data } : {}),
+      },
+      served_by: chain.served_by,
+      fallback_used: chain.fallback_used,
+      retrieval_method: chain.retrieval_method,
+      error: chain.error,
+      partial_failures: chain.partial_failures,
+    };
+  }
+
+  // ============================================================
+  // v0.3: executeStep + runExpect（parse3 §3.1 + §3.2，Phase B 落地）
+  // ============================================================
+  //
+  // 设计：这两个方法 expose 给 Phase C 的 StepEngine 调用。
+  // browse() 入口的分流（steps vs 单 action）暂不接入（Phase C 才打开）。
+  // 本阶段它们是新增公开方法，不破坏 v0.2 单 action 路径。
+  //
+  // executeStep 的契约（parse3 §3.1）：
+  //  1. step.expect 存在时 → act 前先 quickSnapshot（runExpect 判 preexisting 用）
+  //  2. 委托 actionDispatch 拿到 handler，跑 act（expect 字段剥掉防止 doWait 误用）
+  //  3. 持久化状态（persistState，与 browse() 共用）
+  //  4. 返回 StepPartial（含 preSnapshot）—— StepEngine 拼 actions_and_results
+  //
+  // runExpect 的契约（parse3 §3.2）：
+  //  - 薄包装：直接委托 ExpectPoll.expectPoll
+  //  - 调用方负责把 expect failed 强制 outcome=didnt + 终止 chain（INV-13）
+  //
+  /**
+   * 执行单步（v0.3 StepEngine 调用；不破坏 v0.2 browse()）。
+   * step.expect 存在时先抓 preSnapshot，act 后由 runExpect 用它判 preexisting。
+   */
+  async executeStep(url: string, step: Step): Promise<StepPartial> {
+    const handler = this.actionDispatch.get(step.action);
+    if (!handler) {
+      throw new Error(`unknown_action:${step.action}`);
+    }
+    const c = await this.getMcpClient();
+
+    // 1. act 前 quickSnapshot（仅 step.expect 存在时）
+    //    失败时（页面未就绪 / evaluate 不可用）→ undefined，跳过 preexisting 判定
+    const preSnapshot: ConditionSnapshot | undefined = step.expect
+      ? await this.quickSnapshot(c)
+      : undefined;
+
+    // 2. 委托 handler —— 显式剥 expect，避免 doWait 误把 postcondition 当 wait 目标
+    const opts: BrowseOptions = {
+      selectors: step.selectors,
+      js: step.js,
+      timeout_ms: step.timeout_ms,
+    };
+
+    try {
+      const partial = await handler(c, url, opts);
+      // 3. 持久化状态（与 browse() 共用 persistState 路径）
+      const stored = await this.persistState(url, step.action, partial);
+      return {
+        outcome: "worked",
+        preview: partial.preview,
+        state_id: stored.state_id,
+        content_path: stored.content_path,
+        preSnapshot,
+      };
+    } catch (e) {
+      const msg = String(e);
+      logger.warn({
+        evt: "execute_step_error",
+        channel: this.name,
+        action: step.action,
+        error: msg,
+      });
+      return {
+        outcome: classifyBrowseError(msg, step.action),
+        error: msg,
+        preSnapshot,
+      };
+    }
+  }
+
+  /**
+   * 委托 ExpectPoll：100ms poll + 三态。
+   * 调用方（StepEngine）负责 INV-13：failed → outcome=didnt + 终止 chain。
+   */
+  async runExpect(
+    cond: ExpectCondition,
+    pre?: ConditionSnapshot,
+    opts?: ExpectPollOptions,
+  ): Promise<"verified" | "preexisting" | "failed"> {
+    const c = await this.getMcpClient();
+    return expectPoll(c, cond, pre, opts);
+  }
+
+  /**
+   * act 前抓一次「轻量」快照（仅 url + body_text）。
+   * - 走 evaluate_script 单次调用（避免 take_snapshot 全量开销）
+   * - body_text 截 16 KiB（够 conditionHolds 判 text/url_contains）
+   * - 失败时返回不含字段的 snapshot（caller 会跳过 preexisting 判定）
+   */
+  private async quickSnapshot(c: McpClient): Promise<ConditionSnapshot> {
+    const expr = `(function(){
+      try {
+        var body = (document.body && document.body.innerText) || "";
+        if (body.length > 16384) body = body.slice(0, 16384);
+        return JSON.stringify({ url: window.location.href, body_text: body });
+      } catch (e) {
+        return JSON.stringify({ url: "", body_text: "" });
+      }
+    })()`;
+    try {
+      const r = (await c.callTool("evaluate_script", {
+        function: expr,
+      })) as EvaluateResult;
+      const parsed = JSON.parse(extractEvalPreview(r) || "{}") as {
+        url?: string;
+        body_text?: string;
+      };
+      return {
+        url: parsed.url ?? "",
+        body_text: parsed.body_text ?? "",
+        captured_at: Date.now(),
+      };
+    } catch (e) {
+      logger.warn({
+        evt: "quick_snapshot_failed",
+        channel: this.name,
+        error: String(e),
+      });
+      return { captured_at: Date.now() };
+    }
+  }
+
+  /**
+   * 持久化 step 状态（与 v0.2 browse() 共用 writeState 路径）。
+   * 返回 state_id + content_path。executeStep 和未来 Phase C 的 BrowseChannel
+   * 改造后 browse() 也会改走此 helper（消除重复）。
+   */
+  private async persistState(
+    url: string,
+    action: string,
+    partial: Partial<BrowseResult>,
+  ): Promise<{ state_id: string; content_path: string }> {
+    const stateId = randomUUID();
+    const contentPath = await writeState(this.name, stateId, {
+      url,
+      action,
+      ...partial,
+    });
+    return { state_id: stateId, content_path: contentPath };
   }
 }
 
