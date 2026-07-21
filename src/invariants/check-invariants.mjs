@@ -5,6 +5,7 @@
  *                     + parse4 §1.4 v0.3.5 改写 INV-8 + 加 INV-16..23
  *                     + parse5 §2.3 v0.4 M0.4a 加 INV-24/25/26 forest 调度层 + 政策 gate）
  *                     + parse5 §2.3 v0.4 M0.4b 改写 INV-22 占位 + 加 INV-27/28/29 + 收紧 INV-21 regex）
+ *                     + parse5 §2.3 v0.4 M0.4c 加 INV-30 stealth-profiles 顶级 const）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -17,14 +18,19 @@
  *  - 新增 INV-24（forest RootRegistry 单一真源，类比 INV-3/9）
  *  - 新增 INV-25（PolicyGate cloud 浏览器通道必经 manual-switch LASSO_ALLOW_CLOUD_BROWSER）
  *  - 新增 INV-26（forest 调度层不渗 channel internal：禁 import browse/desktop 内部）
- *  - 共 26 条 invariants（INV-1..26 顺序编号，INV-22 仍占位）
- *  - parse5 §2.3 INV-27..30 编号预留（M0.4b/M0.4c 实装时占用）：
- *      INV-27 apple-script-whitelist.ts 顶级 const（M0.4b）
- *      INV-28 CGEventProvider 不暴露 raw keycode（M0.4b）
- *      INV-29 forest 调度层无平台字面量（M0.4c；M0.4a 由 INV-21 src tree 全扫覆盖）
- *      INV-30 stealth-profiles.ts 顶级 const（M0.4c）
  *
- * 26 条铁律：
+ * v0.4 M0.4b 状态（parse5 §2.3 + §3.5 + §4.4 appleScript/cgEvent 4-tier）：
+ *  - 改写 INV-22（解除占位，正向断言 AppleScriptProvider typed action + 白名单）
+ *  - 新增 INV-27（apple-script-whitelist.ts 顶级 const，不从 env 读）
+ *  - 新增 INV-28（CGEventProvider 不暴露 raw keycode）
+ *  - 新增 INV-29（DesktopChannel act 4 档 plan 全 desktop.*）
+ *  - 收紧 INV-21 regex（CGEvent 段精确化）
+ *
+ * v0.4 M0.4c 状态（parse5 §2.3 + §3.3.2 + §6.3 #20）：
+ *  - 新增 INV-30（stealth-profiles.ts 顶级 const，不从 config/env 读；类比 INV-14/27 anti-gaming）
+ *  - 共 **30 条** invariants（INV-1..30 顺序编号）
+ *
+ * 30 条铁律：
  *  INV-1 browse 是唯一 browse 入口
  *  INV-2 BaseChannel 不被绕过（所有 XxxChannel 必须 extends）
  *  INV-3 ProviderConfig 单一真源（types.ts）
@@ -51,15 +57,14 @@
  *  INV-24 RootRegistry 类单一真源（forest 调度层；只在 src/forest/RootRegistry.ts）—— v0.4 M0.4a
  *  INV-25 PolicyGate cloud 浏览器通道必经 manual-switch（LASSO_ALLOW_CLOUD_BROWSER + ProviderConfig.policy_risk）—— v0.4 M0.4a
  *  INV-26 forest 调度层（src/forest/*.ts）不 import BrowseChannel/DesktopChannel internal —— v0.4 M0.4a
+ *  INV-27 apple-script-whitelist.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14）—— v0.4 M0.4b
+ *  INV-28 CGEventProvider 不暴露 raw keycode（typed logical key name only；INV-21 衍生）—— v0.4 M0.4b
+ *  INV-29 DesktopChannel act 4 档 plan 全 desktop.*，顺序 ax→appleScript→cgEvent→screenshotVlm —— v0.4 M0.4b
+ *  INV-30 stealth-profiles.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14/27）—— v0.4 M0.4c
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
- *     实际 npm run check-invariants 报 26 条全绿。
- *
- * 注：parse5 §2.3 原列 INV-27..30（forest 平台字面量 / apple-script 白名单 / cgEvent
- *     边界 / stealth 顶级 const）。M0.4a 守「26 条 INV-1..26 顺序编号」承诺：
- *      - forest 平台字面量由 INV-21 src tree 全扫覆盖（M0.4a 不另开槽）
- *      - INV-27..30 编号预留 M0.4b/M0.4c 占用
+ *     实际 npm run check-invariants 报 30 条全绿。
  *
  * Phase A 语义：骨架阶段。对尚未实装的模块（BrowseChannel /
  * SubprocessManager / FallbackDecider），断言取「允许缺失 = 合规」，
@@ -70,6 +75,8 @@
  *
  * Phase C 状态（v0.3.5）：INV-8 改写 + INV-16..23 全部上线。
  * Phase v0.4 M0.4a 状态：INV-24/25/26 全部上线（forest 调度层 + 政策 gate）。
+ * Phase v0.4 M0.4b 状态：INV-22 改写 + INV-27/28/29 全部上线。
+ * Phase v0.4 M0.4c 状态：INV-30 上线（stealth-profiles 顶级 const）。
  *
  * Node 20+：readdirSync recursive 选项（v20.17+），不依赖 Array.fromAsync。
  *
@@ -737,6 +744,80 @@ const assertions = [
         /["']desktop\.screenshotVlm["']/.test(code),
       ];
       if (!channelDispatchBranches.every(Boolean)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v0.4 M0.4c 新增（parse5 §2.3 + §3.3.2 stealth 顶级 const）
+  // ============================================================
+  {
+    id: "INV-30-stealth-profiles-top-level-const",
+    desc: "v0.4 M0.4c：stealth-profiles.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14/27）",
+    check: () => {
+      // 必要条件 1：stealth-profiles.ts 存在
+      const sp = SRC.find((s) =>
+        /browse\/stealth-profiles\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!sp) return false; // v0.4 M0.4c 起必须存在
+      const code = stripComments(sp.text);
+
+      // 必要条件 2：顶级 const 导出（STEALTH_PROFILES + STEALTH_INJECTION_SCRIPT
+      //   + CLOUDFLARE_DETECTION_SCRIPT + CLOUDFLARE_CHALLENGE_MARKERS 四件套）
+      //   全部 export const（顶级，非内部函数变量）
+      const hasProfiles = /export\s+const\s+STEALTH_PROFILES\b/.test(code);
+      const hasInjection = /export\s+const\s+STEALTH_INJECTION_SCRIPT\b/.test(
+        code,
+      );
+      const hasCfScript = /export\s+const\s+CLOUDFLARE_DETECTION_SCRIPT\b/.test(
+        code,
+      );
+      const hasCfMarkers = /export\s+const\s+CLOUDFLARE_CHALLENGE_MARKERS\b/.test(
+        code,
+      );
+      if (!hasProfiles || !hasInjection || !hasCfScript || !hasCfMarkers) {
+        return false;
+      }
+
+      // 必要条件 3：代码本体禁出现 process.env（INV-30 anti-gaming 红线）
+      //   注：仅在注释里提到 process.env 算合规；代码本体 0 容忍。
+      //   类比 INV-14（HIGH_RISK_PATTERNS）+ INV-27（APPLE_SCRIPT_WHITELIST）同范式。
+      if (/process\.env/.test(code)) return false;
+
+      // 必要条件 4：禁 import config / provider-registry / env-reader / ProviderConfig
+      //   （顶级 const 不依赖运行时配置；防 LLM 通过 channel 改 env 绕过 stealth）
+      if (
+        /from\s+["'][^"']*(config\/|provider-registry|env-reader|env-config|loadConfig)/.test(
+          code,
+        )
+      ) {
+        return false;
+      }
+
+      // 必要条件 5：STEALTH_PROFILES 必须是对象字面量 const（as const satisfies 形式）
+      //   接受 `as const` 或 `as const satisfies`，确保编译期固定（防运行时改写）
+      if (!/STEALTH_PROFILES\s*=\s*\{[\s\S]*?\}\s*as\s+const/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 6：至少 3 条 stealth profile（windows_chrome_120 / mac_safari_17 /
+      //   linux_firefox_121）—— parse5 §3.3.2 标准三件套
+      const profileKeys = [
+        ...code.matchAll(/(\w+):\s*\{[^}]*userAgent/g),
+      ].map((m) => m[1]);
+      if (profileKeys.length < 3) return false;
+      const requiredProfiles = [
+        "windows_chrome_120",
+        "mac_safari_17",
+        "linux_firefox_121",
+      ];
+      for (const rp of requiredProfiles) {
+        if (!profileKeys.includes(rp)) return false;
+      }
+
+      // 必要条件 7：STEALTH_INJECTION_SCRIPT 必须含反检测关键 hook（webdriver / languages）
+      //   这是 stealth 注入的核心 —— 缺这两个 = 反检测失效
+      if (!/webdriver/.test(code) || !/languages/.test(code)) return false;
 
       return true;
     },

@@ -81,9 +81,14 @@ export abstract class BrowseChannel extends UiChannel {
   /**
    * Lasso action → handler 的注册表。
    * 这是 INV-6 的核心：所有新 action 加这里一行，不写 if-else 链。
+   *
+   * v0.4 注（parse5 §4.3）：navigate 入口包一层 beforeNavigate hook，子类
+   * （BrowserbaseChannel）按需注入 stealth。wrapNavigate 是私有 helper，
+   * 默认 beforeNavigate 是 no-op —— HeadlessChannel / LoggedInChannel 不
+   * override 即行为零变化（v0.3.5 测试不破）。
    */
   protected readonly actionDispatch = new Map<string, ActionHandler>([
-    ["navigate", doNavigate],
+    ["navigate", this.wrapNavigate(doNavigate)],
     ["snapshot", doSnapshot],
     ["screenshot", doScreenshot],
     ["extract", doExtract],
@@ -92,6 +97,39 @@ export abstract class BrowseChannel extends UiChannel {
     ["wait", doWait],
     ["evaluate", doEvaluate],
   ]);
+
+  /**
+   * v0.4 hook（parse5 §4.3）：navigate 前 dispatch 反检测注入。
+   *
+   * 默认 no-op。HeadlessChannel / BrowserbaseChannel override 注入 stealth；
+   * LoggedInChannel 默认不 override（复用本机 Chrome 已天然反检测，08 §7.2）。
+   *
+   * 设计：hook 是 protected method，子类多态生效；doNavigate 自身（自由函数）
+   * 不感知 stealth —— stealth 是横切关注点，StealthEngine 接 McpClient 即可。
+   */
+  protected async beforeNavigate(_client: McpClient): Promise<void> {
+    // default: no-op（v0.3.5 HeadlessChannel / LoggedInChannel 行为零变化）
+  }
+
+  /**
+   * wrapNavigate：把 navigate handler 包一层 beforeNavigate hook。
+   * 私有 helper —— INV-6 dispatch Map 不动（仍是 8 条 entry，只 navigate 包一层）。
+   */
+  private wrapNavigate(handler: ActionHandler): ActionHandler {
+    return async (c, url, opts) => {
+      await this.beforeNavigate(c);
+      return handler(c, url, opts);
+    };
+  }
+
+  /**
+   * retrieval_method 标签（v0.4 抽出，原本硬编码 "chrome_devtools_mcp"）。
+   * 子类（BrowserbaseChannel）override 标 "cloud_browserbase"；
+   * HeadlessChannel / LoggedInChannel 默认 → "chrome_devtools_mcp"（v0.3.5 零变化）。
+   */
+  protected retrievalMethod(): string {
+    return "chrome_devtools_mcp";
+  }
 
   /** BaseChannel 抽象方法实装：触网活性 + 延迟（基于 listTools 探测）。 */
   async isAvailable(): Promise<boolean> {
@@ -173,7 +211,7 @@ export abstract class BrowseChannel extends UiChannel {
         data: null,
         served_by: this.name,
         fallback_used: false,
-        retrieval_method: "chrome_devtools_mcp",
+        retrieval_method: this.retrievalMethod(),
         error: `unknown_action:${action}`,
       };
     }
@@ -203,7 +241,7 @@ export abstract class BrowseChannel extends UiChannel {
         },
         served_by: this.name,
         fallback_used: false,
-        retrieval_method: "chrome_devtools_mcp",
+        retrieval_method: this.retrievalMethod(),
       };
     } catch (e) {
       const msg = String(e);
@@ -213,7 +251,7 @@ export abstract class BrowseChannel extends UiChannel {
         data: null,
         served_by: this.name,
         fallback_used: false,
-        retrieval_method: "chrome_devtools_mcp",
+        retrieval_method: this.retrievalMethod(),
         error: msg,
       };
     }

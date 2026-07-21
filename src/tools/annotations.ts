@@ -94,3 +94,23 @@ export const interactActAnnotations: ToolAnnotations = {
   readOnlyHint: false, // act 可副作用（click/type/press/...）
   openWorldHint: false, // 保守
 };
+
+/**
+ * browserbase tool annotations（v0.4 M0.4c 新增，parse5 §3.2 + §3.4）。
+ *
+ * 四象限归属：
+ *   |  tool        | readOnly | openWorld | 含义                                |
+ *   |  ----------- | -------- | --------- | ----------------------------------- |
+ *   |  browserbase |   false  |   true    | 可 click/fill（副作用）；云 Chrome 外网 |
+ *
+ * 与 browse_headless / browse_logged_in 同档（都是可副作用的 openWorld browse 通道），
+ * 但 description 明确标 policy_risk=watched + 付费 manual-switch —— model 应优先选
+ * browse_headless / browse_logged_in，仅反爬站点才升 browserbase。
+ *
+ * - readOnlyHint=false：与 browse_headless 同 —— navigate/click/fill 可副作用。
+ * - openWorldHint=true：云 Chrome 经 browserbase.com 走外网。
+ */
+export const browserbaseAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: true,
+};

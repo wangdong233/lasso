@@ -1,8 +1,10 @@
 /**
  * doctor readiness 检查（parse1 §3.11 + §6 验收 #2 + parse2 §3.1.2 v0.2 扩 4 项 + parse4 §3.4 v0.3.5 扩 6 项 desktop
- *                        + parse5 §3.4 v0.4 M0.4a 扩 4 项 forest + 政策 gate）
+ *                        + parse5 §3.4 v0.4 M0.4a 扩 4 项 forest + 政策 gate
+ *                        + parse5 §3.4 v0.4 M0.4c 升级 #21（browserbase HEAD 探测）+ 新增 #25 stealth profile 自检）
  *
- * 24 项 check（v0.1 10 项 + v0.2 加 4 项 + v0.3.5 加 6 项 desktop + v0.4 M0.4a 加 4 项 forest）：
+ * 25 项 check（v0.1 10 项 + v0.2 加 4 项 + v0.3.5 加 6 项 desktop + v0.4 M0.4a 加 4 项 forest
+ *           + v0.4 M0.4c 加 1 项 stealth profile）：
  *   1. node_version               — Node ≥ 20
  *   2. zhipu_api_key              — ZHIPU_API_KEY 存在
  *   3. zhipu_endpoint_reachable   — 智谱 MCP endpoint 网络可达（HTTP HEAD/GET，不深测协议）
@@ -23,10 +25,12 @@
  *  18. tcc_screen_recording       — v0.3.5：Screen Recording 授权（warn）
  *  19. ax_read_rate               — v0.3.5：snapshot maxDepth=3 节点数 ≥20
  *  20. vlm_endpoint_reachable     — v0.3.5：LASSO_VLM_ENDPOINT 可达（未配 → warn）
- *  21. cloud_browser_manual_switch — v0.4：LASSO_ALLOW_CLOUD_BROWSER + BROWSERBASE/STAGEHAND key 状态（M0.4a warn-skip）
+ *  21. cloud_browser_manual_switch — v0.4：LASSO_ALLOW_CLOUD_BROWSER + BROWSERBASE/STAGEHAND key 状态
+ *                                     + M0.4c 升级：配 key 时 HEAD 探测 browserbase.com（未配 warn-skip 不 fail）
  *  22. forest_root_registry_health — v0.4：RootRegistry 可装配 + getOrCreate/lookup/list 健全
  *  23. forest_dispatcher_ready     — v0.4：InteractDispatcher 类可加载 + channel Map 形状校验
  *  24. forest_ref_counter_strategy — v0.4：RootRegistry 共享 nextRootRefIndex 单计数器（@p0/@w1/@p2 递增）
+ *  25. stealth_profile_self_check  — v0.4 M0.4c：stealth-profiles 顶级 const 加载 + shape 自检（INV-30）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -35,15 +39,18 @@
  *
  * v0.4 M0.4a 关键设计（parse5 §3.4 + task #7）：
  *  - #21-#24 默认全跑（纯 TS 烟雾测试，无需外部依赖；零阻塞 ready）
- *  - #21 cloud 浏览器 manual-switch：M0.4a 阶段 channel 未实装 → LASSO_ALLOW_CLOUD_BROWSER=true
- *    时也只 warn（"channel will be registered in M0.4c"），永不 fail
- *  - #22-#24 forest 调度层：实装在 M0.4a，烟雾测试验证装配健全（不验真实 channel 注入）
+ *
+ * v0.4 M0.4c 关键设计（parse5 §3.4 + §3.3.2 + §6.3 #17）：
+ *  - #21 升级：LASSO_ALLOW_CLOUD_BROWSER=true 且 BROWSERBASE_API_KEY 配时，**HEAD 探测**
+ *    api.browserbase.com（≤3s 超时）；未配 key / manual-switch 关 → warn-skip 不 fail
+ *  - 新增 #25 stealth_profile_self_check：stealth-profiles.ts 顶级 const（STEALTH_PROFILES +
+ *    STEALTH_INJECTION_SCRIPT + CLOUDFLARE_DETECTION_SCRIPT）加载 + shape 自检；INV-30 守
  *
  * 结构化 JSON：
  *   {
  *     ready: bool,
  *     timestamp: ISO,
- *     lasso_version: "0.3.5-dev",
+ *     lasso_version: "0.4.0-dev",
  *     checks: [{ name, status: 'pass'|'fail'|'warn', detail, next_step? }, ...],
  *     blockers: string[]   // status='fail' 的 name 列表
  *   }
@@ -52,7 +59,8 @@
  *
  * 借鉴：parse1 §3.11；09 §2.1 验收「doctor CLI 覆盖 ≥10 项」；parse2 §3.1.2 v0.2 4 项扩展；
  *      parse4 §3.4 v0.3.5 6 项 desktop 扩展（13 §3.4 M0.5a 验收 #5/#6）；
- *      parse5 §3.4 v0.4 M0.4a 4 项 forest 扩展。
+ *      parse5 §3.4 v0.4 M0.4a 4 项 forest 扩展；
+ *      parse5 §3.4 + §3.3 v0.4 M0.4c 1 项 stealth + #21 HEAD 探测升级。
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -72,12 +80,20 @@ import {
 // v0.4 M0.4a：forest 调度层烟雾测试（用于 #22-#24 doctor check）
 import { RootRegistry } from "../forest/RootRegistry.js";
 import { InteractDispatcher } from "../forest/InteractDispatcher.js";
+// v0.4 M0.4c：stealth 顶级 const 自检（用于 #25 doctor check + INV-30 镜像）
+import {
+  STEALTH_PROFILES,
+  STEALTH_PROFILE_NAMES,
+  STEALTH_INJECTION_SCRIPT,
+  CLOUDFLARE_DETECTION_SCRIPT,
+  CLOUDFLARE_CHALLENGE_MARKERS,
+} from "../browse/stealth-profiles.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.3.5-dev";
+export const LASSO_VERSION = "0.4.0-dev";
 
 // ============================================================
 // 类型
@@ -256,15 +272,17 @@ export async function runDoctor(
 
   // ---- v0.4 M0.4a 4 项 forest + 政策 gate check（parse5 §3.4 + task #7）----
   // 默认 forestChecks=true：4 项全跑（纯 TS 烟雾测试，零阻塞 ready）。
-  // #21 cloud_browser_manual_switch 永不 fail（M0.4a channel 未实装 → warn-skip）
+  // #21 cloud_browser_manual_switch v0.4 M0.4c 升级：配 key 时 HEAD 探测 api.browserbase.com
   // #22-#24 forest 调度层装配健全性（实装在 M0.4a）
+  // #25 stealth_profile_self_check（v0.4 M0.4c 新增，INV-30 镜像）
   if (opts.forestChecks !== false) {
-    // #21
+    // #21（async：M0.4c 升级为 HEAD 探测）
     checks.push(
-      checkCloudBrowserManualSwitch({
+      await checkCloudBrowserManualSwitch({
         allowed: opts.cloudBrowserAllowed ?? process.env.LASSO_ALLOW_CLOUD_BROWSER === "true",
         browserbaseKey: process.env.BROWSERBASE_API_KEY,
         stagehandKey: process.env.STAGEHAND_API_KEY,
+        skipNetwork: opts.skipNetwork,
       }),
     );
     // #22
@@ -273,6 +291,8 @@ export async function runDoctor(
     checks.push(checkForestDispatcher());
     // #24（async：getOrCreate 是 async）
     checks.push(await checkForestRefCounter());
+    // #25（v0.4 M0.4c 新增）
+    checks.push(checkStealthProfileSelfCheck());
   }
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
@@ -707,23 +727,27 @@ async function checkSearchCacheDir(cacheDir: string): Promise<DoctorCheck> {
 // ============================================================
 
 /**
- * 21. cloud_browser_manual_switch（v0.4 §3.4，F3.4.6 政策 gate）。
+ * 21. cloud_browser_manual_switch（v0.4 §3.4，F3.4.6 政策 gate；M0.4c 升级）。
  *
  * 检查 LASSO_ALLOW_CLOUD_BROWSER manual-switch 状态 + BROWSERBASE/STAGEHAND API key 可达性。
  *
- * M0.4a 关键边界（task #7）：
- *  - 永不 fail（cloud 浏览器通道在 M0.4c 才实装，M0.4a 不阻塞 ready）
- *  - LASSO_ALLOW_CLOUD_BROWSER=true 但 BROWSERBASE_API_KEY 未配 → warn（M0.4c 才会真正校验）
- *  - LASSO_ALLOW_CLOUD_BROWSER=true + BROWSERBASE_API_KEY 配 → warn（M0.4a 未注册 channel；M0.4c 会变 pass）
+ * M0.4c 升级（parse5 §3.4 + §6.3 #16）：
+ *  - LASSO_ALLOW_CLOUD_BROWSER=true + BROWSERBASE_API_KEY 配 → **HEAD 探测** api.browserbase.com
+ *    （≤3s 超时；2xx/3xx/4xx 都算"可达"；网络错 → warn 不 fail）
+ *  - LASSO_ALLOW_CLOUD_BROWSER=true + 未配任何 key → warn（policy gate 守，永不 fail）
  *  - LASSO_ALLOW_CLOUD_BROWSER=false（默认） → pass（cloud 浏览器关闭，安全默认）
+ *  - skipNetwork=true（doctor 跳过触网） → warn-skip（同 #3/#4/#6 范式）
+ *
+ * 永不 fail：cloud 浏览器是可选的 fallback 链尾通道，未配 / 不可达 都不阻塞 Lasso 整体 ready。
  *
  * INV-25 守：PolicyGate.cloud 浏览器必经 manual-switch（grep LASSO_ALLOW_CLOUD_BROWSER）。
  */
-function checkCloudBrowserManualSwitch(opts: {
+async function checkCloudBrowserManualSwitch(opts: {
   allowed: boolean;
   browserbaseKey?: string;
   stagehandKey?: string;
-}): DoctorCheck {
+  skipNetwork?: boolean;
+}): Promise<DoctorCheck> {
   if (!opts.allowed) {
     return {
       name: "cloud_browser_manual_switch",
@@ -732,16 +756,88 @@ function checkCloudBrowserManualSwitch(opts: {
         "LASSO_ALLOW_CLOUD_BROWSER=false（默认；cloud 浏览器通道未启用，PolicyGate 将阻断 browse_cloud_*）",
     };
   }
-  // LASSO_ALLOW_CLOUD_BROWSER=true：检查 key 可达性
-  const detail = `LASSO_ALLOW_CLOUD_BROWSER=true；BROWSERBASE_API_KEY=${opts.browserbaseKey ? "已配" : "未配"}；STAGEHAND_API_KEY=${opts.stagehandKey ? "已配" : "未配"}`;
-  // M0.4a channel 未实装：永远 warn（M0.4c 落地后此项可升级为 pass/fail）
+
+  // manual-switch ON：汇总 key 状态
+  const hasBrowserbase = !!opts.browserbaseKey;
+  const hasStagehand = !!opts.stagehandKey;
+  const detail = `LASSO_ALLOW_CLOUD_BROWSER=true；BROWSERBASE_API_KEY=${hasBrowserbase ? "已配" : "未配"}；STAGEHAND_API_KEY=${hasStagehand ? "已配" : "未配"}`;
+
+  // 双重解锁未满足（key 全缺） → warn（PolicyGate 在 runtime 会阻断 browse_cloud_*）
+  if (!hasBrowserbase && !hasStagehand) {
+    return {
+      name: "cloud_browser_manual_switch",
+      status: "warn",
+      detail: `${detail}（manual-switch ON 但 key 全缺；PolicyGate 将阻断 browse_cloud_*）`,
+      next_step:
+        "export BROWSERBASE_API_KEY=<key> 或 STAGEHAND_API_KEY=<key>（cloud 浏览器通道需双重解锁）",
+    };
+  }
+
+  // M0.4c 升级：配了 browserbase key 时 HEAD 探测 api.browserbase.com（验可达）
+  if (opts.skipNetwork) {
+    return {
+      name: "cloud_browser_manual_switch",
+      status: "warn",
+      detail: `${detail}（skipNetwork=true：HEAD 探测跳过）`,
+    };
+  }
+  if (hasBrowserbase) {
+    const probe = await probeCloudEndpoint("https://api.browserbase.com");
+    // probe.status="unreachable" → warn（不 fail）；其他 → pass
+    if (probe.status === "unreachable") {
+      return {
+        name: "cloud_browser_manual_switch",
+        status: "warn",
+        detail: `${detail}；api.browserbase.com HEAD 探测失败：${probe.detail}`,
+        next_step:
+          "检查网络 / browserbase 状态页（https://status.browserbase.com）",
+      };
+    }
+    return {
+      name: "cloud_browser_manual_switch",
+      status: "pass",
+      detail: `${detail}；api.browserbase.com HEAD ${probe.detail}`,
+    };
+  }
+
+  // 仅配 stagehand（无 browserbase）→ 不触网（stagehand endpoint 不稳定，避免误报）
   return {
     name: "cloud_browser_manual_switch",
-    status: "warn",
-    detail: `${detail}（M0.4a：channel 未实装；M0.4c 落地后此 check 升级为 pass/fail）`,
-    next_step:
-      "v0.4 M0.4a 阶段 cloud 浏览器通道仅 ProviderConfig schema 占位；M0.4c 实装 BrowserbaseChannel + StagehandChannel 后此项自动收紧",
+    status: "pass",
+    detail: `${detail}（stagehand-only；browserbase HEAD 探测跳过）`,
   };
+}
+
+/**
+ * HEAD 探测 cloud 浏览器 endpoint（doctor #21 内部用）。
+ *
+ * 语义（与 #3 zhipu_endpoint_reachable 同范式）：
+ *  - 2xx/3xx/4xx 都算"可达"（TCP/TLS+HTTP 通即可；401/403 也说明 endpoint 活着）
+ *  - 5xx → "unreachable"（不稳定）
+ *  - 网络错 / timeout → "unreachable"
+ *
+ * 超时 3s（cloud dashboard 偶尔慢；不阻塞 doctor 整体可用性）。
+ */
+async function probeCloudEndpoint(
+  url: string,
+): Promise<{ status: "reachable" | "unreachable"; detail: string }> {
+  try {
+    const resp = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(3000),
+      // HEAD 不带 Authorization；browserbase 对未认证请求返 401/404 是正常"可达"信号
+      redirect: "manual",
+    });
+    return {
+      status: resp.status < 500 ? "reachable" : "unreachable",
+      detail: `${resp.status} ${resp.statusText}`,
+    };
+  } catch (e) {
+    return {
+      status: "unreachable",
+      detail: String(e).slice(0, 120),
+    };
+  }
 }
 
 /**
@@ -948,6 +1044,160 @@ async function checkForestRefCounter(): Promise<DoctorCheck> {
       status: "fail",
       detail: String(e),
       next_step: "检查 RootRegistry.getOrCreate + identityToRef 复用逻辑",
+    };
+  }
+}
+
+// ============================================================
+// v0.4 M0.4c 新增（parse5 §3.3.2 + §6.3 #17 + INV-30）
+// ============================================================
+
+/**
+ * 25. stealth_profile_self_check（v0.4 M0.4c §3.3.2，INV-30 镜像）。
+ *
+ * 烟雾测试 stealth-profiles.ts 顶级 const 加载健全：
+ *  - STEALTH_PROFILES 至少 3 条 profile（windows_chrome_120 / mac_safari_17 / linux_firefox_121）
+ *  - 每条 profile 必须含 userAgent / viewport / timezone / language / platform 五字段
+ *  - STEALTH_INJECTION_SCRIPT 是非空字符串（webdriver / languages / window.chrome / permissions
+ *    4 个反检测点；CSP/语法不深测，真实通关留 bot.sannysoft 手测清单）
+ *  - CLOUDFLARE_DETECTION_SCRIPT 是非空字符串 + CLOUDFLARE_CHALLENGE_MARKERS 是非空数组
+ *  - STEALTH_PROFILE_NAMES 与 Object.keys(STEALTH_PROFILES) 一致
+ *
+ * INV-30 守：stealth-profiles.ts 顶级 const，不从 config/env 读（anti-gaming，类比 INV-14/27）。
+ *           本 check 仅验加载 + shape；anti-gaming 由 check-invariants.mjs INV-30 grep 守。
+ *
+ * 失败 → fail（架构问题：stealth 顶级 const 被破坏，cloud 浏览器反检测会失效）。
+ */
+function checkStealthProfileSelfCheck(): DoctorCheck {
+  try {
+    // 1. STEALTH_PROFILES shape：至少 3 条 profile
+    const profileNames = STEALTH_PROFILE_NAMES;
+    if (profileNames.length < 3) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: `STEALTH_PROFILES 条目数 ${profileNames.length} < 3（应有 windows_chrome_120 / mac_safari_17 / linux_firefox_121）`,
+        next_step: "检查 src/browse/stealth-profiles.ts STEALTH_PROFILES 顶级 const",
+      };
+    }
+
+    // 2. 每条 profile 字段完整
+    const requiredFields = [
+      "userAgent",
+      "viewport",
+      "timezone",
+      "language",
+      "platform",
+    ] as const;
+    for (const name of profileNames) {
+      const p = STEALTH_PROFILES[name];
+      for (const f of requiredFields) {
+        if (!(f in p)) {
+          return {
+            name: "stealth_profile_self_check",
+            status: "fail",
+            detail: `profile ${name} 缺字段 ${f}`,
+            next_step: `补全 STEALTH_PROFILES.${name}.${f}`,
+          };
+        }
+      }
+      // viewport 必须 { width, height } 都是正数
+      if (
+        typeof p.viewport.width !== "number" ||
+        typeof p.viewport.height !== "number" ||
+        p.viewport.width <= 0 ||
+        p.viewport.height <= 0
+      ) {
+        return {
+          name: "stealth_profile_self_check",
+          status: "fail",
+          detail: `profile ${name}.viewport 非法：${JSON.stringify(p.viewport)}`,
+        };
+      }
+      // userAgent 必须非空字符串
+      if (typeof p.userAgent !== "string" || p.userAgent.length === 0) {
+        return {
+          name: "stealth_profile_self_check",
+          status: "fail",
+          detail: `profile ${name}.userAgent 空`,
+        };
+      }
+    }
+
+    // 3. STEALTH_INJECTION_SCRIPT 非空 + 含反检测关键 hook
+    if (
+      typeof STEALTH_INJECTION_SCRIPT !== "string" ||
+      STEALTH_INJECTION_SCRIPT.length === 0
+    ) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: "STEALTH_INJECTION_SCRIPT 空",
+      };
+    }
+    // 关键反检测点检查（webdriver / languages / window.chrome / permissions 四点；
+    // parse5 §3.3.2 注释明确这 4 个是 bot.sannysoft 类检测的主要破绽）
+    const injectionMustHaves = [
+      "webdriver",
+      "languages",
+      "chrome",
+      "permissions",
+    ];
+    const missingHooks = injectionMustHaves.filter(
+      (h) => !STEALTH_INJECTION_SCRIPT.includes(h),
+    );
+    if (missingHooks.length > 0) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: `STEALTH_INJECTION_SCRIPT 缺反检测点：${missingHooks.join(", ")}`,
+      };
+    }
+
+    // 4. CLOUDFLARE_DETECTION_SCRIPT + CLOUDFLARE_CHALLENGE_MARKERS
+    if (
+      typeof CLOUDFLARE_DETECTION_SCRIPT !== "string" ||
+      CLOUDFLARE_DETECTION_SCRIPT.length === 0
+    ) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: "CLOUDFLARE_DETECTION_SCRIPT 空",
+      };
+    }
+    // CLOUDFLARE_CHALLENGE_MARKERS 是 as const 元组（编译期长度固定 ≥5）；
+    // 此处只验加载成功（Array.isArray）+ 至少 1 个 marker（length 检查经 unknown 宽化绕开 TS 字面量 narrowing）。
+    const markersArr: unknown = CLOUDFLARE_CHALLENGE_MARKERS;
+    if (!Array.isArray(markersArr) || markersArr.length === 0) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: "CLOUDFLARE_CHALLENGE_MARKERS 空数组",
+      };
+    }
+
+    // 5. STEALTH_PROFILE_NAMES 与 STEALTH_PROFILES keys 一致（防映射漂移）
+    const actualKeys = Object.keys(STEALTH_PROFILES).sort();
+    const declaredKeys = [...profileNames].sort();
+    if (actualKeys.join(",") !== declaredKeys.join(",")) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: `STEALTH_PROFILE_NAMES 与 STEALTH_PROFILES keys 不一致：${actualKeys.join(",")} vs ${declaredKeys.join(",")}`,
+      };
+    }
+
+    return {
+      name: "stealth_profile_self_check",
+      status: "pass",
+      detail: `STEALTH_PROFILES ${profileNames.length} 条 [${profileNames.join(", ")}]；injection ${STEALTH_INJECTION_SCRIPT.length}B；cloudflare markers ${CLOUDFLARE_CHALLENGE_MARKERS.length} 项`,
+    };
+  } catch (e) {
+    return {
+      name: "stealth_profile_self_check",
+      status: "fail",
+      detail: String(e),
+      next_step: "检查 src/browse/stealth-profiles.ts 顶级 const 加载（import 异常 / 循环依赖）",
     };
   }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Lasso MCP server 入口（parse1 §3.15 + §7.2 Phase D 接线完成）
+ * Lasso MCP server 入口（parse1 §3.15 + §7.2 Phase D 接线完成 + parse5 §3.2 M0.4c cloud 浏览器条件装配）
  *
  * 启动模式：
  *  1. `lasso-mcp doctor` —— 运行 runDoctor + 打印 JSON + exit (ready ? 0 : 1)
@@ -14,11 +14,21 @@
  *  - 4 tools：search / browse_headless / browse_logged_in / doctor
  *  - SIGTERM/SIGINT → subproc.shutdown()
  *
- * 架构不变量（INV-1..8）由 src/invariants/check-invariants.mjs 守；
+ * v0.3.5（parse4）：+ DesktopChannel（4-tier ax/appleScript/cgEvent/screenshotVlm）
+ * v0.4 M0.4a（parse5 §3.1）：+ forest 调度层（interact_roots/observe/act 3 工具）+ PolicyGate 占位
+ * v0.4 M0.4b（parse5 §3.5）：+ appleScript/cgEvent 2 档 provider（4-tier 解 INV-22）
+ * v0.4 M0.4c（parse5 §3.2 + §3.4，本提交）：
+ *  - **条件装配** cloud 浏览器（BrowserbaseChannel + StagehandChannel）
+ *  - 仅当 `LASSO_ALLOW_CLOUD_BROWSER=true` AND (BROWSERBASE_API_KEY 或 STAGEHAND_API_KEY) 存在时实例化
+ *  - 注册 browserbase tool + PolicyGate 注入 FallbackDecider
+ *  - **默认 OFF**（无 env 时 cloud 通道完全不注册，行为等价 M0.4b；零回归承诺）
+ *
+ * 架构不变量（INV-1..30）由 src/invariants/check-invariants.mjs 守；
  * ToolAnnotations 完整（INV-5）由 tools/*.ts 注册时携带。
  *
  * 权威：../doc/08-media-interact-功能架构.md
- * 实施：../doc/parse/parse1.md
+ * 实施：../doc/parse/parse1.md (v0.1) + parse2.md (v0.2) + parse3.md (v0.3) +
+ *       parse4.md (v0.3.5) + parse5.md (v0.4)
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -37,12 +47,18 @@ import { AxProvider } from "./desktop/AxProvider.js";
 import { ScreenshotVlmProvider } from "./desktop/ScreenshotVlmProvider.js";
 import { AppleScriptProvider } from "./desktop/AppleScriptProvider.js";
 import { CGEventProvider } from "./desktop/CGEventProvider.js";
+// v0.4 M0.4c：cloud 浏览器通道（条件装配，默认 OFF）
+import { BrowserbaseChannel } from "./channels/BrowserbaseChannel.js";
+import { StagehandChannel } from "./channels/StagehandChannel.js";
+import { StealthEngine } from "./browse/StealthEngine.js";
+import { PolicyGate } from "./fallback/PolicyGate.js";
 import { FallbackDecider } from "./fallback/FallbackDecider.js";
 import { CircuitBreaker } from "./fallback/CircuitBreaker.js";
 import { loadSsrfConfig } from "./ssrf/ssrf-guard.js";
 import { runDoctor } from "./doctor/doctor.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
+import { registerBrowserbaseTool } from "./tools/browserbase.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
 import { registerDesktopTool } from "./tools/desktop.js";
 import { registerInteractTools } from "./tools/interact.js";
@@ -61,6 +77,49 @@ import type { BrowseExec } from "./serp/extract.js";
  */
 const DEFAULT_RUST_HELPER_PATH =
   "./rust-helper/target/release/lasso-rust-helper";
+
+// ============================================================
+// v0.4 M0.4c 常量（parse5 §3.2 + §3.4 cloud 浏览器条件装配）
+// ============================================================
+/**
+ * Lasso server 版本（parse5 §1.3 + §6.3；v0.4 M0.4c → 0.4.0-dev）。
+ * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
+ */
+const LASSO_SERVER_VERSION = "0.4.0-dev";
+
+/**
+ * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
+ *
+ * 双重解锁 = `LASSO_ALLOW_CLOUD_BROWSER=true` manual-switch AND 至少一个 API key。
+ * 任一不满足 → cloud 通道完全不注册（行为等价 M0.4b，零回归承诺）。
+ *
+ * @returns 双重解锁状态 + 已配置 key 的 provider 名集合（供 PolicyGate 注入）
+ */
+function readCloudBrowserEnv(): {
+  enabled: boolean;
+  browserbaseKey: string;
+  stagehandKey: string;
+  /** 已配置 API key 的 cloud provider 名集合（PolicyGate 双重解锁用） */
+  cloudBrowserKeys: Set<string>;
+  /** manual-switch 是否开（audit log 用） */
+  manualSwitchOn: boolean;
+} {
+  const manualSwitchOn = process.env.LASSO_ALLOW_CLOUD_BROWSER === "true";
+  const browserbaseKey = process.env.BROWSERBASE_API_KEY ?? "";
+  const stagehandKey = process.env.STAGEHAND_API_KEY ?? "";
+  const cloudBrowserKeys = new Set<string>();
+  if (browserbaseKey) cloudBrowserKeys.add("browserbase");
+  if (stagehandKey) cloudBrowserKeys.add("stagehand");
+  // 双重解锁：manual-switch + 至少一个 API key
+  const enabled = manualSwitchOn && cloudBrowserKeys.size > 0;
+  return {
+    enabled,
+    browserbaseKey,
+    stagehandKey,
+    cloudBrowserKeys,
+    manualSwitchOn,
+  };
+}
 
 // ============================================================
 // doctor CLI 模式
@@ -88,7 +147,7 @@ async function runMcpServer(): Promise<void> {
   logger.info({
     evt: "lasso_start",
     run_id: runId,
-    version: "0.3.5-dev",
+    version: LASSO_SERVER_VERSION,
     zhipu_key_present: !!config.zhipuApiKey,
     brave_key_present: !!process.env.BRAVE_API_KEYS || !!process.env.BRAVE_API_KEY,
     cdp_port: config.cdpPort,
@@ -154,6 +213,7 @@ async function runMcpServer(): Promise<void> {
   // v0.2 加 search.brave + fanout 虚拟 channel 的 breaker（parse2 §3.3.4）
   // v0.3.5 加 desktop.ax + desktop.screenshotVlm 两档 breaker（parse4 §3.2.1）
   // v0.4 M0.4b 加 desktop.appleScript + desktop.cgEvent 两档 breaker（parse5 §3.5.4）
+  // v0.4 M0.4c 加 browse_cloud.browserbase / browse_cloud.stagehand 两档 breaker（条件；parse5 §3.2）
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
     ["search.brave", new CircuitBreaker()],
@@ -165,7 +225,65 @@ async function runMcpServer(): Promise<void> {
     ["desktop.cgEvent", new CircuitBreaker()],
     ["desktop.screenshotVlm", new CircuitBreaker()],
   ]);
-  const decider = new FallbackDecider(breakers);
+
+  // ----- v0.4 M0.4c cloud 浏览器条件装配（parse5 §3.2 + §3.4）-----
+  // 双重解锁：LASSO_ALLOW_CLOUD_BROWSER=true AND (BROWSERBASE 或 STAGEHAND key)。
+  // 默认 OFF：无 env 时 cloud 通道完全不注册，FallbackDecider 不注入 PolicyGate，
+  //          行为完全等价 M0.4b（零回归承诺，parse5 §1.4 + §3.4.2）。
+  const cloudEnv = readCloudBrowserEnv();
+  let browserbaseChannel: BrowserbaseChannel | undefined;
+  if (cloudEnv.enabled) {
+    const stealth = new StealthEngine();
+    if (cloudEnv.browserbaseKey) {
+      browserbaseChannel = new BrowserbaseChannel(
+        subproc,
+        cloudEnv.browserbaseKey,
+        stealth,
+      );
+      breakers.set("browse_cloud_browserbase", new CircuitBreaker());
+      logger.info({
+        evt: "cloud_browser_channel_wired",
+        channel: "browse_cloud_browserbase",
+        profile: "windows_chrome_120",
+      });
+    }
+    if (cloudEnv.stagehandKey) {
+      // StagehandChannel 实例化（仅装配 breaker + PolicyGate cloudBrowserKeys 集成；
+      // observe-only 通道暂不挂单独 tool —— v0.5+ 若暴露 verify/extract tool 再分配局部变量）。
+      new StagehandChannel(cloudEnv.stagehandKey);
+      breakers.set("browse_cloud_stagehand", new CircuitBreaker());
+      logger.info({
+        evt: "cloud_browser_channel_wired",
+        channel: "browse_cloud_stagehand",
+        note: "observe-only; no standalone tool registered in v0.4",
+      });
+    }
+  } else {
+    // 默认 OFF 路径：明确日志（便于运维排查为何 cloud 通道未注册）
+    logger.info({
+      evt: "cloud_browser_channels_skipped",
+      reason: cloudEnv.manualSwitchOn
+        ? "manual_switch_on_but_no_api_key"
+        : "manual_switch_off_default",
+      manual_switch: cloudEnv.manualSwitchOn,
+      has_browserbase_key: !!cloudEnv.browserbaseKey,
+      has_stagehand_key: !!cloudEnv.stagehandKey,
+    });
+  }
+
+  // ----- PolicyGate 注入（仅 cloud 通道启用时；parse5 §3.4.2）-----
+  // 未注入 → runWithFallback 完全等价 v0.3.5（零回归承诺，FallbackDecider 默认 policyGate=null）
+  // 注入   → cloud 通道必经 LASSO_ALLOW_CLOUD_BROWSER + API key 双重解锁 + policy_risk 三态过滤
+  const policyGate = cloudEnv.enabled
+    ? new PolicyGate(
+        {
+          allowCloudBrowser: true,
+          cloudBrowserKeys: cloudEnv.cloudBrowserKeys,
+        },
+        config.registry,
+      )
+    : null;
+  const decider = new FallbackDecider(breakers, policyGate);
 
   const desktop = new DesktopChannel(
     rustBridge,
@@ -195,7 +313,7 @@ async function runMcpServer(): Promise<void> {
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
-    version: "0.3.5-dev",
+    version: LASSO_SERVER_VERSION,
   });
 
   registerSearchTool(
@@ -209,6 +327,11 @@ async function runMcpServer(): Promise<void> {
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
   registerDesktopTool(server, desktop, decider);
+  // v0.4 M0.4c：cloud 浏览器工具条件注册（parse5 §3.2 + §6.3 #16）
+  // 默认 OFF：未双重解锁时 server.listTools() 不含 browserbase（INV-25 守）
+  if (browserbaseChannel) {
+    registerBrowserbaseTool(server, browserbaseChannel, decider, ssrfConfig);
+  }
   registerDoctorTool(server, {
     zhipuKey: config.zhipuApiKey,
     zhipuEndpoint: config.zhipuEndpoint,
