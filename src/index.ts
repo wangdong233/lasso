@@ -78,6 +78,15 @@ import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
 import type { BraveChannel as BraveChannelType } from "./channels/BraveChannel.js";
 import type { BrowseExec } from "./serp/extract.js";
+// v0.6 M0.6 接线（parse7 §3 + §6）—— runtime 能力袋 + admin tool
+// 守 INV-35：runtime/ 调度层不 import BrowseChannel/DesktopChannel internal（类比 INV-26）
+// 守 INV-37：admin tool 必经 toolManager.register（不直调 server.tool）—— registerAdminTool 内自含
+import type { RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { CapabilityBag } from "./runtime/CapabilityBag.js";
+import { ToolManager } from "./runtime/ToolManager.js";
+import { CallerTierTracker, readCallerCapFromEnv } from "./runtime/CallerTierTracker.js";
+import { installSighupHotReload } from "./runtime/hot-reload.js";
+import { registerAdminTool } from "./tools/admin.js";
 
 // ============================================================
 // v0.3.5 常量（parse4 §3.5 装配）
@@ -95,9 +104,11 @@ const DEFAULT_RUST_HELPER_PATH =
 /**
  * Lasso server 版本（parse5 §1.3 + §6.3；v0.4 M0.4c → 0.4.0-dev）。
  * v0.5 M0.5c（parse6 §1.1 + §6 验收）：4 工具（fetch_url/screenshot/pdf/network）全装配 → 0.5.0-dev
+ * v0.6 M0.6（parse7 §1.1 + §6 验收）：runtime CapabilityBag + admin tool + ToolManager
+ *   + CallerTierTracker + hot-reload → 0.6.0-dev
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
  */
-const LASSO_SERVER_VERSION = "0.5.0-dev";
+const LASSO_SERVER_VERSION = "0.6.0-dev";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -356,7 +367,11 @@ async function runMcpServer(): Promise<void> {
   // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
   // network 走新加 entry（doNetwork from cdp-actions = evaluate_script 注入 PerformanceObserver）
   registerNetworkTool(server, headless, ssrfConfig);
-  registerDoctorTool(server, {
+  // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
+  // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：
+  // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
+  // 显式标 DoctorOptions 类型让 v0.6 接线段可以注入 runtimeState（无 TS narrowing 限制）。
+  const doctorOpts: Parameters<typeof registerDoctorTool>[1] = {
     zhipuKey: config.zhipuApiKey,
     zhipuEndpoint: config.zhipuEndpoint,
     cdpPort: config.cdpPort,
@@ -365,7 +380,8 @@ async function runMcpServer(): Promise<void> {
     desktopChecks: true,
     desktopBridge: rustBridge,
     desktopHelperPath: rustHelperPath,
-  });
+  };
+  registerDoctorTool(server, doctorOpts);
 
   // ----- v0.4 forest 调度层装配（parse5 §3.1.4）-----
   // forest 是 BrowseChannel + DesktopChannel **之上**的薄调度层（R-CI-02 守护）。
@@ -390,6 +406,177 @@ async function runMcpServer(): Promise<void> {
     ],
     { source: desktop.name, channel: desktop },
   );
+
+  // ============================================================
+  // v0.6 M0.6 接线段（parse7 §3 + §6 —— runtime 能力袋 + admin tool）
+  // ============================================================
+  // 零回归承诺（parse7 §1.3）：
+  //  - 本段加在 v0.5 装配尾部，v0.5 静态装配段一行不动
+  //  - CapabilityBag 初始化所有 v0.5 channel + provider 为 enabled=true（默认全开 = v0.5 行为）
+  //  - ToolManager 捕获 v0.5 RegisteredTool 句柄（非破坏性；不重注册）
+  //  - bag.onChange handler 是 disable/enable 的唯一联动入口（INV-37 task v0.6）
+  //  - admin tool 经 toolManager.register（INV-37 精神一致；admin 自己永不被 disable）
+  // 守 INV-35：runtime/ 不 import BrowseChannel/DesktopChannel internal；
+  //            channel→spec 映射是本顶级 const，不在 runtime/ 内。
+  // 守 INV-37：runtime/ 禁直调 server.tool；本段在 index.ts（不在 runtime/），可访问 server。
+  //
+  // CHANNEL_TO_SPEC（parse7 §3.1 末尾示例）：channel 名 → subprocess spec 名。
+  // null = 无本地子进程（cloud_stagehand observe-only / search.* / desktop.* provider 级）。
+  // INV-35 衍生：单一映射表，不在多处散落。
+  const CHANNEL_TO_SPEC: Record<string, string | null> = {
+    browse_headless: "headless",
+    browse_logged_in: "logged_in",
+    browse_cloud_browserbase: "browserbase",
+    browse_cloud_stagehand: null,
+    desktop: "rust-helper", // SHARED by 4 desktop.* providers；bag handler 守 R-RT-2
+  };
+
+  // ---- 1. ToolManager + 捕获 v0.5 RegisteredTool 句柄（parse7 §3.2 captureHandle）----
+  const toolManager = new ToolManager(server);
+  // SDK 内部 _registeredTools 是 Record<name, RegisteredTool>；非破坏性读取（cast 是已知 escape hatch）。
+  // v0.5 装配段调 register*Tool 时已注册全部 12 工具；此处仅捕获句柄让 disable 能作用到。
+  // V5_TOOL_TO_CHANNEL 是 v0.5 tool → owning channel 的单一映射表（INV-35 衍生）。
+  const V5_TOOL_TO_CHANNEL: Record<string, string> = {
+    search: "search",
+    browse_headless: "browse_headless",
+    browse_logged_in: "browse_logged_in",
+    browserbase: "browse_cloud_browserbase",
+    desktop: "desktop",
+    interact_roots: "forest",
+    interact_observe: "forest",
+    interact_act: "forest",
+    fetch_url: "fetch",
+    screenshot: "screenshot",
+    pdf: "pdf",
+    network: "network",
+    doctor: "doctor",
+  };
+  const sdkRegisteredTools = (server as unknown as {
+    _registeredTools: Record<string, RegisteredTool>;
+  })._registeredTools;
+  let capturedCount = 0;
+  for (const [tname, handle] of Object.entries(sdkRegisteredTools)) {
+    const channel = V5_TOOL_TO_CHANNEL[tname];
+    if (channel) {
+      toolManager.captureHandle(channel, tname, handle);
+      capturedCount++;
+    }
+  }
+
+  // ---- 2. CapabilityBag 初始化（parse7 §3.1 —— 默认全开）----
+  // 列举 v0.5 已注册的所有 channel + provider 名（parse7 §3.1 命名约定：
+  //   channel 无 dot；provider 有 dot 用 <cap>.<name> 形式如 "search.brave" / "desktop.ax"）。
+  // INV-40：constructor 全部 enabled=true（零回归 = v0.5 默认全开行为）。
+  const initialCapabilities: string[] = [
+    // channels（无 dot）
+    "browse_headless",
+    "browse_logged_in",
+    "desktop",
+  ];
+  if (cloudEnv.enabled && cloudEnv.browserbaseKey) {
+    initialCapabilities.push("browse_cloud_browserbase");
+  }
+  if (cloudEnv.enabled && cloudEnv.stagehandKey) {
+    initialCapabilities.push("browse_cloud_stagehand");
+  }
+  // search providers（dot 形式 "search.<name>"）
+  initialCapabilities.push("search.zhipu");
+  if (brave) {
+    initialCapabilities.push("search.brave");
+  }
+  // desktop providers（ProviderConfig.name 已是 "desktop.<tier>" 形式）
+  initialCapabilities.push(
+    "desktop.ax",
+    "desktop.appleScript",
+    "desktop.cgEvent",
+    "desktop.screenshotVlm",
+  );
+  const bag = new CapabilityBag(initialCapabilities);
+
+  // ---- 3. CallerTierTracker（parse7 §3.3）----
+  // INV-38：defaultCap 从 readCallerCapFromEnv（构造期一次性读 env；运行时不读）。
+  const callerTier = new CallerTierTracker(readCallerCapFromEnv());
+
+  // ---- 4. bag.onChange handler（parse7 §3.1 末尾示例 + R-RT-2 缓解）----
+  // INV-37 task v0.6：channel disable 必经 ToolManager.disableChannel + SubprocessManager.shutdownOne。
+  // 此 handler 是 disable/enable 联动的唯一挂载点；bag 状态变更后顺序 await。
+  bag.onChange(async (name, enabled, state) => {
+    if (enabled) {
+      // enable 路径：仅 re-enable tools；不主动 spawn（channel 内部懒启动复用 v0.5 范式）
+      await toolManager.enableChannel(name);
+      return;
+    }
+    // disable 路径
+    await toolManager.disableChannel(name);
+    if (state.kind !== "channel") {
+      // provider 级 disable（如 desktop.cgEvent）：不动子进程（shared；R-RT-2）
+      // 由 channel 内部 fallback plan 在运行时跳过该 provider 名（v0.6 不深修 channel 内部）
+      return;
+    }
+    const specName = CHANNEL_TO_SPEC[name];
+    if (!specName) {
+      // 无本地子进程（cloud_stagehand observe-only / search.* / 等）—— 仅禁工具即可
+      return;
+    }
+    // R-RT-2 守护（parse7 §7.1）：rust-helper 被 desktop channel + 4 档 provider 共享；
+    // 仅当所有 desktop.* 都 disabled 时才 kill rust-helper，避免单档 disable 误杀整 desktop。
+    if (specName === "rust-helper") {
+      const snap = bag.snapshot();
+      const allDesktopProvidersDown = snap
+        .filter((s) => s.name.startsWith("desktop."))
+        .every((s) => !s.enabled);
+      if (!allDesktopProvidersDown) {
+        logger.info({
+          evt: "desktop_shared_subprocess_preserved",
+          reason: "not_all_desktop_providers_disabled",
+          triggered_by: name,
+        });
+        return;
+      }
+    }
+    await subproc.shutdownOne(specName);
+  });
+
+  // ---- 5. admin tool 注册（parse7 §3.5）----
+  // INV-37：经 toolManager.register（不直调 server.tool）；channel="admin" 永不被 disable
+  // （CapabilityBag.initial 不含 "admin" → bag.disable("admin") 返 false 不触发联动）。
+  registerAdminTool({
+    bag,
+    toolManager,
+    callerTier,
+    registry: config.registry,
+  });
+
+  // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
+  // 经 doctorOpts 变量（v0.5 装配段命名捕获）注入；零回归：runtimeState 可选字段，未注入时
+  // runDoctor 跳过 runtime_state section（v0.5 行为）；注入后 doctor 报告新增 section。
+  // 守 INV-35：doctor.ts 不 import runtime/；此处仅注入「数据快照函数」，不传 bag/callerTier 句柄。
+  doctorOpts.runtimeState = () => ({
+    capabilities: bag.snapshot().map((s) => ({
+      name: s.name,
+      kind: s.kind,
+      enabled: s.enabled,
+      disabledAt: s.disabledAt,
+      disabledBy: s.disabledBy,
+      reason: s.reason,
+    })),
+    caller_caps: callerTier.snapshot(),
+    tool_manager: Object.fromEntries(toolManager.listByChannel()),
+  });
+
+  // ---- 6. SIGHUP 热更新（parse7 §3.6）----
+  // 默认 LASSO_PROVIDERS_FILE 未设 → installSighupHotReload 内部 no-op（零回归）。
+  // 仅当运维显式 export LASSO_PROVIDERS_FILE 才安装 SIGHUP listener。
+  const providersFile = process.env.LASSO_PROVIDERS_FILE ?? null;
+  installSighupHotReload(config.registry, bag, toolManager, providersFile);
+
+  logger.info({
+    evt: "v0.6_runtime_wired",
+    bag_size: bag.snapshot().length,
+    tool_manager_size: toolManager.size(),
+    captured_v5_handles: capturedCount,
+    providers_file: providersFile,
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

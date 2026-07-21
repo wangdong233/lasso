@@ -303,6 +303,49 @@ export class SubprocessManager {
   }
 
   // ============================================================
+  // v0.6 新增（parse7 §3.1 / §4.1 —— runtime CapabilityBag 联动用）
+  // ============================================================
+  /**
+   * v0.6: 单 spec kill —— CapabilityBag.disable("channel") 联动调（INV-39 task 版本）。
+   *
+   * 设计：
+   *  - 复用既有 `_kill`（MCP 路径）/ `_killRust`（Rust 路径），**不**改 `shutdown()` 全停语义
+   *  - 优先尝试 MCP 路径（procs / specs 命中）；不命中再试 Rust 路径；都不命中 = no-op（幂等）
+   *  - 不调 `this.shutdown()`（INV-39：shutdownOne 是单 spec kill，禁调 shutdown 全集）
+   *  - INV-7 仍守：纯 lifecycle，不读协议帧
+   *
+   * 关键差异 vs shutdown()（parse7 §4.1）：
+   *  - shutdown() 是 SIGTERM 钩子全停；shutdownOne 是 runtime 单点停（channel disable 用）
+   *  - shutdown() 清 zombieTimer + httpAgents；shutdownOne 不动这些（其他 channel 仍需）
+   *  - shutdownOne 不调 shutdown()（防误清其他 channel 的资源）
+   *
+   * @param name  spec 名（MCP: "lasso-browse-headless" / "lasso-browse-logged-in"；
+   *                       Rust: "rust-helper"）
+   *
+   * INV-39 task 版本：channel disable 必经 SubprocessManager.shutdownOne（不调 shutdown 全集）。
+   */
+  async shutdownOne(name: string): Promise<void> {
+    // 1. 优先 MCP 路径（procs 或 specs 命中即调 _kill）
+    if (this.procs.has(name) || this.specs.has(name)) {
+      await this._kill(name);
+      logger.info({ evt: "subproc_shutdown_one", name, kind: "mcp" });
+      return;
+    }
+    // 2. 再试 Rust 路径
+    if (this.rustProcs.has(name) || this.rustSpecs.has(name)) {
+      await this._killRust(name);
+      logger.info({ evt: "subproc_shutdown_one", name, kind: "rust" });
+      return;
+    }
+    // 3. 都不命中：no-op（cloud 通道无本地子进程，或 channel 已自然退出）
+    logger.info({
+      evt: "subproc_shutdown_one_noop",
+      name,
+      reason: "spec_not_found",
+    });
+  }
+
+  // ============================================================
   // 私有
   // ============================================================
   /**

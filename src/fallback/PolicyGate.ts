@@ -64,6 +64,14 @@ export interface PolicyGateVerdict {
   allowed: boolean;
   /** 阻断原因（allowed=false 时必填，audit log 用） */
   reason?: string;
+  /**
+   * v0.6 新增（parse7 §3.4 / task §8）：ToS 文档 URL（doctor warn 显示用）。
+   *
+   * 透传自 ProviderConfig.tos_url（如有）；不影响 allowed 判定。
+   * check() 路由逻辑零改 —— 此字段仅是 verdict 形状的可选扩展，
+   * doctor 在 v0.6 后续阶段从此字段读 URL 与 ProviderConfig.tos_ack 状态联动显示。
+   */
+  tos_url?: string;
 }
 
 // ============================================================

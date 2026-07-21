@@ -200,3 +200,34 @@ export const networkAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: true,
 };
+
+/**
+ * admin tool annotations（v0.6 M0.6 新增，parse7 §3.5 + §6.2）。
+ *
+ * 四象限归属：
+ *   |  tool  | readOnly | destructive | openWorld | idempotent | 含义                          |
+ *   |  ----- | -------- | ----------- | --------- | ---------- | ----------------------------- |
+ *   |  admin |   false  |   true      |   false   |   false    | 改运行时状态；副作用；本机     |
+ *
+ * - readOnlyHint=false（parse7 §3.5 红线）：capability_disable / provider_remove /
+ *   caller_cap_set 改变 MCP server 运行时能力集合（下架 tool、停子进程、限速），
+ *   与 browse_logged_in / desktop 同级风险。即使 capability_list / tool_list 只读，
+ *   annotations 按**能力上限**标注（v0.5 既定原则），让 CC 给 permission 提示而非自动批准。
+ * - destructiveHint=true（parse7 §3.5）：与 desktop_act 同档 —— 关闭通道会停子进程、
+ *   影响其他正在进行的调用，且重启才能恢复默认状态（INV-40 衍生：进程内状态）。
+ * - openWorldHint=false：admin 操作 Lasso 本机 MCP server runtime（非触外网）。
+ *   provider_add 的 endpoint 字段虽可能指外网，但 admin 本身不发请求（仅写 registry）。
+ * - idempotentHint=false：disable→enable 不返原状态（已 in-flight 调用不可恢复）；
+ *   provider_remove 不可逆（重启才能恢复）。
+ *
+ * 风险缓解（parse7 §7.1 R-RT-8）：
+ *  - destructiveHint=true + description 明确「ONLY when user explicitly asks」
+ *  - admin capability_disable / provider_remove 必须传 reason 字段（强制思考）
+ *  - 所有 mutation 写 audit log（callerId + reason + timestamp）
+ */
+export const adminAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  openWorldHint: false,
+  idempotentHint: false,
+};

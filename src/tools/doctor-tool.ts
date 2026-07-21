@@ -8,6 +8,10 @@
  * 会触网探测——openWorld=false 是按 Lasso 边界标注，让 CC 不把它当
  * "向用户不可控的外部世界写入"对待）。
  *
+ * v0.6 M0.6（parse7 §2.2 + §6.2）：doctor 选项加 runtimeState provider；
+ * 由 index.ts 装配时注入（CapabilityBag.snapshot + CallerTierTracker.snapshot
+ * + ToolManager.listByChannel），doctor 报告新增 runtime_state section。
+ *
  * 借鉴：parse1 §3.12 registerDoctorTool；附录 B DOCTOR_DESCRIPTION。
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

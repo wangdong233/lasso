@@ -146,4 +146,67 @@ export class ProviderRegistry {
       .filter((p) => order[p.config.free_tier_level ?? "L2"] <= maxOrd)
       .map((p) => p.config);
   }
+
+  // ============================================================
+  // v0.6 新增（parse7 §3.6 热插拔 / INV-40 task 版本）
+  // ============================================================
+  /**
+   * v0.6: 热插拔新 provider。
+   *
+   * 与 constructor 同范式（INV-9 衍生：add/remove 是同一类内的方法，类仍单一真源）：
+   *  - 跳过 enabled=false 的（与 constructor 一致语义）
+   *  - api_key 型 + keys.length > 0 → 创建 QuotaLedger
+   *  - 按 tags[0] 归类 capability
+   *  - byCapability 内 push 后重新 sort 保证 fallback_order 顺序
+   *
+   * 不重新跑 constructor 逻辑（开闭原则）。
+   *
+   * @throws Error 若 provider name 已注册（INV-36 task 版本：bag.register 幂等但
+   *                registry.add 重名抛错 —— registry 是单一真源，重名是真冲突）
+   */
+  add(config: ProviderConfig): void {
+    if (this.byName.has(config.name)) {
+      throw new Error(`ProviderRegistry: ${config.name} already registered`);
+    }
+    // 与 constructor 同语义：enabled=false 静默跳过（保 schema 占位但不进注册表）
+    if (config.enabled === false) return;
+
+    const cap = classifyCapability(config);
+    const ledger =
+      config.type === "api_key" && config.keys.length > 0
+        ? new QuotaLedger(config.name, config.keys, config.free_quota_per_month, config.quota_model)
+        : null;
+
+    const entry: RegisteredProvider = { config, ledger, capability: cap };
+    this.byName.set(config.name, entry);
+
+    if (!this.byCapability.has(cap)) this.byCapability.set(cap, []);
+    this.byCapability.get(cap)!.push(entry);
+    // 与 constructor 一致：每次 add 后 re-sort 保证 fallback_order 顺序
+    this.byCapability.get(cap)!.sort(
+      (a, b) => a.config.fallback_order - b.config.fallback_order,
+    );
+  }
+
+  /**
+   * v0.6: 热卸载。
+   *
+   * 不动 v0.5 静态 BUILTIN_PROVIDERS（INV-40 task 版本：runtime 不能直接 mutate
+   * BUILTIN_PROVIDERS；registry.remove 是唯一热卸载入口）。
+   *
+   * @returns true=已移除；false=provider name 不存在（幂等）
+   */
+  remove(name: string): boolean {
+    const entry = this.byName.get(name);
+    if (!entry) return false;
+    this.byName.delete(name);
+    const list = this.byCapability.get(entry.capability);
+    if (list) {
+      const idx = list.findIndex((e) => e.config.name === name);
+      if (idx >= 0) list.splice(idx, 1);
+      // 若 capability 列表空了，移除空数组（保 byCapability 形状紧凑）
+      if (list.length === 0) this.byCapability.delete(entry.capability);
+    }
+    return true;
+  }
 }

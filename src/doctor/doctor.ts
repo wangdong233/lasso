@@ -102,7 +102,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.5.0-dev";
+export const LASSO_VERSION = "0.6.0-dev";
 
 // ============================================================
 // 类型
@@ -120,6 +120,35 @@ export interface DoctorReport {
   lasso_version: string;
   checks: DoctorCheck[];
   blockers: string[];
+  /**
+   * v0.6 M0.6 新增（parse7 §2.2 + §6.2）：runtime 能力袋 + caller-tier 状态快照。
+   *
+   * doctor 不验 runtime_state 的语义正确性（只读 snapshot；不 fail 不 warn）——
+   * 真正的「disable 是否生效」由 admin tool + 集成测覆盖。
+   *
+   * v0.5 装配期不实例化 CapabilityBag / CallerTierTracker → runtime_state=null（零回归）。
+   * v0.6 装配期由 index.ts 注入 → runtime_state 反映当前进程内状态。
+   */
+  runtime_state?: {
+    /** CapabilityBag.snapshot()；空数组 = v0.5 行为（无 channel/provider 被 disable） */
+    capabilities: Array<{
+      name: string;
+      kind: "channel" | "provider";
+      enabled: boolean;
+      disabledAt?: number;
+      disabledBy?: string;
+      reason?: string;
+    }>;
+    /** CallerTierTracker.snapshot()；空数组 = 无 caller 调用过 */
+    caller_caps: Array<{
+      callerId: string;
+      used: number;
+      cap: number;
+      windowMs: number;
+    }>;
+    /** 当前已注册 tool 总数 + 归属 channel（ToolManager.listByChannel()） */
+    tool_manager?: Record<string, string[]>;
+  };
 }
 
 export interface DoctorOptions {
@@ -165,6 +194,33 @@ export interface DoctorOptions {
   cloudBrowserAllowed?: boolean;
   /** v0.4 M0.4a：覆盖 LASSO_TAVILY_WATCH（默认读 process.env）。 */
   tavilyWatch?: boolean;
+  /**
+   * v0.6 M0.6（parse7 §2.2 + §6.2）：runtime_state section 的数据源注入。
+   *
+   * doctor CLI 模式不装配 CapabilityBag → runtimeState=undefined → section 字段为 null。
+   * doctor tool 模式（经 DesktopChannel.doctor / registerDoctorTool）由 index.ts 装配时
+   * 传入真实 snapshot provider，doctor 报告反映当前进程状态。
+   *
+   * 这是「数据源」注入，不是「CapabilityBag 句柄」注入 —— 守 INV-35（doctor.ts 不 import
+   * runtime/）。
+   */
+  runtimeState?: () => {
+    capabilities: Array<{
+      name: string;
+      kind: "channel" | "provider";
+      enabled: boolean;
+      disabledAt?: number;
+      disabledBy?: string;
+      reason?: string;
+    }>;
+    caller_caps: Array<{
+      callerId: string;
+      used: number;
+      cap: number;
+      windowMs: number;
+    }>;
+    tool_manager?: Record<string, string[]>;
+  };
 }
 
 // ============================================================
@@ -310,12 +366,20 @@ export async function runDoctor(
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
+  // ---- v0.6 M0.6：runtime_state section（parse7 §2.2 + §6.2）----
+  // doctor 不验 runtime_state 语义（不增 blockers）；仅展示当前进程状态。
+  // runtimeState 未注入（doctor CLI 模式）→ undefined → section 字段不出现在 report 里（零回归）。
+  const runtime_state = opts.runtimeState
+    ? opts.runtimeState()
+    : undefined;
+
   return {
     ready: blockers.length === 0,
     timestamp: new Date().toISOString(),
     lasso_version: LASSO_VERSION,
     checks,
     blockers,
+    ...(runtime_state ? { runtime_state } : {}),
   };
 }
 

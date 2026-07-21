@@ -174,6 +174,25 @@ export interface ProviderConfig {
   tags?: string[];
   /** false 时 CapabilityBag 不生成 channel，默认 true（TAVILY_WATCH=false） */
   enabled?: boolean;
+  // ============================================================
+  // v0.6 新增（parse7 §3.4，全可选，不破 v0.5 实例化）—— ToS 元数据标记
+  // ============================================================
+  /**
+   * v0.6: ToS 文档 URL（doctor warn + audit log 显示用；不影响路由）。
+   *
+   * 复用 ProviderConfig.policy_risk 三态做路由判断（PolicyGate 已实装）；
+   * tos_url 仅元数据，doctor 显示时附链接，不参与 PolicyGate.check() 路由逻辑。
+   */
+  tos_url?: string;
+  /**
+   * v0.6: ToS ack 状态（默认 false = 未确认）。
+   *
+   *  - false : 未确认（doctor warn，不阻断 —— 复用 policy_risk 走 manual-switch）
+   *  - true  : 已确认（默认 v0.5 行为；用户已读 ToS）
+   *
+   * PolicyGate.check() 路由零改（task §8 铁律）；doctor 在 v0.6 后续阶段消费此字段。
+   */
+  tos_ack?: boolean;
 }
 
 // ============================================================

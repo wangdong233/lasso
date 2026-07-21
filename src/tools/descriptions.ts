@@ -505,3 +505,68 @@ export const NETWORK_DESCRIPTION = [
   "        data.envelope carries preview (first 16 KiB of resource list JSON) + ref when spilled.",
   "        data.resource_count + data.third_party_count are always present on outcome=worked.",
 ].join("\n");
+
+// ============================================================
+// ADMIN（v0.6 M0.6 新增，parse7 §3.5 —— 单 admin tool + action-enum 折叠 9 action）
+// ============================================================
+/**
+ * 设计（parse7 §3.5 + 13 §3.1 #1 必改原则）：
+ *  - 单 admin tool + action-enum，禁注册 admin_capability_disable 等拆分 tool
+ *    （与 INV-17 desktop action-enum 同范式；防 8+ 工具名污染 CC tool palette）
+ *  - destructiveHint=true：与 desktop_act / browse_logged_in 同级风险
+ *  - 所有 mutation 必须传 reason 字段（强制思考；R-RT-8 风险缓解）
+ *  - description 明确标「ONLY when user explicitly asks to ...」
+ *
+ * 安全约束（parse7 §3.5）：
+ *  - provider_add 时 keys 必须从 process.env.<PROVIDER>_API_KEYS 读，禁直接传 key 字面量
+ *    （INV-10 衍生：anti-gaming；admin input schema 不接受 keys 字段）
+ *  - provider_remove / capability_disable 必须传 reason + callerId（audit log 必填）
+ *  - 所有 mutation 写 audit log（callerId + reason + timestamp + capability_name）
+ *
+ * 与 CC 的协议契约（parse7 §3.3 caller-tier）：
+ *  - CC 当前不传 _meta.callerId → fallback "anonymous"（共享 defaultCap=100/min）
+ *  - v0.7+ 若 CC 主动传 callerId 再启用真正 per-caller 隔离（不依赖 CC 行为变化）
+ */
+export const ADMIN_DESCRIPTION = [
+  "Admin operations for runtime capability management (v0.6).",
+  "Single tool with action-enum folding 9 actions. DO NOT call unless the user",
+  "explicitly asks to change the running MCP server's capability set.",
+  "",
+  "Actions (capability_* / tool_list / provider_* / caller_cap_*):",
+  "  - capability_list      : list all channel/provider names + enabled state",
+  "  - capability_disable   : {name} temporarily disable (tool list refresh + subproc stop)",
+  "  - capability_enable    : {name} re-enable",
+  "  - tool_list            : list all registered tools + owning channel",
+  "  - provider_add         : {config} hot-plug a new ProviderConfig (keys from env, not body)",
+  "  - provider_remove      : {name} hot-unplug (channel tools unregistered)",
+  "  - provider_set_tos     : {name, tos_ack} mark ToS state (pending|acknowledged|violated)",
+  "  - caller_cap_set       : {callerId, cap} per-caller 60s cap override (0 = block)",
+  "  - caller_cap_list      : list all caller budgets + current usage",
+  "",
+  "USE ONLY WHEN the user explicitly says one of:",
+  "  - \"disable/enable the <channel> channel\" (e.g. browse_headless / desktop)",
+  "  - \"add/remove a provider\" (e.g. a new Brave key pool)",
+  "  - \"rate-limit caller X\" or \"what's caller X's usage\"",
+  "  - \"what's the runtime state\" (capability_list + caller_cap_list)",
+  "",
+  "DO NOT USE FOR:",
+  "  - searching / browsing / desktop automation (use the dedicated tools)",
+  "  - normal fallback / retry (handled internally by FallbackDecider)",
+  "  - persistent config edits (use $LASSO_PROVIDERS_FILE + SIGHUP for that)",
+  "",
+  "SECURITY:",
+  "  - Every mutation writes an audit log line with callerId + reason + timestamp.",
+  "  - capability_disable / provider_remove REQUIRE the `reason` field (forced thinking).",
+  "  - provider_add reads API keys from process.env.<NAME>_API_KEYS, NOT from request body",
+  "    (anti-gaming: keys never flow through the LLM tool-call surface).",
+  "",
+  "Args:  action (enum, required) — one of the 9 actions above",
+  "       name (str, optional)    — channel/provider name (required for *_disable/_enable/_remove)",
+  "       config (object, opt.)   — ProviderConfig for provider_add (keys field IGNORED, read from env)",
+  "       tos_ack (enum, opt.)    — 'pending' | 'acknowledged' | 'violated' for provider_set_tos",
+  "       callerId (str, opt.)    — caller identifier for caller_cap_set",
+  "       cap (int, opt.)         — non-negative per-caller cap for caller_cap_set (0 = block)",
+  "       reason (str, opt.)      — REQUIRED for capability_disable / provider_remove (audit)",
+  "",
+  "Returns: structured JSON per action (capability_list → CapabilityState[], etc.).",
+].join("\n");

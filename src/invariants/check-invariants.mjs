@@ -1094,6 +1094,281 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // v0.6 Phase A 新增（parse7 §1.3 + §5.1 + task INV-35..40 重新编号版）
+  // ============================================================
+  // task 版本 INV-35..40 语义：
+  //  INV-35  runtime/ 不 import BrowseChannel/DesktopChannel internal（类比 INV-26 forest 调度层）
+  //  INV-36  CapabilityBag 只在已注册集合上 enable/disable（不凭空造 channel）
+  //  INV-37  channel disable 必经 ToolManager（tool.disable() + SDK 自动 sendToolListChanged）
+  //  INV-38  caller-tier cap 是模块顶级 const 默认值（LASSO_CALLER_CAP_DEFAULT env 可覆盖；禁魔法数）
+  //  INV-39  SubprocessManager.shutdownOne 只 kill 单 spec（不动 shutdown() 全停语义）
+  //  INV-40  hot-reload 新 provider 必经 provider-registry.add（不直接写 BUILTIN_PROVIDERS）
+  {
+    id: "INV-35-runtime-no-channel-internal-import",
+    desc: "v0.6 Phase A：runtime 调度层（src/runtime/*.ts）不 import BrowseChannel/DesktopChannel internal 模块（R-CI-02 守护；类比 INV-26 forest 调度层）",
+    check: () => {
+      // src/runtime/ 下任何 .ts 文件代码本体（去注释）禁 import 自：
+      //   ../channels/*.js  ../browse/*.js  ../desktop/*.js  ../subprocess/*.js
+      //   ../fallback/*.js  ../serp/*.js  ../search/*.js  ../config/*.js
+      //   ../ssrf/*.js  ../tools/*.js  ../doctor/*.js  ../forest/*.js
+      //
+      // 允许的 import：
+      //   ../types.js                  （共享类型；不持 channel 句柄）
+      //   ../util/logger.js            （日志；runtime/ 必需）
+      //   ./runtime-types.js           （同层 runtime 类型）
+      //   @modelcontextprotocol/sdk/*  （SDK RegisteredTool / McpServer 类型）
+      //   同层 ./CapabilityBag.js / ./ToolManager.js / ./CallerTierTracker.js / ./hot-reload.js
+      //
+      // 例外：runtime/hot-reload.ts 必须 import ../config/provider-registry.js（registry.add 入口）；
+      //       这是 INV-40 的要求（hot-reload 必经 registry.add）；故将 config/provider-registry
+      //       单独白名单（task §8 显式列 provider-registry 为 surgical 修改对象，runtime 可引用）。
+      const FORBIDDEN_RUNTIME_IMPORTS =
+        /from\s+["']\.\.\/(channels|browse|desktop|subprocess|fallback|serp|search|ssrf|tools|doctor|forest|invariants)\/[^"']*["']/;
+      const FORBIDDEN_CONFIG_NOT_REGISTRY =
+        /from\s+["']\.\.\/config\/(?!provider-registry)[^"']*["']/;
+      const runtimeFiles = SRC.filter((s) =>
+        /^runtime\//.test(s.f.replace(/\\/g, "/")),
+      );
+      if (runtimeFiles.length === 0) return false; // v0.6 Phase A 起必须有 runtime 文件
+      return runtimeFiles.every((s) => {
+        const codeOnly = stripComments(s.text);
+        if (FORBIDDEN_RUNTIME_IMPORTS.test(codeOnly)) return false;
+        if (FORBIDDEN_CONFIG_NOT_REGISTRY.test(codeOnly)) return false;
+        return true;
+      });
+    },
+  },
+  {
+    id: "INV-36-capability-bag-only-on-registered",
+    desc: "v0.6 Phase A：CapabilityBag 只能在已 register 集合上 enable/disable，不凭空造 channel（task 版本 INV-36；parse7 §3.1 + §1.3 INV-9 衍生）",
+    check: () => {
+      const bag = SRC.find((s) =>
+        /runtime\/CapabilityBag\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!bag) return false; // v0.6 Phase A 起必须存在
+      const code = stripComments(bag.text);
+
+      // 必要条件 1：class CapabilityBag 定义存在
+      if (!/class\s+CapabilityBag\b/.test(code)) return false;
+
+      // 必要条件 2：disable 方法必须做存在性检查（this.state.get(name) + early return）
+      //   抽 disable( 方法的函数体，验块内有 this.state.get(name) 检查 + 早返 false
+      const disableBody = code.match(
+        /async\s+disable\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!disableBody) return false;
+      const disableHasExistenceCheck =
+        /this\.state\.get\s*\(\s*name\s*\)/.test(disableBody) &&
+        /return\s+false/.test(disableBody);
+      if (!disableHasExistenceCheck) return false;
+      // 必要条件 2b：disable 必须显式判定未注册名返 false（grep "if (!s" 或 "|| !s"）
+      //   防止 disable 在未知名上"造"出 CapabilityState
+      if (!/if\s*\(\s*!s\b/.test(disableBody)) return false;
+
+      // 必要条件 3：enable 方法同范式（存在性检查 + early return）
+      const enableBody = code.match(
+        /async\s+enable\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!enableBody) return false;
+      const enableHasExistenceCheck =
+        /this\.state\.get\s*\(\s*name\s*\)/.test(enableBody) &&
+        /return\s+false/.test(enableBody);
+      if (!enableHasExistenceCheck) return false;
+      if (!/if\s*\(\s*!s\b/.test(enableBody)) return false;
+
+      // 必要条件 4：register 方法是 bag 新 entry 的唯一入口（grep `register(` 方法签名）
+      //   register 幂等：if (this.state.has(name)) return;
+      const registerBody = code.match(
+        /\n\s+register\s*\(\s*name\s*:\s*string\s*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!registerBody) return false;
+      if (!/this\.state\.has\s*\(\s*name\s*\)/.test(registerBody)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-37-channel-disable-via-tool-manager",
+    desc: "v0.6 Phase A：channel disable 必经 ToolManager.disableChannel（tool.disable() + SDK 自动 sendToolListChanged）；runtime/ 内禁直接 server.tool 操作绕过 ToolManager",
+    check: () => {
+      // 必要条件 1：ToolManager.ts 存在
+      const tm = SRC.find((s) =>
+        /runtime\/ToolManager\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!tm) return false; // v0.6 Phase A 起必须存在
+      const tmCode = stripComments(tm.text);
+
+      // 必要条件 2：ToolManager class + disableChannel 方法 + 调 rec.registered.disable()
+      if (!/class\s+ToolManager\b/.test(tmCode)) return false;
+      if (!/async\s+disableChannel\s*\(/.test(tmCode)) return false;
+      // disableChannel 体内必须出现 rec.registered.disable()（grep）
+      const disableChBody = tmCode.match(
+        /async\s+disableChannel\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!disableChBody) return false;
+      if (!/\.registered\.disable\s*\(\s*\)/.test(disableChBody)) return false;
+
+      // 必要条件 3：enableChannel 也存在 + 调 rec.registered.enable()
+      if (!/async\s+enableChannel\s*\(/.test(tmCode)) return false;
+      const enableChBody = tmCode.match(
+        /async\s+enableChannel\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!enableChBody) return false;
+      if (!/\.registered\.enable\s*\(\s*\)/.test(enableChBody)) return false;
+
+      // 必要条件 4：runtime/ 其他文件（非 ToolManager.ts）禁出现 server.tool() 直接调用
+      //   （admin tool / hot-plug tool 都必须经 ToolManager.register）
+      //   例外：ToolManager.ts 内部允许 server.tool() 调用（register 包装）
+      const otherRuntimeFiles = SRC.filter((s) => {
+        const path = s.f.replace(/\\/g, "/");
+        return /^runtime\//.test(path) && !/runtime\/ToolManager\.ts$/.test(path);
+      });
+      const hasDirectServerToolLeak = otherRuntimeFiles.some((s) =>
+        /\.server\.tool\s*\(/.test(stripComments(s.text)),
+      );
+      if (hasDirectServerToolLeak) return false;
+
+      // 必要条件 5：runtime/ 其他文件禁直接调 registered.disable() / registered.enable()
+      //   绕过 ToolManager（disable/enable 是 ToolManager 独占职责）
+      const hasDirectHandleMutationLeak = otherRuntimeFiles.some((s) =>
+        /\.registered\.(disable|enable|remove)\s*\(/.test(
+          stripComments(s.text),
+        ),
+      );
+      if (hasDirectHandleMutationLeak) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-38-caller-tier-cap-top-level-const",
+    desc: "v0.6 Phase A：caller-tier cap 是模块顶级 const（LASSO_CALLER_CAP_DEFAULT env 可覆盖；禁魔法数 100 散落在调用点；R-CI-02 守护：复用 QuotaLedger 滑动窗范式）",
+    check: () => {
+      const tracker = SRC.find((s) =>
+        /runtime\/CallerTierTracker\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!tracker) return false; // v0.6 Phase A 起必须存在
+      const code = stripComments(tracker.text);
+
+      // 必要条件 1：class CallerTierTracker 定义存在
+      if (!/class\s+CallerTierTracker\b/.test(code)) return false;
+
+      // 必要条件 2：模块顶级 const DEFAULT_CALLER_CAP（export const，类比 INV-14/27/30 anti-gaming 范式）
+      //   必须是 export const（导出便于 index.ts 装配 + 测试断言）
+      if (!/export\s+const\s+DEFAULT_CALLER_CAP\b/.test(code)) return false;
+
+      // 必要条件 3：env 覆盖函数 readCallerCapFromEnv 引用 LASSO_CALLER_CAP_DEFAULT
+      //   （运行时不读 env；仅构造期/装配期由 index.ts 调一次）
+      if (!/LASSO_CALLER_CAP_DEFAULT/.test(code)) return false;
+      if (!/export\s+function\s+readCallerCapFromEnv\b/.test(code)) return false;
+
+      // 必要条件 4：复用 QuotaLedger._refreshState 范式（INV-38 task 铁律；R-CI-02）
+      //   必须有 windowStart + windowMs 字段 + _refreshWindow 方法
+      //   禁 token bucket / GCRA / leaky bucket 关键字
+      if (!/windowStart/.test(code)) return false;
+      if (!/windowMs/.test(code)) return false;
+      if (!/_refreshWindow/.test(code)) return false;
+      if (/token_?bucket|GCRA|leaky_?bucket|TokenBucket/i.test(code)) return false;
+
+      // 必要条件 5：tryAcquire 方法签名存在（事前 gate；与 QuotaLedger.pickKey 事后扣对比）
+      if (!/tryAcquire\s*\(/.test(code)) return false;
+
+      // 必要条件 6：魔法数 100 不应作为 cap 默认值散落在构造器或 tryAcquire（必须走 DEFAULT_CALLER_CAP）
+      //   检查 tryAcquire 体内不出现字面量 100（cap 必须从 defaultCap 字段读）
+      const tryAcquireBody = code.match(
+        /tryAcquire\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      )?.[1] ?? "";
+      if (!tryAcquireBody) return false;
+      // tryAcquire 体内禁出现字面量 100（必须从 b.cap 或 this.defaultCap 读）
+      //   允许 1（cost 默认值）+ 0（Math.max 下界）；禁 100
+      if (/\b100\b/.test(tryAcquireBody)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-39-shutdown-one-only-single-spec",
+    desc: "v0.6 Phase A：SubprocessManager.shutdownOne 只 kill 单 spec（复用 _kill / _killRust；不调 shutdown 全集；INV-7 仍守：纯 lifecycle）",
+    check: () => {
+      const sub = SRC.find((s) =>
+        s.f.replace(/\\/g, "/").includes("SubprocessManager"),
+      );
+      if (!sub) return false; // v0.5 起已存在
+      const code = stripComments(sub.text);
+
+      // 必要条件 1：shutdownOne 方法定义存在（v0.6 Phase A 新增）
+      if (!/async\s+shutdownOne\s*\(\s*name\s*:\s*string\s*\)/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 2：shutdownOne 方法体必须复用 _kill 或 _killRust（不重造 kill 逻辑）
+      //   抽 shutdownOne 方法体（从方法签名到下一个方法签名前）
+      const shutdownOneMatch = code.match(
+        /async\s+shutdownOne\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      );
+      if (!shutdownOneMatch) return false;
+      const body = shutdownOneMatch[1];
+      const callsKill = /this\._kill\s*\(\s*name\s*\)/.test(body) ||
+        /this\._killRust\s*\(\s*name\s*\)/.test(body);
+      if (!callsKill) return false;
+
+      // 必要条件 3：shutdownOne 方法体内禁调 this.shutdown()（INV-39 红线：单 spec kill 不波及全集）
+      if (/this\.shutdown\s*\(\s*\)/.test(body)) return false;
+
+      // 必要条件 4：shutdown() 全停方法仍存在且语义不变（INV-7 守护 + INV-39 对比基线）
+      //   shutdown 方法体内必须 still 调 this._kill + this._killRust + clear httpAgents
+      const shutdownMatch = code.match(
+        /async\s+shutdown\s*\(\s*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
+      );
+      if (!shutdownMatch) return false;
+      const shutdownBody = shutdownMatch[1];
+      if (!/this\._kill\s*\(/.test(shutdownBody)) return false;
+      if (!/this\._killRust\s*\(/.test(shutdownBody)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-40-hot-reload-via-registry-add",
+    desc: "v0.6 Phase A：hot-reload 新 provider 必经 provider-registry.add（不直接写 BUILTIN_PROVIDERS；registry.add 是唯一热插拔入口）",
+    check: () => {
+      const hr = SRC.find((s) =>
+        /runtime\/hot-reload\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!hr) return false; // v0.6 Phase A 起必须存在
+      const code = stripComments(hr.text);
+
+      // 必要条件 1：applyHotReload 函数 + addProvider 函数存在
+      if (!/(?:async\s+)?function\s+applyHotReload\b/.test(code) &&
+        !/(?:async\s+)?function\s+addProvider\b/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 2：代码体内必须调 registry.add
+      //   （在 applyHotReload 或 addProvider 中任一处出现即可）
+      if (!/registry\.add\s*\(/.test(code)) return false;
+
+      // 必要条件 3：代码体内必须调 registry.remove（hot-reload 双向：add + remove）
+      //   守 INV-40 完整语义：热卸载必经 registry.remove
+      if (!/registry\.remove\s*\(/.test(code)) return false;
+
+      // 必要条件 4：禁直接 mutate BUILTIN_PROVIDERS（INV-40 红线）
+      //   hot-reload.ts 不应出现 BUILTIN_PROVIDERS 字面量（v0.5 静态件，运行时不可变）
+      if (/BUILTIN_PROVIDERS/.test(code)) return false;
+
+      // 必要条件 5：禁 push 到 configs 数组 / 禁 this.configs.push（绕过 add 直接 mutate）
+      //   BUILTIN_PROVIDERS 是 readonly，但若代码尝试 .push() 仍违 INV-40
+      if (/\.configs\.push\s*\(/.test(code)) return false;
+      if (/\.configs\.splice\s*\(/.test(code)) return false;
+
+      // 必要条件 6：CapabilityBag 联动必须经 bag.register（INV-36 衍生）
+      //   新 provider 进入 bag 唯一入口是 register；hot-reload 调 bag.register(c.name)
+      if (!/bag\.register\s*\(/.test(code)) return false;
+
+      return true;
+    },
+  },
 ];
 
 let failed = 0;

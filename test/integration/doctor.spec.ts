@@ -315,3 +315,55 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     );
   });
 });
+
+// ============================================================
+// v0.6 M0.6 runtime_state section（parse7 §2.2 + §6.2）
+// ============================================================
+describe("runDoctor — runtime_state section（v0.6）", () => {
+  it("未注入 runtimeState → report 不含 runtime_state 字段（零回归）", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    expect(r.runtime_state).toBeUndefined();
+  });
+
+  it("注入 runtimeState provider → report.runtime_state 反映 snapshot", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+      runtimeState: () => ({
+        capabilities: [
+          {
+            name: "browse_headless",
+            kind: "channel",
+            enabled: false,
+            disabledAt: 1234567890,
+            disabledBy: "admin",
+            reason: "test",
+          },
+          {
+            name: "search.zhipu",
+            kind: "provider",
+            enabled: true,
+          },
+        ],
+        caller_caps: [
+          { callerId: "anonymous", used: 5, cap: 100, windowMs: 60_000 },
+        ],
+        tool_manager: { browse_headless: ["browse_headless"], admin: ["admin"] },
+      }),
+    });
+    expect(r.runtime_state).toBeDefined();
+    expect(r.runtime_state!.capabilities).toHaveLength(2);
+    expect(r.runtime_state!.capabilities[0]!.name).toBe("browse_headless");
+    expect(r.runtime_state!.capabilities[0]!.enabled).toBe(false);
+    expect(r.runtime_state!.caller_caps).toHaveLength(1);
+    expect(r.runtime_state!.caller_caps[0]!.callerId).toBe("anonymous");
+    expect(r.runtime_state!.tool_manager!.admin).toEqual(["admin"]);
+  });
+});
