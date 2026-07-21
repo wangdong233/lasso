@@ -1,7 +1,7 @@
 /**
- * doctor readiness 检查（parse1 §3.11 + §6 验收 #2 + parse2 §3.1.2 v0.2 扩 4 项）
+ * doctor readiness 检查（parse1 §3.11 + §6 验收 #2 + parse2 §3.1.2 v0.2 扩 4 项 + parse4 §3.4 v0.3.5 扩 6 项 desktop）
  *
- * 14 项 check（v0.1 10 项 + v0.2 加 4 项）：
+ * 20 项 check（v0.1 10 项 + v0.2 加 4 项 + v0.3.5 加 6 项 desktop）：
  *   1. node_version               — Node ≥ 20
  *   2. zhipu_api_key              — ZHIPU_API_KEY 存在
  *   3. zhipu_endpoint_reachable   — 智谱 MCP endpoint 网络可达（HTTP HEAD/GET，不深测协议）
@@ -16,19 +16,31 @@
  *  12. provider_registry_loadable — v0.2：ProviderRegistry + BUILTIN_PROVIDERS 能加载
  *  13. quota_ledger_initialized   — v0.2：已配置的 api_key provider 都生成了非空 QuotaLedger
  *  14. search_cache_dir_writable  — v0.2：~/.cache/lasso/search-cache/ 可写
+ *  15. rust_helper_signed         — v0.3.5：codesign -dvvv 验证 Developer ID 签名
+ *  16. rust_helper_running        — v0.3.5：rust.call("ping") ok=true
+ *  17. tcc_accessibility          — v0.3.5：AXAPI 授权（fail + URL scheme 引导）
+ *  18. tcc_screen_recording       — v0.3.5：Screen Recording 授权（warn）
+ *  19. ax_read_rate               — v0.3.5：snapshot maxDepth=3 节点数 ≥20
+ *  20. vlm_endpoint_reachable     — v0.3.5：LASSO_VLM_ENDPOINT 可达（未配 → warn）
+ *
+ * v0.3.5 关键设计（parse4 §3.4）：
+ *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
+ *  - desktopChecks=true：跑 #15-#20 全 6 项（DesktopChannel.doctor / registerDoctorTool 显式 opt-in）
+ *  - 复用既有 runDoctor（不开第二套 doctor，R-CI-02）
  *
  * 结构化 JSON：
  *   {
  *     ready: bool,
  *     timestamp: ISO,
- *     lasso_version: "0.3.0-dev",
+ *     lasso_version: "0.3.5-dev",
  *     checks: [{ name, status: 'pass'|'fail'|'warn', detail, next_step? }, ...],
  *     blockers: string[]   // status='fail' 的 name 列表
  *   }
  *
  * ready = (blockers.length === 0)。warn 不阻塞 ready。
  *
- * 借鉴：parse1 §3.11；09 §2.1 验收「doctor CLI 覆盖 ≥10 项」；parse2 §3.1.2 v0.2 4 项扩展。
+ * 借鉴：parse1 §3.11；09 §2.1 验收「doctor CLI 覆盖 ≥10 项」；parse2 §3.1.2 v0.2 4 项扩展；
+ *      parse4 §3.4 v0.3.5 6 项 desktop 扩展（13 §3.4 M0.5a 验收 #5/#6）。
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -41,12 +53,16 @@ import { BAIDU_SELECTORS, GOOGLE_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
 import { BUILTIN_PROVIDERS } from "../config/providers.js";
 import { ProviderRegistry } from "../config/provider-registry.js";
+import {
+  runRustDoctorChecks,
+  type RustBridgeLike,
+} from "../desktop/desktop-doctor-checks.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.3.0-dev";
+export const LASSO_VERSION = "0.3.5-dev";
 
 // ============================================================
 // 类型
@@ -84,6 +100,21 @@ export interface DoctorOptions {
   skipInvariants?: boolean;
   /** 跳过触网检查（zhipu_endpoint_reachable + cdp_9222_logged_in + cdp_mcp_installable）。 */
   skipNetwork?: boolean;
+  /**
+   * v0.3.5（parse4 §3.4）：跑 #15-#20 desktop check。
+   *  - false（默认）：6 项 desktop check 全 warn skip（doctor CLI 路径）
+   *  - true：跑全 6 项（需 desktopBridge 注入；desktop tool / DesktopChannel.doctor 用）
+   */
+  desktopChecks?: boolean;
+  /**
+   * v0.3.5：DesktopChannel 的 RustBridge 引用（结构子类型，避免本文件 import DesktopChannel）。
+   * desktopChecks=true 时必传；否则 6 项降级为 warn skip。
+   */
+  desktopBridge?: RustBridgeLike | null;
+  /** v0.3.5：覆盖 helper binary 路径（codesign 检查用）。 */
+  desktopHelperPath?: string;
+  /** v0.3.5：覆盖 LASSO_VLM_ENDPOINT（vlm_endpoint_reachable 检查用）。 */
+  desktopVlmEndpoint?: string | null;
 }
 
 // ============================================================
@@ -182,6 +213,21 @@ export async function runDoctor(
 
   // 14. search_cache_dir_writable
   checks.push(await checkSearchCacheDir(cacheDir));
+
+  // ---- v0.3.5 6 项 desktop check（parse4 §3.4 + 13 §3.4 M0.5a 验收 #5/#6）----
+  // 默认 desktopChecks=false：6 项全 warn skip（doctor CLI 路径未装配 DesktopChannel）。
+  // desktopChecks=true + desktopBridge 注入 → 跑全 6 项（DesktopChannel.doctor / desktop tool）。
+  // 复用既有 runDoctor（不开第二套，R-CI-02）。
+  if (opts.desktopChecks) {
+    const desktopChecks = await runRustDoctorChecks(
+      opts.desktopBridge ?? null,
+      {
+        helperPath: opts.desktopHelperPath,
+        vlmEndpoint: opts.desktopVlmEndpoint,
+      },
+    );
+    checks.push(...desktopChecks);
+  }
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 

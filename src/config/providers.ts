@@ -127,6 +127,79 @@ const TAVILY_WATCH: ProviderConfig = {
   enabled: false, // v0.2 不接入
 };
 
+// ============================================================
+// v0.3.5 desktop providers（parse4 §3.2 + §config）
+// ============================================================
+/**
+ * desktop.ax —— AXAPI 主路径 provider（parse4 §3.2.1 + §3.5）。
+ *
+ * 与 zhipu/brave 的差异：
+ *  - type=self_hosted（无 key、无 quota；本机 rust helper）
+ *  - 不经 QuotaLedger（doctor #13 quota_ledger_initialized 跳过）
+ *  - endpoint_url=null（IPC 走 stdin/stdout JSON-lines，非 HTTP）
+ *  - fallback_order=4（desktop 内部首选；不参与 search/browse 跨 surface fallback）
+ *
+ * INV-20（F3.9.9 e）：provider 名形如 desktop.*。本条 name="desktop.ax"。
+ */
+const DESKTOP_AX: ProviderConfig = {
+  name: "desktop.ax",
+  type: "self_hosted",
+  endpoint_url: null,
+  keys: [],
+  free_quota_per_month: 0,
+  quota_model: "request",
+  fallback_order: 4,
+  free_tier_level: "L1", // self_hosted 等价零成本
+  policy_risk: "safe",
+  licence: "mit",
+  commercial_safe: true,
+  tags: ["desktop"],
+  enabled: true,
+};
+
+/**
+ * desktop.screenshotVlm —— canvas/Metal 兜底 provider（parse4 §3.2.1 + D10）。
+ *
+ *  - type=self_hosted（VLM endpoint 可选；未配时返 didnt 不阻断 ax 主路径）
+ *  - endpoint_url=null（运行时从 LASSO_VLM_ENDPOINT 读；不进 ProviderConfig 静态字段）
+ *  - fallback_order=5（desktop 内部 fallback；不参与跨 surface fallback，INV-23）
+ *
+ * INV-20：provider 名形如 desktop.*。本条 name="desktop.screenshotVlm"。
+ */
+const DESKTOP_VLM: ProviderConfig = {
+  name: "desktop.screenshotVlm",
+  type: "self_hosted",
+  endpoint_url: null,
+  keys: [],
+  free_quota_per_month: 0,
+  quota_model: "request",
+  fallback_order: 5,
+  free_tier_level: "L1",
+  policy_risk: "safe",
+  licence: "mit",
+  commercial_safe: true,
+  tags: ["desktop"],
+  enabled: true,
+};
+
+/**
+ * v0.3.5 desktop providers（parse4 §3.2 + §config）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（parse4 §5.4 零回归承诺）：
+ *  - 桌面通道不经 QuotaLedger（doctor #13 不查 desktop）
+ *  - ProviderRegistry v0.3 byCap("desktop") 测试断言 [] 仍绿
+ *  - INV-20 只要求 provider 名形如 desktop.*（grep DESKTOP_AX/DESKTOP_VLM），
+ *    不要求进 BUILTIN_PROVIDERS
+ *  - v0.4+ 若需要统一 registry 管理，把此 export 改为 push BUILTIN_PROVIDERS 即可
+ */
+export const DESKTOP_PROVIDERS: readonly ProviderConfig[] = [
+  DESKTOP_AX,
+  DESKTOP_VLM,
+];
+
+/** 单独导出便于 INV-20 grep + 测试断言（DESKTOP_AX / DESKTOP_VLM 名形如 desktop.*）。 */
+export { DESKTOP_AX, DESKTOP_VLM };
+
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
   ZHIPU,
   BROWSE_HEADLESS,

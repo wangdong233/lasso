@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 /**
- * Lasso 架构不变量检查（parse1 §3.14 + 08 F3.9.8 + parse2 §5.4 v0.2 加 INV-9/10/11 + parse3 §5.3 v0.3 加 INV-12..15）
+ * Lasso 架构不变量检查（parse1 §3.14 + 08 F3.9.8 + parse2 §5.4 v0.2 加 INV-9/10/11
+ *                     + parse3 §5.3 v0.3 加 INV-12..15
+ *                     + parse4 §1.4 v0.3.5 改写 INV-8 + 加 INV-16..23）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
  *
- * 15 条铁律：
+ * v0.3.5 Phase C 状态（parse4 §1.4）：
+ *  - INV-8 改写为「fallback 链不跨 surface」语义（旧「禁止 DesktopChannel 类存在」作废）
+ *  - 新增 INV-16..23（F3.9.9 (a)-(h) 可执行断言形式）
+ *  - 共 23 条 invariants
+ *
+ * 23 条铁律：
  *  INV-1 browse 是唯一 browse 入口
  *  INV-2 BaseChannel 不被绕过（所有 XxxChannel 必须 extends）
  *  INV-3 ProviderConfig 单一真源（types.ts）
@@ -13,7 +20,7 @@
  *  INV-5 MCP ToolAnnotations 完整（每 server.tool 注册文件含 hint 字段）
  *  INV-6 dispatch 走注册表 Map（BrowseChannel.actionDispatch）
  *  INV-7 SubprocessManager 不含协议帧解析
- *  INV-8 fallback 链不跨 surface 类型（v0.1 无 DesktopChannel）
+ *  INV-8 fallback 链不跨 surface 类型（v0.3.5 改写：DesktopChannel fallback plan 必须全 desktop.*）
  *  INV-9 ProviderRegistry 类单一真源（只在 config/provider-registry.ts）—— v0.2
  *  INV-10 BraveChannel 禁直接读 process.env.BRAVE_API_KEYS，必须经 QuotaLedger —— v0.2
  *  INV-11 SearchCache key 必须含 engine + region + limit（防跨 provider 误命中）—— v0.2
@@ -21,6 +28,18 @@
  *  INV-13 expect failed 必须 outcome=didnt + 终止（铁律：event delivery ≠ semantic success）—— v0.3
  *  INV-14 HIGH_RISK_PATTERNS 模块顶级 const，不从 config/env 读 —— v0.3
  *  INV-15 output-envelope spill 文件必须 mode 0o600（隐私适合 logged_in cookie）—— v0.3
+ *  INV-16 DesktopChannel 必须 extends UiChannel（13 §2.4 R-CI-02 兄弟分层）—— v0.3.5
+ *  INV-17 单 desktop tool 注册（action-enum 折叠，禁注册 desktop_snapshot 等拆分工具）—— v0.3.5
+ *  INV-18 desktop fallback 经 FallbackDecider（禁自造 fallback 循环；R-CI-02）—— v0.3.5
+ *  INV-19 OutlineNode 类型定义无 surface 字段（同形异源，统一形状）—— v0.3.5
+ *  INV-20 desktop provider 名形如 desktop.*（grep DESKTOP_AX/DESKTOP_VLM + FallbackPlan）—— v0.3.5
+ *  INV-21 src tree（.ts 全树）无 AXUIElement/CGEvent/AXPress/AXUIElementCreate 字面量 —— v0.3.5
+ *  INV-22 appleScript/cgEvent provider 占位禁接（v0.3.5 grep desktop/ 无实装类；为 v0.4 预留）—— v0.3.5
+ *  INV-23 = 改写后的 INV-8 内容（fallback 链不跨 surface，desktop 永不 fallback browse）—— v0.3.5
+ *
+ * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
+ *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
+ *     实际 npm run check-invariants 报 23 条全绿。
  *
  * Phase A 语义：骨架阶段。对尚未实装的模块（BrowseChannel /
  * SubprocessManager / FallbackDecider），断言取「允许缺失 = 合规」，
@@ -28,6 +47,8 @@
  *
  * Phase B 状态：INV-13 收紧到 ExpectPoll 端（源端契约：failed 三态必须存在）；
  * 等 Phase C StepEngine 落地后再追加调用端 regex 检查。
+ *
+ * Phase C 状态（v0.3.5）：INV-8 改写 + INV-16..23 全部上线（23 条）。
  *
  * Node 20+：readdirSync recursive 选项（v20.17+），不依赖 Array.fromAsync。
  *
@@ -51,6 +72,13 @@ const SRC = TS_FILES.map((f) => ({ f: relative(SRC_ROOT, f), text: readFileSync(
 
 function countMatches(re) {
   return SRC.reduce((n, s) => n + (s.text.match(re) || []).length, 0);
+}
+
+/** 去掉 // 行注释 + /* 块注释 *\/，仅留代码本体（INV-21 平台字面量扫代码用）。 */
+function stripComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
 }
 
 const assertions = [
@@ -145,8 +173,30 @@ const assertions = [
   },
   {
     id: "INV-8-fallback-no-cross-surface",
-    desc: "fallback 链不跨 surface：v0.1 不允许 DesktopChannel 类",
-    check: () => !SRC.some((s) => /class\s+DesktopChannel/.test(s.text)),
+    desc: "v0.3.5 改写：fallback 链不跨 surface —— DesktopChannel 的 FallbackPlan primary+fallbacks 必须全 desktop.*，禁 browse_*（INV-23 同槽）",
+    check: () => {
+      // DesktopChannel.ts 必须存在（v0.3.5 Phase C 落地）
+      const dc = SRC.find((s) => /channels\/DesktopChannel\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dc) return false;
+      // 抽出 DesktopChannel 内的 FallbackPlan 字面量（包含 primary + fallbacks 的对象）
+      // primary 必须以 "desktop." 开头；fallbacks 数组里每项必须以 "desktop." 开头
+      const planMatch = dc.text.match(
+        /primary\s*:\s*["'](desktop\.[^"']+)["'][^}]*fallbacks\s*:\s*\[([^\]]*)\]/s,
+      );
+      if (!planMatch) return false;
+      const fallbacksBlob = planMatch[2];
+      const fallbackNames = [...fallbacksBlob.matchAll(/["']([^"']+)["']/g)].map(
+        (m) => m[1],
+      );
+      if (fallbackNames.length === 0) return false;
+      const allDesktop =
+        planMatch[1].startsWith("desktop.") &&
+        fallbackNames.every((n) => n.startsWith("desktop."));
+      const hasBrowseLeak = /\b(browse_headless|browse_logged_in)\b/.test(
+        fallbacksBlob,
+      );
+      return allDesktop && !hasBrowseLeak;
+    },
   },
   // ============================================================
   // v0.2 新增（parse2 §5.4）
@@ -261,6 +311,133 @@ const assertions = [
       if (!o) return true; // 允许尚未实装（Phase A 后必须存在）
       // 必须出现 0o600（文件 mode）或 0o700（目录 mode）；二者至少其一
       return /0o600|0o700/.test(o.text);
+    },
+  },
+  // ============================================================
+  // v0.3.5 新增（parse4 §1.4 + §3.x F3.9.9 (a)-(h)）
+  // ============================================================
+  {
+    id: "INV-16-desktopchannel-extends-uichannel",
+    desc: "DesktopChannel 必须 extends UiChannel（13 §2.4 R-CI-02：兄弟不是父子，避免 BaseChannel 被 AXAPI 污染）",
+    check: () =>
+      SRC.some((s) =>
+        /class\s+DesktopChannel\s+extends\s+UiChannel\b/.test(s.text),
+      ),
+  },
+  {
+    id: "INV-17-single-desktop-tool-action-enum",
+    desc: "单 desktop tool 注册：「desktop」恰好注册一次；禁注册 desktop_snapshot/desktop_act/desktop_find 等拆分工具",
+    check: () => {
+      // 仅计代码本体（去注释）—— 注释里讨论 server.tool("desktop") 不算注册
+      let totalDesktopRegistrations = 0;
+      let splitToolLeak = false;
+      for (const s of SRC) {
+        const codeOnly = stripComments(s.text);
+        totalDesktopRegistrations +=
+          (codeOnly.match(/server\.tool\(\s*["']desktop["']/g) || []).length;
+        if (
+          /server\.tool\(\s*["']desktop_(snapshot|find|act|wait|screenshot|doctor)["']/.test(
+            codeOnly,
+          )
+        ) {
+          splitToolLeak = true;
+        }
+      }
+      if (totalDesktopRegistrations !== 1) return false;
+      return !splitToolLeak;
+    },
+  },
+  {
+    id: "INV-18-desktop-fallback-via-decider",
+    desc: "desktop fallback 必须经 FallbackDecider.runWithFallback（禁自造 fallback 循环；R-CI-02）",
+    check: () => {
+      const dc = SRC.find((s) => /channels\/DesktopChannel\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dc) return false;
+      // 必须 grep 到 decider.runWithFallback（注入 + 调用）；不能是注释提及
+      // 去注释后判定更严（防 // decider.runWithFallback 假阳）
+      const codeOnly = stripComments(dc.text);
+      return /decider\.runWithFallback\s*\(/.test(codeOnly);
+    },
+  },
+  {
+    id: "INV-19-outlinenode-no-surface-field",
+    desc: "OutlineNode 类型定义无 surface 字段（同形异源；统一形状不分 browse/desktop）",
+    check: () => {
+      const dt = SRC.find((s) => /desktop\/desktop-types\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dt) return false;
+      // 找到 OutlineNode interface 块；块内禁出现 "surface" 字段名
+      const block = dt.text.match(
+        /interface\s+OutlineNode\s*\{([\s\S]*?)\n\}/,
+      )?.[1] ?? "";
+      // 允许在块外讨论（注释 / 其他类型）；块内禁字段定义 surface?
+      return !/^\s*surface\s*[:?]/m.test(block);
+    },
+  },
+  {
+    id: "INV-20-desktop-provider-name-dot-namespace",
+    desc: "desktop provider 名形如 desktop.*：DESKTOP_AX / DESKTOP_VLM 必须以 desktop. 开头；FallbackPlan primary+fallbacks 同样",
+    check: () => {
+      // 1. providers.ts 中 DESKTOP_AX.name + DESKTOP_VLM.name 必须以 "desktop." 开头
+      const prov = SRC.find((s) => /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!prov) return false;
+      const axName = prov.text.match(
+        /DESKTOP_AX[^}]*?name\s*:\s*["']([^"']+)["']/s,
+      )?.[1];
+      const vlmName = prov.text.match(
+        /DESKTOP_VLM[^}]*?name\s*:\s*["']([^"']+)["']/s,
+      )?.[1];
+      if (!axName || !axName.startsWith("desktop.")) return false;
+      if (!vlmName || !vlmName.startsWith("desktop.")) return false;
+      // 2. DesktopChannel 的 FallbackPlan primary/fallbacks 也必须以 desktop. 开头
+      const dc = SRC.find((s) => /channels\/DesktopChannel\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dc) return false;
+      const plan = dc.text.match(
+        /primary\s*:\s*["'](desktop\.[^"']+)["'][^}]*fallbacks\s*:\s*\[([^\]]*)\]/s,
+      );
+      if (!plan) return false;
+      const fallbacksAllDesktop = [...plan[2].matchAll(/["'](desktop\.[^"']+)["']/g)]
+        .length > 0;
+      return fallbacksAllDesktop;
+    },
+  },
+  {
+    id: "INV-21-no-platform-literals-in-ts",
+    desc: "src/**/*.ts 代码本体无 AXUIElement/CGEvent/AXPress/AXUIElementCreate 平台字面量（隔离在 rust-helper）",
+    check: () => {
+      // 去注释后扫所有 .ts 文件代码本体（含字符串字面量也算——铁律是 TS 不引用平台符号）
+      // 例外：rust-helper/ 不在 src/ 下；本扫描自动只覆盖 src/**/*.ts
+      const PLATFORM_RE =
+        /\bAXUIElement\w*|\bCGEvent\w*|\bAXPress\b|\bAXUIElementCreateSystemWide\b|\bAXIsProcessTrustedWithOptions\b|\bCGPreflightScreenCaptureAccess\b|\bCGWindowListCreateImage\b/;
+      return SRC.every((s) => !PLATFORM_RE.test(stripComments(s.text)));
+    },
+  },
+  {
+    id: "INV-22-no-applescript-cgevent-provider",
+    desc: "v0.3.5 不接 appleScript/cgEvent provider：desktop/ 下无实装类（只允许注释占位，为 v0.4+ 预留）",
+    check: () => {
+      // grep desktop/ 下任何 "class AppleScriptProvider" / "class CGEventProvider" 实装
+      // 实装标识 = class 定义；注释提到不算
+      const desktopFiles = SRC.filter((s) =>
+        /desktop\//.test(s.f.replace(/\\/g, "/")),
+      );
+      const realClassLeak = desktopFiles.some((s) =>
+        /class\s+(AppleScript\w*Provider|CGEvent\w*Provider|CGEventProvider|AppleScriptProvider)\b/.test(
+          stripComments(s.text),
+        ),
+      );
+      return !realClassLeak;
+    },
+  },
+  {
+    id: "INV-23-desktop-never-fallback-browse",
+    desc: "v0.3.5：DesktopChannel fallback 链永不出现 browse_headless/browse_logged_in（INV-8 同义补充断言）",
+    check: () => {
+      const dc = SRC.find((s) => /channels\/DesktopChannel\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dc) return false;
+      // 整个 DesktopChannel.ts 不出现 browse_headless / browse_logged_in 字符串字面量
+      // （注释里允许讨论；只查字面量）
+      const codeOnly = stripComments(dc.text);
+      return !/["'](browse_headless|browse_logged_in)["']/.test(codeOnly);
     },
   },
 ];

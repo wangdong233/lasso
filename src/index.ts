@@ -27,10 +27,14 @@ import { logger } from "./util/logger.js";
 import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
 import { SubprocessManager } from "./subprocess/SubprocessManager.js";
+import { RustBridge } from "./subprocess/RustBridge.js";
 import { SearchChannel } from "./channels/SearchChannel.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
 import { HeadlessChannel } from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
+import { DesktopChannel } from "./channels/DesktopChannel.js";
+import { AxProvider } from "./desktop/AxProvider.js";
+import { ScreenshotVlmProvider } from "./desktop/ScreenshotVlmProvider.js";
 import { FallbackDecider } from "./fallback/FallbackDecider.js";
 import { CircuitBreaker } from "./fallback/CircuitBreaker.js";
 import { loadSsrfConfig } from "./ssrf/ssrf-guard.js";
@@ -38,9 +42,20 @@ import { runDoctor } from "./doctor/doctor.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
+import { registerDesktopTool } from "./tools/desktop.js";
 import { SearchCache } from "./search/SearchCache.js";
 import type { BraveChannel as BraveChannelType } from "./channels/BraveChannel.js";
 import type { BrowseExec } from "./serp/extract.js";
+
+// ============================================================
+// v0.3.5 常量（parse4 §3.5 装配）
+// ============================================================
+/**
+ * Rust helper binary 默认路径（parse4 §3.1.7 + desktop-doctor-checks.ts 默认）。
+ * 优先取 env LASSO_RUST_HELPER_PATH；fallback 到 codesign 输出标准路径。
+ */
+const DEFAULT_RUST_HELPER_PATH =
+  "./rust-helper/target/release/lasso-rust-helper";
 
 // ============================================================
 // doctor CLI 模式
@@ -68,7 +83,7 @@ async function runMcpServer(): Promise<void> {
   logger.info({
     evt: "lasso_start",
     run_id: runId,
-    version: "0.3.0-dev",
+    version: "0.3.5-dev",
     zhipu_key_present: !!config.zhipuApiKey,
     brave_key_present: !!process.env.BRAVE_API_KEYS || !!process.env.BRAVE_API_KEY,
     cdp_port: config.cdpPort,
@@ -105,16 +120,46 @@ async function runMcpServer(): Promise<void> {
   }
   const searchCache = new SearchCache(config.searchCacheDir);
 
+  // ----- v0.3.5 装配 DesktopChannel（parse4 §3.5 + §2.3 文件依赖图）-----
+  // 桌面通道 4 件套：
+  //   1. subproc.registerRustSpec("rust-helper", {...})  ← spawn 规格
+  //   2. new RustBridge(subproc, "rust-helper")          ← JSON-lines 协议适配
+  //   3. new AxProvider(rust) + new ScreenshotVlmProvider(rust) ← 两档 provider
+  //   4. new DesktopChannel(rust, ax, vlm, decider, breakers) ← channel
+  //
+  // INV-7：RustBridge 持协议帧解析；SubprocessManager 仍纯 lifecycle（既有 MCP 路径不动）。
+  // INV-23：breakers 加 desktop.ax + desktop.screenshotVlm 两档；永不挂 browse_*。
+  const rustHelperPath =
+    process.env.LASSO_RUST_HELPER_PATH ?? DEFAULT_RUST_HELPER_PATH;
+  subproc.registerRustSpec("rust-helper", {
+    command: rustHelperPath,
+    args: [],
+  });
+  const rustBridge = new RustBridge(subproc, "rust-helper");
+  const axProvider = new AxProvider(rustBridge);
+  const vlmProvider = new ScreenshotVlmProvider(rustBridge, {});
+
   // ----- 装配 FallbackDecider（每 channel 一个 60s 短熔断器）-----
   // v0.2 加 search.brave + fanout 虚拟 channel 的 breaker（parse2 §3.3.4）
+  // v0.3.5 加 desktop.ax + desktop.screenshotVlm 两档 breaker（parse4 §3.2.1）
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
     ["search.brave", new CircuitBreaker()],
     ["fanout", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
+    ["desktop.ax", new CircuitBreaker()],
+    ["desktop.screenshotVlm", new CircuitBreaker()],
   ]);
   const decider = new FallbackDecider(breakers);
+
+  const desktop = new DesktopChannel(
+    rustBridge,
+    axProvider,
+    vlmProvider,
+    decider,
+    breakers,
+  );
 
   // ----- 装配 SSRF -----
   const ssrfConfig = loadSsrfConfig();
@@ -134,7 +179,7 @@ async function runMcpServer(): Promise<void> {
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
-    version: "0.3.0-dev",
+    version: "0.3.5-dev",
   });
 
   registerSearchTool(
@@ -147,11 +192,16 @@ async function runMcpServer(): Promise<void> {
     searchCache,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
+  registerDesktopTool(server, desktop, decider);
   registerDoctorTool(server, {
     zhipuKey: config.zhipuApiKey,
     zhipuEndpoint: config.zhipuEndpoint,
     cdpPort: config.cdpPort,
     cacheDir: config.cacheDir,
+    // v0.3.5：doctor tool 也走 desktopChecks（desktop bridge 注入；parse4 §3.4.2）
+    desktopChecks: true,
+    desktopBridge: rustBridge,
+    desktopHelperPath: rustHelperPath,
   });
 
   const transport = new StdioServerTransport();

@@ -138,3 +138,42 @@ export const DOCTOR_DESCRIPTION = [
   "",
   "No args. Returns the report as JSON text.",
 ].join("\n");
+
+// ============================================================
+// DESKTOP（v0.3.5 新增，parse4 §3.3.3）
+// ============================================================
+export const DESKTOP_DESCRIPTION = [
+  "Control macOS native apps (Finder/Mail/Safari/Notes/System Settings/Xcode) via",
+  "AXAPI semantics. Uses a Rust helper subprocess (stdin/stdout JSON-lines);",
+  "prefers the AX tree over screenshots for speed + structure.",
+  "",
+  "Actions (action-enum collapsed, 13 #1):",
+  "  snapshot   — AX tree → OutlineNode (default; ≤30ms for maxDepth=3)",
+  "  find       — query cached snapshot by text/role/ref (no re-walk)",
+  "  act        — click/type/press/scroll/hotkey with optional expect postcondition",
+  "  wait       — poll for window/element/appFrontmost (tri-state)",
+  "  screenshot — fallback for pictureOnly nodes (canvas/Metal)",
+  "  doctor     — TCC / AX read-rate / signature / Rust helper health",
+  "",
+  "Use for: native macOS app control (NOT browser pages).",
+  "[Prefer browse_headless for]:   public web pages (DOM-based, faster, no TCC).",
+  "[Prefer browse_logged_in for]:  logged-in web sites (cookies preserved).",
+  "[Prefer search for]:            keyword discovery when you don't have an app.",
+  "",
+  "REQUIREMENTS:",
+  "  1. Rust helper signed with Developer ID (./rust-helper/build/sign.sh)",
+  "  2. System Settings → Privacy → Accessibility granted to helper",
+  "  3. (for screenshot) Screen Recording granted",
+  "",
+  "DOES NOT:",
+  "  - read macOS Keychain credentials (F3.10.11)",
+  "  - solve native auth prompts (boundary)",
+  "  - run on Windows/Linux (v0.9.5+)",
+  "  - fallback to browse_* when desktop fails (INV-23: no cross-surface)",
+  "",
+  "Args:  action (str, default 'snapshot')",
+  "       options (object, optional) — { app, state_id, max_depth, actions, expect,",
+  "                                       where, screenshot_region, timeout_ms, ... }",
+  "",
+  "Returns: InteractResult<OutlineSnapshot | DesktopResult> as JSON text.",
+].join("\n");

@@ -23,6 +23,7 @@
  */
 import { McpClient, type StdioSpawnParams } from "./McpClient.js";
 import { Agent } from "undici";
+import { spawn, type ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
 
 // ============================================================
@@ -63,11 +64,47 @@ interface ManagedProc {
 }
 
 // ============================================================
+// Rust helper 子进程规格（parse4 §3.5.2）
+// ============================================================
+/**
+ * Rust helper 的 spawn 规格（不同于 MCP 的 SpawnSpec）：
+ *  - 不走 SDK transport，直接 child_process.spawn
+ *  - 协议帧解析在 RustBridge（INV-7）
+ *  - 仅供 RustBridge.ensureStarted → ensureRustRunning 使用
+ */
+export interface RustSpawnSpec {
+  /** 已 codesign 的 binary 路径（如 "./rust-helper/target/release/lasso-rust-helper"）。 */
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** spawn cwd，默认继承。 */
+  cwd?: string;
+}
+
+/**
+ * Rust helper 子进程追踪结构（与 ManagedProc 平行，但持 ChildProcess 而非 McpClient）。
+ */
+interface RustProc {
+  proc: ChildProcess;
+  spawnedAt: number;
+  lastUsedAt: number;
+  restartCount: number;
+  /** proc.on("exit") 触发或本地 kill 后置 true，下次 ensureRustRunning 必重 spawn。 */
+  closed: boolean;
+}
+
+// ============================================================
 // SubprocessManager
 // ============================================================
 export class SubprocessManager {
   private procs = new Map<string, ManagedProc>();
   private specs = new Map<string, SpawnSpec>();
+  /**
+   * v0.3.5 新增（parse4 §3.5.2）：Rust helper 子进程追踪。
+   * 与 MCP 的 procs/specs 平行，互不污染（INV-7：MCP 路径一行不动）。
+   */
+  private rustProcs = new Map<string, RustProc>();
+  private rustSpecs = new Map<string, RustSpawnSpec>();
   private zombieTimer: NodeJS.Timeout | null = null;
   /**
    * v0.2 连接池（parse2 §3.6.2 / F3.5.7）。
@@ -170,6 +207,40 @@ export class SubprocessManager {
     }
   }
 
+  // ============================================================
+  // Rust helper lifecycle（v0.3.5 新增，parse4 §3.5.2）
+  // ============================================================
+  /**
+   * 注册一个 Rust helper spawn 规格。RustBridge 构造后调一次。
+   * 重复注册（同名）覆盖——用于测试 reset。
+   */
+  registerRustSpec(name: string, spec: RustSpawnSpec): void {
+    this.rustSpecs.set(name, spec);
+  }
+
+  /** 测试 / 显式重置用：移除一个 Rust 规格 + kill 它的进程。 */
+  async forgetRustSpec(name: string): Promise<void> {
+    await this._killRust(name);
+    this.rustSpecs.delete(name);
+  }
+
+  /**
+   * 懒启动 / 复用 Rust helper 子进程（parse4 §3.5.2）。
+   *  - 已存在且 pid alive 且未标记 closed → 更新 lastUsedAt，返回旧 proc
+   *  - 否则 → _spawnRustWithBackoff 走指数退避重启
+   *
+   * 与 ensureRunning 同范式（退避序列、尝试次数、alive 判定都一致），
+   * 但用 child_process.spawn（不需 SDK transport），且不解协议帧（INV-7）。
+   */
+  async ensureRustRunning(name: string): Promise<ChildProcess> {
+    const existing = this.rustProcs.get(name);
+    if (existing && !existing.closed && this._isRustAlive(existing.proc)) {
+      existing.lastUsedAt = Date.now();
+      return existing.proc;
+    }
+    return this._spawnRustWithBackoff(name);
+  }
+
   /**
    * 连接池：取一个 host 专属的 keep-alive HTTP client（parse2 §3.6.2 / F3.5.7）。
    *
@@ -216,6 +287,10 @@ export class SubprocessManager {
       this.zombieTimer = null;
     }
     await Promise.all([...this.procs.keys()].map((n) => this._kill(n)));
+    // v0.3.5：也 join 所有 Rust helper 子进程（parse4 §3.5.2）。
+    await Promise.all(
+      [...this.rustProcs.keys()].map((n) => this._killRust(n)),
+    );
     // v0.2：关闭所有 keep-alive Agent（避免进程 hang）
     await Promise.all(
       [...this.httpAgents.values()].map((a) =>
@@ -324,6 +399,126 @@ export class SubprocessManager {
     if (pid === null) return false;
     try {
       // signal 0 = 存活性探测，不实际发信号
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ============================================================
+  // Rust helper 私有（v0.3.5 新增，parse4 §3.5.2）
+  // ============================================================
+  /**
+   * Rust helper 指数退避 spawn（与 _spawnWithBackoff 同范式）。
+   * 退避：1s / 2s / 4s / 8s / 16s（max 30s）；最多 5 次，超过抛错。
+   *
+   * 关键差异（vs MCP 路径）：
+   *  - 用 child_process.spawn（不需 SDK transport）
+   *  - stdio: ['pipe', 'pipe', 'pipe']（stdin/stdout 走协议，stderr 走诊断）
+   *  - 不做 initialize 握手（JSON-lines 无握手）
+   */
+  private async _spawnRustWithBackoff(name: string): Promise<ChildProcess> {
+    const spec = this.rustSpecs.get(name);
+    if (!spec) throw new Error(`Unknown rust subprocess spec: ${name}`);
+
+    let attempt = 0;
+    while (true) {
+      try {
+        const mergedEnv: Record<string, string> = {};
+        for (const [k, v] of Object.entries(process.env)) {
+          if (v !== undefined) mergedEnv[k] = v;
+        }
+        if (spec.env) Object.assign(mergedEnv, spec.env);
+
+        const proc = spawn(spec.command, spec.args ?? [], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: mergedEnv,
+          cwd: spec.cwd,
+        });
+        const now = Date.now();
+        this.rustProcs.set(name, {
+          proc,
+          spawnedAt: now,
+          lastUsedAt: now,
+          restartCount: attempt,
+          closed: false,
+        });
+        // proc exit → 标 closed，下次 ensureRustRunning 重 spawn
+        proc.on("exit", (code, signal) => {
+          const m = this.rustProcs.get(name);
+          if (m) m.closed = true;
+          logger.warn({
+            evt: "rust_proc_exit",
+            name,
+            pid: proc.pid,
+            code,
+            signal: String(signal),
+          });
+        });
+        proc.on("error", (e) => {
+          logger.error({
+            evt: "rust_proc_error",
+            name,
+            pid: proc.pid,
+            error: String(e),
+          });
+        });
+        logger.info({
+          evt: "rust_proc_spawned",
+          name,
+          pid: proc.pid,
+          attempt,
+        });
+        return proc;
+      } catch (e) {
+        attempt++;
+        if (attempt >= 5) {
+          logger.error({
+            evt: "rust_proc_spawn_failed",
+            name,
+            attempt,
+            error: String(e),
+          });
+          throw e;
+        }
+        const backoff = Math.min(30_000, 1000 * 2 ** attempt);
+        logger.warn({
+          evt: "rust_proc_spawn_retry",
+          name,
+          attempt,
+          backoff_ms: backoff,
+          error: String(e),
+        });
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+  }
+
+  /** kill 一个 Rust proc：SIGTERM + 标 closed。幂等。 */
+  private async _killRust(name: string): Promise<void> {
+    const m = this.rustProcs.get(name);
+    if (!m) return;
+    m.closed = true;
+    try {
+      if (m.proc.pid !== undefined && this._isRustAlive(m.proc)) {
+        m.proc.kill("SIGTERM");
+      }
+    } catch (e) {
+      logger.warn({
+        evt: "rust_proc_kill_error",
+        name,
+        error: String(e),
+      });
+    }
+    this.rustProcs.delete(name);
+  }
+
+  /** 判定 Rust helper 子进程是否还活着（与 _isAlive 同语义，但持 ChildProcess）。 */
+  private _isRustAlive(proc: ChildProcess): boolean {
+    const pid = proc.pid;
+    if (pid === undefined) return false;
+    try {
       process.kill(pid, 0);
       return true;
     } catch {
