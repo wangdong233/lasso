@@ -76,14 +76,17 @@ export interface BoundedOutput {
 // ============================================================
 /**
  * 包络函数：若 text ≤ 48KiB 且 ≤ 2000 行 → 原样返回（truncated=false）。
- * 否则 spill 到 /tmp/lasso-output/@oN.txt（mode 0o600），返回 preview + ref。
+ * 否则 spill 到 /tmp/lasso-output/@oN.<extension>（mode 0o600），返回 preview + ref。
  *
  * @param text        原始完整文本（chain result JSON / 整页抽取等）
  * @param refineHint  tool-specific refine_hint（不传则用 defaultRefineHint）
+ * @param extension   v0.5 新增（parse6 §3.3.2）：落盘文件后缀，默认 ".txt"（向后兼容）；
+ *                    pdf 工具传 ".pdf"（注：内容仍是 base64 文本，扩展名只是 hint 给 caller）。
  */
 export function applyOutputEnvelope(
   text: string,
   refineHint?: string,
+  extension: ".txt" | ".pdf" = ".txt",
 ): BoundedOutput {
   const bytes = Buffer.byteLength(text, "utf8");
   const lines = text.split("\n").length;
@@ -101,7 +104,7 @@ export function applyOutputEnvelope(
 
   // 超限 → spill（mode 0o600，隐私适合 logged_in cookie 内容）
   const ref = `@o${++outputCounter}`;
-  spillToDisk(ref, text);
+  spillToDisk(ref, text, extension);
   const preview = utf8ByteSlice(text, 0, PREVIEW_BYTES);
 
   return {
@@ -152,7 +155,11 @@ export function getOutputCounter(): number {
 // ============================================================
 // 内部 helper
 // ============================================================
-function spillToDisk(ref: string, text: string): string {
+function spillToDisk(
+  ref: string,
+  text: string,
+  extension: ".txt" | ".pdf" = ".txt",
+): string {
   if (totalBytes >= STORE_CAP_BYTES) {
     throw new Error(`output store exhausted (${STORE_CAP_BYTES} cap)`);
   }
@@ -160,8 +167,10 @@ function spillToDisk(ref: string, text: string): string {
   // 用 mkdirSync recursive 而非 mkdtempSync，因为我们需要固定的 "@oN.txt" 路径。
   mkdirSync(SPILL_ROOT, { recursive: true, mode: 0o700 });
 
-  const file = path.join(SPILL_ROOT, `${ref}.txt`);
-  // 文件：mode 0o600（仅当前用户可读写）—— INV-15
+  // v0.5（parse6 §3.3.2）：extension 参数支持 ".pdf"（pdf 工具用）；
+  // 默认 ".txt" 守 backward-compat（output-envelope.spec.ts 不破）。
+  const file = path.join(SPILL_ROOT, `${ref}${extension}`);
+  // 文件：mode 0o600（仅当前用户可读写）—— INV-15 + INV-34（pdf 二进制内容同源）
   writeFileSync(file, text, { mode: 0o600 });
 
   const bytes = Buffer.byteLength(text, "utf8");

@@ -121,6 +121,27 @@ export interface BrowseOptions {
   screenshot?: ScreenshotSpec;
   timeout_ms?: number;
   no_cache?: boolean;
+  /** v0.5 新增（parse6 §3.3.5）—— pdf action 专用字段（cdp-actions.ts doPdf 读） */
+  /** PDF 纸张大小；chrome-devtools-mcp `pdf` 工具透传 CDP Page.printToCDP paperSize */
+  pdf_format?: "A4" | "Letter" | "Legal" | "Tabloid";
+  /** 横向打印（默认 false = 纵向） */
+  pdf_landscape?: boolean;
+  /** 是否打印背景 CSS（默认 true） */
+  pdf_print_background?: boolean;
+  /** 页边距（英寸）；上下左右独立 */
+  pdf_margin_top?: number;
+  pdf_margin_bottom?: number;
+  pdf_margin_left?: number;
+  pdf_margin_right?: number;
+  // ============================================================
+  // v0.5 新增（parse6 §3.4 + §3.4.3）—— network action 专用字段（cdp-actions.ts doNetwork 读）
+  // ============================================================
+  /** 资源过滤维度（默认 "all" 不过滤） */
+  network_filter?: "xhr" | "fetch" | "img" | "3rd-party" | "all";
+  /** 是否抓 response body（v0.5 不实装，文档化推迟 v0.6） */
+  network_include_bodies?: boolean;
+  /** PerformanceObserver 采集窗口（默认 3000ms；超时后断开 observer 读 entries） */
+  network_timeout_ms?: number;
 }
 
 // ============================================================
@@ -224,4 +245,183 @@ export interface PartialFailure {
   timestamp: number;
   /** 部分成功：该 channel 返回了部分结果（< limit），但 outcome=worked */
   partial_count?: number;
+}
+
+// ============================================================
+// v0.5 新增类型（parse6 §3.1 fetch_url）
+// ============================================================
+/**
+ * FetchUrlOptions（parse6 §3.1.2 schema 子集）。
+ *
+ * v0.5 立场（守简单性 + 守边界）：
+ *  - method 只允许 GET / HEAD（POST/PUT/DELETE 推 v0.6 评估，避免无脑扩大攻击面）
+ *  - headers 由 caller 显式提供（fetch_url 默认不导出 cookie / Authorization）
+ *  - max_bytes 硬上限 16 MiB（与 output-envelope SINGLE_CAP_BYTES 对齐，超限直接截断）
+ *  - no_cache 注入 `Cache-Control: no-cache`（不发 If-Modified-Since 等 conditional）
+ */
+export interface FetchUrlOptions {
+  method: "GET" | "HEAD";
+  headers?: Record<string, string>;
+  timeout_ms: number;
+  max_bytes: number;
+  no_cache: boolean;
+}
+
+/**
+ * FetchUrlResult（fetch_url 工具返回的 data 形状）。
+ *
+ *  - body_kind    : "html" | "text" | "json" | "binary:<subtype>"
+ *  - body_bytes   : 原始响应字节数（base64 编码前；便于 CC 判断大小）
+ *  - final_url    : undici 跟随重定向后的最终 URL（fetch_url 用 redirect:"manual"，
+ *                    3xx 时 body_kind/location 在 data.location；200 时 final_url === url）
+ *  - location     : 3xx 时的 Location header（caller 显式二次调 fetch_url 走 SSRF）
+ *  - envelope     : bounded output（≤48KiB 原样 / >48KiB 自动落盘 .txt + @oN ref）
+ */
+export interface FetchUrlResult {
+  url: string;
+  final_url?: string;
+  status: number;
+  content_type: string;
+  body_kind: string;
+  body_bytes: number;
+  /** 3xx manual-redirect 时填，给 caller 二次调用 fetch_url 用 */
+  location?: string;
+  /** bounded output（preview + truncated 标记 + @oN ref） */
+  envelope?: import("./util/output-envelope.js").BoundedOutput;
+}
+
+// ============================================================
+// v0.5 新增类型（parse6 §3.2 screenshot + §3.3 pdf，M0.5b）
+// ============================================================
+/**
+ * ScreenshotOptions（parse6 §3.2.2 schema 子集）。
+ *
+ * v0.5 立场（守简单性 + 守边界）：
+ *  - 仅 URL 入参；pageRef 推 v0.6 forest 合并后（4 工具不接受 @pN / @wN rootRef）
+ *  - format v0.5 接受但 doScreenshot 现不映射（上游 chrome-devtools-mcp take_screenshot
+ *    已固定 format=png；format 字段为 v0.6+ 预留）
+ *  - region v0.5 接受但 doScreenshot 现不映射（v0.6+ 评估）
+ *  - viewport v0.5 接受但 doScreenshot 现不映射（mobile emulation 推 v0.6+）
+ *
+ * 设计原则：schema 接受 → browseOpts 不映射 → 文档明确「未接入字段」（守 R-CI-02）。
+ *            不抛错（避免 caller 误以为格式错）；CC 据 description 知道哪些字段生效。
+ */
+export interface ScreenshotOptions {
+  full_page: boolean;
+  viewport?: { width: number; height: number };
+  region?: { x: number; y: number; width: number; height: number };
+  format: "png" | "jpeg";
+  quality?: number;
+  wait_until: "load" | "domcontentloaded" | "networkidle";
+  timeout_ms: number;
+}
+
+/**
+ * ScreenshotResult（screenshot 工具返回的 data 形状）。
+ *
+ *  - path     : PNG 文件磁盘绝对路径（doScreenshot 写盘；CC 用 read_text / shell 读）
+ *  - preview  : doScreenshot 写盘后的占位字符串（"screenshot saved to /tmp/..."）
+ *  - state_id : BrowseChannel 写盘 state-store 的短指针（用于 read_text 续查快照元数据）
+ *
+ * INV-34 衍生：screenshot 经 writeState（doScreenshot 已落盘 + BrowseChannel.browse()
+ *              内部 writeState）—— channel.browse 调用链自动满足 INV-34，本工具
+ *              不再独立 applyOutputEnvelope（避免双重落盘）。
+ */
+export interface ScreenshotResult {
+  url: string;
+  /** PNG 文件磁盘绝对路径（doScreenshot 写到 /tmp/lasso-screenshot-<uuid>.png） */
+  path?: string;
+  /** doScreenshot 的 preview 字符串（含路径占位） */
+  preview?: string;
+  /** BrowseChannel.browse() 写盘的 state 短指针 */
+  state_id?: string;
+}
+
+/**
+ * PdfOptions（parse6 §3.3 pdf schema 子集）。
+ */
+export interface PdfOptions {
+  format: "A4" | "Letter" | "Legal" | "Tabloid";
+  landscape: boolean;
+  print_background: boolean;
+  margin_top?: number;
+  margin_bottom?: number;
+  margin_left?: number;
+  margin_right?: number;
+  wait_until: "load" | "domcontentloaded" | "networkidle";
+  timeout_ms: number;
+}
+
+/**
+ * PdfResult（pdf 工具返回的 data 形状）。
+ *
+ *  - envelope   : bounded output（base64 PDF 字符串过 applyOutputEnvelope 落 .pdf）
+ *  - state_id   : BrowseChannel 写盘 state-store 的短指针
+ *  - spill_path : envelope.truncated=true 时填，指向 /tmp/lasso-output/@oN.pdf（mode 0o600）
+ *  - next_step  : Go/No-Go F1 上游不支持 pdf 工具时填，给 CC 降级路径建议
+ *
+ * INV-34 + INV-15 衍生：pdf 经 applyOutputEnvelope(text, hint, ".pdf")，spill mode 0o600。
+ */
+export interface PdfResult {
+  url: string;
+  /** base64 PDF 字符串过 envelope（truncated=true 时含 16KiB preview + @oN ref） */
+  envelope?: import("./util/output-envelope.js").BoundedOutput;
+  /** BrowseChannel.browse() 写盘的 state 短指针 */
+  state_id?: string;
+  /** envelope.truncated=true 时填（CC 用 read_text({ref:@oN}) 续读 base64） */
+  spill_path?: string;
+  /** Go/No-Go F1：chrome-devtools-mcp 不暴露 pdf 工具时填降级建议 */
+  next_step?: string;
+}
+
+// ============================================================
+// v0.5 新增类型（parse6 §3.4 network，M0.5c）
+// ============================================================
+/**
+ * NetworkOptions（parse6 §3.4 schema 子集）。
+ *
+ * v0.5 立场（守简单性 + 守边界）：
+ *  - 仅 URL 入参；pageRef 推 v0.6 forest 合并后（与 screenshot/pdf 同立场）
+ *  - filter 维度 = xhr / fetch / img / 3rd-party / all（5 case 单维度 switch；parse6 §3.4.3）
+ *  - include_bodies v0.5 接受但 doNetwork 不实装（文档化推迟 v0.6；schema forward-compat）
+ *  - timeout_ms 默认 3000ms（PerformanceObserver 采集窗口）
+ *  - wait_until 默认 "load"（与 screenshot/pdf 同档；先 navigate 完再注入 observer）
+ *
+ * 设计原则：schema 接受 → doNetwork 透传 → 简化或文档化未实装字段（守 R-CI-02）。
+ */
+export interface NetworkOptions {
+  filter: "xhr" | "fetch" | "img" | "3rd-party" | "all";
+  /** v0.5 接受但 doNetwork 不实装（schema forward-compat；落盘文档化推迟 v0.6） */
+  include_bodies: boolean;
+  /** PerformanceObserver 采集窗口；默认 3000ms */
+  timeout_ms: number;
+  wait_until: "load" | "domcontentloaded" | "networkidle";
+}
+
+/**
+ * NetworkResult（network 工具返回的 data 形状）。
+ *
+ *  - page_host         : URL 解析的 host（用于 3rd-party 判定；v0.5 简化 host 精确匹配）
+ *  - resource_count    : 过滤后剩的资源条数（filter=all 时 = 全部；filter=3rd-party 时 = 跨 host）
+ *  - third_party_count : 跨 host 的资源条数（不论 filter；CC 据 filter=all 时可知全量 vs 3rd-party 占比）
+ *  - envelope          : bounded output（资源列表 JSON.stringify 后过 applyOutputEnvelope 落 .txt）
+ *  - state_id          : BrowseChannel 写盘 state-store 的短指针
+ *  - next_step         : Go/No-Go F2 提示（PerformanceObserver 在 fake-ip TUN 下可能抓不全时填）
+ *
+ * INV-34 衍生：network 经 applyOutputEnvelope（资源列表 JSON 字符串过 envelope 落 .txt，mode 0o600）。
+ */
+export interface NetworkResult {
+  url: string;
+  /** URL host（3rd-party 判定基线；v0.5 host 精确匹配，eTLD+1 推 v0.6） */
+  page_host: string;
+  /** 过滤后剩的资源条数 */
+  resource_count: number;
+  /** 跨 host 的资源条数（3rd-party；不论 filter） */
+  third_party_count: number;
+  /** 资源列表 JSON 过 envelope（truncated=true 时含 16KiB preview + @oN ref） */
+  envelope?: import("./util/output-envelope.js").BoundedOutput;
+  /** BrowseChannel.browse() 写盘的 state 短指针 */
+  state_id?: string;
+  /** Go/No-Go F2：PerformanceObserver 在 SSRF-allowlisted fake-ip TUN 下可能抓不全时填 */
+  next_step?: string;
 }

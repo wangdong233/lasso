@@ -6,6 +6,8 @@
  *                     + parse5 §2.3 v0.4 M0.4a 加 INV-24/25/26 forest 调度层 + 政策 gate）
  *                     + parse5 §2.3 v0.4 M0.4b 改写 INV-22 占位 + 加 INV-27/28/29 + 收紧 INV-21 regex）
  *                     + parse5 §2.3 v0.4 M0.4c 加 INV-30 stealth-profiles 顶级 const）
+ *                     + parse6 §1.5 v0.5 M0.5a 加 INV-31/32 fetch_url SSRF + 连接池守门）
+ *                     + parse6 §1.5 v0.5 M0.5b 加 INV-33/34 pdf/console/network actionDispatch + 二进制 envelope）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -30,7 +32,19 @@
  *  - 新增 INV-30（stealth-profiles.ts 顶级 const，不从 config/env 读；类比 INV-14/27 anti-gaming）
  *  - 共 **30 条** invariants（INV-1..30 顺序编号）
  *
- * 30 条铁律：
+ * v0.5 M0.5a 状态（parse6 §1.5 + §3.1）：
+ *  - 新增 INV-31（fetch_url 必经 ssrfGuard；与 browse_headless 同函数同 config）
+ *  - 新增 INV-32（fetch_url 必经 SubprocessManager.acquireHttpClient；禁 new Agent / 禁裸 fetch）
+ *  - 共 **32 条** invariants（INV-1..32 顺序编号；INV-33/34 推 M0.5b/c screenshot/pdf/network 时加）
+ *
+ * v0.5 M0.5b 状态（parse6 §1.5 + §3.2 + §3.3）：
+ *  - 新增 INV-33（pdf/console/network 三 action 必在 BrowseChannel.actionDispatch Map；
+ *                INV-6 衍生：禁第二 dispatch Map）
+ *  - 新增 INV-34（screenshot/pdf 两个独立 tool handler 的返回路径必经 applyOutputEnvelope
+ *                或经 BrowseChannel.browse 入口（隐式经 writeState）；INV-15 衍生到二进制内容）
+ *  - 共 **34 条** invariants（INV-1..34 顺序编号；M0.5c network 时 INV-33/34 自动覆盖 network）
+ *
+ * 32 条铁律：
  *  INV-1 browse 是唯一 browse 入口
  *  INV-2 BaseChannel 不被绕过（所有 XxxChannel 必须 extends）
  *  INV-3 ProviderConfig 单一真源（types.ts）
@@ -61,6 +75,10 @@
  *  INV-28 CGEventProvider 不暴露 raw keycode（typed logical key name only；INV-21 衍生）—— v0.4 M0.4b
  *  INV-29 DesktopChannel act 4 档 plan 全 desktop.*，顺序 ax→appleScript→cgEvent→screenshotVlm —— v0.4 M0.4b
  *  INV-30 stealth-profiles.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14/27）—— v0.4 M0.4c
+ *  INV-31 fetch_url 必经 ssrfGuard（与 browse_headless 同函数；URL 入 fetch 前必命中）—— v0.5 M0.5a
+ *  INV-32 fetch_url 必经 SubprocessManager.acquireHttpClient（禁 new Agent / 禁裸 fetch）—— v0.5 M0.5a
+ *  INV-33 pdf/console/network 三 action 必以 entry 形式在 BrowseChannel.actionDispatch Map（INV-6 衍生：禁第二 dispatch）—— v0.5 M0.5b/M0.5c
+ *  INV-34 screenshot/pdf/network 独立 tool handler 返回路径必经 applyOutputEnvelope 或经 BrowseChannel.browse 入口（INV-15 衍生到二进制内容）—— v0.5 M0.5b/M0.5c
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -77,6 +95,8 @@
  * Phase v0.4 M0.4a 状态：INV-24/25/26 全部上线（forest 调度层 + 政策 gate）。
  * Phase v0.4 M0.4b 状态：INV-22 改写 + INV-27/28/29 全部上线。
  * Phase v0.4 M0.4c 状态：INV-30 上线（stealth-profiles 顶级 const）。
+ * Phase v0.5 M0.5a 状态：INV-31/32 上线（fetch_url SSRF + 连接池守门）。
+ * Phase v0.5 M0.5b 状态：INV-33/34 上线（pdf/console actionDispatch + screenshot/pdf 二进制 envelope）。
  *
  * Node 20+：readdirSync recursive 选项（v20.17+），不依赖 Array.fromAsync。
  *
@@ -102,11 +122,26 @@ function countMatches(re) {
   return SRC.reduce((n, s) => n + (s.text.match(re) || []).length, 0);
 }
 
-/** 去掉 // 行注释 + /* 块注释 *\/，仅留代码本体（INV-21 平台字面量扫代码用）。 */
+/**
+ * 去掉 line-comment（双斜杠）和 block-comment（斜杠星），仅留代码本体
+ * （INV-21 平台字面量扫代码用）。
+ *
+ * v0.5 改进：string-aware（守 INV-31/32 fetch_url 的 Accept 头部含星号-斜杠-星号字串
+ * 不被误判为 block-comment 终止符）。
+ * 用单遍正则交替匹配：先匹配字符串字面量（原子，内部含星斜杠序列也不被打断），
+ * 再匹配注释。字符串原样保留，注释（以斜杠开头）替换为空。
+ *
+ * 处理：双引号串、单引号串、反引号模板串 三种字符串 + 双斜杠行注释 + 斜杠星块注释。
+ * Template literal 的 ${...} 内部不再扫描（边界 case，不影响现有 INV）。
+ */
 function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const tokenRegex =
+    /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
+  return text.replace(tokenRegex, (match) => {
+    // 字符串字面量原样保留；注释（以斜杠开头）替换为空
+    if (match.startsWith("/")) return "";
+    return match;
+  });
 }
 
 const assertions = [
@@ -818,6 +853,243 @@ const assertions = [
       // 必要条件 7：STEALTH_INJECTION_SCRIPT 必须含反检测关键 hook（webdriver / languages）
       //   这是 stealth 注入的核心 —— 缺这两个 = 反检测失效
       if (!/webdriver/.test(code) || !/languages/.test(code)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v0.5 M0.5a 新增（parse6 §1.5 + §7.2 —— fetch_url SSRF + 连接池守门）
+  // ============================================================
+  {
+    id: "INV-31-fetch-url-via-ssrf-guard",
+    desc: "v0.5 M0.5a：fetch_url tool handler 必经 ssrfGuard（INV-31；URL 进入 fetch 前必须 grep 到 ssrfGuard 调用）",
+    check: () => {
+      // 必要条件 1：fetch-url.ts 存在（v0.5 起必须）
+      const fu = SRC.find((s) =>
+        /tools\/fetch-url\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fu) return false; // v0.5 起必须存在
+
+      // 必要条件 2：import ssrfGuard（与 browse.ts 同源；不在 fetch-url.ts 内重造第二套）
+      if (!/from\s+["'][^"']*ssrf\/ssrf-guard(\.js)?["']/.test(fu.text)) {
+        return false;
+      }
+
+      // 必要条件 3：代码本体（去注释）必须调用 ssrfGuard（不只是注释提及）
+      const code = stripComments(fu.text);
+      // 接受 `ssrfGuard(` 或 `ssrfGuard<空格>(` 形式；与 browse.ts 第 125/161 行同范式
+      if (!/\bssrfGuard\s*\(/.test(code)) return false;
+
+      // 必要条件 4：ssrfGuard 调用必须出现在 fetch 调用之前（顺序断言）
+      // 找 ssrfGuard( 的首个位置 + httpClient.fetch / acquireHttpClient.fetch 的位置
+      const ssrfIdx = code.search(/\bssrfGuard\s*\(/);
+      const fetchIdx = code.search(/httpClient\.fetch\s*\(/);
+      if (ssrfIdx === -1 || fetchIdx === -1) return false;
+      if (ssrfIdx >= fetchIdx) return false; // SSRF 必须在 fetch 前
+
+      // 必要条件 5：禁直接 import 私网 CIDR 表 / 绕过 ssrfGuard 自造判定
+      //   （不允许 fetch-url.ts 直接用 cidrContains / isPrivateIp 自造守门）
+      if (/\bcidrContains\s*\(|\bisPrivateIp\s*\(/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-32-fetch-url-via-acquire-http-client",
+    desc: "v0.5 M0.5a：fetch_url 必经 SubprocessManager.acquireHttpClient（禁 new Agent / 禁裸 global.fetch / 禁新造连接池；守 v0.2 连接池单一真源）",
+    check: () => {
+      const fu = SRC.find((s) =>
+        /tools\/fetch-url\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fu) return false; // v0.5 起必须存在
+      const code = stripComments(fu.text);
+
+      // 必要条件 1：必须调 subproc.acquireHttpClient / SubprocessManager.acquireHttpClient
+      //   （grep acquireHttpClient( 调用形式）
+      if (!/\.acquireHttpClient\s*\(/.test(code)) return false;
+
+      // 必要条件 2：禁 new Agent( （v0.2 连接池单一真源；类比 INV-4 单一 FallbackDecider）
+      //   注：SubprocessManager.ts 内部 new Agent 是允许的（那是连接池内部实装），
+      //   本断言只针对 tools/fetch-url.ts（fetch_url 工具层不能自造 Agent）
+      if (/\bnew\s+Agent\s*\(/.test(code)) return false;
+
+      // 必要条件 3：禁裸 global.fetch（即 fetch( 直接调用，不经 httpClient）
+      //   fetch_url 必须经 httpClient.fetch（acquireHttpClient 返的注入版）。
+      //   注意：stripComments 后还含 import 语句里的 fetch 不会被匹配；
+      //   `httpClient.fetch(` 不会被误中（前面带 `httpClient.`）。
+      //   精确匹配 `fetch(` 前面不带 `httpClient.` / `client.` 等限定符 = 裸 fetch。
+      //   用负向断言：`\b(?<!\.)fetch\s*\(` —— 前面不是点。
+      //   JS Node 20+ 支持 lookbehind。
+      //   但要排除 `typeof fetch`（类型引用）和注释里的代码片段。
+      //   做法：先排除合法的 httpClient.fetch，再看是否有剩余裸 fetch(
+      const withoutHttpClientFetch = code.replace(/httpClient\.fetch\s*\(/g, "");
+      if (/(?<![.\w])fetch\s*\(/.test(withoutHttpClientFetch)) return false;
+
+      // 必要条件 4：禁 new undici.Pool / new ProxyAgent / new EnvHttpProxyAgent 等其他连接池形态
+      if (/\bnew\s+(Pool|ProxyAgent|EnvHttpProxyAgent|Agent)\s*\(/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 5：fetch 调用必须经 httpClient（确认连接池路径落地）
+      if (!/httpClient\.fetch\s*\(/.test(code)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v0.5 M0.5b 新增（parse6 §1.5 + §3.3 + §4.4 —— pdf/console actionDispatch +
+  //                  screenshot/pdf 二进制 envelope）
+  // ============================================================
+  {
+    id: "INV-33-pdf-console-in-dispatch-map",
+    desc: "v0.5 M0.5b/M0.5c：pdf + console + network 三 action 必须以 entry 形式在 BrowseChannel.actionDispatch Map（INV-6 衍生：禁新造第二个 dispatch Map；独立工具经 headless.browse(url, action, opts) 入口）",
+    check: () => {
+      // 必要条件 1：BrowseChannel.ts 存在（v0.1 起必须）
+      const bc = SRC.find((s) =>
+        /channels\/BrowseChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!bc) return false;
+      const code = stripComments(bc.text);
+
+      // 必要条件 2：actionDispatch Map 字面量内必须含 ["pdf", ...] + ["console", ...] + ["network", ...] 三 entry
+      //   抽 actionDispatch = new Map([ ... ]) 块，验块内含三个 entry
+      const mapMatch = code.match(
+        /actionDispatch\s*=\s*new\s+Map\s*<[^>]*>\s*\(\s*\[([\s\S]*?)\]\s*\)/,
+      );
+      if (!mapMatch) return false;
+      const mapBody = mapMatch[1];
+      // 必须含 ["pdf", ...] entry（doPdf 引用）
+      const hasPdfEntry = /\[\s*["']pdf["']\s*,/.test(mapBody);
+      // 必须含 ["console", ...] entry（doConsole 引用）
+      const hasConsoleEntry = /\[\s*["']console["']\s*,/.test(mapBody);
+      // 必须含 ["network", ...] entry（doNetwork 引用；v0.5 M0.5c 新加）
+      const hasNetworkEntry = /\[\s*["']network["']\s*,/.test(mapBody);
+      if (!hasPdfEntry || !hasConsoleEntry || !hasNetworkEntry) return false;
+
+      // 必要条件 3：BrowseChannel.ts 必须 import doPdf + doConsole + doNetwork from cdp-actions
+      //   （grep import 语句；守「上游工具名集中 cdp-actions.ts」决策 parse6 §4.4）
+      if (!/from\s+["'][^"']*cdp-actions(\.js)?["']/.test(code)) return false;
+      // import 语句必须含 doPdf + doConsole + doNetwork 标识符
+      const importMatch = code.match(
+        /import\s+\{([^}]+)\}\s+from\s+["'][^"']*cdp-actions(\.js)?["']/,
+      );
+      if (!importMatch) return false;
+      const importedNames = importMatch[1];
+      if (!/\bdoPdf\b/.test(importedNames)) return false;
+      if (!/\bdoConsole\b/.test(importedNames)) return false;
+      if (!/\bdoNetwork\b/.test(importedNames)) return false;
+
+      // 必要条件 4：cdp-actions.ts 存在且顶级导出 CDP_UPSTREAM_TOOL_NAMES const
+      //   （parse6 §4.4 上游工具名集中表；doctor 探测 cdp_mcp_pdf_tool_available /
+      //    cdp_mcp_network_observer_available 读此表）
+      const cdpActions = SRC.find((s) =>
+        /browse\/cdp-actions\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cdpActions) return false;
+      const cdpCode = stripComments(cdpActions.text);
+      if (!/export\s+const\s+CDP_UPSTREAM_TOOL_NAMES\b/.test(cdpCode)) {
+        return false;
+      }
+      // CDP_UPSTREAM_TOOL_NAMES 必须含 pdf + network_log + console_log 三 key
+      const cdpConstBlock = cdpCode.match(
+        /CDP_UPSTREAM_TOOL_NAMES\s*=\s*Object\.freeze\s*\(\s*\{([\s\S]*?)\}\s*\)/,
+      );
+      if (!cdpConstBlock) return false;
+      const cdpBody = cdpConstBlock[1];
+      if (!/\bpdf\s*:/.test(cdpBody)) return false;
+      if (!/\bconsole_log\s*:/.test(cdpBody)) return false;
+      if (!/\bnetwork_log\s*:/.test(cdpBody)) return false;
+
+      // 必要条件 5：cdp-actions.ts 必须导出 doNetwork 函数（v0.5 M0.5c 新加）
+      //   grep `export async function doNetwork`
+      if (!/export\s+async\s+function\s+doNetwork\b/.test(cdpCode)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-34-screenshot-pdf-via-envelope-or-writestate",
+    desc: "v0.5 M0.5b/M0.5c：screenshot / pdf / network 独立 tool handler 的返回路径必经 applyOutputEnvelope 或经 BrowseChannel.browse 入口（INV-15 衍生到二进制内容；screenshot 经 browse 入口隐式 writeState，pdf 显式 applyOutputEnvelope(text, hint, '.pdf')，network 显式 applyOutputEnvelope(jsonString, hint, '.txt')）",
+    check: () => {
+      // 必要条件 1：screenshot.ts + pdf.ts + network.ts 都存在（v0.5 M0.5c 起必须）
+      const screenshot = SRC.find((s) =>
+        /tools\/screenshot\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!screenshot) return false;
+      const pdf = SRC.find((s) =>
+        /tools\/pdf\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!pdf) return false;
+      const network = SRC.find((s) =>
+        /tools\/network\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!network) return false;
+
+      const screenshotCode = stripComments(screenshot.text);
+      const pdfCode = stripComments(pdf.text);
+      const networkCode = stripComments(network.text);
+
+      // 必要条件 2：screenshot.ts 必须经 BrowseChannel.browse 入口（隐式 writeState）
+      //   grep headless.browse( 调用形式（与 browse.ts 第 138/141 行同范式）
+      //   screenshot 经 channel 入口 → doScreenshot 写盘 + BrowseChannel.browse() writeState
+      //   满足 INV-34 「返回路径必经 applyOutputEnvelope 或 writeState」分支（writeState 经 channel 入口）
+      if (! /\.browse\s*\(\s*[^,]+,\s*["']screenshot["']/.test(screenshotCode)) {
+        return false;
+      }
+
+      // 必要条件 3：pdf.ts 必须经 BrowseChannel.browse 入口（同样隐式 writeState）
+      if (!/\.browse\s*\(\s*[^,]+,\s*["']pdf["']/.test(pdfCode)) {
+        return false;
+      }
+
+      // 必要条件 3b：network.ts 必须经 BrowseChannel.browse 入口（同样隐式 writeState；v0.5 M0.5c）
+      if (!/\.browse\s*\(\s*[^,]+,\s*["']network["']/.test(networkCode)) {
+        return false;
+      }
+
+      // 必要条件 4：pdf.ts 必须显式调 applyOutputEnvelope（base64 PDF 字符串过 envelope）
+      //   grep applyOutputEnvelope( 调用；必须出现
+      if (!/\bapplyOutputEnvelope\s*\(/.test(pdfCode)) return false;
+
+      // 必要条件 4b：network.ts 必须显式调 applyOutputEnvelope（资源列表 JSON 过 envelope；v0.5 M0.5c）
+      if (!/\bapplyOutputEnvelope\s*\(/.test(networkCode)) return false;
+
+      // 必要条件 5：pdf.ts 的 applyOutputEnvelope 调用必须传 ".pdf" extension（第 3 参数）
+      //   守 INV-15 衍生 INV-34：spill 文件 .pdf 后缀 + mode 0o600（INV-15 由 output-envelope.ts 守）
+      //   精确匹配 applyOutputEnvelope(..., ..., ".pdf") 形式（含三参数）
+      //   允许多行；用 [\s\S] 非贪婪匹配两参数到 ".pdf"
+      const envelopeCallMatches = [
+        ...pdfCode.matchAll(/applyOutputEnvelope\s*\(/g),
+      ];
+      if (envelopeCallMatches.length === 0) return false;
+      // 至少一处调用传 ".pdf" extension
+      let foundPdfExtension = false;
+      for (const m of envelopeCallMatches) {
+        // 从调用起点向后扫 ≤600 字符，找 ".pdf" 是否在该调用范围内
+        const start = m.index ?? 0;
+        const window = pdfCode.slice(start, start + 600);
+        if (/\.pdf\b/.test(window)) {
+          foundPdfExtension = true;
+          break;
+        }
+      }
+      if (!foundPdfExtension) return false;
+
+      // 必要条件 6：screenshot.ts + pdf.ts + network.ts 都必须 import ssrfGuard（守 INV-31 衍生：
+      //               独立工具也必经 SSRF；与 browse_headless 同函数）
+      if (!/from\s+["'][^"']*ssrf\/ssrf-guard(\.js)?["']/.test(screenshotCode)) {
+        return false;
+      }
+      if (!/from\s+["'][^"']*ssrf\/ssrf-guard(\.js)?["']/.test(pdfCode)) {
+        return false;
+      }
+      if (!/from\s+["'][^"']*ssrf\/ssrf-guard(\.js)?["']/.test(networkCode)) {
+        return false;
+      }
+      // 都必须显式调 ssrfGuard（不只是 import）
+      if (!/\bssrfGuard\s*\(/.test(screenshotCode)) return false;
+      if (!/\bssrfGuard\s*\(/.test(pdfCode)) return false;
+      if (!/\bssrfGuard\s*\(/.test(networkCode)) return false;
 
       return true;
     },

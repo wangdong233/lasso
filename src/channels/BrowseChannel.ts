@@ -14,7 +14,12 @@
  *   fill                ──→  fill_form
  *   wait                ──→  wait_for
  *   evaluate            ──→  evaluate_script
+ *   pdf      (v0.5)     ──→  pdf  (CDP Page.printToPDF；cdp-actions.ts doPdf)
+ *   console  (v0.5)     ──→  console_log / evaluate (cdp-actions.ts doConsole 占位)
+ *   network  (v0.5)     ──→  evaluate_script 注入 PerformanceObserver (cdp-actions.ts doNetwork)
  * 上游工具名漂移只影响这张 Map（单点改）—— 风险 L1（parse1 §7.1）的缓解。
+ * v0.5（parse6 §4.4）：pdf / network_log / console_log 上游工具名集中硬编码在 cdp-actions.ts
+ *                      CDP_UPSTREAM_TOOL_NAMES 顶级 const；doctor CLI 探测。
  *
  * 流程（parse1 §3.5）：
  *  1. handler = actionDispatch.get(action) → 找不到 → outcome=didnt
@@ -49,6 +54,10 @@ import {
 import { StepEngine, type HighRiskGateLike } from "../browse/StepEngine.js";
 import { BudgetTracker } from "../fallback/BudgetTracker.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
+// v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：doPdf + doConsole + doNetwork
+//   追加进 actionDispatch Map
+// INV-33 守：pdf + console + network 三 action 必经 dispatch Map，禁第二套 dispatch
+import { doPdf, doConsole, doNetwork } from "../browse/cdp-actions.js";
 
 // ============================================================
 // 类型
@@ -96,6 +105,14 @@ export abstract class BrowseChannel extends UiChannel {
     ["fill", doFill],
     ["wait", doWait],
     ["evaluate", doEvaluate],
+    // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：追加 pdf + console + network entry
+    // INV-33 守：pdf/console/network 三 action 必经 dispatch Map，禁第二套 dispatch。
+    // screenshot 复用既有 v0.1 entry（不动）；pdf 由 doPdf 实装（chrome-devtools-mcp `pdf`）；
+    // network 由 doNetwork 实装（evaluate_script 注入 PerformanceObserver；F2 已知限制）；
+    // console 是 v0.5 M0.5b 占位（v0.6+ 若有 console tool 需求再升级 evaluate_script 注入）。
+    ["pdf", doPdf],
+    ["console", doConsole],
+    ["network", doNetwork],
   ]);
 
   /**

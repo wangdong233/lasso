@@ -14,6 +14,10 @@
  *   |  browse_logged_in |   false  |   true    | 可副作用 + 用你的登录态；触外网      |
  *   |  desktop          |   false  |   false   | 可 click/type（副作用）；本机非外网   |
  *   |  doctor           |   true   |   false   | 只读自检；不触外网（部分探测例外）   |
+ *   |  fetch_url (v0.5) |   true   |   true    | 只读 GET/HEAD；触外网（parse6 §1.4） |
+ *   |  screenshot(v0.5) |   true   |   true    | 只读截图；触外网（parse6 §3.2）      |
+ *   |  pdf      (v0.5) |   true   |   true    | 只读生成 PDF；触外网（parse6 §3.3）   |
+ *   |  network  (v0.5) |   true   |   true    | 只读抓资源列表；触外网（parse6 §3.4） |
  *
  * 关键：browse_headless/browse_logged_in 的 readOnly=false 是因为它们的
  * click/fill/evaluate action 能改变页面状态（甚至触发后端写入），不能等价于
@@ -112,5 +116,87 @@ export const interactActAnnotations: ToolAnnotations = {
  */
 export const browserbaseAnnotations: ToolAnnotations = {
   readOnlyHint: false,
+  openWorldHint: true,
+};
+
+/**
+ * fetch_url tool annotations（v0.5 M0.5a 新增，parse6 §1.4 + §6.5）。
+ *
+ * 四象限归属：
+ *   |  tool       | readOnly | openWorld | 含义                                |
+ *   |  ---------- | -------- | --------- | ----------------------------------- |
+ *   |  fetch_url  |   true   |   true    | 只读不副作用；触外网；世界开放      |
+ *
+ * - readOnlyHint=true：fetch_url 只支持 GET / HEAD（v0.5），不改任何远端状态。
+ *   与 browse_headless（readOnly=false，因可 click/fill）形成对比，CC 可据此自动批准。
+ * - openWorldHint=true：经 undici 触任意公网 host（SSRF 守门后）。
+ *
+ * parse6 §6.5 边界审计：fetch_url 是 caller-tier 工具（与 browse 平行，不 fallback），
+ * annotations 反映「能力上限」——v0.5 method enum 只含 GET/HEAD（POST/PUT 推 v0.6）。
+ */
+export const fetchUrlAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: true,
+};
+
+/**
+ * screenshot tool annotations（v0.5 M0.5b 新增，parse6 §3.2 + §6.5）。
+ *
+ * 四象限归属：
+ *   |  tool       | readOnly | openWorld | 含义                                |
+ *   |  ---------- | -------- | --------- | ----------------------------------- |
+ *   |  screenshot |   true   |   true    | 只读截图（无副作用）；触外网         |
+ *
+ * - readOnlyHint=true：screenshot 只调 navigate + take_screenshot，不改页面状态
+ *   （navigate 是被动加载，不点不填；与 browse_headless readOnly=false 因可 click/fill
+ *   形成对比）。CC 可据此自动批准 screenshot。
+ * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）。
+ *
+ * 守 INV-23 衍生：screenshot 不挂 fallback 链（经 BrowseChannel.browse() 入口隐式
+ *                 享受 headless→logged_in fallback 是 channel 内部决策，非工具层 fallback）。
+ */
+export const screenshotAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: true,
+};
+
+/**
+ * pdf tool annotations（v0.5 M0.5b 新增，parse6 §3.3 + §6.5）。
+ *
+ * 四象限归属：
+ *   |  tool | readOnly | openWorld | 含义                                |
+ *   |  ---- | -------- | --------- | ----------------------------------- |
+ *   |  pdf  |   true   |   true    | 只读生成 PDF（无副作用）；触外网     |
+ *
+ * - readOnlyHint=true：pdf 只调 navigate + CDP Page.printToPDF，不改页面状态。
+ * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）。
+ *
+ * Go/No-Go F1（parse6 §4.4）：上游不支持时返 outcome=didnt + upstream_unsupported:pdf，
+ *                            annotations 不变（能力上限是「读 PDF」，不支持是运行时降级）。
+ */
+export const pdfAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: true,
+};
+
+/**
+ * network tool annotations（v0.5 M0.5c 新增，parse6 §3.4 + §6.5）。
+ *
+ * 四象限归属：
+ *   |  tool    | readOnly | openWorld | 含义                                |
+ *   |  ------- | -------- | --------- | ----------------------------------- |
+ *   |  network |   true   |   true    | 只读抓资源列表（无副作用）；触外网   |
+ *
+ * - readOnlyHint=true：network 只调 navigate + PerformanceObserver 注入读取
+ *   `performance.getEntriesByType("resource")`，不发请求、不改页面状态。
+ *   PerformanceObserver 是 read-only 浏览器 API；与 browse_headless readOnly=false
+ *   因可 click/fill 形成对比。CC 可据此自动批准 network。
+ * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）。
+ *
+ * Go/No-Go F2（parse6 §4.4 + §7.1）：fake-ip TUN 下 PerformanceObserver 可能抓不全，
+ *                                  annotations 不变（能力上限是「读资源列表」，抓不全是运行时降级）。
+ */
+export const networkAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
   openWorldHint: true,
 };

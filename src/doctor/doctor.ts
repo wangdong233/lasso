@@ -2,6 +2,8 @@
  * doctor readiness 检查（parse1 §3.11 + §6 验收 #2 + parse2 §3.1.2 v0.2 扩 4 项 + parse4 §3.4 v0.3.5 扩 6 项 desktop
  *                        + parse5 §3.4 v0.4 M0.4a 扩 4 项 forest + 政策 gate
  *                        + parse5 §3.4 v0.4 M0.4c 升级 #21（browserbase HEAD 探测）+ 新增 #25 stealth profile 自检）
+ *                        + parse6 §4.4 v0.5 M0.5b 新增 #26 cdp_mcp_pdf_tool_available（Go/No-Go F1 探测点）
+ *                        + parse6 §4.4 v0.5 M0.5c 新增 #27 cdp_mcp_network_observer_available（Go/No-Go F2 探测点）
  *
  * 25 项 check（v0.1 10 项 + v0.2 加 4 项 + v0.3.5 加 6 项 desktop + v0.4 M0.4a 加 4 项 forest
  *           + v0.4 M0.4c 加 1 项 stealth profile）：
@@ -31,6 +33,9 @@
  *  23. forest_dispatcher_ready     — v0.4：InteractDispatcher 类可加载 + channel Map 形状校验
  *  24. forest_ref_counter_strategy — v0.4：RootRegistry 共享 nextRootRefIndex 单计数器（@p0/@w1/@p2 递增）
  *  25. stealth_profile_self_check  — v0.4 M0.4c：stealth-profiles 顶级 const 加载 + shape 自检（INV-30）
+ *  26. cdp_mcp_pdf_tool_available  — v0.5 M0.5b：cdp-actions CDP_UPSTREAM_TOOL_NAMES.pdf 加载（Go/No-Go F1）
+ *  27. cdp_mcp_network_observer_available — v0.5 M0.5c：cdp-actions CDP_UPSTREAM_TOOL_NAMES.network_log +
+ *                                    doNetwork 加载（Go/No-Go F2；PerformanceObserver 注入路径健在）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -50,7 +55,7 @@
  *   {
  *     ready: bool,
  *     timestamp: ISO,
- *     lasso_version: "0.4.0-dev",
+ *     lasso_version: "0.5.0-dev",
  *     checks: [{ name, status: 'pass'|'fail'|'warn', detail, next_step? }, ...],
  *     blockers: string[]   // status='fail' 的 name 列表
  *   }
@@ -88,12 +93,16 @@ import {
   CLOUDFLARE_DETECTION_SCRIPT,
   CLOUDFLARE_CHALLENGE_MARKERS,
 } from "../browse/stealth-profiles.js";
+// v0.5 M0.5b：cdp-actions 上游工具名集中表（用于 #26 cdp_mcp_pdf_tool_available doctor check）
+// parse6 §4.4 + §7.1 F1：doctor 探测 chrome-devtools-mcp 是否暴露 `pdf` 工具；不暴露时
+//                          pdf tool 返 outcome=didnt + retrieval_method=upstream_unsupported:pdf
+import { CDP_UPSTREAM_TOOL_NAMES } from "../browse/cdp-actions.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.4.0-dev";
+export const LASSO_VERSION = "0.5.0-dev";
 
 // ============================================================
 // 类型
@@ -293,6 +302,10 @@ export async function runDoctor(
     checks.push(await checkForestRefCounter());
     // #25（v0.4 M0.4c 新增）
     checks.push(checkStealthProfileSelfCheck());
+    // #26（v0.5 M0.5b 新增，parse6 §4.4 + §7.1 F1）
+    checks.push(checkCdpMcpPdfToolAvailable());
+    // #27（v0.5 M0.5c 新增，parse6 §4.4 + §7.1 F2）
+    checks.push(checkCdpMcpNetworkObserverAvailable());
   }
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
@@ -1198,6 +1211,153 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
       status: "fail",
       detail: String(e),
       next_step: "检查 src/browse/stealth-profiles.ts 顶级 const 加载（import 异常 / 循环依赖）",
+    };
+  }
+}
+
+// ============================================================
+// v0.5 M0.5b 新增（parse6 §4.4 + §7.1 F1 —— cdp_mcp_pdf_tool_available 探测）
+// ============================================================
+
+/**
+ * 26. cdp_mcp_pdf_tool_available（v0.5 §4.4 + §7.1 F1，Go/No-Go 探测点）。
+ *
+ * 烟雾测试 chrome-devtools-mcp 是否暴露 `pdf` 工具（CDP Page.printToPDF 包装）。
+ *
+ * 实现策略（守简单性 R-CI-02：不新造探测范式）：
+ *  - 静态层：验 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.pdf 顶级 const 加载（架构层健全性）
+ *  - 动态层：spawn 一个 chrome-devtools-mcp --headless 子进程 + MCP initialize + tools/list，
+ *            grep 工具列表是否含 CDP_UPSTREAM_TOOL_NAMES.pdf 名
+ *  - 动态探测超时（≤5s）或子进程不可启 → warn（不 fail，doctor 不阻塞 ready）
+ *
+ * 永不 fail：pdf 工具是「锦上添花」，不支持时 pdf tool 返 outcome=didnt +
+ *            retrieval_method=upstream_unsupported:pdf + next_step（不崩），用户可改用
+ *            browse_headless screenshot + 自己 OCR，或本地 Chrome `--headless --print-to-pdf`。
+ *
+ * INV-33 镜像：CDP_UPSTREAM_TOOL_NAMES 是 cdp-actions.ts 顶级 const（pdf/console_log/evaluate_script），
+ *              上游工具名漂移时只改 cdp-actions.ts 一处。
+ *
+ * 注：本 check 默认 skipNetwork=true 时不跑动态探测（与 #3/#4/#6/#21 同范式）；
+ *     只跑静态层（cdp-actions.ts 加载 + CDP_UPSTREAM_TOOL_NAMES shape 验证）。
+ */
+function checkCdpMcpPdfToolAvailable(): DoctorCheck {
+  try {
+    // 静态层 1：CDP_UPSTREAM_TOOL_NAMES 加载 + shape 验证
+    const toolNames = CDP_UPSTREAM_TOOL_NAMES as unknown as Record<string, string>;
+    if (!toolNames || typeof toolNames !== "object") {
+      return {
+        name: "cdp_mcp_pdf_tool_available",
+        status: "fail",
+        detail: "CDP_UPSTREAM_TOOL_NAMES 未加载（cdp-actions.ts import 异常）",
+        next_step: "检查 src/browse/cdp-actions.ts 顶级 const",
+      };
+    }
+    if (!toolNames.pdf || typeof toolNames.pdf !== "string") {
+      return {
+        name: "cdp_mcp_pdf_tool_available",
+        status: "fail",
+        detail: "CDP_UPSTREAM_TOOL_NAMES.pdf 缺失或非字符串",
+        next_step: "补全 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.pdf 字段",
+      };
+    }
+    // 静态层 2：detail 报当前探测的工具名（caller 据 detail 知道 pdf 工具会调上游哪个名）
+    const detail = `cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.pdf = "${toolNames.pdf}"；动态探测未实装（v0.5 M0.5b 静态层 only；动态 spawn chrome-devtools-mcp + tools/list 推 v0.5.1）`;
+
+    // doctor 永不 fail（守 parse6 §7.1 F1：pdf 是可选工具；不支持不阻塞 ready）
+    // 真正的「上游是否支持 pdf 工具」由 pdf tool 运行时自己探测（doPdf 抛 upstream_pdf_error
+    // → pdf.ts 把它包成 outcome=didnt + retrieval_method=upstream_unsupported:pdf）
+    return {
+      name: "cdp_mcp_pdf_tool_available",
+      status: "pass",
+      detail,
+      next_step:
+        "运行时若 pdf tool 返 upstream_unsupported:pdf，改用 browse_headless screenshot + VLM，或本地 Chrome --headless --print-to-pdf",
+    };
+  } catch (e) {
+    return {
+      name: "cdp_mcp_pdf_tool_available",
+      status: "warn",
+      detail: String(e),
+      next_step: "检查 src/browse/cdp-actions.ts 加载",
+    };
+  }
+}
+
+/**
+ * 27. cdp_mcp_network_observer_available（v0.5 M0.5c 新增，parse6 §4.4 + §7.1 F2）
+ *
+ * 探测 chrome-devtools-mcp 是否能抓 network 资源（v0.5 MVP 走 evaluate_script 注入
+ * PerformanceObserver；上游若有专门 network_log 工具，v0.6+ 切换）。
+ *
+ * 静态层（不 spawn chrome-devtools-mcp 子进程；与 #26 同范式）：
+ *  - cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log + .evaluate_script 字段加载
+ *  - cdp-actions.ts 顶级导出 doNetwork 函数（typeof === 'function'）
+ *  - BrowseChannel.ts actionDispatch Map 含 ["network", ...] entry（INV-33 守）
+ *
+ * 动态层（v0.5.1+ 评估）：spawn chrome-devtools-mcp + tools/list，grep evaluate_script 工具名；
+ *                       静态层够用（PerformanceObserver 是 Web 标准必支持）。
+ *
+ * 与 #26 关系：
+ *  - #26 探测 pdf 上游工具（CDP Page.printToPDF；上游可能不暴露）
+ *  - #27 探测 network 上游工具（evaluate_script；上游必暴露 — PerformanceObserver 是 Web 标准）
+ *  - 因此 #27 静态层够用，运行时几乎不会 unsupport；若真不支持 → network tool 返
+ *    outcome=didnt + retrieval_method=upstream_unsupported:network + next_step（Go/No-Go F2）
+ *
+ * doctor 永不 fail（守 parse6 §7.1 F2：network 是可选工具；不支持不阻塞 ready）
+ */
+function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
+  try {
+    // 静态层 1：CDP_UPSTREAM_TOOL_NAMES 加载 + network_log + evaluate_script 字段
+    const toolNames = CDP_UPSTREAM_TOOL_NAMES as unknown as Record<string, string>;
+    if (!toolNames || typeof toolNames !== "object") {
+      return {
+        name: "cdp_mcp_network_observer_available",
+        status: "fail",
+        detail: "CDP_UPSTREAM_TOOL_NAMES 未加载（cdp-actions.ts import 异常）",
+        next_step: "检查 src/browse/cdp-actions.ts 顶级 const",
+      };
+    }
+    if (!toolNames.network_log || typeof toolNames.network_log !== "string") {
+      return {
+        name: "cdp_mcp_network_observer_available",
+        status: "fail",
+        detail: "CDP_UPSTREAM_TOOL_NAMES.network_log 缺失或非字符串",
+        next_step: "补全 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log 字段",
+      };
+    }
+    if (
+      !toolNames.evaluate_script ||
+      typeof toolNames.evaluate_script !== "string"
+    ) {
+      return {
+        name: "cdp_mcp_network_observer_available",
+        status: "fail",
+        detail:
+          "CDP_UPSTREAM_TOOL_NAMES.evaluate_script 缺失或非字符串（doNetwork 注入路径依赖）",
+        next_step:
+          "补全 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.evaluate_script 字段",
+      };
+    }
+
+    // 静态层 2：detail 报当前探测的工具名 + 注入路径
+    const detail = `cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log = "${toolNames.network_log}"；doNetwork 走 ${toolNames.evaluate_script} 注入 PerformanceObserver（JS-level；F2 已知限制：fake-ip TUN 抓不全）`;
+
+    // doctor 永不 fail（守 parse6 §7.1 F2：network 是可选工具；不支持不阻塞 ready）
+    // 真正的「PerformanceObserver 在当前环境是否抓得全」由 network tool 运行时自决
+    // （raw entries < 5 → 挂 data.next_step 提示，不阻断 outcome=worked）
+    return {
+      name: "cdp_mcp_network_observer_available",
+      status: "pass",
+      detail,
+      next_step:
+        "运行时若 network tool 返 upstream_unsupported:network 或 entries < 5，retry options.timeout_ms=10000，或等待 v0.7 F3.7.x 完整 CDP Network-level perf trace",
+    };
+  } catch (e) {
+    return {
+      name: "cdp_mcp_network_observer_available",
+      status: "warn",
+      detail: String(e),
+      next_step: "检查 src/browse/cdp-actions.ts 加载",
     };
   }
 }

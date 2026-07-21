@@ -62,6 +62,17 @@ import { registerBrowserbaseTool } from "./tools/browserbase.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
 import { registerDesktopTool } from "./tools/desktop.js";
 import { registerInteractTools } from "./tools/interact.js";
+// v0.5 M0.5a：fetch_url 独立工具（parse6 §3.1，TS-only 增量，零回归）
+import { registerFetchUrlTool } from "./tools/fetch-url.js";
+// v0.5 M0.5b：screenshot + pdf 独立工具（parse6 §3.2 + §3.3，TS-only 增量，零回归）
+// INV-33 守：screenshot 走既有 v0.1 dispatch entry；pdf/console 新增 entry（cdp-actions.ts doPdf/doConsole）
+// INV-34 守：screenshot 经 BrowseChannel.browse() 隐式 writeState；pdf 显式 applyOutputEnvelope(text, hint, ".pdf")
+import { registerScreenshotTool } from "./tools/screenshot.js";
+import { registerPdfTool } from "./tools/pdf.js";
+// v0.5 M0.5c：network 独立工具（parse6 §3.4，TS-only 增量，零回归）
+// INV-33 守：network 走新加 dispatch entry（cdp-actions.ts doNetwork = evaluate_script 注入 PerformanceObserver）
+// INV-34 守：network 显式 applyOutputEnvelope(jsonString, hint, ".txt")；资源列表过 envelope
+import { registerNetworkTool } from "./tools/network.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -83,9 +94,10 @@ const DEFAULT_RUST_HELPER_PATH =
 // ============================================================
 /**
  * Lasso server 版本（parse5 §1.3 + §6.3；v0.4 M0.4c → 0.4.0-dev）。
+ * v0.5 M0.5c（parse6 §1.1 + §6 验收）：4 工具（fetch_url/screenshot/pdf/network）全装配 → 0.5.0-dev
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
  */
-const LASSO_SERVER_VERSION = "0.4.0-dev";
+const LASSO_SERVER_VERSION = "0.5.0-dev";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -332,6 +344,18 @@ async function runMcpServer(): Promise<void> {
   if (browserbaseChannel) {
     registerBrowserbaseTool(server, browserbaseChannel, decider, ssrfConfig);
   }
+  // v0.5 M0.5a：fetch_url 独立 HTTP 工具（parse6 §3.1）
+  // 与 browse_headless 同 SSRF guard；不经浏览器、不挂 fallback 链（INV-23 衍生：caller-tier）
+  registerFetchUrlTool(server, subproc, ssrfConfig);
+  // v0.5 M0.5b：screenshot + pdf 独立工具（parse6 §3.2 + §3.3）
+  // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
+  // screenshot 走既有 v0.1 dispatch entry（doScreenshot）；pdf 走新加 entry（doPdf from cdp-actions）
+  registerScreenshotTool(server, headless, ssrfConfig);
+  registerPdfTool(server, headless, ssrfConfig);
+  // v0.5 M0.5c：network 独立工具（parse6 §3.4）
+  // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
+  // network 走新加 entry（doNetwork from cdp-actions = evaluate_script 注入 PerformanceObserver）
+  registerNetworkTool(server, headless, ssrfConfig);
   registerDoctorTool(server, {
     zhipuKey: config.zhipuApiKey,
     zhipuEndpoint: config.zhipuEndpoint,
