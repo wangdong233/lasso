@@ -28,6 +28,7 @@ import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
 import { SubprocessManager } from "./subprocess/SubprocessManager.js";
 import { SearchChannel } from "./channels/SearchChannel.js";
+import { BraveChannel } from "./channels/BraveChannel.js";
 import { HeadlessChannel } from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { FallbackDecider } from "./fallback/FallbackDecider.js";
@@ -37,6 +38,8 @@ import { runDoctor } from "./doctor/doctor.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
+import { SearchCache } from "./search/SearchCache.js";
+import type { BraveChannel as BraveChannelType } from "./channels/BraveChannel.js";
 import type { BrowseExec } from "./serp/extract.js";
 
 // ============================================================
@@ -65,8 +68,9 @@ async function runMcpServer(): Promise<void> {
   logger.info({
     evt: "lasso_start",
     run_id: runId,
-    version: "0.1.0-dev",
+    version: "0.2.0-dev",
     zhipu_key_present: !!config.zhipuApiKey,
+    brave_key_present: !!process.env.BRAVE_API_KEYS || !!process.env.BRAVE_API_KEY,
     cdp_port: config.cdpPort,
   });
 
@@ -81,9 +85,32 @@ async function runMcpServer(): Promise<void> {
   const headless = new HeadlessChannel(subproc);
   const logged_in = new LoggedInChannel(subproc, config.cdpPort);
 
+  // ----- v0.2 装配 BraveChannel（若 BRAVE_API_KEYS 配置）+ SearchCache -----
+  // parse2 §3.3.4 / §3.4：brave 从 registry 取 QuotaLedger（INV-10：禁直读 env），
+  //                       cache 走 config.searchCacheDir。
+  let brave: BraveChannelType | undefined;
+  const braveProvider = config.registry.get("brave");
+  if (braveProvider && braveProvider.config.endpoint_url && braveProvider.ledger) {
+    brave = new BraveChannel(
+      braveProvider.config.endpoint_url,
+      braveProvider.ledger,
+      subproc.acquireHttpClient("https://api.search.brave.com"),
+    );
+    logger.info({
+      evt: "brave_channel_wired",
+      keys: braveProvider.ledger.keyCount,
+    });
+  } else {
+    logger.info({ evt: "brave_channel_skipped", reason: "no_keys_or_endpoint" });
+  }
+  const searchCache = new SearchCache(config.searchCacheDir);
+
   // ----- 装配 FallbackDecider（每 channel 一个 60s 短熔断器）-----
+  // v0.2 加 search.brave + fanout 虚拟 channel 的 breaker（parse2 §3.3.4）
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
+    ["search.brave", new CircuitBreaker()],
+    ["fanout", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
   ]);
@@ -107,10 +134,18 @@ async function runMcpServer(): Promise<void> {
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
-    version: "0.1.0-dev",
+    version: "0.2.0-dev",
   });
 
-  registerSearchTool(server, search, decider, browseHeadlessExec);
+  registerSearchTool(
+    server,
+    search,
+    decider,
+    browseHeadlessExec,
+    brave,
+    config.registry,
+    searchCache,
+  );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
   registerDoctorTool(server, {
     zhipuKey: config.zhipuApiKey,

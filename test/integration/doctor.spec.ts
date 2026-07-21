@@ -190,3 +190,128 @@ describe("runDoctor — 场景判定", () => {
     expect(findCheck(r, "ssrf_config").status).toBe("pass");
   });
 });
+
+// ============================================================
+// v0.2 4 项新 check（parse2 §3.1.2）
+// ============================================================
+describe("runDoctor — v0.2 4 项新 check", () => {
+  it("checks 总数 ≥ 14（v0.1 10 + v0.2 4）", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake-key",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    expect(r.checks.length).toBeGreaterThanOrEqual(14);
+  });
+
+  it("11. brave_keys 未配置 → warn（不阻塞 ready）", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake-key",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+      braveKeysCsv: "",
+    });
+    const c = findCheck(r, "brave_keys");
+    expect(c.status).toBe("warn");
+    expect(c.detail).toContain("未配置");
+    // warn 不进 blockers
+    expect(r.blockers).not.toContain("brave_keys");
+  });
+
+  it("11. brave_keys 配置 → pass + 含合并配额（N × 2000）", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake-key",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+      braveKeysCsv: "key1,key2",
+    });
+    const c = findCheck(r, "brave_keys");
+    expect(c.status).toBe("pass");
+    expect(c.detail).toContain("2 Key");
+    expect(c.detail).toContain("4000/月"); // 2 × 2000
+  });
+
+  it("12. provider_registry_loadable 永远 pass（BUILTIN_PROVIDERS 加载）", async () => {
+    const r = await runDoctor({
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const c = findCheck(r, "provider_registry_loadable");
+    expect(c.status).toBe("pass");
+    // TAVILY_WATCH enabled=false → 不应出现在 listNames
+    expect(c.detail).not.toContain("tavily");
+    expect(c.detail).toContain("zhipu");
+    expect(c.detail).toContain("brave");
+  });
+
+  it("13. quota_ledger_initialized：无 Key 配置时 ledgerCount=0 仍 pass", async () => {
+    const r = await runDoctor({
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+      braveKeysCsv: "",
+    });
+    const c = findCheck(r, "quota_ledger_initialized");
+    expect(c.status).toBe("pass");
+    expect(c.detail).toContain("0 QuotaLedger");
+  });
+
+  it("13. quota_ledger_initialized：zhipu + brave 配 Key → 2 QuotaLedger 装配", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake-zhipu-key",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+      braveKeysCsv: "fake-brave-key",
+    });
+    const c = findCheck(r, "quota_ledger_initialized");
+    expect(c.status).toBe("pass");
+    expect(c.detail).toContain("2 QuotaLedger");
+  });
+
+  it("14. search_cache_dir_writable → pass + 路径含 search-cache 子目录", async () => {
+    const r = await runDoctor({
+      zhipuKey: "fake-key",
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const c = findCheck(r, "search_cache_dir_writable");
+    expect(c.status).toBe("pass");
+    expect(c.detail).toContain("search-cache");
+  });
+
+  it("14. search_cache_dir_writable 失败 → fail + blocker", async () => {
+    const impossible = "/proc/lasso-cannot-create";
+    const r = await runDoctor({
+      zhipuKey: "fake-key",
+      cacheDir: impossible,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const c = findCheck(r, "search_cache_dir_writable");
+    expect(c.status).toBe("fail");
+    expect(r.blockers).toContain("search_cache_dir_writable");
+  });
+
+  it("v0.2 4 项 check 名称齐全", async () => {
+    const r = await runDoctor({
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const names = r.checks.map((c) => c.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "brave_keys",
+        "provider_registry_loadable",
+        "quota_ledger_initialized",
+        "search_cache_dir_writable",
+      ]),
+    );
+  });
+});

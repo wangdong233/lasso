@@ -45,6 +45,8 @@ export interface InteractResult<T = unknown> {
     error?: string;
   }>;
   error?: string;
+  /** v0.2 新增（F3.9.7）：多源扇出时部分源失败的诚实记录 */
+  partial_failures?: PartialFailure[];
 }
 
 // ============================================================
@@ -116,6 +118,8 @@ export interface BrowseOptions {
 /**
  * 不变量 INV-3：ProviderConfig 的 interface 定义只在 types.ts（单一真源）。
  * config/providers.ts 只能 import 这个类型，不能 redefine。
+ *
+ * v0.2 扩 6 字段（全可选 → v0.1 实例化不破）。新字段语义见 parse2 §3.1.1。
  */
 export interface ProviderConfig {
   name: string;
@@ -125,7 +129,33 @@ export interface ProviderConfig {
   free_quota_per_month: number;
   quota_model: "monthly" | "rpm" | "token" | "request";
   fallback_order: number;
+  // --- v0.2 新增（全可选，不破 v0.1 实例化）---
+  /** L1/L2/L3/L4，默认按 type 推断（parse2 §3.1.1 / F3.1.10 四级分级） */
+  free_tier_level?: FreeTierLevel;
+  /** Tavily=acquired，默认 safe；policy_risk=acquired 时不阻塞但 doctor warn */
+  policy_risk?: "safe" | "acquired" | "watched";
+  /** Jina=non_commercial，SearXNG=agpl；默认不约束 */
+  licence?: "mit" | "apache2" | "agpl" | "non_commercial";
+  /** Jina false，其余默认 true（policy_risk=acquired 时建议 false） */
+  commercial_safe?: boolean;
+  /** ["search","browse","desktop"] 等，CapabilityBag 据第一个 tag 归类 */
+  tags?: string[];
+  /** false 时 CapabilityBag 不生成 channel，默认 true（TAVILY_WATCH=false） */
+  enabled?: boolean;
 }
+
+// ============================================================
+// FreeTierLevel（F3.1.10 四级分级，parse2 §3.1.1）
+// ============================================================
+/**
+ *  - L1=完全免费零Key（DDG/SearXNG 自建）
+ *  - L2=免费层需Key（Brave 2000/月、智谱、Tavily 1000、Jina）
+ *  - L3=远程 URL 免Key（Exa、Jina read_url）
+ *  - L4=付费（Perplexity/Serper/Google CSE/Bing）
+ *
+ * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Brave/Exa 有免费层）。
+ */
+export type FreeTierLevel = "L1" | "L2" | "L3" | "L4";
 
 // ============================================================
 // ChannelStatus / Health
@@ -137,3 +167,50 @@ export interface ChannelStatus {
 }
 
 export type Health = "healthy" | "degraded" | "down";
+
+// ============================================================
+// v0.2 新增类型（parse2 §3.1.1）
+// ============================================================
+/**
+ * AttributedResult（F3.1.8，多源扇出后单条结果带来源标签）。
+ * CC 可据此在结果中看到「这条来自 zhipu / 这条来自 brave」。
+ */
+export interface AttributedResult {
+  title: string;
+  url: string;
+  snippet: string;
+  source?: string;
+  /** "search.zhipu" / "search.brave" / "browse_headless" */
+  served_by: string;
+  /** 原引擎内排名（rerank 用） */
+  original_rank?: number;
+}
+
+/**
+ * SearchCacheEntry（F3.1.4，7 天 TTL cache 单条记录）。
+ * INV-11：key 必须含 engine + region + limit（防跨 provider 误命中）。
+ */
+export interface SearchCacheEntry<T = unknown> {
+  /** attribution key（sha1 of canonical(query)|engine|region|limit） */
+  key: string;
+  query: string;
+  engine: string;
+  region: string;
+  limit: number;
+  result: T; // InteractResult<SearchResult>
+  /** epoch ms */
+  created_at: number;
+  hits: number;
+}
+
+/**
+ * PartialFailure（F3.9.7，多源扇出时部分源失败的诚实记录）。
+ * 透传路径：MultiSourceFanout → InteractResult.partial_failures → tools/search.ts。
+ */
+export interface PartialFailure {
+  channel: string;
+  error: string;
+  timestamp: number;
+  /** 部分成功：该 channel 返回了部分结果（< limit），但 outcome=worked */
+  partial_count?: number;
+}

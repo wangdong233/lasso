@@ -15,6 +15,9 @@ dist/
 .cache/
 *.log
 
+# v0.2 benchmark reports（A/B 实测产物，每次本地重跑覆写）
+reports/
+
 # IDE
 .vscode/
 .idea/

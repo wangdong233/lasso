@@ -22,6 +22,7 @@
  * （npx -y chrome-devtools-mcp@<ver> --headless --isolated / --browser-url :9222）。
  */
 import { McpClient, type StdioSpawnParams } from "./McpClient.js";
+import { Agent } from "undici";
 import { logger } from "../util/logger.js";
 
 // ============================================================
@@ -68,6 +69,13 @@ export class SubprocessManager {
   private procs = new Map<string, ManagedProc>();
   private specs = new Map<string, SpawnSpec>();
   private zombieTimer: NodeJS.Timeout | null = null;
+  /**
+   * v0.2 连接池（parse2 §3.6.2 / F3.5.7）。
+   * key = host origin（如 "https://api.search.brave.com" /
+   * "https://open.bigmodel.cn"）；每 host 一个独立 undici Agent。
+   * 智谱 + Brave 同 host 的多次请求复用 TCP/TLS 连接 → 并发 p95 改善。
+   */
+  private httpAgents = new Map<string, Agent>();
 
   /**
    * 注册一个子进程规格。channel 构造时调一次（parse1 §3.6 HeadlessChannel /
@@ -162,6 +170,45 @@ export class SubprocessManager {
     }
   }
 
+  /**
+   * 连接池：取一个 host 专属的 keep-alive HTTP client（parse2 §3.6.2 / F3.5.7）。
+   *
+   * 同一 origin 多次调用返同一个 Agent，TCP/TLS 连接在 keepAliveTimeout=30s 内复用。
+   * 智谱 + Brave 同 host 并发请求 p95 改善（V5 风险缓解）；不破坏 v0.1 fetch 行为
+   * （V7 风险：dispatcher 注入是 undici 标准路径，headers/redirect/SSRF 守卫都透传）。
+   *
+   * 设计：返回 `{ fetch }` 而非裸 Agent，便于 BraveChannel 注入测试 mock 同构。
+   *
+   * @param origin host origin，如 "https://api.search.brave.com"。
+   *                含 scheme + host（可选 :port），不含 path/query。
+   */
+  acquireHttpClient(origin: string): { fetch: typeof fetch } {
+    if (!this.httpAgents.has(origin)) {
+      this.httpAgents.set(
+        origin,
+        new Agent({
+          keepAliveTimeout: 30_000,
+          keepAliveMaxTimeout: 60_000,
+          connections: 8,
+        }),
+      );
+      logger.info({ evt: "http_pool_created", origin });
+    }
+    const agent = this.httpAgents.get(origin)!;
+    // 注：cast 仅为平息 undici-types 与 @types/node Dispatcher 在 FormData
+    // 子类型上的形状差异（V7 风险点）。运行时 undici Agent 直接被 global fetch
+    // 接收（Node 内置 undici），无 runtime 开销。
+    const dispatcher = agent as unknown as Parameters<typeof fetch>[1] extends
+      | { dispatcher?: infer D }
+      | undefined
+      ? D
+      : never;
+    return {
+      fetch: ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+        fetch(url, { ...init, dispatcher })) as typeof fetch,
+    };
+  }
+
   /** 全停——shutdown 钩子（SIGTERM / SIGINT）调。 */
   async shutdown(): Promise<void> {
     if (this.zombieTimer) {
@@ -169,6 +216,15 @@ export class SubprocessManager {
       this.zombieTimer = null;
     }
     await Promise.all([...this.procs.keys()].map((n) => this._kill(n)));
+    // v0.2：关闭所有 keep-alive Agent（避免进程 hang）
+    await Promise.all(
+      [...this.httpAgents.values()].map((a) =>
+        a.close().catch((e: unknown) =>
+          logger.warn({ evt: "http_pool_close_error", error: String(e) }),
+        ),
+      ),
+    );
+    this.httpAgents.clear();
   }
 
   // ============================================================

@@ -1,0 +1,27 @@
+{
+  "_comment": "Lasso in-house A/B benchmark 固定 query 集（parse2 §3.7 / §4.4）。固定集避免每次跑不同导致纵向对比失真。覆盖：技术 / 产品 / 地名 / 人名 / 长尾 / 短词 / 错别字 七维度。中文 10 + 英文 10（v0.2 验收 #1 只要求 >=5 中 + >=5 英，先落 10+10 给 v0.3 扩到 50+50 留 schema）。",
+  "zh": [
+    "Rust 异步编程教程",
+    "React Server Components 原理",
+    "Claude Code MCP 配置",
+    "上海最好的咖啡馆",
+    "OpenAI GPT-5 发布时间",
+    "维生素 D 每日推荐摄入量",
+    "马斯克 最新采访",
+    "北京 到 杭州 高铁 时刻表",
+    "TypeScript type vs interface 区别",
+    "Python 数据分析 入门"
+  ],
+  "en": [
+    "rust async programming tutorial",
+    "react server components internals",
+    "claude code mcp configuration",
+    "best specialty coffee shops seattle",
+    "openai gpt-5 release date",
+    "vitamin d daily recommended intake",
+    "elon musk latest interview",
+    "beijing to hangzhou high speed train schedule",
+    "typescript type vs interface difference",
+    "python data analysis getting started"
+  ]
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Lasso 架构不变量检查（parse1 §3.14 + 08 F3.9.8）
+ * Lasso 架构不变量检查（parse1 §3.14 + 08 F3.9.8 + parse2 §5.4 v0.2 加 INV-9/10/11）
  *
- * 8 条铁律：
+ * 11 条铁律：
  *  INV-1 browse 是唯一 browse 入口
  *  INV-2 BaseChannel 不被绕过（所有 XxxChannel 必须 extends）
  *  INV-3 ProviderConfig 单一真源（types.ts）
@@ -11,6 +11,9 @@
  *  INV-6 dispatch 走注册表 Map（BrowseChannel.actionDispatch）
  *  INV-7 SubprocessManager 不含协议帧解析
  *  INV-8 fallback 链不跨 surface 类型（v0.1 无 DesktopChannel）
+ *  INV-9 ProviderRegistry 类单一真源（只在 config/provider-registry.ts）—— v0.2
+ *  INV-10 BraveChannel 禁直接读 process.env.BRAVE_API_KEYS，必须经 QuotaLedger —— v0.2
+ *  INV-11 SearchCache key 必须含 engine + region + limit（防跨 provider 误命中）—— v0.2
  *
  * Phase A 语义：骨架阶段。对尚未实装的模块（BrowseChannel /
  * SubprocessManager / FallbackDecider），断言取「允许缺失 = 合规」，
@@ -134,6 +137,47 @@ const assertions = [
     id: "INV-8-fallback-no-cross-surface",
     desc: "fallback 链不跨 surface：v0.1 不允许 DesktopChannel 类",
     check: () => !SRC.some((s) => /class\s+DesktopChannel/.test(s.text)),
+  },
+  // ============================================================
+  // v0.2 新增（parse2 §5.4）
+  // ============================================================
+  {
+    id: "INV-9-provider-registry-single-source",
+    desc: "ProviderRegistry 类单一真源：定义只在 config/provider-registry.ts",
+    check: () => {
+      // 精确匹配「class ProviderRegistry」（不允许 ProviderRegistryX 等子串误中）
+      const filesWithDef = SRC.filter((s) =>
+        /class\s+ProviderRegistry\b/.test(s.text),
+      );
+      if (filesWithDef.length === 0) return true; // 允许尚未实装
+      // 必须只在 config/provider-registry.ts 定义
+      return filesWithDef.every((s) => s.f.replace(/\\/g, "/") === "config/provider-registry.ts");
+    },
+  },
+  {
+    id: "INV-10-brave-keys-via-ledger",
+    desc: "BraveChannel 禁直接读 process.env.BRAVE_API_KEYS / BRAVE_API_KEY，必须经 QuotaLedger",
+    check: () => {
+      const brave = SRC.find((s) => s.f.includes("BraveChannel"));
+      if (!brave) return true; // 允许尚未实装（Phase A 之后 Phase B 落地）
+      return !/process\.env\.BRAVE_API_KEYS|process\.env\.BRAVE_API_KEY/.test(
+        brave.text,
+      );
+    },
+  },
+  {
+    id: "INV-11-cache-key-attributed",
+    desc: "SearchCache key 必须含 engine + region + limit（防跨 provider 误命中）",
+    check: () => {
+      const cache = SRC.find((s) => s.f.includes("SearchCache"));
+      if (!cache) return true; // 允许尚未实装（Phase D 落地）
+      // key 计算函数的入参签名 / sha1 输入必须同时出现 engine / region / limit
+      const txt = cache.text;
+      const hasEngine = /\bengine\b/.test(txt);
+      const hasRegion = /\bregion\b/.test(txt);
+      const hasLimit = /\blimit\b/.test(txt);
+      return hasEngine && hasRegion && hasLimit;
+    },
   },
 ];
 

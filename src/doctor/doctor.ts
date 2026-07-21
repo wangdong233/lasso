@@ -1,30 +1,34 @@
 /**
- * doctor readiness 检查（parse1 §3.11 + §6 验收 #2）
+ * doctor readiness 检查（parse1 §3.11 + §6 验收 #2 + parse2 §3.1.2 v0.2 扩 4 项）
  *
- * 10 项 check（≥10 验收要求）：
- *   1. node_version          — Node ≥ 20
- *   2. zhipu_api_key         — ZHIPU_API_KEY 存在
- *   3. zhipu_endpoint_reachable — 智谱 MCP endpoint 网络可达（HTTP HEAD/GET，不深测协议）
- *   4. cdp_mcp_installable   — chrome-devtools-mcp@<LOCKED> 在 npm 可装（npm view 查询）
- *   5. chrome_binary         — Chrome / Chromium 二进制存在（browse_logged_in 需要）
- *   6. cdp_9222_logged_in    — 本机 :9222 CDP 可达 + 至少 1 个 tab
- *   7. cache_writable        — cacheDir 可写（mkdir + writeFile + unlink）
- *   8. ssrf_config           — loadSsrfConfig 能解析（env CSV 非法时不崩）
- *   9. serp_selectors        — 百度/Google selector 表非空
- *  10. invariants            — 8 条架构不变量脚本 exit 0
+ * 14 项 check（v0.1 10 项 + v0.2 加 4 项）：
+ *   1. node_version               — Node ≥ 20
+ *   2. zhipu_api_key              — ZHIPU_API_KEY 存在
+ *   3. zhipu_endpoint_reachable   — 智谱 MCP endpoint 网络可达（HTTP HEAD/GET，不深测协议）
+ *   4. cdp_mcp_installable        — chrome-devtools-mcp@<LOCKED> 在 npm 可装（npm view 查询）
+ *   5. chrome_binary              — Chrome / Chromium 二进制存在（browse_logged_in 需要）
+ *   6. cdp_9222_logged_in         — 本机 :9222 CDP 可达 + 至少 1 个 tab
+ *   7. cache_writable             — cacheDir 可写（mkdir + writeFile + unlink）
+ *   8. ssrf_config                — loadSsrfConfig 能解析（env CSV 非法时不崩）
+ *   9. serp_selectors             — 百度/Google selector 表非空
+ *  10. invariants                 — 11 条架构不变量脚本 exit 0
+ *  11. brave_keys                 — v0.2：BRAVE_API_KEYS / BRAVE_API_KEY 配置（无则 warn 不阻塞）
+ *  12. provider_registry_loadable — v0.2：ProviderRegistry + BUILTIN_PROVIDERS 能加载
+ *  13. quota_ledger_initialized   — v0.2：已配置的 api_key provider 都生成了非空 QuotaLedger
+ *  14. search_cache_dir_writable  — v0.2：~/.cache/lasso/search-cache/ 可写
  *
  * 结构化 JSON：
  *   {
  *     ready: bool,
  *     timestamp: ISO,
- *     lasso_version: "0.1.0-dev",
+ *     lasso_version: "0.2.0-dev",
  *     checks: [{ name, status: 'pass'|'fail'|'warn', detail, next_step? }, ...],
  *     blockers: string[]   // status='fail' 的 name 列表
  *   }
  *
  * ready = (blockers.length === 0)。warn 不阻塞 ready。
  *
- * 借鉴：parse1 §3.11；09 §2.1 验收「doctor CLI 覆盖 ≥10 项」。
+ * 借鉴：parse1 §3.11；09 §2.1 验收「doctor CLI 覆盖 ≥10 项」；parse2 §3.1.2 v0.2 4 项扩展。
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -35,12 +39,14 @@ import { fileURLToPath } from "node:url";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { BAIDU_SELECTORS, GOOGLE_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
+import { BUILTIN_PROVIDERS } from "../config/providers.js";
+import { ProviderRegistry } from "../config/provider-registry.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.1.0-dev";
+export const LASSO_VERSION = "0.2.0-dev";
 
 // ============================================================
 // 类型
@@ -69,6 +75,8 @@ export interface DoctorOptions {
   cdpPort?: number;
   /** 覆盖 cache 目录（默认 ~/.cache/lasso）。 */
   cacheDir?: string;
+  /** v0.2：覆盖 BRAVE_API_KEYS（默认读 process.env.BRAVE_API_KEYS / BRAVE_API_KEY）。 */
+  braveKeysCsv?: string;
   /**
    * 跳过 invariants spawn（测试环境/无源码场景）。
    * 注：此 check 改为 warn，不算 blocker。
@@ -155,6 +163,25 @@ export async function runDoctor(
         }
       : await checkInvariants(),
   );
+
+  // ---- v0.2 4 项新 check（parse2 §3.1.2）----
+  const braveKeysCsv =
+    opts.braveKeysCsv ??
+    process.env.BRAVE_API_KEYS ??
+    process.env.BRAVE_API_KEY ??
+    "";
+
+  // 11. brave_keys
+  checks.push(checkBraveKeys(braveKeysCsv));
+
+  // 12. provider_registry_loadable
+  checks.push(checkProviderRegistry());
+
+  // 13. quota_ledger_initialized
+  checks.push(checkQuotaLedger(braveKeysCsv, zhipuKey));
+
+  // 14. search_cache_dir_writable
+  checks.push(await checkSearchCacheDir(cacheDir));
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -416,6 +443,169 @@ async function checkInvariants(): Promise<DoctorCheck> {
       status: "fail",
       detail: String(e),
       next_step: `cd ${projectRoot} && node src/invariants/check-invariants.mjs`,
+    };
+  }
+}
+
+// ============================================================
+// v0.2 新增 4 项 check（parse2 §3.1.2）
+// ============================================================
+
+/**
+ * 11. brave_keys（v0.2 §3.1.2）：BRAVE_API_KEYS / BRAVE_API_KEY 配置检查。
+ *
+ *  - 无 Key → status="warn"（不阻塞 ready，Lasso 仍可用智谱 + browse_headless）
+ *  - 有 Key（≥1 个非空） → status="pass"，detail 报 Key 数量（不打全 Key，安全）
+ *  - 多 Key 配额合并 = N × 2000/月（10 §4.2 / 验收 #2）
+ *
+ * 注：不验证 Key 有效性（doctor 不触网），仅查 env 存在性。
+ */
+function checkBraveKeys(braveKeysCsv: string): DoctorCheck {
+  const keys = braveKeysCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (keys.length === 0) {
+    return {
+      name: "brave_keys",
+      status: "warn",
+      detail: "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 多源扇出退化为单源 zhipu）",
+      next_step:
+        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ 获取免费 2000/月",
+    };
+  }
+  return {
+    name: "brave_keys",
+    status: "pass",
+    detail: `${keys.length} Key 已配置（合并配额 = ${keys.length * 2000}/月）`,
+  };
+}
+
+/**
+ * 12. provider_registry_loadable（v0.2 §3.1.2）：ProviderRegistry 能加载 BUILTIN_PROVIDERS。
+ *
+ *  - 5 条 builtin：zhipu / brave / browse_headless / browse_logged_in / tavily
+ *  - enabled=false（tavily）应被 ProviderRegistry 跳过 → listNames() 不含 tavily
+ *  - 加载失败 → fail（架构问题，阻塞 ready）
+ *
+ * 不变量 INV-9 守：ProviderRegistry 类定义只在 config/provider-registry.ts。
+ */
+function checkProviderRegistry(): DoctorCheck {
+  try {
+    const registry = new ProviderRegistry(BUILTIN_PROVIDERS);
+    const names = registry.listNames();
+    if (names.length === 0) {
+      return {
+        name: "provider_registry_loadable",
+        status: "fail",
+        detail: "ProviderRegistry 加载后 listNames() 为空",
+        next_step: "检查 BUILTIN_PROVIDERS 是否全部 enabled=false",
+      };
+    }
+    // TAVILY_WATCH 应被跳过（enabled=false）
+    const tavilyPresent = names.includes("tavily");
+    return {
+      name: "provider_registry_loadable",
+      status: tavilyPresent ? "warn" : "pass",
+      detail: `${names.length} providers loaded: ${names.join(", ")}${tavilyPresent ? "（tavily 应 enabled=false）" : ""}`,
+      next_step: tavilyPresent
+        ? "TAVILY_WATCH 应配 enabled=false（policy_risk=acquired）"
+        : undefined,
+    };
+  } catch (e) {
+    return {
+      name: "provider_registry_loadable",
+      status: "fail",
+      detail: String(e),
+      next_step: "检查 config/provider-registry.ts + providers.ts 是否损坏",
+    };
+  }
+}
+
+/**
+ * 13. quota_ledger_initialized（v0.2 §3.1.2）：已配置 Key 的 api_key provider
+ *    都生成了非空 QuotaLedger（keys.length > 0 → ledger != null）。
+ *
+ *  - zhipu 配 Key → zhipu.ledger != null
+ *  - brave 配 Key → brave.ledger != null
+ *  - 配了 Key 但 ledger 为 null → fail（QuotaLedger 构造异常）
+ *  - 未配 Key 的 provider → 不检查（enabled 但 keys 空 → ledger=null 是合规行为）
+ */
+function checkQuotaLedger(
+  braveKeysCsv: string,
+  zhipuKey: string | undefined,
+): DoctorCheck {
+  // 复刻 config.ts 的 keys 注入逻辑，避免 loadConfig 触网 / 依赖 cacheDir
+  const configs = BUILTIN_PROVIDERS.map((p) => ({ ...p }));
+  const zhipu = configs.find((c) => c.name === "zhipu");
+  if (zhipu && zhipuKey) zhipu.keys = [zhipuKey];
+  const brave = configs.find((c) => c.name === "brave");
+  if (brave) {
+    const keys = braveKeysCsv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (keys.length > 0) brave.keys = keys;
+  }
+  try {
+    const registry = new ProviderRegistry(configs);
+    const issues: string[] = [];
+    for (const rp of registry.byCap("search")) {
+      const hasKeys = rp.config.keys.length > 0;
+      if (hasKeys && rp.ledger === null) {
+        issues.push(`${rp.config.name}: keys.length>0 but ledger=null`);
+      }
+    }
+    if (issues.length > 0) {
+      return {
+        name: "quota_ledger_initialized",
+        status: "fail",
+        detail: issues.join("; "),
+        next_step: "检查 ProviderRegistry 构造逻辑（config/provider-registry.ts）",
+      };
+    }
+    const ledgerCount = registry
+      .byCap("search")
+      .filter((rp) => rp.ledger !== null).length;
+    return {
+      name: "quota_ledger_initialized",
+      status: "pass",
+      detail: `${ledgerCount} QuotaLedger 已装配（已配 Key 的 search provider）`,
+    };
+  } catch (e) {
+    return {
+      name: "quota_ledger_initialized",
+      status: "fail",
+      detail: String(e),
+    };
+  }
+}
+
+/**
+ * 14. search_cache_dir_writable（v0.2 §3.1.2）：~/.cache/lasso/search-cache/ 可写。
+ *
+ *  - 与 #7 cache_writable 不同：#7 检查 cacheDir 根目录；#14 检查 search 专属子目录
+ *  - SearchCache 7 天 TTL 落盘依赖此目录可写
+ *  - 写失败 → fail（cache 是优化不是正确性，但 cache_dir 不可写会让 7 天 TTL 形同虚设）
+ */
+async function checkSearchCacheDir(cacheDir: string): Promise<DoctorCheck> {
+  const searchCacheDir = path.join(cacheDir, "search-cache");
+  try {
+    await fs.mkdir(searchCacheDir, { recursive: true });
+    const testFile = path.join(searchCacheDir, ".doctor-write-test");
+    await fs.writeFile(testFile, "ok");
+    await fs.unlink(testFile);
+    return {
+      name: "search_cache_dir_writable",
+      status: "pass",
+      detail: searchCacheDir,
+    };
+  } catch (e) {
+    return {
+      name: "search_cache_dir_writable",
+      status: "fail",
+      detail: String(e),
+      next_step: `修复权限或改 LASSO_CACHE_DIR: ${searchCacheDir}`,
     };
   }
 }
