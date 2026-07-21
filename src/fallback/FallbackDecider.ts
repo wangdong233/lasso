@@ -21,6 +21,7 @@ import type { InteractResult } from "../types.js";
 import { CircuitBreaker } from "./CircuitBreaker.js";
 import { isFallbackWorthy } from "./outcome.js";
 import type { BudgetTracker } from "./BudgetTracker.js";
+import type { PolicyGate } from "./PolicyGate.js";
 
 // ============================================================
 // 计划 & 执行器
@@ -48,6 +49,18 @@ export class FallbackDecider {
   constructor(
     /** channel 名 → breaker。缺失视为无熔断（always allow）。 */
     private readonly breakers: Map<string, CircuitBreaker>,
+    /**
+     * v0.4（parse5 §3.4.2）：可选 PolicyGate 前置注入。
+     *
+     *  - 未注入（undefined / null）→ runWithFallback 行为完全等价 v0.3.5（零回归承诺）
+     *  - 注入                     → chain 中每个 channel 先经 PolicyGate.check；
+     *                              policy_blocked 的 channel 被剔除；全部被剔除 →
+     *                              outcome="didnt" + retrieval_method="policy_blocked"
+     *
+     * 构造期注入（装配时由 index.ts 决定是否启用政策 gate）；
+     * 单例共享给所有调用方（search / browse / desktop / interact_*）。
+     */
+    private readonly policyGate?: PolicyGate | null,
   ) {}
 
   /**
@@ -69,13 +82,66 @@ export class FallbackDecider {
     executor: ChannelExecutor<T>,
     budget?: BudgetTracker | null,
   ): Promise<InteractResult<T>> {
-    const chain = [plan.primary, ...plan.fallbacks];
+    const originalChain = [plan.primary, ...plan.fallbacks];
     const actions_and_results: NonNullable<
       InteractResult<T>["actions_and_results"]
     > = [];
 
+    // ====================================================
+    // v0.4 前置（parse5 §3.4.2）：PolicyGate 可选注入
+    //  - 未注入 → chain 完全等价 v0.3.5 [plan.primary, ...plan.fallbacks]
+    //  - 注入   → 每个 channel 先 PolicyGate.check，policy_blocked 的被剔除
+    //            全部被剔除 → 立即返回 outcome=didnt + retrieval_method=policy_blocked
+    //            部分剔除  → 剩余 chain 继续走既有 fallback 路径（零行为差异）
+    // ====================================================
+    let chain = originalChain;
+    /**
+     * 是否有 channel 在 PolicyGate 前置过滤中被剔除。
+     * 用于计算 fallback_used：当原 primary 被 policy block，后续 chain 即使是
+     * 第 0 项，语义上也确实 fallback 了（policy_blocked 等价于"primary 不可用"）。
+     */
+    let anyPolicyBlocked = false;
+    if (this.policyGate) {
+      const allowed: string[] = [];
+      for (const ch of originalChain) {
+        const verdict = this.policyGate.check(ch);
+        if (verdict.allowed) {
+          allowed.push(ch);
+        } else {
+          // policy_blocked channel 记入审计链（不调 breaker；不是 channel 故障）
+          anyPolicyBlocked = true;
+          actions_and_results.push({
+            channel: ch,
+            outcome: "error",
+            error: `policy_blocked:${verdict.reason ?? "unknown"}`,
+          });
+        }
+      }
+      if (allowed.length === 0) {
+        // 全部 channel 被 policy gate 阻断 → 返回 policy_blocked outcome
+        const blocked: InteractResult<T> = {
+          outcome: "didnt",
+          data: null,
+          served_by: plan.primary,
+          fallback_used: false,
+          retrieval_method: "policy_blocked",
+          error: "all_channels_policy_blocked",
+          actions_and_results,
+        };
+        return budget ? budget.flushInto(blocked) : blocked;
+      }
+      chain = allowed;
+    }
+
     for (let i = 0; i < chain.length; i++) {
       const channelName = chain[i];
+      /**
+       * v0.4：fallback_used 计算纳入 policy_blocked 维度。
+       *  - i > 0              → 走到 chain 第二项及以后（v0.3.5 语义）
+       *  - anyPolicyBlocked   → 原始 chain 的某些 channel 被 policy gate 剔除（v0.4 新增）
+       * 任一为 true → 确实 fallback 了（非原始 primary 直接服务）。
+       */
+      const usedFallback = i > 0 || anyPolicyBlocked;
       const breaker = this.breakers.get(channelName);
 
       if (breaker && !breaker.allow()) {
@@ -117,7 +183,7 @@ export class FallbackDecider {
             outcome: "didnt",
             data: null,
             served_by: channelName,
-            fallback_used: i > 0,
+            fallback_used: usedFallback,
             retrieval_method: "error",
             error: thrownError,
             actions_and_results,
@@ -145,7 +211,7 @@ export class FallbackDecider {
         breaker?.recordSuccess();
         const terminal: InteractResult<T> = {
           ...r,
-          fallback_used: i > 0,
+          fallback_used: usedFallback,
           actions_and_results,
         };
         return budget ? budget.flushInto(terminal) : terminal;
@@ -156,7 +222,7 @@ export class FallbackDecider {
         breaker?.recordSuccess();
         const terminal: InteractResult<T> = {
           ...r,
-          fallback_used: i > 0,
+          fallback_used: usedFallback,
           actions_and_results,
         };
         return budget ? budget.flushInto(terminal) : terminal;
@@ -168,7 +234,7 @@ export class FallbackDecider {
         // unknown 但明确"不该 fallback"（2FA / 404 / 403 / NXDOMAIN 被误报成 unknown）
         const terminal: InteractResult<T> = {
           ...r,
-          fallback_used: i > 0,
+          fallback_used: usedFallback,
           actions_and_results,
         };
         return budget ? budget.flushInto(terminal) : terminal;
@@ -182,7 +248,7 @@ export class FallbackDecider {
       outcome: "didnt",
       data: null,
       served_by: lastChannel,
-      fallback_used: chain.length > 1,
+      fallback_used: chain.length > 1 || anyPolicyBlocked,
       retrieval_method: "fallback_exhausted",
       error: "all_channels_failed_or_skipped",
       actions_and_results,

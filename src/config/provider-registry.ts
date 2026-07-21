@@ -34,6 +34,27 @@ function classifyCapability(cfg: ProviderConfig): Capability {
   return "search";
 }
 
+/**
+ * v0.4 M0.4a（parse5 §3.4.3）：get() 可选 policy 过滤参数。
+ *
+ * 用于 PolicyGate / doctor / interact_* 等调用方按政策风险过滤 provider。
+ * 未传 → 行为完全等价 v0.3.5（零回归承诺）。
+ */
+export interface PolicyFilterOptions {
+  /**
+   * 排除指定 policy_risk 值的 provider。
+   * 例：["acquired"] 排除 Tavily（Nebius 收购完成）；
+   *     ["acquired", "watched"] 排除所有非 safe provider。
+   */
+  excludePolicyRisk?: ProviderConfig["policy_risk"][];
+  /**
+   * cloud 浏览器 manual-switch：
+   *  - undefined / true：不过滤（保留 cloud 浏览器）
+   *  - false：排除 tags 含 "cloud" 的 provider（PolicyGate 据此实现 manual-switch）
+   */
+  allowCloudBrowser?: boolean;
+}
+
 export class ProviderRegistry {
   private byName = new Map<string, RegisteredProvider>();
   private byCapability = new Map<Capability, RegisteredProvider[]>();
@@ -66,9 +87,41 @@ export class ProviderRegistry {
     return this.configs;
   }
 
-  /** 按 provider 名字查（如 "zhipu" / "brave"）。 */
-  get(name: string): RegisteredProvider | undefined {
-    return this.byName.get(name);
+  /**
+   * 按 provider 名字查（如 "zhipu" / "brave"）。
+   *
+   * v0.4 M0.4a（parse5 §3.4.3）：加可选 policyFilter 参数。
+   *  - 未传 → 行为完全等价 v0.3.5（零回归）
+   *  - 传   → 按 policy_risk / cloud 浏览器过滤；不符合的返回 undefined
+   *
+   * 注意：ProviderRegistry 构造时已跳过 enabled=false 的 provider（如 TAVILY_WATCH）。
+   * policyFilter 是在已注册集合上的二次过滤（不重新读 enabled）。
+   */
+  get(
+    name: string,
+    policyFilter?: PolicyFilterOptions,
+  ): RegisteredProvider | undefined {
+    const entry = this.byName.get(name);
+    if (!entry) return undefined;
+    if (policyFilter) {
+      const cfg = entry.config;
+      // 排除指定 policy_risk 值
+      if (
+        policyFilter.excludePolicyRisk &&
+        cfg.policy_risk &&
+        policyFilter.excludePolicyRisk.includes(cfg.policy_risk)
+      ) {
+        return undefined;
+      }
+      // cloud 浏览器 manual-switch 过滤
+      if (
+        policyFilter.allowCloudBrowser === false &&
+        cfg.tags?.includes("cloud")
+      ) {
+        return undefined;
+      }
+    }
+    return entry;
   }
 
   /** 取某个 capability 下所有已注册 provider（按 fallback_order 排好序）。 */

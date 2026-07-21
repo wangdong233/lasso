@@ -419,6 +419,43 @@ export abstract class BrowseChannel extends UiChannel {
     }
   }
 
+  // ============================================================
+  // v0.4 forest 调度层：listRoots（parse5 §3.1.4）
+  // ============================================================
+  /**
+   * 枚举当前 CDP pages → forest 调度层用的 RootInfo 数据源。
+   *
+   * 设计要点（INV-26 衍生）：
+   *  - 本方法是 BrowseChannel 对外**公共**方法，forest 调度层（index.ts）
+   *    装配期调它收集 roots；不暴露 channel internal。
+   *  - chrome-devtools-mcp 暴露的 `list_pages` 工具返回当前所有 page target。
+   *  - HeadlessChannel 默认 1 个 about:blank；LoggedInChannel 返用户真实 tabs。
+   *
+   * 失败容忍（interact_roots 是辅助入口，永不抛异常影响主路径）：
+   *  - 任何异常（subprocess 未起 / list_pages 失败） → 返空数组 + 调用方降级
+   *
+   * @returns 形如 `[{ contextId, url, title }]` 的轻量描述（不深抓 DOM）
+   */
+  async listRoots(): Promise<
+    Array<{ contextId: string; url: string; title?: string }>
+  > {
+    try {
+      const c = await this.getMcpClient();
+      const r = (await c.callTool("list_pages", {})) as {
+        content?: Array<{ type: string; text?: string }>;
+      };
+      const text = (r.content ?? [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("\n");
+      return parseListPages(text);
+    } catch {
+      // 子进程未起 / list_pages 不可用 → 空数组（interact_roots 仍可工作，
+      // 只是少 browse root；desktop root 不受影响）
+      return [];
+    }
+  }
+
   /**
    * 持久化 step 状态（与 v0.2 browse() 共用 writeState 路径）。
    * 返回 state_id + content_path。executeStep 和未来 Phase C 的 BrowseChannel
@@ -437,6 +474,54 @@ export abstract class BrowseChannel extends UiChannel {
     });
     return { state_id: stateId, content_path: contentPath };
   }
+}
+
+// ============================================================
+// list_pages 解析（chrome-devtools-mcp 兼容；宽松解析 wire-shape 漂移）
+// ============================================================
+/**
+ * 把 list_pages 的文本输出解析成 `[{contextId, url, title?}]`。
+ *
+ * chrome-devtools-mcp 各版本输出格式略漂移（markdown 表格 / JSON / plain list）。
+ * 本函数走宽松解析：
+ *  - 抓 URL 子串（http(s)://...）作为 page url
+ *  - contextId 取 url 的 sha1 后 8 位（不要求 list_pages 暴露 contextId；
+ *    parse5 §4.1 V1 风险点已接受：identity 退化为 url 哈希；同 url 不同 tab 误复用）
+ *  - title 取 URL 前一行（若 markdown 表格风格）；否则 = url
+ *
+ * 返空数组 = list_pages 没返任何 URL（可能 helper 未连通）。
+ */
+function parseListPages(
+  text: string,
+): Array<{ contextId: string; url: string; title?: string }> {
+  if (!text) return [];
+  const lines = text.split("\n");
+  const out: Array<{ contextId: string; url: string; title?: string }> = [];
+  // sha1 短哈希（够用；不引 crypto 重负载；inline djb2）
+  const djb2 = (s: string): string => {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(/https?:\/\/\S+/);
+    if (!m) continue;
+    const url = m[0].replace(/[),.;]+$/, "");
+    // title 候选：上一行的最后一个 cell（markdown 表格风格）
+    const prev = i > 0 ? lines[i - 1] : "";
+    const titleCell = prev.split("|").map((s) => s.trim()).filter(Boolean);
+    const title = titleCell.length > 0 ? titleCell[titleCell.length - 1] : undefined;
+    out.push({
+      contextId: djb2(url),
+      url,
+      title: title && !title.match(/^https?:\/\//) ? title : undefined,
+    });
+  }
+  return out;
 }
 
 // ============================================================

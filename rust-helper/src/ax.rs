@@ -64,6 +64,11 @@ pub struct AxNode {
     pub focused: bool,
     pub depth: usize,
     pub children: Vec<AxNode>,
+    /// v0.4 forest rootRef 身份用（parse5 §2.2）：仅 root（depth=0）填，
+    /// 形如 `pid * 1_000_000 + window_index`（与 windows.rs::list_windows 合成规则一致）。
+    /// 子节点不填；`skip_serializing_if` 让 wire shape 在 None 时与 v0.3.5 字节一致。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<i64>,
 }
 
 // ============================================================================
@@ -237,6 +242,7 @@ mod platform {
             focused,
             depth,
             children,
+            window_id: None,
         }
     }
 

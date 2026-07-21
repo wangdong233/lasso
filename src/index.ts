@@ -43,7 +43,10 @@ import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
 import { registerDesktopTool } from "./tools/desktop.js";
+import { registerInteractTools } from "./tools/interact.js";
 import { SearchCache } from "./search/SearchCache.js";
+import { RootRegistry } from "./forest/RootRegistry.js";
+import { InteractDispatcher } from "./forest/InteractDispatcher.js";
 import type { BraveChannel as BraveChannelType } from "./channels/BraveChannel.js";
 import type { BrowseExec } from "./serp/extract.js";
 
@@ -203,6 +206,30 @@ async function runMcpServer(): Promise<void> {
     desktopBridge: rustBridge,
     desktopHelperPath: rustHelperPath,
   });
+
+  // ----- v0.4 forest 调度层装配（parse5 §3.1.4）-----
+  // forest 是 BrowseChannel + DesktopChannel **之上**的薄调度层（R-CI-02 守护）。
+  // INV-24：RootRegistry 单一真源（只此一处实例化）。
+  // INV-26：InteractDispatcher 持 channel class 引用（map<name, instance>），不 import internal。
+  const rootRegistry = new RootRegistry();
+  // 显式标注 ForestChannel 联合（HeadlessChannel + LoggedInChannel 都是 BrowseChannel 子类）
+  type ForestChannel = typeof headless | typeof logged_in | typeof desktop;
+  const forestChannels = new Map<string, ForestChannel>([
+    [headless.name, headless as ForestChannel],
+    [logged_in.name, logged_in as ForestChannel],
+    [desktop.name, desktop as ForestChannel],
+  ]);
+  const interactDispatcher = new InteractDispatcher(rootRegistry, forestChannels);
+  registerInteractTools(
+    server,
+    rootRegistry,
+    interactDispatcher,
+    [
+      { source: headless.name, channel: headless },
+      { source: logged_in.name, channel: logged_in },
+    ],
+    { source: desktop.name, channel: desktop },
+  );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

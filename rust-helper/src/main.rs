@@ -14,6 +14,7 @@ mod ax_role_map;
 mod protocol;
 mod screenshot;
 mod tcc;
+mod windows;
 
 fn main() {
     let stdin = io::stdin();
@@ -78,6 +79,7 @@ fn dispatch(req: &protocol::Request) -> protocol::Response {
         "ax_find" => ax::find(&req.id, &req.params),
         "ax_act" => ax::act(&req.id, &req.params),
         "screenshot" => screenshot::capture(&req.id, &req.params),
+        "list_windows" => windows::list_windows(&req.id, &req.params),
         other => protocol::Response::err(
             &req.id,
             "unknown_method",

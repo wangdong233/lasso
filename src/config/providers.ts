@@ -200,6 +200,83 @@ export const DESKTOP_PROVIDERS: readonly ProviderConfig[] = [
 /** 单独导出便于 INV-20 grep + 测试断言（DESKTOP_AX / DESKTOP_VLM 名形如 desktop.*）。 */
 export { DESKTOP_AX, DESKTOP_VLM };
 
+// ============================================================
+// v0.4 M0.4a cloud 浏览器 providers（parse5 §3.4.3，F3.12.1 / F3.12.2）
+// ============================================================
+/**
+ * browserbase —— 云 Chrome 反爬通道（F3.12.1，v0.4 M0.4c 实装）。
+ *
+ *  - policy_risk="watched"：商用 ToS 需联系销售（parse5 §3.4.3 设为 watched 观察期，
+ *    比 acquired 宽松：用户显式 opt-in LASSO_ALLOW_CLOUD_BROWSER=true 即放行）
+ *  - commercial_safe=false：付费 + credits 账本（cloud 浏览器都属商业风险）
+ *  - tags=["browse","cloud"]：browse capability + cloud 子标签
+ *    （PolicyGate 据通道名前缀 browse_cloud_* 判定，不依赖 tags；tags 用于 doctor 统计）
+ *  - enabled=false：默认禁用，双重解锁（LASSO_ALLOW_CLOUD_BROWSER + BROWSERBASE_API_KEY）
+ *    M0.4a 阶段：ProviderConfig schema 占位；M0.4c 才在 index.ts 条件注册 BrowserbaseChannel
+ *
+ * INV-25：PolicyGate.cloud 浏览器必经 manual-switch（grep LASSO_ALLOW_CLOUD_BROWSER）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS 范式，保零回归）：
+ *  - v0.3.5 ProviderRegistry 构造 BUILTIN_PROVIDERS 时不感知 cloud 浏览器
+ *  - byCap("browse") 测试断言仍只含 browse_headless / browse_logged_in
+ *  - M0.4c 实装时把此 export 加进条件装配即可（开闭）
+ */
+const BROWSERBASE: ProviderConfig = {
+  name: "browserbase", // channel 名 browse_cloud_browserbase
+  type: "api_key",
+  endpoint_url: "wss://cdp.browserbase.com", // ws URL（非 http）
+  keys: [], // 从 process.env.BROWSERBASE_API_KEY 注入（M0.4c 装配期）
+  free_quota_per_month: 0, // 100 free minutes trial（付费为主）
+  quota_model: "request",
+  fallback_order: 10, // cloud 是 fallback 链尾
+  free_tier_level: "L4", // 付费
+  policy_risk: "watched", // 商用 ToS 观察期（manual-switch opt-in 解锁）
+  licence: "commercial", // browserbase ToS 商用需联系销售
+  commercial_safe: false,
+  tags: ["browse", "cloud"],
+  enabled: false, // 默认禁用；LASSO_ALLOW_CLOUD_BROWSER=true + BROWSERBASE_API_KEY 双重解锁
+};
+
+/**
+ * stagehand —— AI-friendly verify/extract（F3.12.2，v0.4 M0.4c 实装）。
+ *
+ * 同 browserbase 付费路径，仅 observe 不 act（act 越界，parse5 §3.2.1）。
+ *  - policy_risk="watched"：同 browserbase，付费 + 商用 ToS 观察期
+ *  - 仅接 verify/extract 两个 AI 原语（13 §3.4 不做 Skyvern 风格 workflow engine）
+ */
+const STAGEHAND: ProviderConfig = {
+  name: "stagehand", // channel 名 browse_cloud_stagehand
+  type: "api_key",
+  endpoint_url: "https://api.stagehand.dev",
+  keys: [], // 从 process.env.STAGEHAND_API_KEY 注入（M0.4c 装配期）
+  free_quota_per_month: 0,
+  quota_model: "token",
+  fallback_order: 11, // 在 browserbase 之后
+  free_tier_level: "L4",
+  policy_risk: "watched",
+  licence: "commercial",
+  commercial_safe: false,
+  tags: ["browse", "cloud"],
+  enabled: false, // 同 browserbase 双重解锁
+};
+
+/**
+ * v0.4 M0.4a cloud 浏览器 providers（parse5 §3.4.3）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS 范式，保零回归）：
+ *  - v0.3.5 ProviderRegistry 测试断言 byCap("browse") 不含 cloud 浏览器仍绿
+ *  - INV-25 只要求 PolicyGate.ts 出现 LASSO_ALLOW_CLOUD_BROWSER 字面量
+ *    （不要求 cloud providers 进 BUILTIN_PROVIDERS）
+ *  - M0.4c 实装时在 index.ts 条件装配 BrowserbaseChannel + StagehandChannel
+ */
+export const CLOUD_BROWSER_PROVIDERS: readonly ProviderConfig[] = [
+  BROWSERBASE,
+  STAGEHAND,
+];
+
+/** 单独导出便于 INV-25 grep + 测试断言（tags 含 "cloud" 子标签）。 */
+export { BROWSERBASE, STAGEHAND };
+
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
   ZHIPU,
   BROWSE_HEADLESS,

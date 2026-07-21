@@ -145,8 +145,8 @@ export interface ProviderConfig {
   free_tier_level?: FreeTierLevel;
   /** Tavily=acquired，默认 safe；policy_risk=acquired 时不阻塞但 doctor warn */
   policy_risk?: "safe" | "acquired" | "watched";
-  /** Jina=non_commercial，SearXNG=agpl；默认不约束 */
-  licence?: "mit" | "apache2" | "agpl" | "non_commercial";
+  /** Jina=non_commercial，SearXNG=agpl；默认不约束；commercial=付费服务无开源 licence（v0.4 加） */
+  licence?: "mit" | "apache2" | "agpl" | "non_commercial" | "commercial";
   /** Jina false，其余默认 true（policy_risk=acquired 时建议 false） */
   commercial_safe?: boolean;
   /** ["search","browse","desktop"] 等，CapabilityBag 据第一个 tag 归类 */

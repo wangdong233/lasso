@@ -344,6 +344,65 @@ export class DesktopChannel extends UiChannel {
       desktopBridge: this.rust,
     });
   }
+
+  // ============================================================
+  // v0.4 forest 调度层：listRoots（parse5 §3.1.4 + §2.2 windows.rs）
+  // ============================================================
+  /**
+   * 枚举当前所有 AX application 的主窗口 → forest 调度层 RootInfo 数据源。
+   *
+   * 设计要点（INV-21 + INV-26 衍生）：
+   *  - 本方法是 DesktopChannel 对外**公共**方法，forest 调度层（index.ts）
+   *    装配期调它收集 roots；不暴露 channel internal。
+   *  - 所有 AXAPI 调用经 `rust.call("list_windows")` —— TS 端无平台字面量（INV-21）。
+   *  - 失败容忍：rust helper 未起 / tcc_denied / 任何异常 → 返空数组
+   *    （interact_roots 是辅助入口；desktop root 缺失不破坏 browse root）
+   *
+   * @returns 形如 `[{ bundleId, pid, windowId, app, title, rect }]` 的轻量描述
+   *          （不深抓 AX tree；CC 选 rootRef 后 dispatcher 再走 observe/act）
+   */
+  async listRoots(): Promise<
+    Array<{
+      bundleId: string;
+      pid: number;
+      windowId: number;
+      app: string;
+      title: string;
+    }>
+  > {
+    try {
+      const r = await this.rust.call("list_windows", {}, 5_000);
+      if (!r.ok) {
+        // not_macos / tcc_denied / 等 → 返空（forest 仍可工作，只是少 desktop root）
+        return [];
+      }
+      const result = (r.result ?? {}) as { windows?: unknown };
+      const arr = Array.isArray(result.windows) ? result.windows : [];
+      const out: Array<{
+        bundleId: string;
+        pid: number;
+        windowId: number;
+        app: string;
+        title: string;
+      }> = [];
+      for (const w of arr) {
+        if (typeof w !== "object" || w === null) continue;
+        const o = w as Record<string, unknown>;
+        const bundleId = typeof o.bundleId === "string" ? o.bundleId : "";
+        const pid = typeof o.pid === "number" ? o.pid : 0;
+        const windowId = typeof o.windowId === "number" ? o.windowId : 0;
+        const app = typeof o.app === "string" ? o.app : bundleId;
+        const title = typeof o.title === "string" ? o.title : "";
+        // 必要字段校验：windowId=0（pid=0 + index=0）是合法值；跳过条件 = 全空
+        if (!bundleId && !pid && !windowId) continue;
+        out.push({ bundleId, pid, windowId, app, title });
+      }
+      return out;
+    } catch {
+      // 子进程未起 / 协议错 → 返空（doctor 单独查 tcc 状态给用户更细诊断）
+      return [];
+    }
+  }
 }
 
 // ============================================================

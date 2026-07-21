@@ -2,7 +2,8 @@
 /**
  * Lasso 架构不变量检查（parse1 §3.14 + 08 F3.9.8 + parse2 §5.4 v0.2 加 INV-9/10/11
  *                     + parse3 §5.3 v0.3 加 INV-12..15
- *                     + parse4 §1.4 v0.3.5 改写 INV-8 + 加 INV-16..23）
+ *                     + parse4 §1.4 v0.3.5 改写 INV-8 + 加 INV-16..23
+ *                     + parse5 §2.3 v0.4 M0.4a 加 INV-24/25/26 forest 调度层 + 政策 gate）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -10,9 +11,19 @@
  * v0.3.5 Phase C 状态（parse4 §1.4）：
  *  - INV-8 改写为「fallback 链不跨 surface」语义（旧「禁止 DesktopChannel 类存在」作废）
  *  - 新增 INV-16..23（F3.9.9 (a)-(h) 可执行断言形式）
- *  - 共 23 条 invariants
  *
- * 23 条铁律：
+ * v0.4 M0.4a 状态（parse5 §2.3 + §6.1 #8）：
+ *  - 新增 INV-24（forest RootRegistry 单一真源，类比 INV-3/9）
+ *  - 新增 INV-25（PolicyGate cloud 浏览器通道必经 manual-switch LASSO_ALLOW_CLOUD_BROWSER）
+ *  - 新增 INV-26（forest 调度层不渗 channel internal：禁 import browse/desktop 内部）
+ *  - 共 26 条 invariants（INV-1..26 顺序编号，INV-22 仍占位）
+ *  - parse5 §2.3 INV-27..30 编号预留（M0.4b/M0.4c 实装时占用）：
+ *      INV-27 apple-script-whitelist.ts 顶级 const（M0.4b）
+ *      INV-28 CGEventProvider 不暴露 raw keycode（M0.4b）
+ *      INV-29 forest 调度层无平台字面量（M0.4c；M0.4a 由 INV-21 src tree 全扫覆盖）
+ *      INV-30 stealth-profiles.ts 顶级 const（M0.4c）
+ *
+ * 26 条铁律：
  *  INV-1 browse 是唯一 browse 入口
  *  INV-2 BaseChannel 不被绕过（所有 XxxChannel 必须 extends）
  *  INV-3 ProviderConfig 单一真源（types.ts）
@@ -36,10 +47,18 @@
  *  INV-21 src tree（.ts 全树）无 AXUIElement/CGEvent/AXPress/AXUIElementCreate 字面量 —— v0.3.5
  *  INV-22 appleScript/cgEvent provider 占位禁接（v0.3.5 grep desktop/ 无实装类；为 v0.4 预留）—— v0.3.5
  *  INV-23 = 改写后的 INV-8 内容（fallback 链不跨 surface，desktop 永不 fallback browse）—— v0.3.5
+ *  INV-24 RootRegistry 类单一真源（forest 调度层；只在 src/forest/RootRegistry.ts）—— v0.4 M0.4a
+ *  INV-25 PolicyGate cloud 浏览器通道必经 manual-switch（LASSO_ALLOW_CLOUD_BROWSER + ProviderConfig.policy_risk）—— v0.4 M0.4a
+ *  INV-26 forest 调度层（src/forest/*.ts）不 import BrowseChannel/DesktopChannel internal —— v0.4 M0.4a
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
- *     实际 npm run check-invariants 报 23 条全绿。
+ *     实际 npm run check-invariants 报 26 条全绿。
+ *
+ * 注：parse5 §2.3 原列 INV-27..30（forest 平台字面量 / apple-script 白名单 / cgEvent
+ *     边界 / stealth 顶级 const）。M0.4a 守「26 条 INV-1..26 顺序编号」承诺：
+ *      - forest 平台字面量由 INV-21 src tree 全扫覆盖（M0.4a 不另开槽）
+ *      - INV-27..30 编号预留 M0.4b/M0.4c 占用
  *
  * Phase A 语义：骨架阶段。对尚未实装的模块（BrowseChannel /
  * SubprocessManager / FallbackDecider），断言取「允许缺失 = 合规」，
@@ -48,7 +67,8 @@
  * Phase B 状态：INV-13 收紧到 ExpectPoll 端（源端契约：failed 三态必须存在）；
  * 等 Phase C StepEngine 落地后再追加调用端 regex 检查。
  *
- * Phase C 状态（v0.3.5）：INV-8 改写 + INV-16..23 全部上线（23 条）。
+ * Phase C 状态（v0.3.5）：INV-8 改写 + INV-16..23 全部上线。
+ * Phase v0.4 M0.4a 状态：INV-24/25/26 全部上线（forest 调度层 + 政策 gate）。
  *
  * Node 20+：readdirSync recursive 选项（v20.17+），不依赖 Array.fromAsync。
  *
@@ -438,6 +458,98 @@ const assertions = [
       // （注释里允许讨论；只查字面量）
       const codeOnly = stripComments(dc.text);
       return !/["'](browse_headless|browse_logged_in)["']/.test(codeOnly);
+    },
+  },
+  // ============================================================
+  // v0.4 M0.4a 新增（parse5 §2.3 forest 调度层）
+  // ============================================================
+  {
+    id: "INV-24-rootregistry-single-source",
+    desc: "v0.4：RootRegistry 类单一真源（forest 调度层；只在 src/forest/RootRegistry.ts，类比 INV-3/9）",
+    check: () => {
+      const filesWithDef = SRC.filter((s) =>
+        /class\s+RootRegistry\b/.test(s.text),
+      );
+      if (filesWithDef.length === 0) return false; // v0.4 M0.4a 起必须存在
+      return filesWithDef.every((s) =>
+        s.f.replace(/\\/g, "/") === "forest/RootRegistry.ts",
+      );
+    },
+  },
+  {
+    id: "INV-25-policy-gate-cloud-manual-switch",
+    desc: "v0.4：PolicyGate cloud 浏览器通道必经 manual-switch —— PolicyGate.ts 必须检查 LASSO_ALLOW_CLOUD_BROWSER + providers.ts 必须有 policy_risk 字段（cloud 浏览器 provider）",
+    check: () => {
+      // 1. PolicyGate.ts 必须存在（v0.4 M0.4a 实装）
+      const gate = SRC.find((s) =>
+        /fallback\/PolicyGate\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!gate) return false;
+      // 2. PolicyGate.ts 代码本体必须出现 LASSO_ALLOW_CLOUD_BROWSER 字面量
+      //    （manual-switch 总开关；构造期注入的 env 字段名注释或 doc 提及都算）
+      const gateCode = gate.text; // 注释也算（文档自我化的铁律）
+      if (!/LASSO_ALLOW_CLOUD_BROWSER/.test(gateCode)) return false;
+      // 3. PolicyGate.ts 必须实装 PolicyGate class（不只是类型导出）
+      if (!/class\s+PolicyGate\b/.test(gateCode)) return false;
+      // 4. PolicyGate.ts 必须检查 policy_risk 字段（三态中的 acquired / watched）
+      if (!/policy_risk/.test(gateCode)) return false;
+      // 5. providers.ts 必须有 cloud 浏览器 ProviderConfig（BROWSERBASE / STAGEHAND）
+      //    单独导出（不进 BUILTIN_PROVIDERS，参照 DESKTOP_PROVIDERS 范式）
+      const prov = SRC.find((s) =>
+        /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!prov) return false;
+      const hasBrowserbase = /const\s+BROWSERBASE\s*:\s*ProviderConfig/.test(
+        prov.text,
+      );
+      const hasStagehand = /const\s+STAGEHAND\s*:\s*ProviderConfig/.test(
+        prov.text,
+      );
+      if (!hasBrowserbase || !hasStagehand) return false;
+      // 6. 两个 cloud 浏览器 ProviderConfig 必须配 policy_risk 字段（非 safe → 真有风险）
+      //    提取 BROWSERBASE 块检查 policy_risk
+      const browserbaseBlock = prov.text.match(
+        /const\s+BROWSERBASE\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
+      )?.[1] ?? "";
+      const stagehandBlock = prov.text.match(
+        /const\s+STAGEHAND\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
+      )?.[1] ?? "";
+      const bbRisk = /policy_risk\s*:\s*["'](acquired|watched)["']/.test(
+        browserbaseBlock,
+      );
+      const shRisk = /policy_risk\s*:\s*["'](acquired|watched)["']/.test(
+        stagehandBlock,
+      );
+      if (!bbRisk || !shRisk) return false;
+      // 7. cloud 浏览器 providers 必须**单独导出**（不进 BUILTIN_PROVIDERS，零回归承诺）
+      //    检查 BUILTIN_PROVIDERS 字面量数组里不含 BROWSERBASE / STAGEHAND
+      const builtinBlock = prov.text.match(
+        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/\bBROWSERBASE\b|\bSTAGEHAND\b/.test(builtinBlock)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-26-forest-no-channel-internal-import",
+    desc: "v0.4：forest 调度层（src/forest/*.ts）不 import BrowseChannel/DesktopChannel internal 模块（R-CI-02 守护）",
+    check: () => {
+      // src/forest/ 下任何 .ts 文件代码本体（去注释）禁 import 自：
+      //   ../browse/*.js  ../desktop/*.js  ../subprocess/*.js  ../fallback/*.js
+      //   ../serp/*.js  ../search/*.js  ../config/*.js
+      // 允许：../channels/BrowseChannel.js  ../channels/DesktopChannel.js（class 接口契约）
+      //       ../types.js（共享类型）
+      //       同层 ./forest-types.js  ./RootRegistry.js（forest 调度层内部）
+      const FORBIDDEN_FOREST_IMPORTS =
+        /from\s+["']\.\.\/(browse|desktop|subprocess|fallback|serp|search|config|ssrf|tools|doctor|util|invariants)\/[^"']*["']/;
+      const forestFiles = SRC.filter((s) =>
+        /^forest\//.test(s.f.replace(/\\/g, "/")),
+      );
+      if (forestFiles.length === 0) return false; // v0.4 M0.4a 起必须有 forest 文件
+      return forestFiles.every((s) => {
+        const codeOnly = stripComments(s.text);
+        return !FORBIDDEN_FOREST_IMPORTS.test(codeOnly);
+      });
     },
   },
 ];
