@@ -17,6 +17,19 @@
 //!   - `ax_unavailable`           AX 调用失败（generic）
 //!   - `invalid_params`           参数校验失败
 //!   - `not_implemented`          方法/动作占位
+//!
+//! v0.4 M0.4b 新增（parse5 §3.5.5）：
+//!   - `script_not_in_whitelist`  applescript_run: action 不在白名单 manifest
+//!                                （INV-27 纵深防御层 2）
+//!   - `param_not_in_whitelist`   applescript_run: params key 不在 allowedParams
+//!   - `param_value_invalid`      applescript_run: 参数值含非法字符（层 4 过滤）
+//!   - `applescript_exec_failed`  applescript_run: osascript exit != 0
+//!   - `applescript_spawn_failed` applescript_run: fork/exec 失败
+//!   - `applescript_timeout`      applescript_run: 超时（AppleEvent -1712 等）
+//!   - `cgevent_unknown_key`      cgevent_key/hotkey: 逻辑键名未在 keymap
+//!                                （INV-28 强制 keymap）
+//!   - `cgevent_source_failed`    cgevent_*: CGEventSource 构造失败
+//!   - `cgevent_construct_failed` cgevent_*: CGEvent::new_keyboard_event 失败
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +38,8 @@ pub struct Request {
     /// UUID，由调用方生成，Response 原样回写以关联 in-flight 调用。
     pub id: String,
     /// "ping"|"tcc_status"|"ax_snapshot"|"ax_find"|"ax_act"|"screenshot"
+    /// |"list_windows"|"applescript_run"|"cgevent_key"|"cgevent_hotkey"
+    /// |"cgevent_dispatch"  （v0.4 M0.4b 加后 4 个）
     pub method: String,
     /// 方法特定参数；未知字段忽略。`serde_json::Value::Null` 表示无参数。
     #[serde(default)]

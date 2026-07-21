@@ -20,23 +20,32 @@
  *  - INV-21（F3.9.9 f）：本类不出现 AXUIElement/CGEvent/AXPress/AXUIElementCreateSystemWide
  *                       等平台字面量；所有平台调用经 RustBridge.call。
  *  - INV-23（F3.9.9 h）：fallback plan 永远只列 desktop.* channels，绝不列 browse_*。
+ *  - INV-29（v0.4 M0.4b）：act 的 4 档 plan 全 desktop.*，顺序
+ *                          ax → appleScript → cgEvent → screenshotVlm。
  *
- * 主路径策略（parse4 §3.2.3 + §3.3）：
+ * 主路径策略（parse4 §3.2.3 + §3.3 + parse5 §3.5.4 v0.4 M0.4b）：
  *  - observe(snapshot|find)：直接 axProvider，**不走 fallback**（observe 是只读，
  *    ax 失败 = 整个 desktop 不可用，没意义再降级 screenshotVlm；parse4 §3.2.1）
- *  - act：经 FallbackDecider；plan = {primary:"desktop.ax",
- *                                      fallbacks:["desktop.screenshotVlm"],
- *                                      cross_modal:false}
+ *  - act：经 FallbackDecider；plan = { primary:"desktop.ax",
+ *                                      fallbacks:["desktop.appleScript",
+ *                                                 "desktop.cgEvent",
+ *                                                 "desktop.screenshotVlm"],
+ *                                      cross_modal:false }
+ *    （parse5 §3.5.4：v0.4 M0.4b 把 2 档补成 4 档；ax → appleScript → cgEvent
+ *     → screenshotVlm 顺序对应 13 §2.3 4-tier fallback 设计）
  *  - wait：复用 axProvider.observe("snapshot") + poll（与 BrowseChannel.runExpect 同范式）
  *  - screenshot：直接 vlmProvider.captureScreenshot（不调 VLM；M0.5b 才接 VLM）
  *  - doctor：复用 runDoctor({desktopChecks:true})（不开第二套）
  *
- * 借鉴：parse4 §3.2 全文；BrowseChannel 的 InteractResult 信封风格；
- * pi-computer-use tri-state；13 §3.5 AxProvider/ScreenshotVlmProvider 抽象。
+ * 借鉴：parse4 §3.2 全文；parse5 §3.5.4 4-tier plan；BrowseChannel 的
+ * InteractResult 信封风格；pi-computer-use tri-state；13 §3.5 AxProvider /
+ * ScreenshotVlmProvider / AppleScriptProvider / CGEventProvider 抽象。
  */
 import { UiChannel } from "./UiChannel.js";
 import type { AxProvider } from "../desktop/AxProvider.js";
 import type { ScreenshotVlmProvider } from "../desktop/ScreenshotVlmProvider.js";
+import type { AppleScriptProvider } from "../desktop/AppleScriptProvider.js";
+import type { CGEventProvider } from "../desktop/CGEventProvider.js";
 import type { FallbackDecider, FallbackPlan } from "../fallback/FallbackDecider.js";
 import type { CircuitBreaker } from "../fallback/CircuitBreaker.js";
 import type {
@@ -65,10 +74,11 @@ export type WaitVerdict = "worked" | "preexisting" | "didnt" | "unknown";
 // DesktopChannel
 // ============================================================
 /**
- * v0.3.5 DesktopChannel MVP（parse4 §3.2）。
+ * v0.3.5 DesktopChannel MVP（parse4 §3.2）+ v0.4 M0.4b 4-tier fallback（parse5 §3.5.4）。
  *
  * INV-16：class DesktopChannel extends UiChannel —— 本行守护兄弟分层。
  * INV-21：本类不调平台 API；所有平台调用经 rust.call → rust-helper binary。
+ * INV-29：act 的 4 档 plan 全 desktop.*（顺序 ax → appleScript → cgEvent → screenshotVlm）。
  */
 export class DesktopChannel extends UiChannel {
   readonly name = "desktop";
@@ -77,6 +87,16 @@ export class DesktopChannel extends UiChannel {
     private readonly rust: RustBridge,
     private readonly axProvider: AxProvider,
     private readonly vlmProvider: ScreenshotVlmProvider,
+    /**
+     * v0.4 M0.4b 加（parse5 §3.5.4）：4-tier 第 2 档 appleScript。
+     * 仅 typed action enum 入口；INV-22（v0.4 解除）+ INV-27 守护。
+     */
+    private readonly appleScriptProvider: AppleScriptProvider,
+    /**
+     * v0.4 M0.4b 加（parse5 §3.5.4）：4-tier 第 3 档 cgEvent。
+     * 仅逻辑键名（INV-28）；press / hotkey 路径专用。
+     */
+    private readonly cgEventProvider: CGEventProvider,
     private readonly decider: FallbackDecider,
     /**
      * CircuitBreaker 表（与 FallbackDecider 共享同一份）。
@@ -177,12 +197,24 @@ export class DesktopChannel extends UiChannel {
   /**
    * act 主路径：经 FallbackDecider.runWithFallback（INV-18）。
    *
-   * plan = { primary:"desktop.ax", fallbacks:["desktop.screenshotVlm"], cross_modal:false }
+   * v0.4 M0.4b plan = {
+   *   primary:    "desktop.ax",
+   *   fallbacks: ["desktop.appleScript", "desktop.cgEvent", "desktop.screenshotVlm"],
+   *   cross_modal: false,
+   * }
    * （INV-23：fallback 链全 desktop.*，绝不 cross-surface 进 browse_*）
+   * （INV-29：4 档全 desktop.*，顺序 ax → appleScript → cgEvent → screenshotVlm）
    *
    * executor 把 channel 名映射到 provider.act：
-   *  - "desktop.ax"          → axProvider.act(opts)
-   *  - "desktop.screenshotVlm" → vlmProvider.act(opts)
+   *  - "desktop.ax"           → axProvider.act(opts)
+   *  - "desktop.appleScript"  → appleScriptProvider.act(opts)（v0.4 M0.4b 加）
+   *  - "desktop.cgEvent"      → cgEventProvider.act(opts)（v0.4 M0.4b 加）
+   *  - "desktop.screenshotVlm"→ vlmProvider.act(opts)
+   *
+   * 顺序语义（parse5 §3.5.4 + 13 §2.3 4-tier）：
+   *  - ax 失败（Electron app 吞 AXSetValue / canvas 无 AX 元素）→ appleScript
+   *  - appleScript 不支持该动作 / 不在白名单 → cgEvent
+   *  - cgEvent 仅 press/hotkey，其他动作不支持 → screenshotVlm
    *
    * 不自造 fallback 循环（INV-18）：所有 worked/didnt/unknown 升降级判定在
    * FallbackDecider 内完成，本方法只负责 plan + executor 映射。
@@ -190,12 +222,24 @@ export class DesktopChannel extends UiChannel {
   async act(opts: DesktopOptions): Promise<InteractResult<DesktopResult>> {
     const plan: FallbackPlan = {
       primary: "desktop.ax",
-      fallbacks: ["desktop.screenshotVlm"], // v0.4+ 加 "desktop.appleScript", "desktop.cgEvent"
-      cross_modal: false, // INV-23: desktop fallback 永不跨 surface
+      // v0.4 M0.4b（parse5 §3.5.4）：2 档补成 4 档。
+      // 顺序：ax → appleScript → cgEvent → screenshotVlm
+      fallbacks: [
+        "desktop.appleScript",
+        "desktop.cgEvent",
+        "desktop.screenshotVlm",
+      ],
+      cross_modal: false, // INV-23 + INV-29: desktop fallback 永不跨 surface
     };
     return this.decider.runWithFallback(plan, async (channelName) => {
       if (channelName === "desktop.ax") {
         return this.axProvider.act(opts);
+      }
+      if (channelName === "desktop.appleScript") {
+        return this.appleScriptProvider.act(opts);
+      }
+      if (channelName === "desktop.cgEvent") {
+        return this.cgEventProvider.act(opts);
       }
       if (channelName === "desktop.screenshotVlm") {
         return this.vlmProvider.act(opts);

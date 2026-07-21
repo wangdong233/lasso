@@ -146,6 +146,18 @@ export interface DesktopExpect {
 /**
  * desktop tool 单工具 action-enum 折叠后的 options（parse4 §3.3.1 zod schema 镜像）。
  * 各 action 仅消费自己关心的字段，其余忽略。
+ *
+ * v0.4 M0.4b 加（parse5 §3.5.2 + §3.5.3）：
+ *  - appleScriptAction  : typed action enum 字符串（AppleScriptProvider 入口）
+ *  - appleScriptParams  : Record<string, unknown>（appleScript 模板参数）
+ *  - cgEventKey         : 占位字段（cgevent 档实际从 actions[] 读 press/hotkey）；
+ *                         保留为白名单字段供 zod schema 校验 + INV-28 grep 锚点
+ *                         （值类型强制 string；raw keycode 数字入参由 CGEventProvider
+ *                          层 1 + Rust 端 cgevent_keymap 双向拒绝）
+ *
+ * INV-22（v0.4 解除）：appleScriptAction 必须经 apple-script-whitelist.ts 校验，
+ *                     禁 raw 脚本串（详见 AppleScriptProvider.ts）。
+ * INV-28：cgevent 路径只接受逻辑键名（"Return" / "cmd+c"）；raw keycode 数字禁入。
  */
 export interface DesktopOptions {
   app?: string;
@@ -157,6 +169,25 @@ export interface DesktopOptions {
   screenshot_region?: Rect;
   timeout_ms?: number;
   picture_only?: boolean;
+  // ------------------------------------------------------------------
+  // v0.4 M0.4b：appleScript / cgEvent 档字段（parse5 §3.5）
+  // ------------------------------------------------------------------
+  /**
+   * AppleScript typed action 名（必须在 APPLE_SCRIPT_WHITELIST 中）。
+   * INV-22（v0.4 解除）：缺此字段 AppleScriptProvider 返 didnt + applescript_no_action。
+   */
+  appleScriptAction?: string;
+  /**
+   * AppleScript 模板参数（key 必须是 action 对应 allowedParams 的子集）。
+   * 由 AppleScriptProvider 层 1 校验；Rust 端再独立校验（纵深防御）。
+   */
+  appleScriptParams?: Record<string, unknown>;
+  /**
+   * CGEvent 档逻辑键名（INV-28 锚点字段）。
+   * 实际生产路径走 actions[] 里的 press/hotkey；此字段保留为 zod 校验锚点 +
+   * doctor 自检锚点。**类型强制 string**：raw keycode 数字入参由层 1 拒绝。
+   */
+  cgEventKey?: string;
 }
 
 // ============================================================

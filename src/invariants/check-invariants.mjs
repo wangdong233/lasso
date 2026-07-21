@@ -4,6 +4,7 @@
  *                     + parse3 §5.3 v0.3 加 INV-12..15
  *                     + parse4 §1.4 v0.3.5 改写 INV-8 + 加 INV-16..23
  *                     + parse5 §2.3 v0.4 M0.4a 加 INV-24/25/26 forest 调度层 + 政策 gate）
+ *                     + parse5 §2.3 v0.4 M0.4b 改写 INV-22 占位 + 加 INV-27/28/29 + 收紧 INV-21 regex）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -422,30 +423,80 @@ const assertions = [
   },
   {
     id: "INV-21-no-platform-literals-in-ts",
-    desc: "src/**/*.ts 代码本体无 AXUIElement/CGEvent/AXPress/AXUIElementCreate 平台字面量（隔离在 rust-helper）",
+    desc: "src/**/*.ts 代码本体无 AXUIElement/CGEvent FFI/AXPress/AXUIElementCreate 平台字面量（隔离在 rust-helper；v0.4 M0.4b 收紧 CGEvent regex）",
     check: () => {
       // 去注释后扫所有 .ts 文件代码本体（含字符串字面量也算——铁律是 TS 不引用平台符号）
       // 例外：rust-helper/ 不在 src/ 下；本扫描自动只覆盖 src/**/*.ts
+      // v0.4 M0.4b：CGEvent 段从 `\bCGEvent\w*` 收紧为枚举 FFI 符号
+      //   `\bCGEvent(?:Source|Flags|Type|TapLocation|SourceStateID|Create|Post|Tap)?\b`
+      //   原因：parse5 §3.5.3 明确 TS 端类名是 `CGEventProvider`、类型名 `CGEventAction`，
+      //   这些是 TS 抽象（不调平台 API），不应被误判为平台字面量；而真正的 FFI 符号
+      //   （CGEventSource / CGEventFlags / CGEventType / CGEventTapLocation / ...）
+      //   仍被精准禁止。AXUIElement 段保持 `\bAXUIElement\w*`（AxProvider 不匹配该前缀）。
       const PLATFORM_RE =
-        /\bAXUIElement\w*|\bCGEvent\w*|\bAXPress\b|\bAXUIElementCreateSystemWide\b|\bAXIsProcessTrustedWithOptions\b|\bCGPreflightScreenCaptureAccess\b|\bCGWindowListCreateImage\b/;
+        /\bAXUIElement\w*|\bAXPress\b|\bAXUIElementCreateSystemWide\b|\bAXIsProcessTrustedWithOptions\b|\bCGPreflightScreenCaptureAccess\b|\bCGWindowListCreateImage\b|\bCGEvent(?:Source|Flags|Type|TapLocation|SourceStateID|Create|Post|Tap)?\b/;
       return SRC.every((s) => !PLATFORM_RE.test(stripComments(s.text)));
     },
   },
   {
-    id: "INV-22-no-applescript-cgevent-provider",
-    desc: "v0.3.5 不接 appleScript/cgEvent provider：desktop/ 下无实装类（只允许注释占位，为 v0.4+ 预留）",
+    id: "INV-22-applescript-typed-action-whitelist",
+    desc: "v0.4 M0.4b 改写（解除占位）：AppleScriptProvider 必须 typed action enum + 白名单（禁 raw 脚本串；INV-27 镜像）",
     check: () => {
-      // grep desktop/ 下任何 "class AppleScriptProvider" / "class CGEventProvider" 实装
-      // 实装标识 = class 定义；注释提到不算
-      const desktopFiles = SRC.filter((s) =>
-        /desktop\//.test(s.f.replace(/\\/g, "/")),
+      // v0.3.5 占位语义（「desktop/ 下无 AppleScriptProvider 实装类」）已解除；
+      // v0.4 M0.4b 起改为正向断言：实装必须在，且必须守 typed action enum + 白名单契约。
+      //
+      // 必要条件 1：desktop/AppleScriptProvider.ts 存在且定义 class AppleScriptProvider
+      const provider = SRC.find((s) =>
+        /desktop\/AppleScriptProvider\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
-      const realClassLeak = desktopFiles.some((s) =>
-        /class\s+(AppleScript\w*Provider|CGEvent\w*Provider|CGEventProvider|AppleScriptProvider)\b/.test(
-          stripComments(s.text),
-        ),
+      if (!provider) return false;
+      const providerCode = stripComments(provider.text);
+      if (!/class\s+AppleScriptProvider\b/.test(providerCode)) return false;
+
+      // 必要条件 2：apple-script-whitelist.ts 存在且导出 APPLE_SCRIPT_WHITELIST 顶级 const
+      const wl = SRC.find((s) =>
+        /desktop\/apple-script-whitelist\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
-      return !realClassLeak;
+      if (!wl) return false;
+      const wlCode = stripComments(wl.text);
+      // 顶级 const 导出（export const APPLE_SCRIPT_WHITELIST = {...}）
+      if (!/export\s+const\s+APPLE_SCRIPT_WHITELIST\b/.test(wlCode)) return false;
+
+      // 必要条件 3：AppleScriptProvider 必须 import 白名单并显式校验
+      //   （grep `from "./apple-script-whitelist` 或 `from "../apple-script-whitelist`）
+      if (
+        !/from\s+["'][^"']*apple-script-whitelist(\.js)?["']/.test(providerCode)
+      ) {
+        return false;
+      }
+      // 必须出现 isKnownAction / findDisallowedParamKey / APPLE_SCRIPT_WHITELIST 之一
+      // （说明真的在校验白名单，而不只是 import 未用）
+      const usesWhitelist =
+        /\bisKnownAction\b|\bfindDisallowedParamKey\b|\bAPPLE_SCRIPT_WHITELIST\b/.test(
+          providerCode,
+        );
+      if (!usesWhitelist) return false;
+
+      // 必要条件 4：禁 raw 脚本串入口 —— AppleScriptProvider 不接受 opts.script 字段
+      //   grep `script:` 作为 DesktopOptions 字段（字面量属性定义）必须不出现
+      //   注：这里用代码本体；允许在 error 信息 / retrieval_method 字符串里提到 "script"
+      //   （如 "script_not_in_whitelist"），那些是诊断字符串不是入口字段。
+      //   入口字段定义形式：`script:` 或 `script?:` 后跟类型。
+      const hasRawScriptField = /\b\s*script\?\s*:/.test(providerCode);
+      if (hasRawScriptField) return false;
+
+      // 必要条件 5：AppleScriptProvider 经 RustBridge.call("applescript_run") 调 helper
+      //   （INV-21 衍生：TS 端不直接碰 osascript/OSAKit）
+      if (!/rust\.call\s*\(\s*["']applescript_run["']/.test(providerCode)) {
+        return false;
+      }
+      // AppleScriptProvider 代码本体禁出现 osascript / OSAKit 直接调用符号
+      // （注释里允许讨论；只查代码本体）
+      if (/\bosascript\b|\bOSAKit\b|\bNSAppleScript\b/.test(providerCode)) {
+        return false;
+      }
+
+      return true;
     },
   },
   {
@@ -550,6 +601,144 @@ const assertions = [
         const codeOnly = stripComments(s.text);
         return !FORBIDDEN_FOREST_IMPORTS.test(codeOnly);
       });
+    },
+  },
+  // ============================================================
+  // v0.4 M0.4b 新增（parse5 §2.3 + §3.5 + §4.4 appleScript/cgEvent 4-tier）
+  // ============================================================
+  {
+    id: "INV-27-applescript-whitelist-top-level-const",
+    desc: "v0.4 M0.4b：apple-script-whitelist.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14）",
+    check: () => {
+      // 必要条件 1：apple-script-whitelist.ts 存在
+      const wl = SRC.find((s) =>
+        /desktop\/apple-script-whitelist\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!wl) return false; // v0.4 M0.4b 起必须存在
+      const code = stripComments(wl.text);
+      // 必要条件 2：顶级 const APPLE_SCRIPT_WHITELIST（export const，对象字面量）
+      //   接受 Object.freeze(...) 或直接对象字面量
+      if (!/export\s+const\s+APPLE_SCRIPT_WHITELIST\b/.test(code)) return false;
+      // 必要条件 3：代码本体禁出现 process.env（INV-27 anti-gaming 红线）
+      //   注：仅在注释里提到 process.env 算合规；代码本体 0 容忍。
+      if (/process\.env/.test(code)) return false;
+      // 必要条件 4：白名单不 import config / provider-registry / env-reader
+      //   （顶级 const 不依赖运行时配置；防 LLM 通过 channel 改 env 绕过）
+      if (
+        /from\s+["'][^"']*(config\/|provider-registry|env-reader|env-config)/.test(
+          code,
+        )
+      ) {
+        return false;
+      }
+      return true;
+    },
+  },
+  {
+    id: "INV-28-cgevent-no-raw-keycode",
+    desc: "v0.4 M0.4b：CGEventProvider 不暴露 raw keycode 入参（typed logical key name only；INV-21 衍生）",
+    check: () => {
+      // 必要条件 1：CGEventProvider.ts 存在且定义 class CGEventProvider
+      const provider = SRC.find((s) =>
+        /desktop\/CGEventProvider\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!provider) return false; // v0.4 M0.4b 起必须存在
+      const code = stripComments(provider.text);
+      if (!/class\s+CGEventProvider\b/.test(code)) return false;
+
+      // 必要条件 2：必须显式拒绝 raw keycode 数字入参
+      //   守门逻辑：grep `typeof.*===.*"number"` 与 key/keys 共现，或专用
+      //   retrieval_method/error 标识 "raw_keycode_forbidden" 出现
+      //   （这是 INV-28 的核心断言：层 1 守门必须有可识别的实现）
+      const hasRawKeycodeGuard =
+        /raw_keycode_forbidden/.test(code) ||
+        (/typeof\s+\w+\.key\s*===\s*["']number["']/.test(code) &&
+          /hotkey|press/.test(code));
+      if (!hasRawKeycodeGuard) return false;
+
+      // 必要条件 3：rust.call 走 "cgevent_dispatch"（不直接调 CGEvent FFI；INV-21 衍生）
+      if (!/rust\.call\s*\(\s*["']cgevent_dispatch["']/.test(code)) return false;
+
+      // 必要条件 4：CGEventProvider 代码本体禁出现 raw keycode 数字字面量
+      //   形如 `key: 36` / `keycode: 36` 等直接数字（INV-28 红线）
+      //   注：循环计数器 `let i = 0` / 数组 index 等不算（那些不是 key/keycode 字段）
+      //   精确匹配：`key:<数字>` 或 `keycode:<数字>` 形式
+      const hasRawKeycodeLiteral =
+        /\bkey\s*:\s*\d+\b|\bkeycode\s*:\s*\d+\b/.test(code);
+      if (hasRawKeycodeLiteral) return false;
+
+      // 必要条件 5：CGEventProvider 代码本体禁直接调 CGEvent FFI 符号
+      //   （CGEvent::, CGEventSource::, new CGEvent, etc.；这些应在 rust-helper）
+      if (/\bCGEvent\b|\bCGEventSource\b|\bCGEventFlags\b/.test(code)) {
+        return false;
+      }
+
+      return true;
+    },
+  },
+  {
+    id: "INV-29-desktop-act-4-tier-all-desktop",
+    desc: "v0.4 M0.4b：DesktopChannel act 4 档 plan 全 desktop.*，顺序 ax→appleScript→cgEvent→screenshotVlm（INV-8/23 衍生强化）",
+    check: () => {
+      const dc = SRC.find((s) =>
+        /channels\/DesktopChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!dc) return false;
+      const code = stripComments(dc.text);
+
+      // 必要条件 1：grep FallbackPlan 字面量（primary + fallbacks 数组）
+      const planMatch = code.match(
+        /primary\s*:\s*["'](desktop\.[^"']+)["'][^}]*fallbacks\s*:\s*\[([\s\S]*?)\]/,
+      );
+      if (!planMatch) return false;
+      const primary = planMatch[1];
+      const fallbacksBlob = planMatch[2];
+      const fallbackNames = [
+        ...fallbacksBlob.matchAll(/["']([^"']+)["']/g),
+      ].map((m) => m[1]);
+
+      // 必要条件 2：primary 必须是 desktop.ax
+      if (primary !== "desktop.ax") return false;
+
+      // 必要条件 3：fallbacks 必须恰好 3 项且顺序锁定为
+      //   "desktop.appleScript" → "desktop.cgEvent" → "desktop.screenshotVlm"
+      //   （parse5 §3.5.4 + §6.2 #9 4-tier fallback 链）
+      if (fallbackNames.length !== 3) return false;
+      const expected = [
+        "desktop.appleScript",
+        "desktop.cgEvent",
+        "desktop.screenshotVlm",
+      ];
+      if (
+        !fallbackNames.every((n, i) => n === expected[i])
+      ) {
+        return false;
+      }
+
+      // 必要条件 4：全 desktop.* 命名空间（INV-8/23 同义强化）
+      const all = [primary, ...fallbackNames];
+      if (!all.every((n) => n.startsWith("desktop."))) return false;
+
+      // 必要条件 5：禁出现 browse_* 字面量（INV-23 同义断言；4 档 plan 内绝不混入）
+      if (/\b(browse_headless|browse_logged_in|browse_cloud)\b/.test(fallbacksBlob)) {
+        return false;
+      }
+
+      // 必要条件 6：cross_modal 必须为 false（INV-23 守护）
+      if (!/cross_modal\s*:\s*false/.test(code)) return false;
+
+      // 必要条件 7：executor 必须为 4 档每个 channel 名提供 dispatch 分支
+      //   （grep "desktop.ax" / "desktop.appleScript" / "desktop.cgEvent" / "desktop.screenshotVlm"
+      //    都在 executor 的 if 分支里出现，确保 4 档都有实装路径）
+      const channelDispatchBranches = [
+        /["']desktop\.ax["']/.test(code),
+        /["']desktop\.appleScript["']/.test(code),
+        /["']desktop\.cgEvent["']/.test(code),
+        /["']desktop\.screenshotVlm["']/.test(code),
+      ];
+      if (!channelDispatchBranches.every(Boolean)) return false;
+
+      return true;
     },
   },
 ];

@@ -204,13 +204,21 @@ export class AxProvider {
    * v0.3.5 Phase B：ax_act 在 Rust helper 返 not_implemented → 本方法返
    * outcome=unknown + error="not_implemented"（让 DesktopChannel fallback 链
    * 走到 screenshotVlm 档；M0.5b 后 ax_act 真实装则 outcome=worked）。
+   *
+   * v0.4 M0.4b 语义调整（4-tier 衍生）：
+   *  - 「无 actions」从 didnt 改为 unknown（让链继续到 appleScript / cgEvent /
+   *    screenshotVlm）。原 v0.3.5 didnt 语义在 2-tier 下成立（ax 失败 = 整个
+   *    desktop 不可用），但 4-tier 下 appleScript/cgEvent 各有独立 domain，
+   *    ax 「无 actions」= 「ax 无事可做」应让链尝试其他档。
+   *  - 不破坏既有 v0.3.5 测试：现有 spec 不测 ax no-actions 的 didnt 短路。
    */
   async act(
     opts: DesktopOptions,
   ): Promise<InteractResult<DesktopResult>> {
     if (!opts.actions || opts.actions.length === 0) {
+      // 4-tier：ax 无 actions → unknown（让链继续到 appleScript/cgEvent/screenshotVlm）
       return {
-        outcome: "didnt",
+        outcome: "unknown",
         data: null,
         served_by: AxProvider.NAME,
         fallback_used: false,

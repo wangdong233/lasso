@@ -35,6 +35,8 @@ import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
 import { AxProvider } from "./desktop/AxProvider.js";
 import { ScreenshotVlmProvider } from "./desktop/ScreenshotVlmProvider.js";
+import { AppleScriptProvider } from "./desktop/AppleScriptProvider.js";
+import { CGEventProvider } from "./desktop/CGEventProvider.js";
 import { FallbackDecider } from "./fallback/FallbackDecider.js";
 import { CircuitBreaker } from "./fallback/CircuitBreaker.js";
 import { loadSsrfConfig } from "./ssrf/ssrf-guard.js";
@@ -124,14 +126,18 @@ async function runMcpServer(): Promise<void> {
   const searchCache = new SearchCache(config.searchCacheDir);
 
   // ----- v0.3.5 装配 DesktopChannel（parse4 §3.5 + §2.3 文件依赖图）-----
-  // 桌面通道 4 件套：
+  // 桌面通道 4 件套（v0.4 M0.4b 扩 4-tier）：
   //   1. subproc.registerRustSpec("rust-helper", {...})  ← spawn 规格
   //   2. new RustBridge(subproc, "rust-helper")          ← JSON-lines 协议适配
-  //   3. new AxProvider(rust) + new ScreenshotVlmProvider(rust) ← 两档 provider
-  //   4. new DesktopChannel(rust, ax, vlm, decider, breakers) ← channel
+  //   3. 4 档 provider（parse5 §3.5.4）：
+  //        new AxProvider(rust)              ← 第 1 档 ax
+  //        new AppleScriptProvider(rust)     ← 第 2 档 appleScript（v0.4 M0.4b）
+  //        new CGEventProvider(rust)         ← 第 3 档 cgEvent（v0.4 M0.4b）
+  //        new ScreenshotVlmProvider(rust)   ← 第 4 档 screenshotVlm
+  //   4. new DesktopChannel(rust, ax, vlm, appleScript, cgEvent, decider, breakers)
   //
   // INV-7：RustBridge 持协议帧解析；SubprocessManager 仍纯 lifecycle（既有 MCP 路径不动）。
-  // INV-23：breakers 加 desktop.ax + desktop.screenshotVlm 两档；永不挂 browse_*。
+  // INV-23/29：breakers 加 4 档 desktop.*；永不挂 browse_*。
   const rustHelperPath =
     process.env.LASSO_RUST_HELPER_PATH ?? DEFAULT_RUST_HELPER_PATH;
   subproc.registerRustSpec("rust-helper", {
@@ -140,11 +146,14 @@ async function runMcpServer(): Promise<void> {
   });
   const rustBridge = new RustBridge(subproc, "rust-helper");
   const axProvider = new AxProvider(rustBridge);
+  const appleScriptProvider = new AppleScriptProvider(rustBridge);
+  const cgEventProvider = new CGEventProvider(rustBridge);
   const vlmProvider = new ScreenshotVlmProvider(rustBridge, {});
 
   // ----- 装配 FallbackDecider（每 channel 一个 60s 短熔断器）-----
   // v0.2 加 search.brave + fanout 虚拟 channel 的 breaker（parse2 §3.3.4）
   // v0.3.5 加 desktop.ax + desktop.screenshotVlm 两档 breaker（parse4 §3.2.1）
+  // v0.4 M0.4b 加 desktop.appleScript + desktop.cgEvent 两档 breaker（parse5 §3.5.4）
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
     ["search.brave", new CircuitBreaker()],
@@ -152,6 +161,8 @@ async function runMcpServer(): Promise<void> {
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
     ["desktop.ax", new CircuitBreaker()],
+    ["desktop.appleScript", new CircuitBreaker()],
+    ["desktop.cgEvent", new CircuitBreaker()],
     ["desktop.screenshotVlm", new CircuitBreaker()],
   ]);
   const decider = new FallbackDecider(breakers);
@@ -160,6 +171,8 @@ async function runMcpServer(): Promise<void> {
     rustBridge,
     axProvider,
     vlmProvider,
+    appleScriptProvider,
+    cgEventProvider,
     decider,
     breakers,
   );

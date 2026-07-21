@@ -23,6 +23,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { DesktopChannel } from "../../src/channels/DesktopChannel.js";
 import { AxProvider } from "../../src/desktop/AxProvider.js";
 import { ScreenshotVlmProvider } from "../../src/desktop/ScreenshotVlmProvider.js";
+import { AppleScriptProvider } from "../../src/desktop/AppleScriptProvider.js";
+import { CGEventProvider } from "../../src/desktop/CGEventProvider.js";
 import { FallbackDecider } from "../../src/fallback/FallbackDecider.js";
 import { CircuitBreaker } from "../../src/fallback/CircuitBreaker.js";
 import type { AxNode } from "../../src/desktop/desktop-types.js";
@@ -98,8 +100,15 @@ function assembleDesktop(
     endpoint: null, // 不配 VLM；screenshot fallback 走 didnt 路径
     vlmCaller: null,
   });
+  // v0.4 M0.4b：4-tier 第 2/3 档 provider（parse5 §3.5.4）
+  const appleScriptProvider = new AppleScriptProvider(
+    rust as unknown as never,
+  );
+  const cgEventProvider = new CGEventProvider(rust as unknown as never);
   const breakers = new Map<string, CircuitBreaker>([
     ["desktop.ax", new CircuitBreaker()],
+    ["desktop.appleScript", new CircuitBreaker()],
+    ["desktop.cgEvent", new CircuitBreaker()],
     ["desktop.screenshotVlm", new CircuitBreaker()],
   ]);
   const decider = new FallbackDecider(breakers);
@@ -107,6 +116,8 @@ function assembleDesktop(
     rust as unknown as never,
     axProvider,
     vlmProvider,
+    appleScriptProvider,
+    cgEventProvider,
     decider,
     breakers,
   );
@@ -164,8 +175,16 @@ describe("desktop(action:'snapshot')", () => {
       endpoint: null,
       vlmCaller: null,
     });
+    // v0.4 M0.4b：补 appleScript / cgEvent provider 占位（observe 路径不会调到，
+    // 但构造签名要求注入；用真 provider + mock rust 即可）
+    const appleScriptProvider = new AppleScriptProvider(
+      rust as unknown as never,
+    );
+    const cgEventProvider = new CGEventProvider(rust as unknown as never);
     const breakers = new Map<string, CircuitBreaker>([
       ["desktop.ax", new CircuitBreaker()],
+      ["desktop.appleScript", new CircuitBreaker()],
+      ["desktop.cgEvent", new CircuitBreaker()],
       ["desktop.screenshotVlm", new CircuitBreaker()],
     ]);
     const decider = new FallbackDecider(breakers);
@@ -173,6 +192,8 @@ describe("desktop(action:'snapshot')", () => {
       rust as unknown as never,
       axProvider,
       vlmProvider,
+      appleScriptProvider,
+      cgEventProvider,
       decider,
       breakers,
     );
@@ -253,15 +274,20 @@ describe("desktop(action:'act') — INV-18 fallback via FallbackDecider", () => 
     const r = await desktop.act({
       actions: [{ kind: "click", ref: "@e1" }],
     });
-    // ax 抛 → unknown；screenshotVlm 拿到 screenshot 但 VLM 未配 → didnt
+    // ax 抛 → unknown；4-tier 链：ax → appleScript → cgEvent → screenshotVlm
+    //   - appleScript: 无 appleScriptAction → unknown（4-tier「本档不适用」语义）
+    //   - cgEvent: 仅 click 不支持 → unknown（4-tier「本档不适用」语义）
+    //   - screenshotVlm: 拿到 screenshot 但 VLM 未配 → didnt
     // 最终 outcome=didnt + fallback_used=true（链走到了 screenshotVlm）
     expect(r.outcome).toBe("didnt");
     expect(r.fallback_used).toBe(true);
-    // actions_and_results 审计链：两档都被尝试
-    expect(r.actions_and_results?.length).toBe(2);
+    // actions_and_results 审计链：v0.4 M0.4b 4 档全部被尝试
+    expect(r.actions_and_results?.length).toBe(4);
     expect(r.actions_and_results?.[0].channel).toBe("desktop.ax");
-    expect(r.actions_and_results?.[1].channel).toBe("desktop.screenshotVlm");
-    // INV-23：fallback 链无 browse_*
+    expect(r.actions_and_results?.[1].channel).toBe("desktop.appleScript");
+    expect(r.actions_and_results?.[2].channel).toBe("desktop.cgEvent");
+    expect(r.actions_and_results?.[3].channel).toBe("desktop.screenshotVlm");
+    // INV-23/29：fallback 链无 browse_*，全 desktop.*
     const channels = r.actions_and_results?.map((a) => a.channel) ?? [];
     expect(channels.every((c) => c.startsWith("desktop."))).toBe(true);
   });
@@ -285,16 +311,24 @@ describe("desktop(action:'act') — INV-18 fallback via FallbackDecider", () => 
       await desktop.act({ actions: [{ kind: "click", ref: "@e1" }] });
     }
     expect(axBreaker.state).toBe("open");
-    // 第 4 次：breaker 已 open → 第一项 error=circuit_open
+    // 第 4 次：v0.4 M0.4b 4-tier 下 ax/appleScript/cgEvent breaker 全部 open
+    //   （每次 ax 失败后 appleScript/cgEvent 也 recordFailure 因「本档不适用」语义返 unknown）
+    //   → screenshotVlm 兜底；INV-23/29：全 desktop.*，链无 browse_*
     const r = await desktop.act({
       actions: [{ kind: "click", ref: "@e1" }],
     });
     expect(r.actions_and_results?.[0].error).toBe("circuit_open");
     expect(r.actions_and_results?.[0].channel).toBe("desktop.ax");
-    // 链继续走到 screenshotVlm（INV-23：同 surface 内）
-    expect(r.actions_and_results?.length).toBe(2);
-    expect(r.actions_and_results?.[1].channel).toBe("desktop.screenshotVlm");
+    // 链继续走到 screenshotVlm（INV-23/29：同 surface 内，全 desktop.*）
+    expect(r.actions_and_results?.length).toBe(4);
+    expect(r.actions_and_results?.[1].channel).toBe("desktop.appleScript");
+    expect(r.actions_and_results?.[1].error).toBe("circuit_open");
+    expect(r.actions_and_results?.[2].channel).toBe("desktop.cgEvent");
+    expect(r.actions_and_results?.[2].error).toBe("circuit_open");
+    expect(r.actions_and_results?.[3].channel).toBe("desktop.screenshotVlm");
     expect(r.fallback_used).toBe(true);
+    const channels = r.actions_and_results?.map((a) => a.channel) ?? [];
+    expect(channels.every((c) => c.startsWith("desktop."))).toBe(true);
   });
 });
 
@@ -364,8 +398,15 @@ describe("desktop(action:'screenshot')", () => {
       endpoint: null,
       vlmCaller: null,
     });
+    // v0.4 M0.4b：补 appleScript / cgEvent provider 占位（screenshot 路径不会调到）
+    const appleScriptProvider = new AppleScriptProvider(
+      rust as unknown as never,
+    );
+    const cgEventProvider = new CGEventProvider(rust as unknown as never);
     const breakers = new Map<string, CircuitBreaker>([
       ["desktop.ax", new CircuitBreaker()],
+      ["desktop.appleScript", new CircuitBreaker()],
+      ["desktop.cgEvent", new CircuitBreaker()],
       ["desktop.screenshotVlm", new CircuitBreaker()],
     ]);
     const decider = new FallbackDecider(breakers);
@@ -373,6 +414,8 @@ describe("desktop(action:'screenshot')", () => {
       rust as unknown as never,
       axProvider,
       vlmProvider,
+      appleScriptProvider,
+      cgEventProvider,
       decider,
       breakers,
     );

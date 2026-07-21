@@ -9,8 +9,12 @@
 use std::io::{self, BufRead, Write};
 
 mod app_bundle_map;
+mod applescript;
+mod applescript_whitelist;
 mod ax;
 mod ax_role_map;
+mod cgevent;
+mod cgevent_keymap;
 mod protocol;
 mod screenshot;
 mod tcc;
@@ -80,6 +84,11 @@ fn dispatch(req: &protocol::Request) -> protocol::Response {
         "ax_act" => ax::act(&req.id, &req.params),
         "screenshot" => screenshot::capture(&req.id, &req.params),
         "list_windows" => windows::list_windows(&req.id, &req.params),
+        // v0.4 M0.4b（parse5 §3.5）：desktop 4-tier fallback 第 2/3 档
+        "applescript_run" => applescript::run(&req.id, &req.params),
+        "cgevent_key" => cgevent::key(&req.id, &req.params),
+        "cgevent_hotkey" => cgevent::hotkey(&req.id, &req.params),
+        "cgevent_dispatch" => cgevent::dispatch(&req.id, &req.params),
         other => protocol::Response::err(
             &req.id,
             "unknown_method",
