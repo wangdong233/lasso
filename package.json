@@ -1,0 +1,46 @@
+{
+  "name": "lasso-mcp",
+  "version": "0.1.0-dev",
+  "description": "Lasso — CC 的全交互对外抓手 MCP（浏览器+桌面）",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "lasso-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "node --test",
+    "check-invariants": "node scripts/check-invariants.js"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "browser",
+    "desktop",
+    "axapi",
+    "agent",
+    "lasso"
+  ],
+  "license": "MIT",
+  "author": "wangdong233",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wangdong233/lasso.git"
+  },
+  "homepage": "https://github.com/wangdong233/lasso#readme",
+  "bugs": {
+    "url": "https://github.com/wangdong233/lasso/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
