@@ -1,181 +1,158 @@
 #!/usr/bin/env node
 /**
- * Lasso — CC 的全交互对外抓手 MCP（浏览器 + 桌面）
+ * Lasso MCP server 入口（parse1 §3.15 + §7.2 Phase D 接线完成）
  *
- * 四通道（08 架构）：
- *   - search           智谱 web-search-prime
- *   - browse_headless  chrome-devtools-mcp --headless --isolated
- *   - browse_logged_in chrome-devtools-mcp --browser-url :9222
- *   - desktop          macOS AXAPI（Rust helper，v0.3.5+）
+ * 启动模式：
+ *  1. `lasso-mcp doctor` —— 运行 runDoctor + 打印 JSON + exit (ready ? 0 : 1)
+ *  2. `lasso-mcp`        —— MCP stdio server（CC 默认模式）
  *
- * 权威架构：../doc/08-media-interact-功能架构.md
- * 排期：    ../doc/09-media-interact-实施排期.md
+ * Phase D 接线：
+ *  - SubprocessManager（spawn chrome-devtools-mcp，zombie reaper）
+ *  - 3 channels：SearchChannel（智谱 streamable-http）/ HeadlessChannel / LoggedInChannel
+ *  - FallbackDecider + 3 CircuitBreaker（per-channel 60s 短熔断）
+ *  - SSRF allowRanges（loadSsrfConfig）
+ *  - 4 tools：search / browse_headless / browse_logged_in / doctor
+ *  - SIGTERM/SIGINT → subproc.shutdown()
  *
- * 当前：v0.1 MVP 骨架（四工具占位 + tri-state outcome 类型 + fallback 链接口）
+ * 架构不变量（INV-1..8）由 src/invariants/check-invariants.mjs 守；
+ * ToolAnnotations 完整（INV-5）由 tools/*.ts 注册时携带。
+ *
+ * 权威：../doc/08-media-interact-功能架构.md
+ * 实施：../doc/parse/parse1.md
  */
-
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { loadConfig } from "./config/config.js";
+import { logger } from "./util/logger.js";
+import { newRunId } from "./util/run-id.js";
+import { setStateStoreContext } from "./util/state-store.js";
+import { SubprocessManager } from "./subprocess/SubprocessManager.js";
+import { SearchChannel } from "./channels/SearchChannel.js";
+import { HeadlessChannel } from "./channels/HeadlessChannel.js";
+import { LoggedInChannel } from "./channels/LoggedInChannel.js";
+import { FallbackDecider } from "./fallback/FallbackDecider.js";
+import { CircuitBreaker } from "./fallback/CircuitBreaker.js";
+import { loadSsrfConfig } from "./ssrf/ssrf-guard.js";
+import { runDoctor } from "./doctor/doctor.js";
+import { registerSearchTool } from "./tools/search.js";
+import { registerBrowseTools } from "./tools/browse.js";
+import { registerDoctorTool } from "./tools/doctor-tool.js";
+import type { BrowseExec } from "./serp/extract.js";
 
 // ============================================================
-// tri-state outcome（08 §2.3，F3.4.11）
+// doctor CLI 模式
 // ============================================================
-/** 动作结果三态。`unknown` 是 fallback 引擎的真正触发器。 */
-type Outcome = "worked" | "didnt" | "unknown";
-
-/**
- * 架构铁律（08 §0 原则 5）：
- *   event delivery alone is never treated as semantic success.
- * 即：act 后必须验证交付（expect 后置条件，F3.2.18），区分 worked/didnt/unknown，
- *     不能只报「事件已派发」就当成功。
- */
-
-interface InteractResult {
-  outcome: Outcome;
-  data: unknown;
-  served_by: string; // 实际服务的 channel
-  fallback_used: boolean;
-  retrieval_method: string;
-  actions_and_results?: unknown[]; // Skyvern 审计链（F3.2.11，v0.3）
-  error: string | null;
+async function runDoctorCli(): Promise<void> {
+  const report = await runDoctor({
+    zhipuKey: process.env.ZHIPU_API_KEY,
+    zhipuEndpoint: process.env.ZHIPU_ENDPOINT,
+    cdpPort: parseInt(process.env.LASSO_CDP_PORT ?? "9222", 10),
+  });
+  process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  process.exit(report.ready ? 0 : 1);
 }
 
 // ============================================================
-// BaseChannel 分层（08 §2.1，13 审查 #2）
+// MCP server 模式
 // ============================================================
-// BaseChannel（通用层）→ UiChannel（observe/act/wait）→ Browse/DesktopChannel
-// SearchChannel 只实现 BaseChannel（不穿 UI 鞋）
-// v0.1 占位：接口定义，实现见 v0.1 §2.1
+async function runMcpServer(): Promise<void> {
+  const runId = newRunId();
+  const config = loadConfig({ runId });
 
-// ============================================================
-// 四通道工具定义（08 §3 + 附录 B 工具描述模板）
-// ============================================================
-const TOOLS = [
-  {
-    name: "search",
-    description:
-      "Default structured web search via Zhipu web-search-prime. Fast, cheap, clean JSON. " +
-      "AUTOMATIC FALLBACK: on rate limit/timeout/5xx/empty, transparently falls back to " +
-      "browse_headless real-search. outcome/fallback_used tells you which path served you. " +
-      "Use for: keyword searches on public content. " +
-      "Prefer browse_logged_in for: sites showing different content to logged-in users. " +
-      "Prefer browse_headless for: scraping a specific known URL. " +
-      "Prefer desktop for: native macOS apps (not browser pages).",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: { type: "string", description: "search query" },
-        limit: { type: "number", default: 10 },
-        engine: { type: "string", default: "zhipu" },
-        region: { type: "string", default: "cn" },
-        no_cache: { type: "boolean", default: false },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "browse_headless",
-    description:
-      "Clean, isolated headless Chromium. No login state. " +
-      "Page state written to ~/.cache/lasso/<run_id>/, only short pointer returned (saves tokens). " +
-      "Use for: public pages / JS-heavy SPAs / SERP fallback / screenshots. " +
-      "Prefer browse_logged_in for: sites requiring auth. " +
-      "SECURITY: URL is SSRF-checked (allowRanges). evaluate_script is documented risk.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        url: { type: "string" },
-        action: { type: "string", default: "snapshot" },
-      },
-      required: ["url"],
-    },
-  },
-  {
-    name: "browse_logged_in",
-    description:
-      "Reuses your already-logged-in local Chrome via CDP port 9222. " +
-      "REQUIREMENTS: Chrome running with --remote-debugging-port=9222 (use `lasso launch-chrome`); " +
-      "you must have completed login (including 2FA) first. " +
-      "DOES NOT: auto-login / solve 2FA (returns NEEDS_MANUAL_2FA) / export cookies. " +
-      "Use for: authenticated sites (GitHub private, Jira, internal tools).",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        url: { type: "string" },
-        action: { type: "string", default: "snapshot" },
-      },
-      required: ["url"],
-    },
-  },
-  {
-    name: "desktop",
-    description:
-      "Controls native macOS apps via Accessibility (AXAPI) — no screenshots by default. " +
-      "Use for: native apps without API/CLI (Finder/Mail/Safari/System Settings). " +
-      "Fallback chain: AX tree → AppleScript → CGEvent → screenshot+VLM. " +
-      "DOES NOT: solve TCC permissions (run `lasso doctor`), control non-macOS (v1.0+). " +
-      "(v0.3.5+ — not in v0.1 MVP)",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        action: { type: "string", default: "snapshot" },
-      },
-    },
-  },
-  // admin 工具（v0.1）
-  {
-    name: "doctor",
-    description:
-      "Returns structured JSON readiness report (search key / headless Chrome / :9222 logged-in / " +
-      "SERP selector / desktop TCC if v0.3.5+). Each item: {ok, reason} + blockers[] + next_step.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-];
+  // 让 state-store 知道 run_id + cache_dir（channel 写盘时用）
+  setStateStoreContext({ runId, cacheDir: config.cacheDir });
 
-// ============================================================
-// MCP server
-// ============================================================
-const server = new Server(
-  { name: "lasso", version: "0.1.0-dev" },
-  { capabilities: { tools: {} } }
-);
+  logger.info({
+    evt: "lasso_start",
+    run_id: runId,
+    version: "0.1.0-dev",
+    zhipu_key_present: !!config.zhipuApiKey,
+    cdp_port: config.cdpPort,
+  });
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
+  // ----- 装配 SubprocessManager + 3 channels -----
+  const subproc = new SubprocessManager();
+  subproc.startZombieReaper();
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name } = request.params;
-  // TODO v0.1 MVP：实现四通道 + tri-state outcome + fallback 链
-  //   - search：调智谱 web-search-prime MCP（F3.1）
-  //   - browse_headless/logged_in：spawn chrome-devtools-mcp 子进程（F3.2/F3.3）
-  //   - fallback 链：isFallbackWorthy + get_fallback_channel（F3.4）
-  //   - tri-state outcome：unknown → 触发 fallback（F3.4.11）
-  //   - SSRF allowRanges（F3.9.5）
-  // 详见 ../doc/08-media-interact-功能架构.md §3 + ../doc/09 §2.1
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Lasso v0.1.0-dev — tool "${name}" not yet implemented. ` +
-          `See doc/08 §3 + doc/09 §2.1 for v0.1 MVP scope.`,
-      },
-    ],
-    isError: false,
+  const search = new SearchChannel(
+    config.zhipuEndpoint,
+    config.zhipuApiKey,
+  );
+  const headless = new HeadlessChannel(subproc);
+  const logged_in = new LoggedInChannel(subproc, config.cdpPort);
+
+  // ----- 装配 FallbackDecider（每 channel 一个 60s 短熔断器）-----
+  const breakers = new Map<string, CircuitBreaker>([
+    ["search.zhipu", new CircuitBreaker()],
+    ["browse_headless", new CircuitBreaker()],
+    ["browse_logged_in", new CircuitBreaker()],
+  ]);
+  const decider = new FallbackDecider(breakers);
+
+  // ----- 装配 SSRF -----
+  const ssrfConfig = loadSsrfConfig();
+
+  // ----- 跨模态 fallback 用的 browse 执行器（serpScrapeFallback 用）-----
+  // 把 HeadlessChannel.browse 的 InteractResult<BrowseResult> 降形为
+  // serp/extract.ts BrowseExec 期望的 { outcome, data: {preview?}, error? }。
+  const browseHeadlessExec: BrowseExec = async (url) => {
+    const r = await headless.browse(url, "snapshot", {});
+    return {
+      outcome: r.outcome,
+      data: r.data ? { preview: r.data.preview } : null,
+      error: r.error,
+    };
   };
-});
 
-async function main() {
+  // ----- MCP server + tool 注册 -----
+  const server = new McpServer({
+    name: "lasso-mcp",
+    version: "0.1.0-dev",
+  });
+
+  registerSearchTool(server, search, decider, browseHeadlessExec);
+  registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
+  registerDoctorTool(server, {
+    zhipuKey: config.zhipuApiKey,
+    zhipuEndpoint: config.zhipuEndpoint,
+    cdpPort: config.cdpPort,
+    cacheDir: config.cacheDir,
+  });
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Lasso MCP server running (stdio) — v0.1.0-dev");
+  logger.info({ evt: "lasso_ready", run_id: runId });
+
+  // ----- 优雅停机：SIGTERM/SIGINT 都先 shutdown 子进程再 exit -----
+  let shuttingDown = false;
+  const shutdown = async (sig: string) => {
+    if (shuttingDown) return; // 防双信号竞态
+    shuttingDown = true;
+    logger.info({ evt: "lasso_shutdown", sig, run_id: runId });
+    try {
+      await subproc.shutdown();
+    } catch (e) {
+      logger.warn({ evt: "shutdown_error", error: String(e) });
+    }
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}
+
+// ============================================================
+// main
+// ============================================================
+async function main(): Promise<void> {
+  // CLI: `lasso doctor`
+  if (process.argv[2] === "doctor") {
+    await runDoctorCli();
+    return;
+  }
+  await runMcpServer();
 }
 
 main().catch((err) => {
-  console.error("Lasso fatal:", err);
+  logger.error({ evt: "lasso_fatal", error: String(err) });
   process.exit(1);
 });
