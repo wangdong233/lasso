@@ -46,6 +46,7 @@ import { HeadlessChannel } from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
 import { AxProvider } from "./desktop/AxProvider.js";
+import { AxBackendFactory } from "./desktop/AxBackendFactory.js";
 import { ScreenshotVlmProvider } from "./desktop/ScreenshotVlmProvider.js";
 import { AppleScriptProvider } from "./desktop/AppleScriptProvider.js";
 import { CGEventProvider } from "./desktop/CGEventProvider.js";
@@ -115,6 +116,10 @@ import { SerpHealthMonitor } from "./serp/SerpHealthMonitor.js";
 // 守 INV-53：IV 每次加密唯一（CookieStore export 内 randomBytes(12)）
 import { ProfileRegistry } from "./logged-in/ProfileRegistry.js";
 import { CookieStore } from "./logged-in/CookieStore.js";
+// v1.0 Phase C/D（parse11 §3.2 + §3.3 + §7.2）：launcher + replay-baseline 子命令
+// INV-64 守：launcher/*.ts 不引新 npm dep（仅 node:* 内置）；index.ts 仅 import 子命令入口
+import { runLaunchChromeCli } from "./launcher/launch-chrome.js";
+import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { promises as fsPromises } from "node:fs";
@@ -146,9 +151,13 @@ const DEFAULT_RUST_HELPER_PATH =
  *   FallbackChain plan 构造器 + wayback_lookup 独立 tool + RecordingStore replay 最后兜底 +
  *   engine="fallback_chain" 显式 opt-in（INV-54..59；engine="auto" 默认 byte-identical v0.8）
  *   → 0.9.0-dev
- * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
+ * v1.0（parse11 §1.1 + §6 验收）：稳定发布 —— desktop 跨平台 AxBackend 契约（mac/Win UIA/Linux AT-SPI
+ *   三平台同构 OutlineNode）+ 录制回放回归（replay-baseline）+ 跨平台 launcher（launch-chrome）+
+ *   doctor #31/#32 + 文档完整化（README/ARCHITECTURE/TROUBLESHOOTING/SELECTOR-MAINTENANCE）+
+ *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
+ * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "0.9.0-dev";
+const LASSO_SERVER_VERSION = "1.0.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -300,7 +309,9 @@ async function runMcpServer(): Promise<void> {
   //   1. subproc.registerRustSpec("rust-helper", {...})  ← spawn 规格
   //   2. new RustBridge(subproc, "rust-helper")          ← JSON-lines 协议适配
   //   3. 4 档 provider（parse5 §3.5.4）：
-  //        new AxProvider(rust)              ← 第 1 档 ax
+  //        new AxProvider(AxBackendFactory.create(rust))  ← 第 1 档 ax
+  //          v1.0（parse11 §3.1 + §7.2 Phase A）：backend 经 factory 路由
+  //          三平台同形：mac→MacAxBackend / win→WinUiaBackend / linux→LinuxAtspiBackend
   //        new AppleScriptProvider(rust)     ← 第 2 档 appleScript（v0.4 M0.4b）
   //        new CGEventProvider(rust)         ← 第 3 档 cgEvent（v0.4 M0.4b）
   //        new ScreenshotVlmProvider(rust)   ← 第 4 档 screenshotVlm
@@ -308,6 +319,7 @@ async function runMcpServer(): Promise<void> {
   //
   // INV-7：RustBridge 持协议帧解析；SubprocessManager 仍纯 lifecycle（既有 MCP 路径不动）。
   // INV-23/29：breakers 加 4 档 desktop.*；永不挂 browse_*。
+  // INV-60（v1.0）：AxBackendFactory 是 backend 路由单一真源；AxProvider 不直构 backend。
   const rustHelperPath =
     process.env.LASSO_RUST_HELPER_PATH ?? DEFAULT_RUST_HELPER_PATH;
   subproc.registerRustSpec("rust-helper", {
@@ -315,7 +327,10 @@ async function runMcpServer(): Promise<void> {
     args: [],
   });
   const rustBridge = new RustBridge(subproc, "rust-helper");
-  const axProvider = new AxProvider(rustBridge);
+  // v1.0：AxProvider 经 AxBackendFactory 路由到当前平台 backend（parse11 §3.1）。
+  // macOS 本机 → MacAxBackend；Win/Linux 编译可证 + 真机执行留手测清单（parse11 §1.3）。
+  const axBackend = AxBackendFactory.create(rustBridge);
+  const axProvider = new AxProvider(axBackend);
   const appleScriptProvider = new AppleScriptProvider(rustBridge);
   const cgEventProvider = new CGEventProvider(rustBridge);
   const vlmProvider = new ScreenshotVlmProvider(rustBridge, {});
@@ -497,6 +512,10 @@ async function runMcpServer(): Promise<void> {
     desktopChecks: true,
     desktopBridge: rustBridge,
     desktopHelperPath: rustHelperPath,
+    // v1.0 Phase C（parse11 §3.2 + §3.4 + INV-62）：doctor #32 recording_baseline_count
+    // 扫 fixtures/serp-baseline/（与 replay-baseline.ts 默认对齐）。
+    // 守 INV-62：此处只传目录路径；doctor 仅 readdir + count，不读 .html 内容。
+    recordingBaselineDir: path.join(process.cwd(), "fixtures", "serp-baseline"),
   };
   registerDoctorTool(server, doctorOpts);
 
@@ -891,6 +910,18 @@ async function main(): Promise<void> {
   // CLI: `lasso doctor`
   if (process.argv[2] === "doctor") {
     await runDoctorCli();
+    return;
+  }
+  // v1.0 Phase D（parse11 §3.3 + §7.2）：`lasso launch-chrome [--port N] [--profile <dir>]`
+  // 跨平台 Chrome launcher 子命令。runLaunchChromeCli 默认读 process.argv.slice(3)。
+  if (process.argv[2] === "launch-chrome") {
+    await runLaunchChromeCli();
+    return;
+  }
+  // v1.0 Phase C（parse11 §3.2 + §7.2）：`lasso replay-baseline [--strict]`
+  // 录制回放回归 runner 子命令（CI 用 + 用户本地跑）。runReplayBaselineCli 默认读 slice(3)。
+  if (process.argv[2] === "replay-baseline") {
+    await runReplayBaselineCli();
     return;
   }
   await runMcpServer();

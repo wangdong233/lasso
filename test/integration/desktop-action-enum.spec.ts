@@ -22,6 +22,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { DesktopChannel } from "../../src/channels/DesktopChannel.js";
 import { AxProvider } from "../../src/desktop/AxProvider.js";
+import { MacAxBackend } from "../../src/desktop/AxBackend.js";
 import { ScreenshotVlmProvider } from "../../src/desktop/ScreenshotVlmProvider.js";
 import { AppleScriptProvider } from "../../src/desktop/AppleScriptProvider.js";
 import { CGEventProvider } from "../../src/desktop/CGEventProvider.js";
@@ -95,7 +96,11 @@ function assembleDesktop(
   breakers: Map<string, CircuitBreaker>;
 } {
   const rust = new MockRustBridge(scripts);
-  const axProvider = new AxProvider(rust as unknown as never);
+  // v1.0（parse11 §3.1 + §7.2 Phase A）：AxProvider 经 AxBackend 注入；
+  //   测试 mock 走 macOS path（MacAxBackend），scripts 仍按 "ax_*" method 注册。
+  const axProvider = new AxProvider(
+    new MacAxBackend(rust as unknown as never),
+  );
   const vlmProvider = new ScreenshotVlmProvider(rust as unknown as never, {
     endpoint: null, // 不配 VLM；screenshot fallback 走 didnt 路径
     vlmCaller: null,
@@ -170,7 +175,9 @@ describe("desktop(action:'snapshot')", () => {
     rust.setScript("ax_snapshot", () => {
       throw new Error("tcc_denied");
     });
-    const axProvider = new AxProvider(rust as unknown as never);
+    const axProvider = new AxProvider(
+      new MacAxBackend(rust as unknown as never),
+    );
     const vlmProvider = new ScreenshotVlmProvider(rust as unknown as never, {
       endpoint: null,
       vlmCaller: null,
@@ -393,7 +400,9 @@ describe("desktop(action:'screenshot')", () => {
     rust.setScript("screenshot", () => {
       throw new Error("tcc_screen_recording_denied");
     });
-    const axProvider = new AxProvider(rust as unknown as never);
+    const axProvider = new AxProvider(
+      new MacAxBackend(rust as unknown as never),
+    );
     const vlmProvider = new ScreenshotVlmProvider(rust as unknown as never, {
       endpoint: null,
       vlmCaller: null,

@@ -36,6 +36,10 @@
  *  26. cdp_mcp_pdf_tool_available  — v0.5 M0.5b：cdp-actions CDP_UPSTREAM_TOOL_NAMES.pdf 加载（Go/No-Go F1）
  *  27. cdp_mcp_network_observer_available — v0.5 M0.5c：cdp-actions CDP_UPSTREAM_TOOL_NAMES.network_log +
  *                                    doNetwork 加载（Go/No-Go F2；PerformanceObserver 注入路径健在）
+ *  31. platform_backend_active          — v1.0 Phase D：AxBackendFactory.detectKind() 返 mac/win_uia/linux_atspi
+ *                                    之一 + 工厂可装配（parse11 §3.4 + INV-60）
+ *  32. recording_baseline_count         — v1.0 Phase C：fixtures/serp-baseline/ 录制数（≥10 pass；
+ *                                    0 warn；中间 pass with detail；parse11 §3.2 + INV-62）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -97,12 +101,16 @@ import {
 // parse6 §4.4 + §7.1 F1：doctor 探测 chrome-devtools-mcp 是否暴露 `pdf` 工具；不暴露时
 //                          pdf tool 返 outcome=didnt + retrieval_method=upstream_unsupported:pdf
 import { CDP_UPSTREAM_TOOL_NAMES } from "../browse/cdp-actions.js";
+// v1.0 Phase C/D（parse11 §3.2 + §3.4 + §7.2）：跨平台 AxBackendFactory + 录制回放基线
+// 守 INV-60：AxBackendFactory 单一真源（不在 doctor 内 new 任一 backend class）
+// 守 INV-62：录制基线 fixture 只读 fs，永不读 logged_in cookie 场景
+import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.9.0-dev";
+export const LASSO_VERSION = "1.0.0";
 
 // ============================================================
 // 类型
@@ -358,6 +366,17 @@ export interface DoctorOptions {
       sha256?: string;
     } | null;
   }>>;
+  /**
+   * v1.0 Phase C 新增（parse11 §3.2 + §3.4 + INV-62）：录制基线 fixture 目录覆盖。
+   *
+   * 默认 <cwd>/fixtures/serp-baseline（与 replay-baseline.ts 默认对齐）。
+   * doctor #32 recording_baseline_count 扫此目录数 *.html 文件。
+   *
+   * 守 INV-62：本字段**只读 fs** 扫 .html 文件名 + count，**永不读 .html 内容**
+   *            （避免误读 fixture 中的脱敏 query）； INV-62 grep 守 doctor.ts
+   *            无 logged_in / cookie / session 字面量。
+   */
+  recordingBaselineDir?: string;
 }
 
 // ============================================================
@@ -569,6 +588,18 @@ export async function runDoctor(
       },
     );
   }
+
+  // ---- v1.0 Phase C/D（parse11 §3.2 + §3.4 + §7.2）----
+  // #31 platform_backend_active：AxBackendFactory.detectKind() 返 mac/win_uia/linux_atspi 之一
+  //                              + 工厂可装配（INV-60 单一真源落地）
+  // #32 recording_baseline_count：fixtures/serp-baseline/ 录制数（≥10 pass；0 warn；中间 pass with detail）
+  //                              守 INV-62：仅 count .html 文件，不读内容
+  // 复用既有 runDoctor（不开第二套 section；INV-47 范式）
+  // 默认跑（无 skipNetwork 等开关；纯 TS 烟雾测试 + fs 扫，零阻塞 ready）
+  checks.push(checkPlatformBackendActive());
+  checks.push(
+    await checkRecordingBaselineCount(opts.recordingBaselineDir),
+  );
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -1769,5 +1800,141 @@ function checkEncryptedPackageStatOnly(
     detail: `current profile "${current.name}" 加密包存在：bytes=${pkg.bytes}, sha256(prefix)=${shaPrefix}..., mtime=${new Date(pkg.mtimeMs ?? 0).toISOString()}`,
     next_step:
       "doctor 永不解密加密包（INV-51 红线）；要恢复登录态调 admin({action:'cookie_restore', op:'import'})",
+  };
+}
+
+// ============================================================
+// v1.0 Phase C/D 新增（parse11 §3.2 + §3.4 + §7.2 —— #31 platform_backend_active + #32 recording_baseline_count）
+// ============================================================
+
+/**
+ * 31. platform_backend_active（v1.0 §3.4，F3.10.9 跨平台 desktop；INV-60 单一真源）。
+ *
+ * 烟雾测试 AxBackendFactory.detectKind() 在当前平台返 mac/win_uia/linux_atspi 之一；
+ * 不调 factory.create()（避免启 RustBridge；doctor CLI 不该 spawn 子进程）。
+ *
+ * 设计（守 INV-60 + parse11 §1.3 macOS-only 红线）：
+ *  - macOS 本机 → 返 "mac"（pass；可证）
+ *  - Windows / Linux → 返 "win_uia" / "linux_atspi"（pass；编译可证 + 真机手测 pending）
+ *  - 其他 / 抛错 → fail（unsupported_platform；架构问题）
+ *
+ * INV-60 守：本 check 只调 detectKind()（type-only），不 new 任一 backend class。
+ * INV-21 守：本 check 不出现平台 API 字面量（平台路由在 AxBackendFactory 内）。
+ */
+function checkPlatformBackendActive(): DoctorCheck {
+  try {
+    const kind = AxBackendFactory.detectKind();
+    const raw = process.platform;
+    // 三平台 kind 之一才算 pass（detectKind 已抛 unsupported_platform 兜底；这里只 sanity check）
+    const validKinds = ["mac", "win_uia", "linux_atspi"];
+    if (!validKinds.includes(kind)) {
+      return {
+        name: "platform_backend_active",
+        status: "fail",
+        detail: `detectKind() 返非法值 "${kind}"（期望 mac/win_uia/linux_atspi 之一）`,
+        next_step: "检查 src/desktop/AxBackendFactory.ts + platform-detect.ts 路由逻辑",
+      };
+    }
+    return {
+      name: "platform_backend_active",
+      status: "pass",
+      detail: `platform=${raw}; backend=${kind}; AxBackendFactory 单一真源已落地（INV-60）`,
+      next_step:
+        raw === "darwin"
+          ? undefined
+          : `本机 ${raw} 路径编译可证；真机 UIA/AT-SPI 执行留 parse11-acceptance.md 手测清单（pending）`,
+    };
+  } catch (e) {
+    return {
+      name: "platform_backend_active",
+      status: "fail",
+      detail: String(e),
+      next_step: `当前 platform ${process.platform} 不支持；Lasso v1.0 支持 darwin/win32/linux`,
+    };
+  }
+}
+
+/**
+ * 32. recording_baseline_count（v1.0 §3.2，F3.8.14 录制回放回归；INV-62 红线）。
+ *
+ * 扫 fixtures/serp-baseline/ 目录数 *.html 文件（不读内容，仅 count）。
+ *
+ * 设计（parse11 §3.4 + 守 INV-62）：
+ *  - ≥10 → pass（基线充足，replay-baseline runner 有足够样本）
+ *  - 0   → warn（无基线，replay-baseline 会 skip；不阻塞 ready）
+ *  - 1-9 → pass with detail（首次基线未完；不 fail）
+ *
+ * INV-62 守：本 check 只 readdir + 数 .html 扩展名，**永不读 .html 内容**
+ *            （避免误读 fixture 中的脱敏 query；INV-62 grep 红线：doctor.ts 无
+ *             logged_in / cookie / session 字面量；fixture 内容由 replay-baseline.ts 读）。
+ *
+ * 默认 fixturesDir = <cwd>/fixtures/serp-baseline（与 replay-baseline.ts 默认对齐）。
+ * caller 可注入 recordingBaselineDir 覆盖（doctor tool 模式由 index.ts 装配）。
+ */
+async function checkRecordingBaselineCount(
+  fixturesDirOverride?: string,
+): Promise<DoctorCheck> {
+  const fixturesDir =
+    fixturesDirOverride ??
+    path.join(process.cwd(), "fixtures", "serp-baseline");
+
+  let totalHtml = 0;
+  const perEngine: Record<string, number> = {};
+  try {
+    const engineDirs = await fs.readdir(fixturesDir, { withFileTypes: true });
+    for (const engineDir of engineDirs) {
+      if (!engineDir.isDirectory()) continue;
+      let files: string[];
+      try {
+        files = await fs.readdir(path.join(fixturesDir, engineDir.name));
+      } catch {
+        continue;
+      }
+      const htmlCount = files.filter((f) => f.endsWith(".html")).length;
+      if (htmlCount > 0) {
+        perEngine[engineDir.name] = htmlCount;
+        totalHtml += htmlCount;
+      }
+    }
+  } catch {
+    // fixturesDir 不存在 / 不可读 → 0 条基线（warn，不 fail）
+    return {
+      name: "recording_baseline_count",
+      status: "warn",
+      detail: `fixtures 目录不存在或不可读: ${fixturesDir}（replay-baseline runner 将 skip）`,
+      next_step:
+        "调 LASSO_RECORD_SEARCH=true 录制首批 fixture；签入仓库后此项升 pass（parse11 §3.2）",
+    };
+  }
+
+  // 分级（parse11 §3.4）
+  if (totalHtml === 0) {
+    return {
+      name: "recording_baseline_count",
+      status: "warn",
+      detail: `0 条 fixture（${fixturesDir}；replay-baseline runner 将 skip）`,
+      next_step:
+        "调 LASSO_RECORD_SEARCH=true 录制首批 fixture；签入仓库后此项升 pass",
+    };
+  }
+
+  // perEngine detail（如 "baidu=2 google=2 bing=2"）
+  const engineBreakdown = Object.entries(perEngine)
+    .map(([e, n]) => `${e}=${n}`)
+    .join(" ");
+
+  if (totalHtml >= 10) {
+    return {
+      name: "recording_baseline_count",
+      status: "pass",
+      detail: `${totalHtml} 条 fixture（${engineBreakdown}；replay-baseline runner 有充足样本）`,
+    };
+  }
+  // 1-9 条 → pass with detail（首次基线未完；不 fail；守 parse11 §3.4 "中间 → pass"）
+  return {
+    name: "recording_baseline_count",
+    status: "pass",
+    detail: `${totalHtml} 条 fixture（${engineBreakdown}；建议补到 ≥10 条覆盖更多 selector 改版场景）`,
+    next_step: `当前 ${totalHtml}/10 条；可调 LASSO_RECORD_SEARCH=true 加录（INV-62：禁录 logged_in cookie 场景）`,
   };
 }

@@ -1,0 +1,8 @@
+{
+  "engine": "bing",
+  "query": "axios undici fetch nodejs performance",
+  "recorded_at": "2026-07-22T00:00:00.000Z",
+  "expected_count": 5,
+  "note": "v1.0 Phase C 首次基线 fixture（parse11 §3.2 INV-62：禁 logged_in cookie 场景；bing engine 也用相同 SERP 兜底抽取路径）",
+  "source_channel": "browse_headless"
+}

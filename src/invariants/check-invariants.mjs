@@ -10,6 +10,12 @@
  *                     + parse6 §1.5 v0.5 M0.5b 加 INV-33/34 pdf/console/network actionDispatch + 二进制 envelope）
  *                     + parse9 §2.2 v0.8 加 INV-48..53 cookie AES-256-GCM 隐私红线）
  *                     + parse10 §1 v0.9 Phase A 加 INV-54..59 search 兜底层增量 + Bing 第三源 + wayback 独立 tool）
+ *                     + parse11 §3.1 + §7.2 Phase A v1.0 加 INV-60 AxBackendFactory 单一真源（跨平台 desktop）
+ *                     + parse11 §3.1 + §7.2 Phase B v1.0 加 INV-61 OutlineMapper 三平台共享（INV-21 衍生）
+ *                     + parse11 §3.2 + §3.3 + §7.2 Phase C/D v1.0 加 INV-62 录制源禁 logged_in（cookie=身份红线）
+ *                     + parse11 §3.4 + §7.2 Phase D v1.0 加 INV-63 version 真源单一化（package.json + index.ts + doctor.ts 三处一致）
+ *                     + parse11 §3.3 + §7.2 Phase D v1.0 加 INV-64 launcher 不引新 npm dep（launcher/*.ts 只 node:* 内置）
+ *                     + parse11 §3.3 + §3.4 + §7.2 Phase E v1.0 加 INV-65 README/ARCHITECTURE 必引用 08/09（文档完整化）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -81,6 +87,10 @@
  *  INV-32 fetch_url 必经 SubprocessManager.acquireHttpClient（禁 new Agent / 禁裸 fetch）—— v0.5 M0.5a
  *  INV-33 pdf/console/network 三 action 必以 entry 形式在 BrowseChannel.actionDispatch Map（INV-6 衍生：禁第二 dispatch）—— v0.5 M0.5b/M0.5c
  *  INV-34 screenshot/pdf/network 独立 tool handler 返回路径必经 applyOutputEnvelope 或经 BrowseChannel.browse 入口（INV-15 衍生到二进制内容）—— v0.5 M0.5b/M0.5c
+ *  INV-62 录制源禁 logged_in（replay-baseline.ts + RecordingStore 不录 logged_in cookie 场景；INV-51 同源；08 §5.1 cookie=身份）—— v1.0 Phase C
+ *  INV-63 version 真源单一化（package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致）—— v1.0 Phase D
+ *  INV-64 launcher 不引新 npm dep（launcher/*.ts 只 import node:* 内置；child_process/path/fs/process/url）—— v1.0 Phase D
+ *  INV-65 README/ARCHITECTURE 必引用 doc/08 + doc/09（用户手册与架构概览链向深度文档；文档完整化）—— v1.0 Phase E
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -2154,6 +2164,546 @@ const assertions = [
         // 禁 `await xxx.saveIfRecording(`
         if (/await\s+\w*\.saveIfRecording\s*\(/.test(searchCode)) return false;
       }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase A（parse11 §3.1 + §7.2 Phase A）
+  // ============================================================
+  {
+    id: "INV-60-axbackend-factory-single-source",
+    desc:
+      "v1.0 Phase A：AxBackendFactory 是三平台 backend 注册的单一真源" +
+      "（parse11 §3.1 + §7.2 Phase A；INV-21 衍生）：" +
+      "（a）class AxBackendFactory 定义只在 desktop/AxBackendFactory.ts；" +
+      "（b）AxBackendKind type 定义只在 desktop/AxBackend.ts；" +
+      "（c）src/ 下 `new MacAxBackend|WinUiaBackend|LinuxAtspiBackend` 只在 AxBackendFactory.ts；" +
+      "（d）AxProvider.ts 不直接 new 任一 backend class（必经 factory）",
+    check: () => {
+      // ----- (a) AxBackendFactory class 定义只在 AxBackendFactory.ts -----
+      const factoryOffenders = SRC.filter(
+        (s) =>
+          !/desktop\/AxBackendFactory\.ts$/.test(s.f.replace(/\\/g, "/")) &&
+          /class\s+AxBackendFactory\b/.test(s.text),
+      );
+      if (factoryOffenders.length > 0) return false;
+
+      // ----- (b) AxBackendKind type 定义只在 AxBackend.ts -----
+      const kindOffenders = SRC.filter(
+        (s) =>
+          !/desktop\/AxBackend\.ts$/.test(s.f.replace(/\\/g, "/")) &&
+          /type\s+AxBackendKind\b/.test(s.text),
+      );
+      if (kindOffenders.length > 0) return false;
+
+      // ----- (c) src/ 下 `new MacAxBackend|WinUiaBackend|LinuxAtspiBackend` 只在 AxBackendFactory.ts -----
+      //   注：单测（test/）允许 mock 直构 backend，但 src/ 生产代码不行。
+      //   去 stripComments 后扫代码本体（INV-21 同语义）。
+      const newBackendRe =
+        /\bnew\s+(?:MacAxBackend|WinUiaBackend|LinuxAtspiBackend)\b/;
+      const newOffenders = SRC.filter(
+        (s) =>
+          !/desktop\/AxBackendFactory\.ts$/.test(s.f.replace(/\\/g, "/")) &&
+          newBackendRe.test(stripComments(s.text)),
+      );
+      if (newOffenders.length > 0) return false;
+
+      // ----- (d) AxProvider.ts 不直接 new 任一 backend class -----
+      const provider = SRC.find((s) =>
+        /desktop\/AxProvider\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!provider) return false; // AxProvider.ts 必须存在（v0.3.5+）
+      if (newBackendRe.test(stripComments(provider.text))) return false;
+
+      // ----- 必要条件：AxBackendFactory.ts 必须存在（INV-60 红线：单一真源落地）-----
+      const factory = SRC.find((s) =>
+        /desktop\/AxBackendFactory\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!factory) return false;
+
+      // ----- 必要条件：AxBackendFactory.ts 必须 export class AxBackendFactory + static create / detectKind -----
+      const fcode = stripComments(factory.text);
+      if (!/export\s+class\s+AxBackendFactory\b/.test(fcode)) return false;
+      if (!/static\s+create\b/.test(fcode)) return false;
+      if (!/static\s+detectKind\b/.test(fcode)) return false;
+
+      // ----- 必要条件：AxProvider.ts 必须 constructor(private readonly backend: AxBackend) -----
+      //   v1.0 构造契约：接 AxBackend（不再直接接 RustBridge）。
+      //   注：v0.3.5 是 constructor(private readonly rust: RustBridge)；v1.0 改后必须经 backend。
+      if (
+        !/constructor\s*\(\s*(?:private\s+readonly\s+)?backend\s*:\s*AxBackend\b/.test(
+          provider.text,
+        )
+      ) {
+        return false;
+      }
+
+      // ----- 必要条件：AxProvider.ts 调 backend.snapshot/find/act（不直调 rust.call）-----
+      //   v0.3.5 是 this.rust.call("ax_snapshot"|"ax_find"|"ax_act")；
+      //   v1.0 是 this.backend.snapshot(...) / .find(...) / .act(...)。
+      //   守 INV-60：AxProvider 业务调用必经 backend interface（不绕过）。
+      const providerCode = stripComments(provider.text);
+      if (!/this\.backend\.snapshot\s*\(/.test(providerCode)) {
+        return false;
+      }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase B（parse11 §3.1 + §7.2 Phase B；INV-60 衍生）
+  // ============================================================
+  {
+    id: "INV-61-outlinemapper-three-platform-shared",
+    desc:
+      "v1.0 Phase B：OutlineMapper 三平台共享（parse11 §3.1 + §7.2 Phase B；INV-21 衍生）：" +
+      "（a）OutlineMapper.ts 体内无平台分支（无 process.platform / 无 os.platform 调用，" +
+      "无 'darwin' / 'win32' / 'linux' 平台字面量；守 OutlineNode 契约单一 mapper）；" +
+      "（b）OutlineMapper.ts 不 import 任何 backend class（MacAxBackend / WinUiaBackend / " +
+      "LinuxAtspiBackend）—— mapper 是纯数据变换，不应感知 backend 实现选择；" +
+      "（c）三个 backend class 都经同 rust.call 返 RustResponse → 同 AxNode 形状" +
+      "（grep AxBackend.ts 三个 class 的 method 体内都调 this.rust.call），" +
+      "OutlineMapper 输入端形状一致 → 输出端 OutlineNode 三平台同构。",
+    check: () => {
+      // ----- (a) OutlineMapper.ts 体内无平台分支 + 无平台字面量 -----
+      const mapper = SRC.find((s) =>
+        /desktop\/OutlineMapper\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!mapper) return false; // OutlineMapper.ts 必须存在（v0.3.5+）
+      const mapperCode = stripComments(mapper.text);
+
+      // 禁 process.platform / os.platform() 调用（platform 分支的标志）
+      if (/\bprocess\.platform\b/.test(mapperCode)) return false;
+      if (/\bos\.platform\s*\(\s*\)/.test(mapperCode)) return false;
+
+      // 禁平台字面量（守 INV-21 同语义：TS 端不感知具体平台）
+      //   允许在注释里出现（已 stripComments）；只扫代码本体。
+      //   字面量集合：'darwin' / 'win32' / 'linux' / 'macos' / 'windows' / 'mac'
+      //   （作为字符串字面量出现即视为违规 —— mapper 不该有平台概念）
+      //   例外：允许 "AXButton" / "AXImage" 等 macOS AXRole 字符串（那是 unified role
+      //   mapping 的入参；mapper 仍不直接 import 平台 API）。但 INV-21 已守这些不进
+      //   TS 层；这里只断言 platform 分支字面量。
+      const PLATFORM_LITERAL_RE =
+        /["'](darwin|win32|linux|macos|windows)["']/;
+      if (PLATFORM_LITERAL_RE.test(mapperCode)) return false;
+
+      // ----- (b) OutlineMapper.ts 不 import 任何 backend class -----
+      //   守：mapper 是纯数据变换，不感知 backend 实现选择。
+      if (
+        /from\s+["'][^"']*AxBackend(\.js)?["']/.test(mapperCode) &&
+        // 允许 import type { AxNode }（那是类型导入，不是 backend class）
+        // 违规：import { MacAxBackend / WinUiaBackend / LinuxAtspiBackend }
+        /\b(?:MacAxBackend|WinUiaBackend|LinuxAtspiBackend)\b/.test(mapperCode)
+      ) {
+        return false;
+      }
+      // 显式扫：mapper 体内不出现三 backend class 名字
+      if (/\b(?:MacAxBackend|WinUiaBackend|LinuxAtspiBackend)\b/.test(mapperCode)) {
+        return false;
+      }
+
+      // ----- (c) 三个 backend class 都经同 rust.call 返 RustResponse -----
+      //   AxBackend.ts 内三个 class 的 method 体内都调 this.rust.call(...)
+      //   → 同 RustResponse 形状 → OutlineMapper 输入端三平台一致。
+      const axBackend = SRC.find((s) =>
+        /desktop\/AxBackend\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!axBackend) return false;
+      const abCode = stripComments(axBackend.text);
+
+      // 三 class 必须都定义（INV-60 衍生）
+      if (!/class\s+MacAxBackend\b/.test(abCode)) return false;
+      if (!/class\s+WinUiaBackend\b/.test(abCode)) return false;
+      if (!/class\s+LinuxAtspiBackend\b/.test(abCode)) return false;
+
+      // 三个 class 都必须 implements AxBackend（守接口同构）
+      const macClassMatch = abCode.match(
+        /class\s+MacAxBackend\s+implements\s+AxBackend\b/,
+      );
+      const winClassMatch = abCode.match(
+        /class\s+WinUiaBackend\s+implements\s+AxBackend\b/,
+      );
+      const linuxClassMatch = abCode.match(
+        /class\s+LinuxAtspiBackend\s+implements\s+AxBackend\b/,
+      );
+      if (!macClassMatch || !winClassMatch || !linuxClassMatch) return false;
+
+      // 提取每个 class 的 body，验证体内都调 this.rust.call(...)
+      //   守：三平台 backend 都是薄壳 → 同 RustResponse 形状 → OutlineMapper 同构
+      const classBodyRe = (className) =>
+        new RegExp(
+          `class\\s+${className}\\b[\\s\\S]*?\\{([\\s\\S]*?)\\n\\}\\s*\\n*(?://|export|$)`,
+        );
+      const macBody = abCode.match(classBodyRe("MacAxBackend"))?.[1] ?? "";
+      const winBody = abCode.match(classBodyRe("WinUiaBackend"))?.[1] ?? "";
+      const linuxBody = abCode.match(classBodyRe("LinuxAtspiBackend"))?.[1] ?? "";
+      if (!macBody || !winBody || !linuxBody) return false;
+
+      // 每个 class body 都必须有 `this.rust.call` 调用（薄壳契约）
+      if (!/this\.rust\.call\s*\(/.test(macBody)) return false;
+      if (!/this\.rust\.call\s*\(/.test(winBody)) return false;
+      if (!/this\.rust\.call\s*\(/.test(linuxBody)) return false;
+
+      // method 名前缀守（INV-60 衍生 + parse11 §3.1）：
+      //   MacAxBackend 调 ax_* / WinUiaBackend 调 uia_* / LinuxAtspiBackend 调 atspi_*
+      //   （method 名前缀错位会让 Rust dispatch 路由错误 → OutlineMapper 收到非预期 backend 响应）
+      if (!/this\.rust\.call\s*\(\s*["']ax_snapshot["']/.test(macBody)) return false;
+      if (!/this\.rust\.call\s*\(\s*["']uia_snapshot["']/.test(winBody)) return false;
+      if (!/this\.rust\.call\s*\(\s*["']atspi_snapshot["']/.test(linuxBody)) return false;
+
+      // ----- (d) AxNode / OutlineNode 类型三平台同构 -----
+      //   desktop-types.ts 里 AxNode + OutlineNode 类型定义无平台分支
+      //   （这是 OutlineMapper 的输入输出契约；守 INV-19 同形异源不变量）
+      const typesFile = SRC.find((s) =>
+        /desktop\/desktop-types\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!typesFile) return false;
+      const typesCode = stripComments(typesFile.text);
+      // 守：desktop-types.ts 也不出现平台字面量（INV-21 衍生）
+      if (PLATFORM_LITERAL_RE.test(typesCode)) return false;
+      // AxNode / OutlineNode 类型必须存在（INV-19 + INV-61 共享契约）
+      if (!/export\s+(?:interface|type)\s+AxNode\b/.test(typesCode)) return false;
+      if (!/export\s+(?:interface|type)\s+OutlineNode\b/.test(typesCode)) return false;
+
+      // ----- (e) Rust 端 ax_role_map.rs 三平台合并表存在 -----
+      //   守：三平台 role 经单一 map_ax_role 函数统一映射（parse11 §3.1 INV-61 核心）。
+      //   本检查是 TS 层 invariant；Rust 端表内容由 cargo test 守（ax_role_map.rs
+      //   三平台同槽位断言）。TS 层只验 AxNode 形状一致 + mapper 无分支。
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase C（parse11 §3.2 + §7.2 Phase C；INV-51 同源 cookie=身份红线）
+  // ============================================================
+  {
+    id: "INV-62-replay-baseline-no-logged-in-source",
+    desc:
+      "v1.0 Phase C：录制回放基线源禁 logged_in cookie/session 场景" +
+      "（parse11 §3.2 + §1.3 + 08 §5.1 cookie=身份；INV-51 同源）：" +
+      "（a）src/serp/replay-baseline.ts 体内禁出现 logged_in / cookie / session / BROWSERBASE_API_KEY 字面量" +
+      "（注释允许；只扫代码本体，经 stripComments）；" +
+      "（b）fixtures/serp-baseline/ 下所有 *.json sidecar 的 source_channel 字段禁为 logged_in" +
+      "（必须为 search / browse_headless / undefined；本规则是 INV-51 在 CI 基线层的衍生）；" +
+      "（c）replay-baseline.ts 不 import 任一 logged-in/ / channels/LoggedInChannel" +
+      "（基线层不接触 logged_in 通道的代码；纯 search + browse_headless 兜底抽链路径）",
+    check: () => {
+      // ----- (a) replay-baseline.ts 代码本体禁 logged_in / cookie / session 字面量 -----
+      const replayFile = SRC.find((s) =>
+        /serp\/replay-baseline\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!replayFile) return false; // replay-baseline.ts 必须存在（INV-62 红线落地）
+      const replayCode = stripComments(replayFile.text);
+      // 禁 logged_in / LoggedIn 通道字面量（record-baseline 通道选择）
+      if (/\blogged_in\b|\bLoggedIn\b/.test(replayCode)) return false;
+      // 禁 cookie / Cookie 字面量（record-baseline 不读 cookie）
+      if (/\bcookie\b|\bCookie\b/.test(replayCode)) return false;
+      // 禁 session / Session 字面量（防录 URL session 参数）
+      if (/\bsession\b|\bSession\b/.test(replayCode)) return false;
+      // 禁 BROWSERBASE_API_KEY 字面量（cloud 浏览器不进基线）
+      if (/BROWSERBASE_API_KEY/.test(replayCode)) return false;
+
+      // ----- (a2) replay-baseline.ts 不引 second- Extractor（守 R-CI-02）-----
+      //   必须复用 serp/extract.ts 的 extractResultsFromSnapshot
+      //   （守 parse11 §3.2 「不重写 RecordingStore」衍生：不重写 extractor）
+      //   允许两种 import 路径：
+      //     - 相对路径 "./extract.js" / "../serp/extract.js"（replay-baseline.ts 在 src/serp/）
+      //     - 绝对路径 "serp/extract.js"（如 caller 在 src/ 其他子目录）
+      const extractImportRe = /from\s+["'](?:\.\/|\.\.\/[^"']*\/)?extract(\.js)?["']/;
+      if (!extractImportRe.test(replayCode)) {
+        return false;
+      }
+      if (!/\bextractResultsFromSnapshot\b/.test(replayCode)) return false;
+
+      // ----- (b) fixtures/serp-baseline/*.json sidecar source_channel 禁 logged_in -----
+      //   扫所有 .json sidecar，验证 source_channel 字段不为 "logged_in"
+      //   （未声明 source_channel = 合规；声明但非 logged_in = 合规；声明 logged_in = 违规）
+      const fixturesRoot = fileURLToPath(
+        new URL("../../fixtures/serp-baseline/", import.meta.url),
+      );
+      let fixtureEntries = [];
+      try {
+        fixtureEntries = readdirSync(fixturesRoot, { recursive: true });
+      } catch {
+        // fixtures 目录不存在 → 零基线（不算违规；doctor #32 会 warn）
+        fixtureEntries = [];
+      }
+      for (const p of fixtureEntries) {
+        const ps = String(p).replace(/\\/g, "/");
+        if (!ps.endsWith(".json")) continue;
+        let body = "";
+        try {
+          body = readFileSync(join(fixturesRoot, ps), "utf8");
+        } catch {
+          continue;
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          continue;
+        }
+        const sc = parsed && parsed.source_channel;
+        if (typeof sc === "string" && sc.toLowerCase() === "logged_in") {
+          return false;
+        }
+      }
+
+      // ----- (c) replay-baseline.ts 不 import 任一 logged-in/ / LoggedInChannel -----
+      //   守：基线层不接触 logged_in 通道的代码。
+      if (/from\s+["'][^"']*logged-in\//.test(replayCode)) return false;
+      if (/from\s+["'][^"']*LoggedInChannel(\.js)?["']/.test(replayCode)) {
+        return false;
+      }
+      // 同样扫 chrome-paths / launch-chrome（launcher 模块也禁 logged_in import；
+      // 守 parse11 §3.3 launcher 是纯 Chrome 路径探测，不接触 cookie）
+      for (const fname of ["launcher/chrome-paths.ts", "launcher/launch-chrome.ts"]) {
+        const f = SRC.find((s) =>
+          s.f.replace(/\\/g, "/").endsWith(fname),
+        );
+        if (!f) continue;
+        const code = stripComments(f.text);
+        if (/from\s+["'][^"']*logged-in\//.test(code)) return false;
+        if (/from\s+["'][^"']*LoggedInChannel(\.js)?["']/.test(code)) {
+          return false;
+        }
+      }
+
+      // ----- (d) RecordingStore.ts 不增 logged_in / cookie / session 字面量（INV-51 同源）-----
+      //   守：v0.9 RecordingStore 已经存在但本红线新增；现在 grep 守未来不退步。
+      const rsFile = SRC.find((s) =>
+        /serp\/RecordingStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (rsFile) {
+        const rsCode = stripComments(rsFile.text);
+        if (/\blogged_in\b|\bLoggedIn\b/.test(rsCode)) return false;
+        if (/BROWSERBASE_API_KEY/.test(rsCode)) return false;
+        // cookie / session 允许出现在 RecordingStore（它是通用录制；不限制内容字段名），
+        //   但禁 LoggedInChannel import（不依赖 logged_in 通道代码）
+        if (/from\s+["'][^"']*logged-in\//.test(rsCode)) return false;
+        if (/from\s+["'][^"']*LoggedInChannel(\.js)?["']/.test(rsCode)) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase D（parse11 §3.4 + §7.2 Phase D；release polish version 真源单一化）
+  // ============================================================
+  {
+    id: "INV-63-version-single-source",
+    desc:
+      "v1.0 Phase D：version 真源单一化（parse11 §3.4 + §7.2 Phase D）：" +
+      "package.json 的 version 字段、src/index.ts 的 LASSO_SERVER_VERSION 常量、" +
+      "src/doctor/doctor.ts 的 LASSO_VERSION 常量三处必须字面量完全一致" +
+      "（v1.0 Phase E 三处同步升 1.0.0，去 -dev）。" +
+      "守：version 字符串散落多处会导致 release 时漏改一处 → npm 线版本与 doctor 报告不一致。",
+    check: () => {
+      // ----- 1. 解析 package.json version -----
+      const pkgPath = fileURLToPath(
+        new URL("../../package.json", import.meta.url),
+      );
+      let pkgVersion;
+      try {
+        const pkgBody = readFileSync(pkgPath, "utf8");
+        const pkg = JSON.parse(pkgBody);
+        pkgVersion = pkg && typeof pkg.version === "string" ? pkg.version : null;
+      } catch {
+        return false;
+      }
+      if (!pkgVersion) return false;
+
+      // ----- 2. 提取 index.ts LASSO_SERVER_VERSION -----
+      const indexFile = SRC.find((s) =>
+        /^index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!indexFile) return false;
+      const indexCode = stripComments(indexFile.text);
+      const indexVersionMatch = indexCode.match(
+        /const\s+LASSO_SERVER_VERSION\s*=\s*["']([^"']+)["']/,
+      );
+      if (!indexVersionMatch) return false;
+      const indexVersion = indexVersionMatch[1];
+
+      // ----- 3. 提取 doctor.ts LASSO_VERSION -----
+      const doctorFile = SRC.find((s) =>
+        /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!doctorFile) return false;
+      const doctorCode = stripComments(doctorFile.text);
+      const doctorVersionMatch = doctorCode.match(
+        /export\s+const\s+LASSO_VERSION\s*=\s*["']([^"']+)["']/,
+      );
+      if (!doctorVersionMatch) return false;
+      const doctorVersion = doctorVersionMatch[1];
+
+      // ----- 4. 三处必须字面量完全一致 -----
+      if (pkgVersion !== indexVersion) return false;
+      if (pkgVersion !== doctorVersion) return false;
+
+      // ----- 5. version 真源单一化：grep 全 src 树，LASSO_SERVER_VERSION + LASSO_VERSION 定义只此两处 -----
+      //   守：禁止第三处定义同义常量（避免新模块 copy-paste 引入第 4 处）
+      const serverVersionDefs = SRC.filter((s) =>
+        /(?:const|let|var)\s+LASSO_SERVER_VERSION\s*=/.test(
+          stripComments(s.text),
+        ),
+      );
+      if (serverVersionDefs.length !== 1) return false;
+      if (serverVersionDefs[0].f.replace(/\\/g, "/") !== "index.ts") return false;
+
+      const doctorVersionDefs = SRC.filter((s) =>
+        /(?:export\s+)?(?:const|let|var)\s+LASSO_VERSION\s*=/.test(
+          stripComments(s.text),
+        ),
+      );
+      if (doctorVersionDefs.length !== 1) return false;
+      if (!/doctor\/doctor\.ts$/.test(
+        doctorVersionDefs[0].f.replace(/\\/g, "/"),
+      )) {
+        return false;
+      }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase D（parse11 §3.3 + §7.2 Phase D；launcher 跨平台 + R-CI-02）
+  // ============================================================
+  {
+    id: "INV-64-launcher-no-new-npm-dep",
+    desc:
+      "v1.0 Phase D：launcher/*.ts 不引新 npm dep（parse11 §3.3 + §7.2 Phase D + R-CI-02）：" +
+      "（a）src/launcher/*.ts 所有 import 只能来自 node:* 内置模块" +
+      "（child_process / fs / path / process / url；不引第三方包）；" +
+      "（b）src/launcher/*.ts 不 import Lasso 内部业务模块" +
+      "（除了 launcher 自身的 chrome-paths.ts；不 import channels/ / serp/ / desktop/ 等；" +
+      "守 launcher 是纯 Chrome 路径探测 + spawn，不渗业务）；" +
+      "（c）launcher 子命令路由经 index.ts（不在 launcher/*.ts 内 auto-execute；" +
+      "守单一 CLI 入口）",
+    check: () => {
+      // 收集 src/launcher/ 下所有 .ts 文件
+      const launcherFiles = SRC.filter((s) =>
+        /^launcher\//.test(s.f.replace(/\\/g, "/")),
+      );
+      if (launcherFiles.length === 0) return false; // launcher 模块必须存在（INV-64 落地）
+
+      for (const f of launcherFiles) {
+        const code = stripComments(f.text);
+
+        // ----- (a) 所有 import 只能来自 node:* 内置模块（或本目录相对路径）-----
+        //   找所有 import ... from "..." 语句，验证 module specifier：
+        //     - "node:xxx" → 内置，合规
+        //     - "./xxx" 或 "../xxx" → 相对路径，合规（launcher 内部模块互引）
+        //     - 其他（裸 npm 包名）→ 违规
+        const importSpecs = [
+          ...code.matchAll(/from\s+["']([^"']+)["']/g),
+        ].map((m) => m[1]);
+        for (const spec of importSpecs) {
+          if (spec.startsWith("node:")) continue;
+          if (spec.startsWith("./") || spec.startsWith("../")) continue;
+          // 其他都算违规（裸 npm 包名；如 puppeteer / open / chrome-launcher 等）
+          return false;
+        }
+
+        // ----- (b) 不 import Lasso 内部业务模块 -----
+        //   守 launcher 是纯 Chrome 路径探测 + spawn，不渗业务。
+        //   禁 channels/ / serp/ / desktop/ / browse/ / logged-in/ / forest/ / runtime/ / fallback/ 等
+        //   例外：launcher/ 自身（chrome-paths.ts）允许（./chrome-paths.js 相对路径已在 (a) 允许）
+        for (const spec of importSpecs) {
+          // 相对路径之外不会到这里（已在 (a) 过滤）；此处只验相对路径的内部业务模块禁引
+          if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
+          // launcher 内部互引（./chrome-paths）合规；其他相对路径需检查
+          // （launcher/*.ts 同目录互引合规；跳出层 ../xxx 检查）
+          if (spec.startsWith("./")) continue; // 同目录互引（chrome-paths / launch-chrome 互引）
+          // ../xxx 跳出 launcher/ 目录 → 验是否进业务模块
+          if (/^\.\.\/(channels|serp|desktop|browse|logged-in|forest|runtime|fallback|tools|config|subprocess|search|observ|ssrf|util|invariants|doctor)\//.test(spec)) {
+            return false;
+          }
+        }
+
+        // ----- (c) launcher/*.ts 不在底部 auto-execute -----
+        //   守单一 CLI 入口（index.ts 子命令路由）。
+        //   禁 import.meta.url === process.argv[1] 类 main-guard 模式 + 立即 invoke。
+        //   允许 export 函数让 index.ts 显式调（runLaunchChromeCli / runReplayBaselineCli）。
+        //   实现：禁 process.exit( 在模块顶级（不在函数体内的 process.exit）；
+        //   简化扫法：launcher/*.ts 的 process.exit 调用必须包在函数体内
+        //   （通过括号配对近似：本 check 用更直接的形式 ——
+        //    禁 launcher 模块顶级调用 runLaunchChromeCli / launchChrome）
+        //   此处用 grep：模块顶级（缩进 0）禁直接调 runLaunchChromeCli();
+        const lines = f.text.split("\n");
+        for (const ln of lines) {
+          // 顶级调用（无缩进）且非注释行
+          if (/^\s/.test(ln)) continue; // 有缩进 → 函数体内，合规
+          if (/^\s*(\/\/|\*|\/\*)/.test(ln)) continue; // 注释行
+          // 顶级直接 invoke 子命令入口（违规划分）
+          if (/^void\s+runLaunchChromeCli\s*\(/.test(ln)) return false;
+          if (/^runLaunchChromeCli\s*\(/.test(ln)) return false;
+          if (/^runReplayBaselineCli\s*\(/.test(ln)) return false;
+        }
+      }
+
+      // ----- (d) launcher 模块至少含 launch-chrome.ts（INV-64 落地证据）-----
+      const hasLaunchChrome = launcherFiles.some((s) =>
+        /launcher\/launch-chrome\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!hasLaunchChrome) return false;
+      // ----- (e) chrome-paths.ts 必须存在（候选路径表单一真源）-----
+      const hasChromePaths = launcherFiles.some((s) =>
+        /launcher\/chrome-paths\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!hasChromePaths) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.0 Phase E（parse11 §3.3 + §3.4 + §7.2 Phase E；文档完整化 + release polish）
+  // ============================================================
+  {
+    id: "INV-65-docs-reference-08-09",
+    desc:
+      "v1.0 Phase E：README.md + ARCHITECTURE.md 必引用 doc/08（功能架构基线）+ doc/09（实施排期）" +
+      "（parse11 §3.3 + §3.4 + §7.2 Phase E + §6.3 用户手册验收）：" +
+      "（a）项目根 README.md 文件存在；" +
+      "（b）项目根 ARCHITECTURE.md 文件存在；" +
+      "（c）README.md 文本中必出现 'doc/08' 与 'doc/09' 引用（保 user-first 文档链向深度架构 / 排期文档，不删既有链接）；" +
+      "（d）ARCHITECTURE.md 文本中必出现 'doc/08' 与 'doc/09' 引用（架构概览链向深度基线）。" +
+      "守：用户手册与架构概览不能凭空长成，必链向 doc/08（功能架构基线，F 编号源）+ doc/09（实施排期，v0.1→v1.0 跃升路径）" +
+      "—— 避免 README/ARCHITECTURE 与既有深度调研文档脱节（用户读完 README 想深入时无路径）。",
+    check: () => {
+      // ----- (a) README.md 必须存在 -----
+      const readmePath = join(SRC_ROOT, "..", "README.md");
+      let readmeText;
+      try {
+        readmeText = readFileSync(readmePath, "utf8");
+      } catch {
+        return false;
+      }
+
+      // ----- (b) ARCHITECTURE.md 必须存在 -----
+      const archPath = join(SRC_ROOT, "..", "ARCHITECTURE.md");
+      let archText;
+      try {
+        archText = readFileSync(archPath, "utf8");
+      } catch {
+        return false;
+      }
+
+      // ----- (c) README.md 必引用 doc/08 + doc/09 -----
+      //   允许多种引用形式：doc/08、08-media-interact、doc/08-media-interact-功能架构.md 等。
+      //   核心是用户能从 README 跳到 doc/08 + doc/09 深度文档。
+      //   匹配相对宽松：含 "doc/08" 或 "08-media-interact" 即视为引用 08；
+      //                 含 "doc/09" 或 "09-media-interact" 即视为引用 09。
+      const readmeHas08 = /doc\/08|08-media-interact/i.test(readmeText);
+      const readmeHas09 = /doc\/09|09-media-interact/i.test(readmeText);
+      if (!readmeHas08 || !readmeHas09) return false;
+
+      // ----- (d) ARCHITECTURE.md 必引用 doc/08 + doc/09 -----
+      const archHas08 = /doc\/08|08-media-interact/i.test(archText);
+      const archHas09 = /doc\/09|09-media-interact/i.test(archText);
+      if (!archHas08 || !archHas09) return false;
 
       return true;
     },

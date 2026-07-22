@@ -22,6 +22,7 @@
 import { describe, it, expect } from "vitest";
 import { DesktopChannel } from "../../src/channels/DesktopChannel.js";
 import { AxProvider } from "../../src/desktop/AxProvider.js";
+import { MacAxBackend } from "../../src/desktop/AxBackend.js";
 import { ScreenshotVlmProvider } from "../../src/desktop/ScreenshotVlmProvider.js";
 import { AppleScriptProvider } from "../../src/desktop/AppleScriptProvider.js";
 import { CGEventProvider } from "../../src/desktop/CGEventProvider.js";
@@ -49,7 +50,11 @@ type ScriptMap = Record<string, (p: unknown) => unknown>;
 
 function assemble(scripts: ScriptMap = {}) {
   const rust = new MockRustBridge(scripts);
-  const ax = new AxProvider(rust as unknown as never);
+  // v1.0（parse11 §3.1 + §7.2 Phase A）：AxProvider 经 AxBackend 注入；
+  //   测试 mock 走 macOS path（MacAxBackend），scripts 仍按 "ax_*" method 注册。
+  const ax = new AxProvider(
+    new MacAxBackend(rust as unknown as never),
+  );
   const vlm = new ScreenshotVlmProvider(rust as unknown as never, {
     endpoint: null,
     vlmCaller: null,

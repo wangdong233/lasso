@@ -1,0 +1,36 @@
+# Lasso .npmignore —— 控制 npm publish 时打包的文件
+# 原则：保 src/（check-invariants.mjs + .ts 源码供 deep-read）+ dist/（编译后 JS，bin 入口）
+#       + 文档 + fixtures；排除 Rust 源码（pre-built binary 单独分发）+ 测试 + dev scripts
+
+# ----- Rust helper（pre-built binary 单独分发；不打包 Rust 源码 + Cargo 文件）-----
+rust-helper/
+
+# ----- 开发测试（端用户不需要）-----
+test/
+
+# ----- 开发脚本 / benchmark 数据（dev only）-----
+scripts/
+benchmark/
+
+# ----- TypeScript build artifacts 备份 / cache -----
+*.tsbuildinfo
+
+# ----- IDE / OS metadata -----
+.vscode/
+.idea/
+.DS_Store
+
+# ----- .devteam agent state（dev-only SQLite + memory；端用户不需要）-----
+.devteam/
+
+# ----- Git / GitHub -----
+.git/
+.gitignore
+.github/
+
+# ----- Coverage reports（v1.1+ 采集）-----
+coverage/
+.nyc_output/
+
+# ----- Misc dev logs（v0.2.9.x _panel-debug.log 类）-----
+*.log

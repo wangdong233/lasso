@@ -8,8 +8,17 @@
  * 不做的事（深模块边界 / 不缠绕）：
  *  - 不做 fallback（FallbackDecider 在 DesktopChannel 层调度，本类专心 ax 路径）
  *  - 不做熔断（CircuitBreaker 在 DesktopChannel 层挂）
- *  - 不做平台 API 调用（INV-21：全经 RustBridge）
+ *  - 不做平台 API 调用（INV-21：全经 RustBridge；v1.0 经 AxBackend 薄壳再经 RustBridge）
  *  - 不做 stateId 缓存（v0.3.5 每次 ax_snapshot 都 re-walk；cache 在 v0.4+）
+ *  - 不做平台路由（v1.0 INV-60：经 AxBackendFactory 注入对应 backend；本类不感知平台）
+ *
+ * v1.0 构造契约（parse11 §3.1 + §7.2 Phase A）：
+ *  - v0.3.5：constructor(private readonly rust: RustBridge)
+ *  - v1.0  ：constructor(private readonly backend: AxBackend)
+ *  - 业务逻辑零改：原 this.rust.call("ax_snapshot", ...) → this.backend.snapshot(...)
+ *    返同 RustResponse，outcome / OutlineMapper / served_by / retrieval_method 不变
+ *  - retrieval_method 仍标 "ax_snapshot" / "ax_find" / "ax_act"（语义层标识，
+ *    指「AX 抽象层的方法」，三平台共享；不是 Rust method 名真值）
  *
  * 错误契约（parse4 §3.1.2 error_kind 表）：
  *  - rust helper 返 ok=false + error_kind="tcc_denied"     → outcome=didnt（明确"否"：缺权限）
@@ -21,7 +30,8 @@
  * 借鉴：13 §3.5 AxProvider；pi-computer-use 的 provider 抽象；
  * FallbackDecider 的 InteractResult 信封风格（统一交付）。
  */
-import type { RustBridge, RustResponse } from "../subprocess/RustBridge.js";
+import type { AxBackend } from "./AxBackend.js";
+import type { RustResponse } from "../subprocess/RustBridge.js";
 import { axTreeToOutline } from "./OutlineMapper.js";
 import type {
   AxNode,
@@ -86,16 +96,28 @@ function cryptoRandom(): string {
 /**
  * AXAPI 主路径 provider（v0.3.5 DesktopChannel 主 provider）。
  *
- * INV-21：本类不出现平台 API 字面量；所有平台调用经 RustBridge.call。
+ * INV-21：本类不出现平台 API 字面量；所有平台调用经 backend.snapshot/find/act
+ *         → backend 内部调 RustBridge.call("ax_*"|"uia_*"|"atspi_*")。
+ *
+ * INV-60（v1.0）：本类不直接 new 任一 backend class；构造时由 index.ts 经
+ *                AxBackendFactory.create(rust) 注入对应平台 backend。
  */
 export class AxProvider {
   /** served_by 标识（写入 InteractResult.served_by）。 */
   static readonly NAME = "desktop.ax";
 
-  constructor(private readonly rust: RustBridge) {}
+  /**
+   * v1.0 构造契约（parse11 §3.1）：接 AxBackend（由 AxBackendFactory 路由）。
+   *
+   *  - 生产路径：new AxProvider(AxBackendFactory.create(rust))
+   *  - 测试路径：new AxProvider(new MacAxBackend(mockRust)) 或直接 mock AxBackend
+   *
+   * INV-60 衍生：本构造器不接 RustBridge 直接类型 —— 强制走 factory 路由。
+   */
+  constructor(private readonly backend: AxBackend) {}
 
   /**
-   * snapshot action：调 ax_snapshot → OutlineMapper 映射 → OutlineSnapshot。
+   * snapshot action：调 backend.snapshot → OutlineMapper 映射 → OutlineSnapshot。
    *
    * @returns InteractResult<OutlineSnapshot>：
    *   - worked  : data = { stateId, root, createdAt }
@@ -106,10 +128,7 @@ export class AxProvider {
     opts: DesktopOptions,
   ): Promise<InteractResult<OutlineSnapshot>> {
     const maxDepth = opts.max_depth ?? 8;
-    const resp = await this.rust.call("ax_snapshot", {
-      app: opts.app,
-      max_depth: maxDepth,
-    });
+    const resp = await this.backend.snapshot(opts.app, maxDepth);
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {
@@ -171,11 +190,11 @@ export class AxProvider {
       };
     }
     const maxDepth = opts.max_depth ?? 8;
-    const resp = await this.rust.call("ax_find", {
-      app: opts.app,
-      max_depth: maxDepth,
-      where: opts.where as WhereClause,
-    });
+    const resp = await this.backend.find(
+      opts.app,
+      maxDepth,
+      opts.where as WhereClause,
+    );
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {
@@ -226,10 +245,7 @@ export class AxProvider {
         error: "no_actions_specified",
       };
     }
-    const resp = await this.rust.call("ax_act", {
-      actions: opts.actions,
-      app: opts.app,
-    });
+    const resp = await this.backend.act(opts.actions);
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {

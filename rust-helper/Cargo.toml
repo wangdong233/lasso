@@ -14,6 +14,42 @@ name = "lasso-rust-helper"
 path = "src/main.rs"
 
 [dependencies]
+# 跨平台通用 deps（无平台 API 依赖，三平台 build 都解析）：
+# Error handling.
+thiserror = "1"
+# Protocol (de)serialization.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Request id generation.
+uuid = { version = "1", features = ["v4"] }
+# PNG base64 encoding (screenshot).
+base64 = "0.22"
+
+# v1.0 Phase B（parse11 §2.4 + §4.1 + §7.2）：三平台 target-specific dependencies。
+# v0.9 macOS-only deps 全部从顶层 `[dependencies]` 迁入
+# `[target.'cfg(target_os = "macos")'.dependencies]` —— 不改版本号 / 不改 feature，
+# 只迁移位置以解锁跨平台编译（v0.9 顶层无条件依赖 macOS crate 是 latent bug，
+# 因 v0.9 从不跑 cargo check --target 才不暴露；macOS target 的依赖解析与 v0.9
+# 字节一致 → macOS build 零回归）。
+#
+# Windows + Linux 的平台 crate 经 cfg-gate 隔离，macOS target 完全不解析这两段
+# → macOS 依赖闭包不变 → v0.9 Rust 测试零回归可证（parse11 §2.4 原文）。
+#
+# crate 选型（parse11 §4.1 决策）：
+#  - Windows：microsoft 官方 `windows`（windows-rs，auto-generated from Win32 metadata；
+#             微软长期维护 + 完整 UIA COM 覆盖）。社区 uiautomation crate 维护风险高不选。
+#  - Linux  ：odilia-app `atspi`（pure Rust via zbus D-Bus，无 C 依赖；
+#             CI Linux headless 可编）。at-spi2 C 绑定 CI 复杂度高不选。
+#
+# 版本经 rsproxy smoke 实测（parse11 §7.2 Phase B 守 smoke-test-first）：
+#  - windows 0.59 + features Win32_UI_Accessibility → cargo check --target
+#    x86_64-pc-windows-msvc 通过；真实 API shape 已验（UIA_CONTROLTYPE_ID 类型 +
+#    UIA_ButtonControlTypeId 常量 + IUIAutomation 接口 + CoInitializeEx）。
+#  - atspi 0.22（default features 含 async-std runtime）→ cargo check --target
+#    x86_64-unknown-linux-gnu 通过；真实 API shape 已验（atspi::proxy::accessible::
+#    AccessibleProxy<'_> + atspi::AccessibilityConnection + zbus 5 传递依赖）。
+
+[target.'cfg(target_os = "macos")'.dependencies]
 # AXAPI safe wrapper (andrewhickman/accessibility-rs).
 accessibility = "0.2"
 # AXAPI raw FFI fallback for symbols the safe wrapper does not expose
@@ -28,15 +64,25 @@ core-graphics = "0.24"
 core-graphics-types = "0.2"
 # foreign-types-shared: ForeignType trait for CGImage::as_ptr()（core-graphics 内部也用）.
 foreign-types-shared = "0.3"
-# Error handling.
-thiserror = "1"
-# Protocol (de)serialization.
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-# Request id generation.
-uuid = { version = "1", features = ["v4"] }
-# PNG base64 encoding (screenshot).
-base64 = "0.22"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 官方 microsoft/windows-rs（UI::UIAutomation 绑定）。
+# features 仅拉 UIA 需要的子模块（Win32_UI_Accessibility 主体 + Com 初始化 +
+# WindowsAndMessaging 窗口枚举 + Foundation 基础类型），闭包最小化。
+windows = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_UI_Accessibility",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_System_Com",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# atspi crate：odilia-app/atspi（pure Rust via zbus D-Bus）。
+# features 显式拉 `zbus` re-export（atspi lib.rs 经 `#[cfg(feature = "zbus")] pub use zbus`
+# 暴露 atspi::zbus::Connection）；`async-std` 是 default runtime feature 不显式关。
+# atspi 0.22 传递依赖 zbus 4.x；本工程经 atspi::zbus re-export 引用同一版本
+# 避免直接 dep zbus 5 与 atspi 内部 4.x 版本冲突。
+atspi = { version = "0.22", features = ["zbus"] }
 
 [profile.release]
 opt-level = 3

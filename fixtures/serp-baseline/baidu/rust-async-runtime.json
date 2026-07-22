@@ -1,0 +1,8 @@
+{
+  "engine": "baidu",
+  "query": "rust async runtime tokio",
+  "recorded_at": "2026-07-22T00:00:00.000Z",
+  "expected_count": 5,
+  "note": "v1.0 Phase C 首次基线 fixture（parse11 §3.2 INV-62：禁 logged_in cookie 场景；本 fixture 是 search + browse_headless 兜底抽链路径的脱敏快照，无 cookie/session URL 参数）",
+  "source_channel": "browse_headless"
+}
