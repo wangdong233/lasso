@@ -156,6 +156,10 @@ export interface HotReloadConfig {
  * breaker_status / serp_health），全部只读不要求 reason（守 INV-46：observ 走 admin
  * action-enum，不开新 observability tool）。
  *
+ * v0.8（parse9 §3 + §2.2）：加 3 个 logged_in action（profile_list / profile_switch /
+ * cookie_restore）。profile_list 只读；profile_switch mutation 必传 reason；
+ * cookie_restore 是 admin 显式 opt-in 入口（守 INV-52：browse_logged_in 自动路径不调）。
+ *
  * 折叠原则（13 §3.1 #1 必改）：单 admin tool + action enum，禁注册 admin_capability_disable
  * 等拆分 tool（与 INV-17 desktop action-enum 同范式）。
  */
@@ -172,4 +176,9 @@ export type AdminAction =
   // v0.7 新增 3 个只读 observability action（F3.12.10 + F3.7.5-12）
   | "metrics_snapshot"
   | "breaker_status"
-  | "serp_health";
+  | "serp_health"
+  // v0.8 新增 3 个 logged_in action（parse9 §3 + §2.2）
+  // profile_list 只读；profile_switch mutation；cookie_restore 显式 opt-in（INV-52）
+  | "profile_list"
+  | "profile_switch"
+  | "cookie_restore";

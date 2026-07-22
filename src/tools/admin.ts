@@ -43,6 +43,8 @@ import {
 import { ADMIN_DESCRIPTION } from "./descriptions.js";
 import { adminAnnotations } from "./annotations.js";
 import { logger } from "../util/logger.js";
+// v0.8：logged_in 注入（parse9 §3 + INV-52 admin opt-in 入口）
+import type { IProfileRegistry } from "../logged-in/ProfileRegistry.js";
 
 // ============================================================
 // Schema（parse7 §3.5 action-enum 折叠）
@@ -70,6 +72,12 @@ export const adminSchema = {
     "metrics_snapshot",
     "breaker_status",
     "serp_health",
+    // v0.8 新增 3 个 logged_in action（parse9 §3 + §2.2）
+    // profile_list 只读；profile_switch mutation（必传 reason）；
+    // cookie_restore 是显式 opt-in 入口（INV-52：browse_logged_in 自动路径不调）
+    "profile_list",
+    "profile_switch",
+    "cookie_restore",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -101,6 +109,20 @@ export const adminSchema = {
   /** caller_cap_set 用 */
   callerId: z.string().min(1).optional(),
   cap: z.number().int().nonnegative().optional(),
+  /**
+   * v0.8 新增（parse9 §3）：profile_switch / cookie_restore 用。
+   *
+   * profile_switch：目标 profile 名（[a-z0-9_-]{1,32}）。
+   * cookie_restore：忽略（永远作用于 "current" profile）。
+   */
+  profile: z.string().min(1).max(32).regex(/^[a-z0-9_-]+$/).optional(),
+  /**
+   * v0.8 新增（parse9 §3）：cookie_restore 操作方向。
+   *  - "export"  : Chrome 当前会话 → AES-256-GCM 加密包（落盘 mode 0o600）
+   *  - "import"  : 加密包 → 解密 → 灌回 Chrome（恢复登录态）
+   * 必填 when action=cookie_restore；其他 action 忽略。
+   */
+  op: z.enum(["export", "import"]).optional(),
   /** mutation action 强制（handler 层校验） */
   reason: z.string().min(1).optional(),
 };
@@ -133,6 +155,24 @@ export interface AdminToolDeps {
   breakers?: Map<string, CircuitBreaker>;
   longBreakers?: Map<string, LongCircuitBreaker>;
   serpHealth?: SerpHealthMonitor;
+  /**
+   * v0.8 新增（parse9 §3 + INV-52）：logged_in action 的数据源 + 入口注入。
+   *
+   * 守 INV-35（task v0.6 衍生）：admin.ts 经此接口持 logged_in 句柄，
+   *                        不直接 import logged-in/ 内部（除 type-only IProfileRegistry）。
+   * 守 INV-52（parse9 §1.3 红线）：cookie export/import **必经** admin action；
+   *                        LoggedInChannel 自动路径 getMcpClient 永不调 exportCookies。
+   *
+   * 未注入 → 3 个 logged_in action 返 configured:false（零回归：v0.7 行为）。
+   */
+  profiles?: IProfileRegistry;
+  /**
+   * v0.8：cookie_restore op=export 入口（包装 LoggedInChannel.exportCookies）。
+   * INV-52 守护：admin handler 显式 opt-in；不在 LoggedInChannel 自动路径触发。
+   */
+  cookieExport?: () => Promise<{ sha256: string; bytes: number; profile: string }>;
+  /** v0.8：cookie_restore op=import 入口（包装 LoggedInChannel.importCookies）。 */
+  cookieImport?: () => Promise<{ imported: number; failed: number; profile: string }>;
 }
 
 // ============================================================
@@ -167,6 +207,9 @@ export function registerAdminTool(
           callerId?: string;
           cap?: number;
           reason?: string;
+          // v0.8 新增（parse9 §3）：profile + op
+          profile?: string;
+          op?: "export" | "import";
         };
         const action = args.action as AdminAction;
 
@@ -358,6 +401,108 @@ export function registerAdminTool(
                 ...(deps.serpHealth ? deps.serpHealth.snapshot() : {}),
               });
 
+            // ---------- v0.8 新增：logged_in action（parse9 §3 + INV-52）----------
+            // profile_list 只读；profile_switch mutation 必传 reason；
+            // cookie_restore 是显式 opt-in 入口（INV-52：browse_logged_in 自动路径不调）。
+            case "profile_list": {
+              if (!deps.profiles) {
+                return ok(action, { configured: false });
+              }
+              const list = deps.profiles.list();
+              const current = deps.profiles.currentName();
+              return ok(action, {
+                configured: true,
+                current,
+                profiles: list.map((p) => ({
+                  name: p.name,
+                  userDataDir: p.userDataDir,
+                  createdAt: p.createdAt,
+                  lastUsedAt: p.lastUsedAt,
+                })),
+              });
+            }
+            case "profile_switch": {
+              const err = requireArgs(action, args, ["profile", "reason"]);
+              if (err) return err;
+              if (!deps.profiles) {
+                return fail(action, "logged_in not configured (profiles deps missing)");
+              }
+              try {
+                const cfg = await deps.profiles.switch(args.profile!);
+                audit(action, callerId, args.reason, {
+                  target_profile: args.profile,
+                });
+                return ok(action, {
+                  profile: cfg.name,
+                  userDataDir: cfg.userDataDir,
+                  note:
+                    "profile switched; Chrome instance must be restarted by user to pick new --user-data-dir (parse9 §4.2 known deviation)",
+                });
+              } catch (e) {
+                audit(action, callerId, args.reason, {
+                  target_profile: args.profile,
+                  error: String(e),
+                });
+                return fail(action, `profile_switch failed: ${String(e)}`);
+              }
+            }
+            case "cookie_restore": {
+              const err = requireArgs(action, args, ["op"]);
+              if (err) return err;
+              const op = args.op!;
+              // INV-52 红线：cookie_restore 是 admin 显式 opt-in 入口。
+              // 写 audit log 留痕（即使 reason 未传也记；强制用户传 op 即「显式意图」）
+              if (!deps.cookieExport || !deps.cookieImport) {
+                return fail(action, "logged_in not configured (cookie deps missing)");
+              }
+              try {
+                if (op === "export") {
+                  if (!args.reason) {
+                    return fail(action, "field required: reason (cookie export is sensitive — state explicit reason)");
+                  }
+                  const r = await deps.cookieExport();
+                  audit(action, callerId, args.reason, {
+                    op,
+                    profile: r.profile,
+                    bytes: r.bytes,
+                    sha256: r.sha256,
+                  });
+                  return ok(action, {
+                    op,
+                    profile: r.profile,
+                    bytes: r.bytes,
+                    sha256: r.sha256,
+                    mode: "0o600",
+                    note: "AES-256-GCM encrypted package written (INV-48/49/52)",
+                  });
+                }
+                // op === "import"
+                if (!args.reason) {
+                  return fail(action, "field required: reason (cookie import is sensitive — state explicit reason)");
+                }
+                const r = await deps.cookieImport();
+                audit(action, callerId, args.reason, {
+                  op,
+                  profile: r.profile,
+                  imported: r.imported,
+                  failed: r.failed,
+                });
+                return ok(action, {
+                  op,
+                  profile: r.profile,
+                  imported: r.imported,
+                  failed: r.failed,
+                  note: "AES-256-GCM auth-tag verified on decrypt (INV-48/53)",
+                });
+              } catch (e) {
+                audit(action, callerId, args.reason, {
+                  op,
+                  error: String(e),
+                });
+                return fail(action, `cookie_restore(${op}) failed: ${String(e)}`);
+              }
+            }
+
             default: {
               // 类型穷尽性守护（zod enum 已过滤，但 TS narrowing 兜底）
               const _exhaustive: never = action;
@@ -430,13 +575,23 @@ function fail(
  * mutation action 字段必填校验（schema 层 optional，handler 层强制）。
  *
  * parse7 §3.5：capability_disable / provider_remove 必须传 reason（强制思考，R-RT-8）。
+ * parse9 §3：profile_switch 必传 profile + reason；cookie_restore 必传 op。
  *
  * @returns 失败响应（直接返给 SDK）；成功返 null
  */
 function requireArgs(
   action: string,
-  args: { name?: string; reason?: string; callerId?: string; cap?: number; tos_ack?: boolean },
-  required: Array<"name" | "reason" | "callerId" | "cap" | "tos_ack">,
+  args: {
+    name?: string;
+    reason?: string;
+    callerId?: string;
+    cap?: number;
+    tos_ack?: boolean;
+    // v0.8 新增：profile_switch / cookie_restore 用
+    profile?: string;
+    op?: "export" | "import";
+  },
+  required: Array<"name" | "reason" | "callerId" | "cap" | "tos_ack" | "profile" | "op">,
 ): { content: Array<{ type: "text"; text: string }> } | null {
   for (const f of required) {
     if (args[f] === undefined || args[f] === null || args[f] === "") {

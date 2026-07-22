@@ -100,8 +100,19 @@ import { HitRateStats } from "./serp/HitRateStats.js";
 import { ChangeDetection } from "./serp/ChangeDetection.js";
 import { RecordingStore } from "./serp/RecordingStore.js";
 import { SerpHealthMonitor } from "./serp/SerpHealthMonitor.js";
+// v0.8 M0.8 接线（parse9 §3 + §2.2 + §7.2 Phase B）—— logged_in 持久化层
+// 守 INV-48：cookie 落盘 AES-256-GCM（CookieStore 实装）
+// 守 INV-49：加密包文件 mode 0o600 + 目录 mode 0o700
+// 守 INV-50：tab LRU ≤10 hard cap（TabRegistry）
+// 守 INV-51：master key 从 OS keychain 取（keychain.js）；doctor 永不清读 cookie
+// 守 INV-52：cookie export/import 必经 admin action opt-in（自动 browse 路径不调）
+// 守 INV-53：IV 每次加密唯一（CookieStore export 内 randomBytes(12)）
+import { ProfileRegistry } from "./logged-in/ProfileRegistry.js";
+import { CookieStore } from "./logged-in/CookieStore.js";
 import * as path from "node:path";
 import * as os from "node:os";
+import { promises as fsPromises } from "node:fs";
+const fsStat = fsPromises.stat;
 
 // ============================================================
 // v0.3.5 常量（parse4 §3.5 装配）
@@ -123,9 +134,11 @@ const DEFAULT_RUST_HELPER_PATH =
  *   + CallerTierTracker + hot-reload → 0.6.0-dev
  * v0.7 M0.7（parse8 §1.1 + §6 验收）：observability 增量 —— 长熔断 + MetricsCollector
  *   + ResourceMonitor + SerpHealthMonitor + admin 3 只读 action → 0.7.0-dev
+ * v0.8（parse9 §1.1 + §6 验收）：logged_in 持久化层 —— cookie AES-256-GCM 落盘 +
+ *   多 profile + tab LRU + admin 3 action（profile_list / profile_switch / cookie_restore）→ 0.8.0-dev
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
  */
-const LASSO_SERVER_VERSION = "0.7.0-dev";
+const LASSO_SERVER_VERSION = "0.8.0-dev";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -197,12 +210,26 @@ async function runMcpServer(): Promise<void> {
   const subproc = new SubprocessManager();
   subproc.startZombieReaper();
 
+  // ----- v0.8 装配：ProfileRegistry + CookieStore 工厂（parse9 §2.2 + §3）-----
+  // ProfileRegistry 启动加载（首次建 default profile；mode 0o700）
+  const profileRegistry = new ProfileRegistry(config.cacheDir);
+  await profileRegistry.load();
+  // CookieStore 工厂（按 profile 名新建；CookieStore 自动落 ~/.cache/lasso/cookies/<name>.cookies）
+  const cookieStoreFactory = (profileName: string): CookieStore =>
+    new CookieStore(config.cacheDir, profileName);
+
   const search = new SearchChannel(
     config.zhipuEndpoint,
     config.zhipuApiKey,
   );
   const headless = new HeadlessChannel(subproc);
-  const logged_in = new LoggedInChannel(subproc, config.cdpPort);
+  // v0.8（parse9 §3.2）：LoggedInChannel 注入 ProfileRegistry + CookieStore 工厂
+  const logged_in = new LoggedInChannel(
+    subproc,
+    config.cdpPort,
+    profileRegistry,
+    cookieStoreFactory,
+  );
 
   // ----- v0.2 装配 BraveChannel（若 BRAVE_API_KEYS 配置）+ SearchCache -----
   // parse2 §3.3.4 / §3.4：brave 从 registry 取 QuotaLedger（INV-10：禁直读 env），
@@ -639,6 +666,7 @@ async function runMcpServer(): Promise<void> {
   // INV-37：经 toolManager.register（不直调 server.tool）；channel="admin" 永不被 disable
   // （CapabilityBag.initial 不含 "admin" → bag.disable("admin") 返 false 不触发联动）。
   // v0.7（parse8 §3.5）：注入 4 个 observ 数据源（INV-46：observ 走 admin action-enum）
+  // v0.8（parse9 §3 + INV-52）：注入 logged_in 数据源 + cookie export/import 入口
   registerAdminTool({
     bag,
     toolManager,
@@ -648,6 +676,11 @@ async function runMcpServer(): Promise<void> {
     breakers,
     longBreakers,
     serpHealth,
+    // v0.8：profile 句柄（profile_list / profile_switch 用）
+    profiles: profileRegistry,
+    // v0.8：cookie export/import 入口（INV-52：admin opt-in；从 LoggedInChannel 转发）
+    cookieExport: () => logged_in.exportCookies(),
+    cookieImport: () => logged_in.importCookies(),
   });
 
   // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
@@ -686,6 +719,66 @@ async function runMcpServer(): Promise<void> {
     ],
     serp_health: serpHealth.snapshot(),
   });
+
+  // ---- 5c. v0.8（parse9 §3.4 + INV-51）：profilesChecksProvider 注入 ----
+  // doctor 用此 provider 拿 profile + 加密包 stat 元数据；provider 内部调 ProfileRegistry.list
+  // + CookieStore.stat（**只 stat 不解密**），返纯元数据给 doctor（doctor 不接触 cookie 内容）。
+  // 守 INV-35：doctor.ts 不 import logged-in/；index.ts 装配层注入 provider。
+  // 守 INV-51：provider 返对象**永不**含 cookie 字段（name/value/domain/session 等）。
+  doctorOpts.profilesChecksProvider = async () => {
+    const list = profileRegistry.list();
+    const currentName = profileRegistry.currentName();
+    const out: Array<{
+      name: string;
+      isCurrent: boolean;
+      userDataDir: string;
+      userDataDirExists: boolean;
+      userDataDirMode: string | null;
+      encryptedPackage: {
+        exists: boolean;
+        bytes?: number;
+        mtimeMs?: number;
+        sha256?: string;
+      } | null;
+    }> = [];
+    for (const p of list) {
+      // user-data-dir 探测：stat + 读 mode（不读 Chrome 内部文件，只 stat 顶层目录）
+      let userDataDirExists = false;
+      let userDataDirMode: string | null = null;
+      try {
+        if (p.userDataDir) {
+          const stat = await fsStat(p.userDataDir);
+          userDataDirExists = stat.isDirectory();
+          // mode 转八进制字符串（高 12 bit 是文件类型，低 9 bit 是权限位）
+          userDataDirMode = "0o" + (stat.mode & 0o777).toString(8);
+        }
+      } catch {
+        // userDataDir 不存在 / 不可 stat → false + null
+      }
+      // 加密包 stat：**只**调 stat()，**不**调 import()（INV-51 红线）
+      const store = cookieStoreFactory(p.name);
+      let encryptedPackage: {
+        exists: boolean;
+        bytes?: number;
+        mtimeMs?: number;
+        sha256?: string;
+      } | null;
+      try {
+        encryptedPackage = await store.stat();
+      } catch {
+        encryptedPackage = null;
+      }
+      out.push({
+        name: p.name,
+        isCurrent: p.name === currentName,
+        userDataDir: p.userDataDir,
+        userDataDirExists,
+        userDataDirMode,
+        encryptedPackage,
+      });
+    }
+    return out;
+  };
 
   // ---- 6. SIGHUP 热更新（parse7 §3.6）----
   // 默认 LASSO_PROVIDERS_FILE 未设 → installSighupHotReload 内部 no-op（零回归）。

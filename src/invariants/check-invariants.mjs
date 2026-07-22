@@ -1611,6 +1611,215 @@ const assertions = [
       return true;
     },
   },
+
+  // ============================================================
+  // v0.8 Phase A 新增（parse9 §2.2 + §1.3 隐私红线 —— INV-48..53）
+  // ============================================================
+  // parse9 §1.3 隐私红线（cookie=身份/session token）：
+  //  INV-48  cookie 落盘必经 AES-256-GCM 加密（src/logged-in/CookieStore.ts 用
+  //          createCipheriv aes-256-gcm；明文 cookie 永不直接写盘）
+  //  INV-49  加密包文件 mode 0o600 + 目录 mode 0o700（INV-15 范式衍生）
+  //  INV-50  tab LRU ≤10 hard cap（src/logged-in/TabRegistry.ts 有 hard cap 常量 + clamp）
+  //  INV-51  master key 禁硬编码 + doctor 永不清读 cookie 内容（只 stat 加密包元数据）
+  //  INV-52  cookie export/import 必经 admin opt-in（LoggedInChannel 自动路径不调）
+  //  INV-53  IV 每次加密唯一（crypto.randomBytes(12)，不重用 / 不硬编码 / 不从 counter 派生）
+  {
+    id: "INV-48-cookie-store-aes-256-gcm",
+    desc: "v0.8 Phase A：cookie 落盘必经 AES-256-GCM（src/logged-in/CookieStore.ts 用 createCipheriv aes-256-gcm + setAuthTag 验签；明文 cookie 永不直接写盘；parse9 §3.1 + §1.3 INV-48）",
+    check: () => {
+      const cs = SRC.find((s) =>
+        /logged-in\/CookieStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cs) return false; // v0.8 起必须存在
+      const code = stripComments(cs.text);
+
+      // 必要条件 1：加密用 createCipheriv("aes-256-gcm", ...)
+      if (!/createCipheriv\s*\(\s*["']aes-256-gcm["']/.test(code)) return false;
+      // 必要条件 2：解密用 createDecipheriv("aes-256-gcm", ...)
+      if (!/createDecipheriv\s*\(\s*["']aes-256-gcm["']/.test(code)) return false;
+      // 必要条件 3：加密端 getAuthTag（写出 tag）
+      if (!/\.getAuthTag\s*\(\s*\)/.test(code)) return false;
+      // 必要条件 4：解密端 setAuthTag（验签；防篡改红线）
+      if (!/\.setAuthTag\s*\(/.test(code)) return false;
+
+      // 必要条件 5：writeFileSync 写盘的内容是加密 buffer（buf），不是明文（plaintext）
+      //   抽所有 writeFileSync(...) 调用的第二参数变量名，必须全是 `buf`
+      //   守「明文 cookie 永不出现在磁盘」红线（INV-48 + INV-52 同源）
+      const writeCalls = [
+        ...code.matchAll(/writeFileSync\s*\(\s*[^,]+,\s*(\w+)/g),
+      ];
+      if (writeCalls.length === 0) return false;
+      const allWriteBuf = writeCalls.every((m) => m[1] === "buf");
+      if (!allWriteBuf) return false;
+
+      // 必要条件 6：scryptSync 派生 key（不用裸 masterKey 作 AES key；强度强化）
+      if (!/scryptSync\s*\(/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-49-cookie-file-mode-0o600",
+    desc: "v0.8 Phase A：加密包文件 mode 0o600 + 目录 mode 0o700（src/logged-in/CookieStore.ts；INV-15 范式衍生；parse9 §3.1 + §1.3 INV-49）",
+    check: () => {
+      const cs = SRC.find((s) =>
+        /logged-in\/CookieStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cs) return false;
+      const code = stripComments(cs.text);
+      // 文件 mode 0o600（加密包文件本体）
+      if (!/mode\s*:\s*0o600/.test(code)) return false;
+      // 目录 mode 0o700（cookies/ 子目录）
+      if (!/mode\s*:\s*0o700/.test(code)) return false;
+      // writeFileSync 必须带 mode 0o600（不只 mkdirSync 带 mode）
+      const writeWithMode = /writeFileSync\s*\([^)]*mode\s*:\s*0o600/s.test(code);
+      if (!writeWithMode) return false;
+      // mkdirSync 必须带 mode 0o700
+      const mkdirWithMode = /mkdirSync\s*\([^)]*mode\s*:\s*0o700/s.test(code);
+      if (!mkdirWithMode) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-50-tab-lru-hard-cap",
+    desc: "v0.8 Phase A：tab LRU ≤10 hard cap（src/logged-in/TabRegistry.ts 有 hard cap 常量 10 + Math.min/Math.max clamp [1, 20]；parse9 §3.3 + §1.3 INV-50）",
+    check: () => {
+      const tr = SRC.find((s) =>
+        /logged-in\/TabRegistry\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!tr) return false; // v0.8 起必须存在
+      const code = stripComments(tr.text);
+
+      // 必要条件 1：默认 cap 常量 = 10（export const TAB_CAP_DEFAULT = 10）
+      if (!/TAB_CAP_DEFAULT\s*=\s*10\b/.test(code)) return false;
+      // 必要条件 2：clamp 逻辑（Math.min(Math.max(...)）
+      if (!/Math\.min\s*\(\s*Math\.max\s*\(/.test(code)) return false;
+      // 必要条件 3：LRU 范式（delete + set MRU 提升 + keys().next().value 淘汰）
+      if (!/\.keys\s*\(\s*\)\.next\s*\(\s*\)\.value/.test(code)) return false;
+      // 必要条件 4：淘汰出口调 close_page（chrome-devtools-mcp 工具）
+      if (!/["']close_page["']/.test(code)) return false;
+      // 必要条件 5：触达源 list_pages（chrome-devtools-mcp 工具）
+      if (!/["']list_pages["']/.test(code)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-51-no-hardcoded-master-key-doctor-stat-only",
+    desc: "v0.8 Phase A：master key 禁硬编码 + doctor 永不清读 cookie 内容（keychain.ts 用 randomBytes 生成；doctor.ts 不调 CookieStore.import / getKeychainKey / 不读 cookie 字段；parse9 §1.3 + §3.4 INV-51 红线）",
+    check: () => {
+      // 必要条件 1：keychain.ts 必须存在（v0.8 起必须）
+      const kc = SRC.find((s) =>
+        /logged-in\/keychain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!kc) return false;
+      const kcCode = stripComments(kc.text);
+
+      // 必要条件 2：用 randomBytes 生成新 key（不是字面量）
+      if (!/randomBytes\s*\(/.test(kcCode)) return false;
+      // 必要条件 3：调 macOS security CLI（find-generic-password / add-generic-password）
+      if (!/find-generic-password/.test(kcCode)) return false;
+      if (!/add-generic-password/.test(kcCode)) return false;
+
+      // 必要条件 4：keychain.ts 禁出现 32+ 字符 base64 字面量（硬编码 key 红线）
+      //   接受字母+数字+斜杠+加号 32+ 长度 = 明文 master key 嫌疑
+      const suspiciousHardcoded = /["'][A-Za-z0-9+/]{32,}={0,2}["']/.test(kcCode);
+      if (suspiciousHardcoded) return false;
+
+      // 必要条件 5：keychain.ts 用 LASSO_COOKIE_PASSPHRASE env fallback（非 darwin 平台）
+      if (!/LASSO_COOKIE_PASSPHRASE/.test(kcCode)) return false;
+
+      // 必要条件 6：doctor.ts 永不清读 cookie 内容（INV-51 红线）
+      //   禁调 CookieStore.import（解密入口）/ getKeychainKey（master key 接触）
+      //   禁调 importCookies / exportCookies（admin opt-in 入口；doctor 不走 admin 路径）
+      //   禁访问 cookie 内容字段（.cookies / c.value / session token 字面量）
+      const doctor = SRC.find((s) =>
+        /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!doctor) return false;
+      const docCode = stripComments(doctor.text);
+      if (/CookieStore\.import\s*\(|\.importCookies\s*\(/.test(docCode)) return false;
+      if (/getKeychainKey\s*\(/.test(docCode)) return false;
+      if (/\.exportCookies\s*\(/.test(docCode)) return false;
+      // 禁 cookie 内容字段读取（防 doctor 误打印 cookie value）
+      if (/\.cookies\b/.test(docCode)) return false;
+      if (/\bcookie\.value\b|\bc\.value\b/.test(docCode)) return false;
+      // 禁 session token 字面量读取
+      if (/session_token\s*:/i.test(docCode)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-52-cookie-export-import-admin-opt-in",
+    desc: "v0.8 Phase A：cookie export/import 必经 admin tool 显式 opt-in（LoggedInChannel 自动路径 getMcpClient 不调 CookieStore.export / .export()；parse9 §1.3 + §3.1 INV-52）",
+    check: () => {
+      // 必要条件 1：LoggedInChannel.ts 必须存在
+      const lic = SRC.find((s) =>
+        /channels\/LoggedInChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!lic) return false;
+      const licCode = stripComments(lic.text);
+
+      // 必要条件 2：getMcpClient 方法体内禁调 CookieStore.export / .export() /
+      //   exportCookies / store.export（browse_logged_in 自动路径不落盘 cookie）
+      //   抽 getMcpClient 函数体（到下一个方法签名为止）
+      const mcpClientBody = licCode.match(
+        /getMcpClient\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2,}\}/,
+      )?.[1] ?? "";
+      if (mcpClientBody.length === 0) return false;
+      // 禁在 getMcpClient 体内调任何 cookie 落盘方法
+      const forbiddenInAutoPath =
+        /store\.export\s*\(|store\.import\s*\(|this\.exportCookies\s*\(|this\.importCookies\s*\(|new\s+CookieStore\b/.test(
+          mcpClientBody,
+        );
+      if (forbiddenInAutoPath) return false;
+
+      // 必要条件 3：CookieStore.ts 必须存在（v0.8 起必须）
+      const cs = SRC.find((s) =>
+        /logged-in\/CookieStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cs) return false;
+
+      // 必要条件 4：cookie export 是 CookieStore 实例方法（必经实例化 + 显式调 .export()）
+      //   grep `async export(` 方法定义（不允 module-level export 函数绕过实例）
+      const csCode = stripComments(cs.text);
+      if (!/async\s+export\s*\(/.test(csCode)) return false;
+      if (!/async\s+import\s*\(/.test(csCode)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-53-iv-unique-per-encryption",
+    desc: "v0.8 Phase A：IV 每次加密唯一（src/logged-in/CookieStore.ts 用 randomBytes(12)；不重用 / 不硬编码 / 不从 counter 派生；parse9 §1.3 + §3.1 INV-53）",
+    check: () => {
+      const cs = SRC.find((s) =>
+        /logged-in\/CookieStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cs) return false;
+      const code = stripComments(cs.text);
+
+      // 必要条件 1：必须用 randomBytes(12) 或 randomBytes(IV_LEN)（GCM 标准 96-bit IV）
+      //   接受字面量 12 或 IV_LEN 常量（可读性优先；二者等价 12 字节）
+      if (!/randomBytes\s*\(\s*(?:12|IV_LEN)\s*\)/.test(code)) return false;
+      // 必要条件 2：IV 变量必须由 randomBytes(...) 直接赋值
+      //   grep `iv = randomBytes(12|IV_LEN)`（容忍中间空格）
+      if (!/iv\s*=\s*randomBytes\s*\(\s*(?:12|IV_LEN)\s*\)/.test(code)) return false;
+
+      // 必要条件 3：IV 禁硬编码（禁 Buffer.from([0,0,...]) 字面量 IV）
+      if (/iv\s*=\s*Buffer\.from\s*\(\s*\[/.test(code)) return false;
+      // 必要条件 4：IV 禁来自实例字段 / 计数器（防跨调用重用）
+      if (/iv\s*=\s*this\./.test(code)) return false;
+      if (/iv\s*=\s*\w+\+\+/.test(code)) return false;
+      // 必要条件 5：IV 禁来自模块顶级 const（防 LLM 通过 config 注入静态 IV）
+      //   精确匹配 `iv = UPPER_SNAKE`（不是函数调用，是常量引用）
+      if (/iv\s*=\s*[A-Z_][A-Z0-9_]*\b(?!\s*\()/.test(code)) return false;
+      // 必要条件 6：加密用的 IV 必须传给 createCipheriv（绑定到加密路径）
+      //   grep createCipheriv 调用块附近出现 iv 变量引用
+      if (!/createCipheriv\s*\([^)]*,\s*iv\s*\)/.test(code)) return false;
+
+      return true;
+    },
+  },
 ];
 
 let failed = 0;

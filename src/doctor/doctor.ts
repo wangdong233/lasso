@@ -102,7 +102,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.7.0-dev";
+export const LASSO_VERSION = "0.8.0-dev";
 
 // ============================================================
 // 类型
@@ -185,6 +185,30 @@ export interface DoctorReport {
       recent_alerts: Array<{ key: string; rate: number; at: number }>;
       recordings_count: number;
     };
+    /**
+     * v0.8 新增（parse9 §3.4 / INV-51 红线）：profiles 子节。
+     *
+     * 守 INV-51：本字段**仅**返加密包元数据（exists / bytes / mtimeMs / sha256），
+     *            **永不**返 cookie 字段（name/value/domain/session 等）；
+     *            doctor 不解密 / 不打印 cookie 内容。
+     *
+     * 未注入（doctor CLI 模式）→ 子节不出现在 runtime_state（零回归）。
+     */
+    profiles?: Array<{
+      name: string;
+      isCurrent: boolean;
+      userDataDir: string;
+      userDataDirExists: boolean;
+      /** 八进制字符串（"0o700"）；探测失败 → null。 */
+      userDataDirMode: string | null;
+      /** 加密包元数据（stat only；INV-51 红线：不解密）。null = provider 未注入。 */
+      encryptedPackage: {
+        exists: boolean;
+        bytes?: number;
+        mtimeMs?: number;
+        sha256?: string;
+      } | null;
+    }>;
   };
 }
 
@@ -292,7 +316,48 @@ export interface DoctorOptions {
       recent_alerts: Array<{ key: string; rate: number; at: number }>;
       recordings_count: number;
     };
+    /**
+     * v0.8 新增（parse9 §3.4 / INV-51）：profiles 子节 provider。
+     * 未注入（doctor CLI 模式）→ 子节不出现在 runtime_state（零回归）。
+     */
+    profiles?: Array<{
+      name: string;
+      isCurrent: boolean;
+      userDataDir: string;
+      userDataDirExists: boolean;
+      userDataDirMode: string | null;
+      encryptedPackage: {
+        exists: boolean;
+        bytes?: number;
+        mtimeMs?: number;
+        sha256?: string;
+      } | null;
+    }>;
   };
+  /**
+   * v0.8 新增（parse9 §3.4 + INV-51 红线）：profile + 加密包健康检查数据源。
+   *
+   * 守 INV-35（task v0.6 衍生）：doctor.ts 不 import logged-in/ 内部；
+   *                        index.ts 装配段注入「数据快照函数」，doctor 仅消费。
+   * 守 INV-51（parse9 §1.3 红线）：provider 返的对象**只含加密包 stat 元数据**
+   *                        （exists / bytes / mtimeMs / sha256），**不含** cookie 字段；
+   *                        doctor 路径永不接触 master key / 明文 cookie。
+   *
+   * 未注入（doctor CLI 模式）→ #28-#30 warn skip + runtime_state.profiles 不出现（零回归）。
+   */
+  profilesChecksProvider?: () => Promise<Array<{
+    name: string;
+    isCurrent: boolean;
+    userDataDir: string;
+    userDataDirExists: boolean;
+    userDataDirMode: string | null;
+    encryptedPackage: {
+      exists: boolean;
+      bytes?: number;
+      mtimeMs?: number;
+      sha256?: string;
+    } | null;
+  }>>;
 }
 
 // ============================================================
@@ -436,13 +501,92 @@ export async function runDoctor(
     checks.push(checkCdpMcpNetworkObserverAvailable());
   }
 
+  // ---- v0.8 M0.8：profiles + 加密包健康检查（parse9 §3.4 + INV-51 红线）----
+  // 默认 profilesChecksProvider 未注入（doctor CLI 模式）→ #28-#30 warn skip（零回归）。
+  // 注入（doctor tool 经 index.ts v0.8 装配）→ #28-#30 跑全 3 项；永不解密 / 永不清读 cookie。
+  let profilesData: Array<{
+    name: string;
+    isCurrent: boolean;
+    userDataDir: string;
+    userDataDirExists: boolean;
+    userDataDirMode: string | null;
+    encryptedPackage: {
+      exists: boolean;
+      bytes?: number;
+      mtimeMs?: number;
+      sha256?: string;
+    } | null;
+  }> = [];
+  if (opts.profilesChecksProvider) {
+    try {
+      profilesData = await opts.profilesChecksProvider();
+    } catch (e) {
+      // provider 抛错 → 3 项降级为 warn（不阻塞 ready）
+      checks.push(
+        {
+          name: "profile_registry_loadable",
+          status: "warn",
+          detail: `profilesChecksProvider threw: ${String(e)}`,
+        },
+        {
+          name: "profile_user_data_dir_exists",
+          status: "warn",
+          detail: "skipped (profilesChecksProvider threw)",
+        },
+        {
+          name: "cookie_store_stat_only",
+          status: "warn",
+          detail: "skipped (profilesChecksProvider threw)",
+        },
+      );
+    }
+  }
+  if (opts.profilesChecksProvider && profilesData.length >= 0) {
+    // 仅当 provider 成功时跑这 3 项（provider 抛错时上面已 warn，此处 profilesData 仍 [] ）
+    // #28 profile_registry_loadable：至少 1 个 profile（或 provider 注入即视为 loadable）
+    checks.push(checkProfileRegistryLoadable(profilesData));
+    // #29 profile_user_data_dir_exists：current profile 的 userDataDir 存在
+    checks.push(checkProfileUserDataDirExists(profilesData));
+    // #30 cookie_store_stat_only：只 stat 加密包，**永不清读 cookie**（INV-51 红线）
+    checks.push(checkEncryptedPackageStatOnly(profilesData));
+  } else if (!opts.profilesChecksProvider) {
+    // 未注入 → 3 项 warn skip（v0.7 兼容）
+    checks.push(
+      {
+        name: "profile_registry_loadable",
+        status: "warn",
+        detail: "skipped (profilesChecksProvider not injected)",
+      },
+      {
+        name: "profile_user_data_dir_exists",
+        status: "warn",
+        detail: "skipped (profilesChecksProvider not injected)",
+      },
+      {
+        name: "cookie_store_stat_only",
+        status: "warn",
+        detail: "skipped (profilesChecksProvider not injected)",
+      },
+    );
+  }
+
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
   // ---- v0.6 M0.6：runtime_state section（parse7 §2.2 + §6.2）----
   // doctor 不验 runtime_state 语义（不增 blockers）；仅展示当前进程状态。
   // runtimeState 未注入（doctor CLI 模式）→ undefined → section 字段不出现在 report 里（零回归）。
-  const runtime_state = opts.runtimeState
-    ? opts.runtimeState()
+  // v0.8（parse9 §3.4 / INV-51）：runtime_state.profiles 子节由 profilesChecksProvider 提供；
+  //                                 **仅**含加密包 stat 元数据，**永不**含 cookie 字段。
+  //
+  // 守 v0.6 范式：runtime_state 整个 section 只在 opts.runtimeState 注入时出现；
+  //              profilesData 即使非空也仅在 runtimeState 同时注入时合并到 runtime_state
+  //              （doctor CLI 模式 runtimeState 不注入 → runtime_state 整段不出现，零回归）。
+  //              #28-#30 checks 仍独立运行（不依赖 runtime_state 是否渲染）。
+  const baseRuntimeState = opts.runtimeState ? opts.runtimeState() : undefined;
+  const runtime_state = baseRuntimeState
+    ? profilesData.length > 0
+      ? { ...baseRuntimeState, profiles: profilesData }
+      : baseRuntimeState
     : undefined;
 
   return {
@@ -1496,4 +1640,134 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
       next_step: "检查 src/browse/cdp-actions.ts 加载",
     };
   }
+}
+
+// ============================================================
+// v0.8 M0.8：#28-#30 profile + 加密包健康检查（parse9 §3.4 + INV-51 红线）
+// ============================================================
+/**
+ * 数据形状（与 DoctorOptions.profilesChecksProvider 返类型一致）。
+ *
+ * 守 INV-51（parse9 §1.3 红线）：本类型**只含加密包 stat 元数据**（exists / bytes /
+ *                                 mtimeMs / sha256），**永不**含 cookie 字段；
+ *                                 doctor 路径永不接触 master key / 明文 cookie。
+ */
+interface ProfileCheckData {
+  name: string;
+  isCurrent: boolean;
+  userDataDir: string;
+  userDataDirExists: boolean;
+  userDataDirMode: string | null;
+  encryptedPackage: {
+    exists: boolean;
+    bytes?: number;
+    mtimeMs?: number;
+    sha256?: string;
+  } | null;
+}
+
+/**
+ * 28. profile_registry_loadable —— ProfileRegistry.load() 不抛 + 至少 1 个 profile。
+ *
+ * 守 INV-51：仅消费 provider 注入的元数据；不调 ProfileRegistry.load / 不读 cookie。
+ */
+function checkProfileRegistryLoadable(profiles: ProfileCheckData[]): DoctorCheck {
+  if (profiles.length === 0) {
+    return {
+      name: "profile_registry_loadable",
+      status: "fail",
+      detail: "profilesChecksProvider 返回空数组（profile 注册表无 entry）",
+      next_step: "调 admin({action:'profile_list'}) 排查；index.ts 装配段应自动建 default profile",
+    };
+  }
+  const hasCurrent = profiles.some((p) => p.isCurrent);
+  return {
+    name: "profile_registry_loadable",
+    status: hasCurrent ? "pass" : "warn",
+    detail: `${profiles.length} profile(s): [${profiles.map((p) => p.name).join(", ")}]；current=${profiles.find((p) => p.isCurrent)?.name ?? "(none)"}`,
+    next_step: hasCurrent
+      ? undefined
+      : "profile_registry 当前指针缺失；调 admin({action:'profile_switch', profile:'default'})",
+  };
+}
+
+/**
+ * 29. profile_user_data_dir_exists —— 当前 profile 的 userDataDir 存在。
+ *
+ * 守 INV-51：仅消费 provider 注入的 userDataDirExists / userDataDirMode；
+ *            doctor 不直接 stat user-data-dir（避免误读 Chrome 内部文件）。
+ */
+function checkProfileUserDataDirExists(profiles: ProfileCheckData[]): DoctorCheck {
+  const current = profiles.find((p) => p.isCurrent);
+  if (!current) {
+    return {
+      name: "profile_user_data_dir_exists",
+      status: "warn",
+      detail: "no current profile (provider returned no isCurrent=true entry)",
+    };
+  }
+  if (!current.userDataDirExists) {
+    return {
+      name: "profile_user_data_dir_exists",
+      status: "fail",
+      detail: `current profile "${current.name}" userDataDir 不存在: ${current.userDataDir}`,
+      next_step: "调 admin({action:'profile_switch', profile:'<name>'}) 触发 ProfileRegistry.add 重建",
+    };
+  }
+  return {
+    name: "profile_user_data_dir_exists",
+    status: "pass",
+    detail: `profile "${current.name}" userDataDir 存在 (mode=${current.userDataDirMode ?? "unknown"})`,
+  };
+}
+
+/**
+ * 30. cookie_store_stat_only —— 当前 profile 加密包 stat 状态。
+ *
+ * 守 INV-51 红线（parse9 §1.3 + §3.4）：
+ *  - 本 check **永不**调 CookieStore.import / getKeychainKey（master key 接触）
+ *  - 仅消费 provider 注入的 stat 元数据（exists / bytes / mtimeMs / sha256）
+ *  - **永不**打印 cookie 字段（name / value / domain / session 等）
+ *
+ * 设计：
+ *  - 加密包不存在 → pass（首次启动 / 未 export 过；非缺陷）
+ *  - 加密包存在但 sha256 缺失 → warn（provider 返不完整）
+ *  - 加密包存在 + sha256 完整 → pass（detail 报 sha256 前 16 字符 + bytes + mtime）
+ */
+function checkEncryptedPackageStatOnly(
+  profiles: ProfileCheckData[],
+): DoctorCheck {
+  const current = profiles.find((p) => p.isCurrent);
+  if (!current) {
+    return {
+      name: "cookie_store_stat_only",
+      status: "warn",
+      detail: "no current profile (stat skipped)",
+    };
+  }
+  const pkg = current.encryptedPackage;
+  if (!pkg || !pkg.exists) {
+    return {
+      name: "cookie_store_stat_only",
+      status: "pass",
+      detail: `current profile "${current.name}" 暂无加密包（未 export 过；调 admin({action:'cookie_restore', op:'export'}) 生成）`,
+    };
+  }
+  if (!pkg.sha256) {
+    return {
+      name: "cookie_store_stat_only",
+      status: "warn",
+      detail: `current profile "${current.name}" 加密包存在但 provider 未返 sha256（bytes=${pkg.bytes ?? "?"}, mtime=${pkg.mtimeMs ?? "?"}）`,
+    };
+  }
+  // 守 INV-51：detail 只展示加密包**密文** sha256（不可逆）+ 字节数 + mtime；
+  //            **永不**展示 cookie 字段（明文 cookie 经 AES-GCM 加密后不可见）
+  const shaPrefix = pkg.sha256.slice(0, 16);
+  return {
+    name: "cookie_store_stat_only",
+    status: "pass",
+    detail: `current profile "${current.name}" 加密包存在：bytes=${pkg.bytes}, sha256(prefix)=${shaPrefix}..., mtime=${new Date(pkg.mtimeMs ?? 0).toISOString()}`,
+    next_step:
+      "doctor 永不解密加密包（INV-51 红线）；要恢复登录态调 admin({action:'cookie_restore', op:'import'})",
+  };
 }
