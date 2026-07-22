@@ -1,17 +1,24 @@
-# Lasso
-
-[简体中文](README.md) | **English**
+<h1 align="center">Lasso</h1>
 
 > Claude Code's "grab handle for everything outside" — search, scrape the web, scrape logged-in pages, drive the desktop, all in one sentence.
 > Cowboy lasso — rope any interface.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/lasso-mcp)](https://www.npmjs.com/package/lasso-mcp)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)]()
+<p align="center">
+  <img src="https://img.shields.io/npm/v/lasso-mcp">
+  <img src="https://img.shields.io/badge/license-MIT-green">
+  <img src="https://img.shields.io/badge/MCP-compatible-purple">
+</p>
+
+**Install Lasso once for Claude Code, and from then on searching, scraping, scraping logged-in pages, and driving the desktop are all a single sentence.** If you search, grab a page, or click around desktop apps every week — and don't want a separate tool for each — install this once and hand it all to Claude.
 
 Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the image grab handle): "every image operation in one MCP" ↔ "every external interaction in one MCP".
 
----
+<div align="center">
+
+[简体中文](README.md) | **English**
+<!-- To add more languages, append one entry here: | [日本語](README.ja.md) -->
+
+</div>
 
 ## Table of Contents
 
@@ -23,6 +30,7 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 - [Privacy & Security](#privacy--security)
 - [Troubleshooting](#troubleshooting)
 - [Who It's For / Not For](#who-its-for--not-for)
+- [Support the Author](#support-the-author)
 - [License](#license)
 
 ---
@@ -171,21 +179,40 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's it — no key
 
 **Install is zero-config** — the install command above already enables browsing / fetching / screenshots / PDF / third-party resource inspection / desktop control. **Only search requires a key.**
 
-### Want to add keys? Do it in the config file (recommended)
+### Look up by what you want to do
+
+| What you want | What to configure | What it unlocks |
+|---|---|---|
+| Scrape public pages / screenshots / PDF / see trackers / fetch raw bytes / drive desktop | **Nothing** | Works right after install |
+| Search | One Zhipu key (free to apply) | The main search entry |
+| Near-zero search failures (multi-source) | Add Brave / Bing keys (both have free tiers) | Auto-fails-over if one is down — you don't feel a thing |
+| Scrape logged-in pages | Run `lasso launch-chrome` once | Reuses your local Chrome session |
+| Drive the macOS desktop | Run `lasso doctor` once | Drive native apps |
+| Scrape Cloudflare-protected sites | Double confirmation + a cloud key | Off by default; needs your explicit opt-in |
+
+Below, each of the four modules is broken out with the shortest path to "it just works".
+
+### 1. Search (one key is enough; configure all three for near-zero failures)
+
+**What it does**: Searches anything, returns structured results (title, snippet, link).
+
+**Does it need a key**: Yes — one Zhipu key (free to apply) is enough.
+
+**How to configure**:
 
 ```bash
 lasso config init        # creates the ~/.lasso/config.json template
 ```
 
-Open `~/.lasso/config.json` and fill in only what you need — e.g. just search:
+Open `~/.lasso/config.json` and fill in:
 
 ```json
 {
-  "ZHIPU_API_KEY": "your_key"
+  "ZHIPU_API_KEY": "your_zhipu_key"
 }
 ```
 
-For "near-zero search failures" (multi-source; auto-fails-over if one is down), add a few more lines:
+**Want it more robust** (highly recommended): add Brave and Bing too — both have free tiers. If any single source is rate-limited or down, it auto-switches to the next and you don't feel a thing:
 
 ```json
 {
@@ -195,25 +222,87 @@ For "near-zero search failures" (multi-source; auto-fails-over if one is down), 
 }
 ```
 
-The file is **flat JSON** — key names match the env variable names in the table below, so there's no new schema to learn. Save it; Lasso picks it up on next start.
+> Separate multiple keys with commas — N keys give you N× the free quota, auto-rotated.
 
-How to obtain each key, free quotas, multi-key rotation details — see [**doc/KEY-GUIDE.md**](./doc/KEY-GUIDE.md).
+Key names match what's written in the table above — just fill them in. Save the file; Lasso picks it up on next start.
 
-### Look up by what you want to do
+**How to apply for keys, free-tier quotas, multi-key rotation details** → see the [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索).
 
-| What you want | What to configure | What it unlocks |
-|---|---|---|
-| Scrape public pages / screenshots / PDF / see trackers / fetch raw bytes / drive desktop | **Nothing** | Works right after install |
-| Search (default: Zhipu) | `ZHIPU_API_KEY` | The main search entry |
-| Near-zero search failures (multi-source) | Add `BRAVE_API_KEYS` / `BING_API_KEYS` | Auto-fails-over if one is down — you don't feel a thing |
-| Scrape logged-in pages | Run `lasso launch-chrome` once | Reuses your local Chrome session |
-| Drive the macOS desktop | Run `lasso doctor` once | Drive native apps |
-| Drive the Windows desktop | Click "allow" on the system prompt on first use | Drive native apps |
-| Drive the Linux desktop | Make sure AT-SPI2 is installed (usually default) | Drive native apps |
-| Scrape Cloudflare-protected sites | `LASSO_ALLOW_CLOUD_BROWSER=true` + a cloud key | Off by default; needs your double confirmation |
-| fake-ip proxy networks (Surge / Clash TUN) | **Nothing** | Already allowed out of the box |
+### 2. Scrape Logged-in Pages (no key — run one command)
 
-> **Backward compatible**: if you previously installed with `claude mcp add -e KEY=VAL`, those env variables **still work** and **override** the config file (precedence: env > `~/.lasso/config.json` > defaults). The config file is an additional user-friendly path; it does not replace env.
+**What it does**: Scrapes pages you're logged into — Jira to-dos, private GitHub repos, company intranets, paid-subscription content.
+
+**Does it need a key**: No.
+
+**How to configure**: Run the command below once. It auto-detects your local Chrome and reuses every session you've already logged into (including the ones where you've already passed 2FA yourself):
+
+```bash
+lasso launch-chrome
+```
+
+After that, say "open my logged-in Jira" to Claude and it'll connect automatically.
+
+> 🔴 **Red line**: 2FA / SMS codes / CAPTCHA / magic links — Lasso never solves these for you. You must manually pass them once in your local Chrome.
+
+**Details** → [Key Configuration Guide · Logged-in Browsing](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
+
+### 3. Drive the Desktop (no key — authorize once in your OS)
+
+**What it does**: Drives native apps on macOS / Windows / Linux (click, type, read window contents, run hotkeys).
+
+**Does it need a key**: No.
+
+**How to configure** (pick your OS):
+
+- **macOS**: Run `lasso doctor` once and follow the prompts to tick `lasso-rust-helper` under "System Settings → Privacy & Security" for both **Accessibility** and **Screen Recording**. `doctor` walks you through it — no need to hunt for the path.
+- **Windows**: The first time you ask Claude to do a desktop action, the system pops an authorization prompt — click "Allow" (equivalent to macOS Accessibility).
+- **Linux**: Make sure the accessibility interface is installed (most GNOME / MATE desktops have it by default; if not, `sudo apt install at-spi2-core`).
+
+> **Honest boundary**: macOS is verified on real hardware; Windows / Linux pass compile-time and contract-level self-checks, but full real-machine manual testing is still in progress. **We don't fake "fully verified on Win/Linux".**
+
+**Details** → [Key Configuration Guide · Desktop Control](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
+
+### 4. Cloud Anti-Bot (off by default; needs double confirmation)
+
+**What it does**: Scrapes sites guarded by Cloudflare or heavy anti-bot protection.
+
+**Does it need a key**: Yes — and it only activates when **you explicitly turn it on**.
+
+**How to configure**: Both conditions must be met at the same time:
+
+1. Master switch: set `LASSO_ALLOW_CLOUD_BROWSER` to `true`
+2. At least one cloud key (browserbase or stagehand — pick one)
+
+Write it into `~/.lasso/config.json`:
+
+```json
+{
+  "LASSO_ALLOW_CLOUD_BROWSER": true,
+  "BROWSERBASE_API_KEY": "your_browserbase_key"
+}
+```
+
+> Off by default — no config means no such capability. You don't need it for normal pages, **and it only activates when you explicitly opt in**.
+
+**How to apply for cloud keys, trial quotas** → see the [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+
+<details>
+<summary><b>Advanced tuning (optional — ordinary users can skip)</b></summary>
+
+You can **completely ignore** the below for daily use. These are only for special scenarios, and most can be set via `lasso config init` into `~/.lasso/config.json` or overridden via environment variables (env vars take precedence over the config file, handy for temporary swaps):
+
+- Change the logged-in Chrome's debug port (when the default `9222` is taken)
+- Move the cache / state files to a different location
+- Restrict to free search sources only
+- Allow company intranet / special proxy ranges
+- Set your own passphrase to encrypt login cookies (if unset, macOS Keychain is used)
+- Save search-result snapshots to disk (for regression testing)
+
+Full variable list and defaults: [Key Configuration Guide · Advanced Tuning](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Surge / Clash TUN proxy networks (fake-ip) are already allowed out of the box.**
+
+> **Backward compatible**: if you previously installed with `claude mcp add -e KEY=VAL`, those env variables **still work** and **override** the config file. The config file is just an additional, friendlier path — it does not replace env.
+
+</details>
 
 ---
 
@@ -225,7 +314,7 @@ Your data is yours.
 - **Desktop action logs stay local** — zero remote reporting. Lasso doesn't phone home about what you do.
 - **Cloud browser is off by default** — requires your **explicit double confirmation** (master switch + key) to activate. Without it, the capability effectively doesn't exist.
 - **No 2FA / CAPTCHA / verification-code solving** (red line). These always require you, in person, to pass once in your local browser.
-- **Internal-network access is denied by default** (SSRF protection), guarding your internal services from being poked at random; fake-ip proxy networks (Surge / Clash TUN) are already allowed out of the box.
+- **Strangers can't poke at your internal services** — internal-network access is denied by default; Surge / Clash TUN proxy networks are already allowed out of the box.
 - **Search results are not written to disk by default** — only if you explicitly enable recording mode (for regression testing).
 
 ---
@@ -241,7 +330,7 @@ Your data is yours.
 | Save-as-PDF fails | Say "take a full-page screenshot of this page" instead |
 | Search keeps returning nothing | Check whether the key expired / quota is exhausted; adding multiple providers (Zhipu + Brave + Bing) dramatically lowers the failure rate |
 | A link won't open | Say "this link is dead, find an archive" to check the Internet Archive |
-| Prompted that internal-network access was blocked | Double-check the URL; fake-ip proxy networks are allowed by default, other internal networks need explicit permission |
+| Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
 
 Full FAQ and debugging tips in [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
 
@@ -265,13 +354,29 @@ Full FAQ and debugging tips in [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.
 
 ---
 
-## License
+## Support the Author
 
-MIT © wangdong233. The desktop helper process and browser-engine dependencies are all MIT / Apache-2.0 — safe for enterprise use.
+If Lasso helps you, buy the author a coffee ☕
 
-> Want the internal architecture, design principles, cross-platform boundaries, and dev commands? See [ARCHITECTURE.md](./ARCHITECTURE.md) and [doc/TROUBLESHOOTING.md](./doc/TROUBLESHOOTING.md).
+<div align="center">
+
+WeChat | Alipay
+:-: | :-:
+<img src="doc/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
+
+</div>
+
+Or ⭐ [Star this repo](../../stargazers), [open an Issue](../../issues), or [send a PR](../../pulls) — every one of them encourages the author.
 
 ---
 
-> Built for everyone who'd rather say it than script it.
-> Install once — search, scrape, scrape logged-in, drive desktop, all in one sentence.
+## License
+
+**MIT** © wangdong233. The desktop helper process and browser-engine dependencies are all MIT / Apache-2.0 — safe for enterprise use.
+
+> Want the internal architecture, design principles, cross-platform boundaries, and dev commands? See [ARCHITECTURE.md](./ARCHITECTURE.md) and [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+
+<p align="center">
+  <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>
+  <sub>Install once — search, scrape, scrape logged-in, drive desktop, all in one sentence.</sub>
+</p>
