@@ -40,6 +40,8 @@ import { SubprocessManager } from "./subprocess/SubprocessManager.js";
 import { RustBridge } from "./subprocess/RustBridge.js";
 import { SearchChannel } from "./channels/SearchChannel.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
+// v0.9 Phase B（parse10 §3.1）：BingChannel 第三源
+import { BingChannel } from "./channels/BingChannel.js";
 import { HeadlessChannel } from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
@@ -73,6 +75,10 @@ import { registerPdfTool } from "./tools/pdf.js";
 // INV-33 守：network 走新加 dispatch entry（cdp-actions.ts doNetwork = evaluate_script 注入 PerformanceObserver）
 // INV-34 守：network 显式 applyOutputEnvelope(jsonString, hint, ".txt")；资源列表过 envelope
 import { registerNetworkTool } from "./tools/network.js";
+// v0.9 Phase B（parse10 §3.3 + §6 M3）：wayback_lookup 独立 tool（死链救援，不自动探测）
+// INV-56 守：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）
+// INV-58 守：本 tool 是独立 tool，不在 search 主路径里自动调
+import { registerWaybackTool } from "./tools/wayback.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -136,9 +142,13 @@ const DEFAULT_RUST_HELPER_PATH =
  *   + ResourceMonitor + SerpHealthMonitor + admin 3 只读 action → 0.7.0-dev
  * v0.8（parse9 §1.1 + §6 验收）：logged_in 持久化层 —— cookie AES-256-GCM 落盘 +
  *   多 profile + tab LRU + admin 3 action（profile_list / profile_switch / cookie_restore）→ 0.8.0-dev
+ * v0.9（parse10 §1.1 + §6 验收）：search ≈永不失败兜底层 —— BingChannel 第三源 +
+ *   FallbackChain plan 构造器 + wayback_lookup 独立 tool + RecordingStore replay 最后兜底 +
+ *   engine="fallback_chain" 显式 opt-in（INV-54..59；engine="auto" 默认 byte-identical v0.8）
+ *   → 0.9.0-dev
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
  */
-const LASSO_SERVER_VERSION = "0.8.0-dev";
+const LASSO_SERVER_VERSION = "0.9.0-dev";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -251,6 +261,40 @@ async function runMcpServer(): Promise<void> {
   }
   const searchCache = new SearchCache(config.searchCacheDir);
 
+  // ----- v0.9 Phase B 装配 BingChannel（parse10 §3.1 + §1 决策 6 + INV-54）-----
+  // **零回归承诺**（parse10 §1 决策 6 + §4 未明点）：
+  //  - BING_API_KEYS 未配 → registry.get("bing") 返 undefined → bing 保持 undefined
+  //    → registerSearchTool 第 9 参传 undefined → engine="fallback_chain" 路径 bing 兜底层
+  //      不可用（仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链）。
+  //  - BING_API_KEYS 配 → BingChannel 实例化 + isAvailable 经 ledger.hasAvailableKey 判定；
+  //    engine="fallback_chain" 时 bing 作 search.bing 兜底层。
+  // Azure F0 免费层不强依赖：key=[] 时 ProviderRegistry 已在 config.ts 跳过 bing（keys.length===0），
+  // 此处 braveProvider 的同范式判定也会跳过 —— 行为完全等价 v0.8。
+  let bing: BingChannel | undefined;
+  const bingProvider = config.registry.get("bing");
+  if (bingProvider && bingProvider.config.endpoint_url && bingProvider.ledger) {
+    bing = new BingChannel(
+      bingProvider.config.endpoint_url,
+      bingProvider.ledger,
+      subproc.acquireHttpClient("https://api.bing.microsoft.com"),
+    );
+    logger.info({
+      evt: "bing_channel_wired",
+      keys: bingProvider.ledger.keyCount,
+    });
+  } else {
+    logger.info({ evt: "bing_channel_skipped", reason: "no_keys_or_endpoint" });
+  }
+
+  // ----- v0.9 Phase B 装配 search-recordings RecordingStore（parse10 §3.4 + INV-57）-----
+  // engine="fallback_chain" 全源熔断时 replay 最后兜底（命中返 worked + served_by="recording_replay"）。
+  // **零回归**：仅 engine="fallback_chain" 路径使用；engine="auto" 默认路径不读，
+  //            byte-identical v0.8。LASSO_RECORD_SEARCH 默认 OFF（INV-57）—— 录制需显式 opt-in，
+  //            但 replay 与录制开关独立（过去录过的 fixture 即便本次 OFF 仍可回放）。
+  const searchRecordings = new RecordingStore(
+    path.join(config.cacheDir, "search-recordings"),
+  );
+
   // ----- v0.3.5 装配 DesktopChannel（parse4 §3.5 + §2.3 文件依赖图）-----
   // 桌面通道 4 件套（v0.4 M0.4b 扩 4-tier）：
   //   1. subproc.registerRustSpec("rust-helper", {...})  ← spawn 规格
@@ -284,6 +328,9 @@ async function runMcpServer(): Promise<void> {
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
     ["search.brave", new CircuitBreaker()],
+    // v0.9 Phase B（parse10 §3.2）：search.bing 第三源 breaker（key=[] 时仍创建，
+    // decider 内部 channel 不可用会经 FallbackChain 过滤；breaker 仅在 bing 注入后被记录）
+    ["search.bing", new CircuitBreaker()],
     ["fanout", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
@@ -408,6 +455,11 @@ async function runMcpServer(): Promise<void> {
     config.registry,
     searchCache,
     serpHealth,
+    // v0.9 Phase B（parse10 §3）：bing + searchRecordings 注入
+    // bing undefined 时（BING_API_KEYS 未配）→ fallback_chain 路径 bing 兜底层不可用，
+    // 仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链。
+    bing,
+    searchRecordings,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
   registerDesktopTool(server, desktop, decider);
@@ -428,6 +480,10 @@ async function runMcpServer(): Promise<void> {
   // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
   // network 走新加 entry（doNetwork from cdp-actions = evaluate_script 注入 PerformanceObserver）
   registerNetworkTool(server, headless, ssrfConfig);
+  // v0.9 Phase B（parse10 §3.3 + §6 M3 手测）：wayback_lookup 独立 tool
+  // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
+  // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
+  registerWaybackTool(server, subproc, ssrfConfig);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
   // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：
   // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
@@ -510,6 +566,9 @@ async function runMcpServer(): Promise<void> {
     screenshot: "screenshot",
     pdf: "pdf",
     network: "network",
+    // v0.9 Phase B（parse10 §3.3）：wayback_lookup 归到 "wayback" channel（独立 caller-tier）。
+    // bag.disable("wayback") 仅停 wayback_lookup tool；不影响 search 主路径（INV-58 守）。
+    wayback_lookup: "wayback",
     doctor: "doctor",
   };
   const sdkRegisteredTools = (server as unknown as {
@@ -544,6 +603,11 @@ async function runMcpServer(): Promise<void> {
   initialCapabilities.push("search.zhipu");
   if (brave) {
     initialCapabilities.push("search.brave");
+  }
+  // v0.9 Phase B（parse10 §3.1）：search.bing 仅在 bing 实例化时加入
+  // （key=[] 时 bing=undefined → 不进 initialCapabilities → bag.disable 无副作用）
+  if (bing) {
+    initialCapabilities.push("search.bing");
   }
   // desktop providers（ProviderConfig.name 已是 "desktop.<tier>" 形式）
   initialCapabilities.push(
@@ -624,6 +688,9 @@ async function runMcpServer(): Promise<void> {
   for (const name of [
     "search.zhipu",
     "search.brave",
+    // v0.9 Phase B（parse10 §3）：search.bing 长熔断（key=[] 时仍创建；onOpen 经 bag.disable
+    // 联动，bing 未在 initialCapabilities 内 → bag.disable 返 false 不影响其他通道）
+    "search.bing",
     "browse_headless",
     "browse_logged_in",
     "browse_cloud_browserbase",

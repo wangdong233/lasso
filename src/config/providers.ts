@@ -277,6 +277,60 @@ export const CLOUD_BROWSER_PROVIDERS: readonly ProviderConfig[] = [
 /** 单独导出便于 INV-25 grep + 测试断言（tags 含 "cloud" 子标签）。 */
 export { BROWSERBASE, STAGEHAND };
 
+// ============================================================
+// v0.9 Phase A 新增（parse10 §3.1 第三源 Bing Web Search API v7）
+// ============================================================
+/**
+ * Bing Web Search —— 第三源 search provider（parse10 §3.1 / §1 决策 6）。
+ *
+ * **v0.9 立场（parse10 §4 未明点）**：
+ *  - Bing Azure F0 免费层对新订阅的可用性基于既有知识（2023-08 调整后多 region 受限），
+ *    v0.9 接入结构**不强依赖 F0 必可用** —— key=[] 时 ProviderRegistry 跳过 bing，
+ *    行为完全等价 v0.8（零回归承诺）。
+ *  - fallback_order=4：在 search.bing 配置位置上（brave=3 之后，tavily=99 之前）。
+ *  - 与 ZHIPU/BRAVE 同结构（api_key + monthly quota），但 policy_risk="watched"
+ *    （Azure 商用条款观察期 —— Azure 商用 ToS 较严格，doctor warn 提醒）。
+ *
+ * INV-54（parse10 §1）：BingChannel 禁直接读 process.env.BING_API_KEYS，必须经 QuotaLedger。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS 范式，保零回归）：
+ *  - v0.8 ProviderRegistry byCap("search") 测试断言不含 bing 仍绿（只有 zhipu / brave）
+ *  - M（v0.9+）实装时在 index.ts 条件装配 BingChannel（BING_API_KEYS 注入时）
+ *  - 用户配 BING_API_KEYS env → config.ts 注入 keys → registry 自动 byCap 含 bing
+ *  - 用户不配 → keys=[] → ProviderRegistry 因 c.keys.length===0 不创 QuotaLedger（同 brave）
+ *
+ * Endpoint: https://api.bing.microsoft.com/v7.0/search（parse10 §3.1）
+ * Auth: Ocp-Apim-Subscription-Key header（BingChannel.ts 实装）
+ */
+const BING: ProviderConfig = {
+  name: "bing",
+  type: "api_key",
+  endpoint_url: "https://api.bing.microsoft.com/v7.0/search",
+  keys: [], // config.ts 从 BING_API_KEYS CSV 注入
+  free_quota_per_month: 1000, // Azure F0 免费层（transient availability，parse10 §4）
+  quota_model: "monthly",
+  fallback_order: 4, // 第三源兜底（zhipu=0 主力，brave=3 英文，bing=4 兜底）
+  free_tier_level: "L2",
+  policy_risk: "watched", // Azure 商用 ToS 观察期（manual-switch，doctor warn）
+  licence: "commercial", // Azure 商用服务
+  commercial_safe: false, // 付费商用（与 browserbase/stagehand 同档）
+  tags: ["search"],
+  enabled: true,
+};
+
+/**
+ * v0.9 Phase A Bing provider（parse10 §3.1）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS 范式）：
+ *  - v0.8 ProviderRegistry 测试断言 byCap("search") 不含 bing 仍绿（零回归承诺）
+ *  - INV-54 grep BING 字面量在 providers.ts 即合规（不要求进 BUILTIN_PROVIDERS）
+ *  - M（v0.9+）实装时在 index.ts 条件装配：BING_API_KEYS 注入时 new BingChannel
+ */
+export const SEARCH_FALLBACK_PROVIDERS: readonly ProviderConfig[] = [BING];
+
+/** 单独导出便于 INV-54 grep + 测试断言（policy_risk=watched + fallback_order=4）。 */
+export { BING };
+
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
   ZHIPU,
   BROWSE_HEADLESS,

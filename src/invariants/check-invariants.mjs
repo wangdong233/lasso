@@ -8,6 +8,8 @@
  *                     + parse5 §2.3 v0.4 M0.4c 加 INV-30 stealth-profiles 顶级 const）
  *                     + parse6 §1.5 v0.5 M0.5a 加 INV-31/32 fetch_url SSRF + 连接池守门）
  *                     + parse6 §1.5 v0.5 M0.5b 加 INV-33/34 pdf/console/network actionDispatch + 二进制 envelope）
+ *                     + parse9 §2.2 v0.8 加 INV-48..53 cookie AES-256-GCM 隐私红线）
+ *                     + parse10 §1 v0.9 Phase A 加 INV-54..59 search 兜底层增量 + Bing 第三源 + wayback 独立 tool）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -1816,6 +1818,342 @@ const assertions = [
       // 必要条件 6：加密用的 IV 必须传给 createCipheriv（绑定到加密路径）
       //   grep createCipheriv 调用块附近出现 iv 变量引用
       if (!/createCipheriv\s*\([^)]*,\s*iv\s*\)/.test(code)) return false;
+
+      return true;
+    },
+  },
+
+  // ============================================================
+  // v0.9 Phase A 新增（parse10 §1 + §3.x + §5 —— INV-54..59 search 兜底层增量）
+  // ============================================================
+  // parse10 §1 关键设计决策钉死（守简单性 02 §5 R-CI-02 / §5.5 R-ABS-01）：
+  //  INV-54  BingChannel 必经 QuotaLedger（INV-10 衍生；grep BingChannel.ts 经 pickKey，禁直读 env）
+  //  INV-55  fallback_chain 复用 FallbackDecider（INV-4 衍生；grep FallbackChain.ts 调 runWithFallback，禁自造串行循环）
+  //  INV-56  wayback_lookup 经 doFetchUrl + ssrfGuard（INV-31 同源；grep wayback.ts 调 ssrfGuard + doFetchUrl）
+  //  INV-57  录制回放必显式 opt-in（grep RecordingStore 检查 LASSO_RECORD_SEARCH env，默认 OFF）
+  //  INV-58  禁自动探测死链（grep search 主路径无自动 wayback 调用；wayback 是独立 tool）
+  //  INV-59  RecordingStore.save 异步不阻塞（grep saveIfRecording 非 async + 内部不 await）
+  {
+    id: "INV-54-bing-keys-via-ledger",
+    desc: "v0.9 Phase A：BingChannel 禁直接读 process.env.BING_API_KEYS / BING_API_KEY，必须经 QuotaLedger（parse10 §3.1；INV-10 衍生 INV-54）",
+    check: () => {
+      const bing = SRC.find((s) =>
+        /channels\/BingChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!bing) return false; // v0.9 起必须存在
+      const code = bing.text;
+
+      // 必要条件 1：禁直接读 process.env.BING_API_KEYS / BING_API_KEY
+      if (/process\.env\.BING_API_KEYS|process\.env\.BING_API_KEY/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 2：必须 import QuotaLedger 类型（与 BraveChannel 同范式）
+      if (!/from\s+["'][^"']*config\/quota-ledger(\.js)?["']/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 3：代码本体（去注释）必须调 ledger.pickKey()（INV-54 真落地）
+      const codeStripped = stripComments(code);
+      if (!/ledger\.pickKey\s*\(\s*\)/.test(codeStripped)) return false;
+
+      // 必要条件 4：429 路径必须调 ledger.markExhausted（与 BraveChannel 同范式）
+      if (!/ledger\.markExhausted\s*\(/.test(codeStripped)) return false;
+
+      // 必要条件 5：providers.ts 必须导出 BING ProviderConfig（INV-54 配套 schema）
+      //   grep `const BING: ProviderConfig` 字面量
+      const prov = SRC.find((s) =>
+        /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!prov) return false;
+      if (!/const\s+BING\s*:\s*ProviderConfig/.test(prov.text)) return false;
+
+      // 必要条件 6：BING 必须单独导出，不进 BUILTIN_PROVIDERS（保零回归范式）
+      //   BUILTIN_PROVIDERS 数组字面量里禁出现 BING 标识符
+      const builtinBlock = prov.text.match(
+        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/\bBING\b/.test(builtinBlock)) return false;
+
+      // 必要条件 7：BING 必须配 policy_risk（parse10 §3.1；watched）
+      const bingBlock = prov.text.match(
+        /const\s+BING\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
+      )?.[1] ?? "";
+      if (!/policy_risk\s*:/.test(bingBlock)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-55-fallback-chain-reuses-decider",
+    desc: "v0.9 Phase A：fallback_chain 复用 FallbackDecider.runWithFallback（INV-4 衍生；grep FallbackChain.ts 调 runWithFallback，禁自造串行 fallback 循环）",
+    check: () => {
+      const fc = SRC.find((s) =>
+        /search\/FallbackChain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fc) return false; // v0.9 起必须存在
+      const code = stripComments(fc.text);
+
+      // 必要条件 1：必须 import FallbackDecider（或 type import）
+      if (!/from\s+["'][^"']*fallback\/FallbackDecider(\.js)?["']/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 2：代码本体必须调 decider.runWithFallback（INV-55 红线）
+      //   允许 <T> 泛型：runFallbackChain<T> 传 type-arg 给 runWithFallback<T>(...) 是合法 TS；
+      //   regex 允许 runWithFallback 与 ( 之间出现可选的 <...> 泛型实参。
+      if (!/decider\.runWithFallback(?:\s*<[^>]*>)?\s*\(/.test(code)) return false;
+
+      // 必要条件 3：禁自造串行 fallback 循环 —— 在 runFallbackChain / runWithFallback 函数体内
+      //   不允许 for / while 循环里调 executor / channel.search
+      //   做法：抽 async function 体，验体内不出现 `for (...) ... executor(` 或 `while ... executor(`
+      //   简化：函数体内出现 `await executor(` 但**不在 for/while 内**才合规；若在循环内则违 INV-55。
+      //   这里用更简单的规则：runFallbackChain / 主入口函数体内禁出现 for/while 关键字（仅 plan
+      //   构造器 buildFallbackPlan 允许 for-of 遍历 channelNames —— 那是过滤，不是 fallback 执行）。
+      //
+      //   实现：找出 `export async function runFallbackChain` 函数体，验体内不出现
+      //   for / while / executor 关键字组合（若有则视为自造循环）。
+      const runChainBody = code.match(
+        /export\s+async\s+function\s+runFallbackChain\s*<[^>]*>\s*\(([\s\S]*?)\n\}\n/s,
+      )?.[1] ?? "";
+      if (runChainBody.length === 0) return false;
+      // runFallbackChain 体内禁出现 for / while 循环（INV-55 红线）
+      if (/\bfor\s*\(|\bwhile\s*\(/.test(runChainBody)) return false;
+      // runFallbackChain 体内禁直接调 executor(...) —— executor 必须经 decider.runWithFallback 调
+      // （executor 参数传入 decider，decider 内部循环调；不在本函数体内）
+      if (/\bexecutor\s*\(/.test(runChainBody)) return false;
+
+      // 必要条件 4：buildFallbackPlan 是纯函数（返 FallbackPlan；不执行 channel 调用）
+      //   grep buildFallbackPlan 函数体内禁出现 executor / await channel.search
+      const buildPlanBody = code.match(
+        /export\s+async\s+function\s+buildFallbackPlan\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}\n/s,
+      )?.[1] ?? "";
+      if (buildPlanBody.length === 0) return false;
+      // buildFallbackPlan 体内禁出现 channel.search / executor 调用（INV-55 plan 构造器边界）
+      if (/\.search\s*\(/.test(buildPlanBody)) return false;
+      if (/\bexecutor\s*\(/.test(buildPlanBody)) return false;
+
+      // 必要条件 5：必须导出 DEFAULT_FALLBACK_ORDER 常量（parse10 §1 决策 6 + §3.2）
+      if (!/export\s+const\s+DEFAULT_FALLBACK_ORDER\b/.test(code)) return false;
+      // DEFAULT_FALLBACK_ORDER 必须含 search.bing 字面量（v0.9 第三源）
+      const fallbackOrderBlock = code.match(
+        /DEFAULT_FALLBACK_ORDER\s*:[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (!/["']search\.bing["']/.test(fallbackOrderBlock)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-56-wayback-via-ssrf-and-dofetch",
+    desc: "v0.9 Phase A：wayback_lookup 必经 ssrfGuard + doFetchUrl（INV-31 同源；URL 入 wayback 前必命中 ssrfGuard，禁自造 fetch；parse10 §3.3 INV-56）",
+    check: () => {
+      const wb = SRC.find((s) =>
+        /tools\/wayback\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!wb) return false; // v0.9 起必须存在
+      const code = stripComments(wb.text);
+
+      // 必要条件 1：import ssrfGuard（与 fetch-url.ts 同源；不在 wayback.ts 内重造第二套）
+      if (!/from\s+["'][^"']*ssrf\/ssrf-guard(\.js)?["']/.test(code)) {
+        return false;
+      }
+
+      // 必要条件 2：代码本体（去注释）必须调用 ssrfGuard（不只是注释提及）
+      if (!/\bssrfGuard\s*\(/.test(code)) return false;
+
+      // 必要条件 3：必须 import doFetchUrl（复用 fetch_url 的 SSRF + 连接池 + bounded output）
+      //   允许两种路径风格：
+      //     - 跨目录绝对风格："../tools/fetch-url.js" / "src/tools/fetch-url.js"
+      //     - 同目录相对风格："./fetch-url.js"（wayback.ts 与 fetch-url.ts 同在 tools/ 下）
+      if (!/from\s+["'][^"']*fetch-url(\.js)?["']/.test(code)) {
+        return false;
+      }
+      if (!/import\s+\{\s*doFetchUrl\s*\}/.test(code)) return false;
+
+      // 必要条件 4：代码本体必须调用 doFetchUrl（不在 wayback.ts 内重造 fetch 范式）
+      if (!/\bdoFetchUrl\s*\(/.test(code)) return false;
+
+      // 必要条件 5：ssrfGuard 调用必须在 doFetchUrl 调用之前（先守用户 URL，再抓 wayback API）
+      //   防御：archive.org 不应成为「把私网 URL 写进第三方日志」的代理。
+      const ssrfIdx = code.search(/\bssrfGuard\s*\(/);
+      const fetchIdx = code.search(/\bdoFetchUrl\s*\(/);
+      if (ssrfIdx === -1 || fetchIdx === -1) return false;
+      if (ssrfIdx >= fetchIdx) return false;
+
+      // 必要条件 6：禁直接 new Agent / 禁裸 global.fetch（INV-32 同源；连接池单一真源）
+      if (/\bnew\s+Agent\s*\(/.test(code)) return false;
+      //   裸 fetch( 调用（前面不带 httpClient. / subproc.）
+      const withoutDoFetch = code.replace(/\bdoFetchUrl\s*\(/g, "");
+      const withoutMethodFetch = withoutDoFetch.replace(/\.fetch\s*\(/g, "");
+      if (/(?<![.\w])fetch\s*\(/.test(withoutMethodFetch)) return false;
+
+      // 必要条件 7：必须注册 wayback_lookup tool（server.tool 调用）
+      if (!/server\.tool\s*\(\s*["']wayback_lookup["']/.test(code)) return false;
+
+      // 必要条件 8：结果形状必须含 archived 标记（attributed：archived:true/false）
+      //   parse10 §3.3 铁律：wayback tool 返回必带 archived 字段
+      if (!/archived\s*:/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-57-recording-replay-explicit-opt-in",
+    desc: "v0.9 Phase A：录制回放必显式 opt-in（RecordingStore.ts 检查 LASSO_RECORD_SEARCH env，默认 OFF；parse10 §3.4 + §1 决策 5 INV-57）",
+    check: () => {
+      const rs = SRC.find((s) =>
+        /serp\/RecordingStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!rs) return false;
+      const code = stripComments(rs.text);
+
+      // 必要条件 1：代码本体必须出现 LASSO_RECORD_SEARCH env 字面量（INV-57 grep 红线）
+      if (!/LASSO_RECORD_SEARCH/.test(code)) return false;
+
+      // 必要条件 2：必须有 isRecordingEnabled 函数（封装 env 读取；构造期固定）
+      if (!/function\s+isRecordingEnabled\b/.test(code)) return false;
+      //   isRecordingEnabled 函数体必须读 env.LASSO_RECORD_SEARCH
+      const isEnabledBody = code.match(
+        /function\s+isRecordingEnabled\s*\([^)]*\)\s*[\s\S]*?\n\}/,
+      )?.[0] ?? "";
+      if (!/LASSO_RECORD_SEARCH/.test(isEnabledBody)) return false;
+
+      // 必要条件 3：默认值必须是 false（"true" 才开启；其他都 false）
+      //   grep "true" 字符串字面量对比（toLowerCase 后严格 === "true"）
+      if (!/toLowerCase\s*\(\s*\)\s*===\s*["']true["']/.test(isEnabledBody)) {
+        return false;
+      }
+
+      // 必要条件 4：RecordingStore 构造器必须根据 isRecordingEnabled 决定 recordingEnabled
+      //   （构造期固定，不让 search 主路径每次重新读 env）
+      if (!/recordingEnabled/.test(code)) return false;
+
+      // 必要条件 5：必须暴露 saveIfRecording 入口（search 主路径 fire-and-forget 用）
+      if (!/saveIfRecording\s*\(/.test(code)) return false;
+
+      // 必要条件 6：saveIfRecording 体内必须在调 save 之前检查 recordingEnabled
+      //   守 INV-57：默认 OFF 时 save 根本不触发
+      const saveIfBody = code.match(
+        /saveIfRecording\s*\([^)]*\)\s*:\s*void\s*\{([\s\S]*?)\n\s{2}\}/,
+      )?.[1] ?? "";
+      if (saveIfBody.length === 0) return false;
+      if (!/recordingEnabled/.test(saveIfBody)) return false;
+      // saveIfRecording 必须是 sync 方法（非 async）—— 守 INV-59
+      if (/async\s+saveIfRecording/.test(code)) return false;
+
+      // 必要条件 7：必须有 replay 方法（parse10 §3.4 回放入口）
+      if (!/async\s+replay\s*\(/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-58-no-auto-dead-link-probe",
+    desc: "v0.9 Phase A：禁自动探测死链（search 主路径 tools/search.ts + MultiSourceFanout.ts 不调 wayback；wayback 是独立 tool；parse10 §1 决策 3 + §3.3 INV-58）",
+    check: () => {
+      // 必要条件 1：wayback_lookup 必须是独立 tool（在 tools/wayback.ts 注册；不在 search 主路径里调）
+      //   wayback.ts 存在 + 注册 wayback_lookup tool（INV-56 已查；这里再加一次明确）
+      const wb = SRC.find((s) =>
+        /tools\/wayback\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!wb) return false;
+
+      // 必要条件 2：search 主路径（tools/search.ts）代码本体禁 import wayback / 禁调 doWaybackLookup
+      const search = SRC.find((s) =>
+        /tools\/search\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (search) {
+        const searchCode = stripComments(search.text);
+        // 禁 import from wayback
+        if (/from\s+["'][^"']*wayback(\.js)?["']/.test(searchCode)) return false;
+        // 禁调 doWaybackLookup / wayback_lookup
+        if (/\bdoWaybackLookup\s*\(/.test(searchCode)) return false;
+        if (/\bwayback_lookup\b/.test(searchCode)) return false;
+      }
+
+      // 必要条件 3：MultiSourceFanout.ts 代码本体禁 import wayback / 禁调 doWaybackLookup
+      const fanout = SRC.find((s) =>
+        /search\/MultiSourceFanout\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (fanout) {
+        const fanoutCode = stripComments(fanout.text);
+        if (/from\s+["'][^"']*wayback(\.js)?["']/.test(fanoutCode)) return false;
+        if (/\bdoWaybackLookup\s*\(/.test(fanoutCode)) return false;
+        if (/\bwayback_lookup\b/.test(fanoutCode)) return false;
+      }
+
+      // 必要条件 4：search/MultiSourceFanout.ts 也禁 wayback 引用（同上）
+      //   已覆盖
+
+      // 必要条件 5：FallbackChain.ts（v0.9 fallback 引擎入口）也禁自动调 wayback
+      //   （fallback_chain 仅在 search surface 内；wayback 是 caller-tier 显式调的独立 tool）
+      const fc = SRC.find((s) =>
+        /search\/FallbackChain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (fc) {
+        const fcCode = stripComments(fc.text);
+        if (/from\s+["'][^"']*wayback(\.js)?["']/.test(fcCode)) return false;
+        if (/\bdoWaybackLookup\s*\(/.test(fcCode)) return false;
+      }
+
+      // 必要条件 6：BingChannel.ts / BraveChannel.ts 不调 wayback（search 主路径的源层也不自动调）
+      for (const f of ["BingChannel", "BraveChannel"]) {
+        const ch = SRC.find((s) =>
+          new RegExp(`channels/${f}\\.ts$`).test(s.f.replace(/\\/g, "/")),
+        );
+        if (!ch) continue;
+        const chCode = stripComments(ch.text);
+        if (/\bdoWaybackLookup\s*\(/.test(chCode)) return false;
+      }
+
+      return true;
+    },
+  },
+  {
+    id: "INV-59-recording-save-async-non-blocking",
+    desc: "v0.9 Phase A：RecordingStore.saveIfRecording 异步不阻塞（saveIfRecording 是 sync void 方法；内部 save 是 fire-and-forget .catch 吞错；search 主路径不 await；parse10 §3.4 + §1 决策 5 INV-59）",
+    check: () => {
+      const rs = SRC.find((s) =>
+        /serp\/RecordingStore\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!rs) return false;
+      const code = stripComments(rs.text);
+
+      // 必要条件 1：saveIfRecording 必须是 sync void 方法（非 async）
+      //   INV-59 红线：search 主路径直接调，不 await
+      if (/async\s+saveIfRecording/.test(code)) return false;
+      // 必须显式标 :void 返回类型（明确「不返 Promise」，防止 caller 误 await）
+      if (!/saveIfRecording\s*\([^)]*\)\s*:\s*void/.test(code)) return false;
+
+      // 必要条件 2：saveIfRecording 体内禁出现 await 关键字（fire-and-forget；INV-59 核心）
+      const saveIfBody = code.match(
+        /saveIfRecording\s*\([^)]*\)\s*:\s*void\s*\{([\s\S]*?)\n\s{2}\}/,
+      )?.[1] ?? "";
+      if (saveIfBody.length === 0) return false;
+      if (/\bawait\b/.test(saveIfBody)) return false;
+
+      // 必要条件 3：saveIfRecording 必须用 void 前缀 fire-and-forget（明确不 await Promise）
+      //   接受 `void this.save(...)` 或 `this.save(...).catch(...)` 不带 await
+      if (!/\bvoid\s+this\.save\s*\(/.test(saveIfBody)) return false;
+
+      // 必要条件 4：saveIfRecording 必须挂 .catch 吞错（防 unhandled rejection）
+      if (!/\.catch\s*\(/.test(saveIfBody)) return false;
+
+      // 必要条件 5：search 主路径（tools/search.ts）禁直接 await recordingStore.save / saveIfRecording
+      //   （saveIfRecording 是 void，本就不能 await，但防误用 await saveIfRecording）
+      const search = SRC.find((s) =>
+        /tools\/search\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (search) {
+        const searchCode = stripComments(search.text);
+        // 禁 `await xxx.save(`（仅当 xxx 含 recording 字面量才算违规 —— 其他 save 不算）
+        if (/await\s+\w*(recording|recordings)\w*\.save\s*\(/.test(searchCode)) {
+          return false;
+        }
+        // 禁 `await xxx.saveIfRecording(`
+        if (/await\s+\w*\.saveIfRecording\s*\(/.test(searchCode)) return false;
+      }
 
       return true;
     },

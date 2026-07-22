@@ -1,8 +1,8 @@
 /**
- * 配置加载（parse1 §2 + parse2 §3.1.4 v0.2 升级）
+ * 配置加载（parse1 §2 + parse2 §3.1.4 v0.2 升级 + parse10 §3 v0.9 Phase B）
  *
- * 真源：env (ZHIPU_API_KEY / BRAVE_API_KEYS / LASSO_CDP_PORT / LASSO_CACHE_DIR /
- *       LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*)。
+ * 真源：env (ZHIPU_API_KEY / BRAVE_API_KEYS / BING_API_KEYS / LASSO_CDP_PORT /
+ *       LASSO_CACHE_DIR / LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*)。
  * TODO v0.3：再合并 ~/.claude.json 的 lasso 段（Phase A 不读盘，保持简单）。
  *
  * 单一真相：LassoConfig 是整个进程读配置的唯一入口，channel 工具都从这里拿值。
@@ -12,11 +12,20 @@
  *  - LASSO_SEARCH_FREE_ONLY（默认 L4=全部允许；设 L2 则禁付费）
  *  - ProviderRegistry 装配（CapabilityBag 自动生成）
  *  - searchCacheDir（~/.cache/lasso/search-cache/，F3.1.4 cache 落盘根）
+ *
+ * v0.9 Phase B 新增（parse10 §3 + §1 决策 6 + INV-54）：
+ *  - BING_API_KEYS / BING_API_KEY CSV 多 Key 解析 → conditionally add BING provider
+ *  - **零回归承诺**：BING_API_KEYS 未配 → keys=[] → BING provider 不进 providers map
+ *    → ProviderRegistry byCap("search") 不含 bing → 行为完全等价 v0.8。
+ *  - 配 BING_API_KEYS → SEARCH_FALLBACK_PROVIDERS[0] (BING) 加进 providers map；
+ *    ProviderRegistry 构造时 keys.length>0 → 创建 QuotaLedger → byCap("search") 含 bing。
+ *  - BING 不进 BUILTIN_PROVIDERS（parse10 §3.1 + providers.ts 注释），保 v0.8 测试断言
+ *    「byCap("search") 不含 bing」在 BING_API_KEYS 未配时仍绿。
  */
 import * as os from "node:os";
 import * as path from "node:path";
 import type { FreeTierLevel, ProviderConfig } from "../types.js";
-import { BUILTIN_PROVIDERS } from "./providers.js";
+import { BUILTIN_PROVIDERS, SEARCH_FALLBACK_PROVIDERS } from "./providers.js";
 import { ProviderRegistry } from "./provider-registry.js";
 
 export interface LassoConfig {
@@ -71,6 +80,25 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   if (braveKeys.length > 0) {
     const brave = providers.get("brave");
     if (brave) brave.keys = braveKeys;
+  }
+
+  // v0.9 Phase B 新增（parse10 §3 + §1 决策 6 + INV-54）：Bing 多 Key CSV
+  // BING_API_KEYS="key1,key2" 优先；兼容单值 BING_API_KEY。
+  // **零回归守**：keys=[] 时**不**把 BING 加进 providers map（让 ProviderRegistry
+  //   byCap("search") 不含 bing，行为完全等价 v0.8）。
+  // BING 来自 SEARCH_FALLBACK_PROVIDERS[0]（providers.ts 单独导出，不进 BUILTIN_PROVIDERS）。
+  const bingKeysCsv = env.BING_API_KEYS ?? env.BING_API_KEY ?? "";
+  const bingKeys = bingKeysCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (bingKeys.length > 0) {
+    // 浅拷贝 SEARCH_FALLBACK_PROVIDERS[0] (BING) 避免污染模块级常量
+    const bingConfig: ProviderConfig = {
+      ...SEARCH_FALLBACK_PROVIDERS[0]!,
+      keys: bingKeys,
+    };
+    providers.set("bing", bingConfig);
   }
 
   const zhipuEndpoint =

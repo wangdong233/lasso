@@ -33,14 +33,78 @@ export const SEARCH_DESCRIPTION = [
   "[Prefer browse_logged_in for]:  sites showing different content to logged-in users",
   "                                 (GitHub private repos, Jira, internal tools).",
   "[Prefer desktop for]:           native macOS apps (not browser pages).",
+  "[Prefer wayback_lookup for]:    rescuing a dead search-result URL (404/timeout/5xx)",
+  "                                 — does NOT auto-probe; call it explicitly.",
   "",
   "Args:  query (str, required)  — the search query",
   "       limit (int, 1-50, default 10)",
-  "       engine (str, default 'zhipu')  — v0.1 only 'zhipu' wired",
+  "       engine (str, default 'auto')  — 'auto' | 'zhipu' | 'brave' | 'fallback_chain'",
   "       region (str, default 'cn')     — 'cn' or 'us'",
   "       no_cache (bool, default false)",
   "",
+  "ENGINE CHOICE (v0.9):",
+  "  - 'auto'           DEFAULT. Multi-source fanout (zhipu+brave concurrent)",
+  "                     then browse_headless SERP scrape. Byte-identical v0.8.",
+  "                     Use when you want maximum coverage and speed (default).",
+  "  - 'fallback_chain' OPT-IN. Three-tier serial fallback: zhipu → brave → bing →",
+  "                     browse_headless. Still reuses the single fallback engine",
+  "                     (FallbackDecider; INV-55). Use for high-reliability scenarios",
+  "                     ('search ≈ never fails') where you want maximum source",
+  "                     redundancy at the cost of serial latency. When ALL sources",
+  "                     trip and a RecordingStore is wired, returns the last recorded",
+  "                     fixture for the same query (served_by='recording_replay');",
+  "                     if no fixture, returns outcome=didnt (honest, no fabrication).",
+  "                     Requires BING_API_KEYS env for the bing tier; without it the",
+  "                     bing tier is silently skipped (behavior = v0.8 fallback chain).",
+  "  - 'zhipu'          Single-source (Chinese主力). Quick when you know zhipu suffices.",
+  "  - 'brave'          Single-source (English主力).",
+  "",
   "Returns: InteractResult<SearchResult> as JSON text.",
+].join("\n");
+
+// ============================================================
+// WAYBACK_LOOKUP（v0.9 Phase A/B —— parse10 §3.3 + §6 M3 手测）
+// ============================================================
+/**
+ * wayback_lookup tool 描述（parse10 §3.3 + §1 决策 3 + INV-58）。
+ *
+ * 设计立场（守横切关注点边界 + 简单性 02 §5）：
+ *  - **独立 tool**，不自动探测 search result 死链（INV-58）。
+ *  - search 主路径 tools/search.ts / MultiSourceFanout.ts 都**不调**本 tool；
+ *    CC 看到 search/browse 返回的 URL 404/timeout/5xx 时**显式调**本 tool。
+ *  - SSRF 守门（INV-56 = INV-31 同源）：用户传入的 url 必经 ssrfGuard + doFetchUrl，
+ *    即便只是传给 archive.org 当 query 参数，也拒私网 URL（防 archive.org 成 SSRF 探测代理）。
+ *
+ * 返回形状（WaybackLookupResult）：
+ *   { url, archived:true|false, snapshot_url?, snapshot_timestamp?, snapshot_status?, availability_api_url }
+ * archived=true 时 caller 二次调 fetch_url(snapshot_url) 取 archived 页面内容。
+ *
+ * 借鉴：fetch_url（doFetchUrl 范式）；browse.ts（payloadContent 包装）。
+ */
+export const WAYBACK_DESCRIPTION = [
+  "Wayback Machine dead-link rescue — STANDALONE tool; does NOT auto-probe search results.",
+  "",
+  "Use when a URL from search/browse/fetch_url returns 404, timeout, or 5xx:",
+  "  fetches the most recent archived snapshot metadata from archive.org.",
+  "  When archived=true, the returned snapshot_url can then be fetched via fetch_url",
+  "  to retrieve the archived page content.",
+  "",
+  "DOES NOT:",
+  "  - auto-probe search result URLs (call this explicitly when a link is dead)",
+  "  - return archived page content directly (only metadata; use fetch_url on snapshot_url)",
+  "  - bypass paywalls or login walls",
+  "",
+  "[Prefer search for]:        discovering URLs by keyword (this tool needs a URL).",
+  "[Prefer fetch_url for]:     fetching a live URL you already trust.",
+  "[Prefer browse_headless]:   when you need JS rendering of a live page.",
+  "",
+  "SECURITY: input URL is SSRF-guarded twice (input check + archive.org egress);",
+  "private IPs are rejected so archive.org cannot become an SSRF probing proxy.",
+  "",
+  "Args:  url (str, required)  — http(s) URL that is dead/inaccessible",
+  "",
+  "Returns: InteractResult<WaybackLookupResult> as JSON text. archived=true means",
+  "         a snapshot exists; archived=false means archive.org has no copy.",
 ].join("\n");
 
 // ============================================================

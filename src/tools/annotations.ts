@@ -231,3 +231,27 @@ export const adminAnnotations: ToolAnnotations = {
   openWorldHint: false,
   idempotentHint: false,
 };
+
+/**
+ * wayback_lookup tool annotations（v0.9 Phase B 新增，parse10 §3.3 + §6 M3）。
+ *
+ * 四象限归属：
+ *   |  tool           | readOnly | openWorld | 含义                                |
+ *   |  -------------- | -------- | --------- | ----------------------------------- |
+ *   |  wayback_lookup |   true   |   true    | 只读不副作用；触外网（archive.org） |
+ *
+ * - readOnlyHint=true：wayback_lookup 只查 archive.org availability API + 解析 metadata，
+ *   不写任何远端状态（不发 POST/PUT/DELETE；与 fetch_url GET/HEAD 同档）。
+ *   archive.org availability API 是只读 GET；caller 二次调 fetch_url 才取 snapshot 内容。
+ * - openWorldHint=true：经 undici 触 archive.org（公网已知 host，SSRF 守门后）。
+ *
+ * 与 fetch_url 同档（都是 caller-tier 只读 HTTP 工具）；annotations 反映「能力上限」——
+ * 即便本 tool 永远只 GET，也按规范显式标注，让 CC 据此自动批准（parse10 §3.3 INV-56）。
+ *
+ * 守 INV-56：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）。
+ * 守 INV-58：是独立 tool，不在 search 主路径里自动调（CC 显式 opt-in）。
+ */
+export const waybackAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: true,
+};
