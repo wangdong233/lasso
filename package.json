@@ -1,7 +1,7 @@
 {
   "name": "lasso-mcp",
   "version": "1.2.0",
-  "description": "Lasso — CC 的全交互对外抓手 MCP（浏览器+桌面）",
+  "description": "Claude Code 的全交互对外抓手 MCP —— 搜/抓/登录态抓/控桌面，四通道+多引擎 fallback+AES cookie+markdown 抽取。All-in-one interaction MCP for Claude Code.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -17,13 +17,20 @@
     "replay-baseline": "node dist/index.js replay-baseline"
   },
   "keywords": [
-    "mcp",
     "claude-code",
-    "browser",
-    "desktop",
+    "mcp",
+    "model-context-protocol",
+    "browser-automation",
+    "web-scraping",
+    "desktop-automation",
+    "macos",
+    "windows",
+    "linux",
+    "accessibility",
     "axapi",
-    "agent",
-    "lasso"
+    "chrome-devtools",
+    "typescript",
+    "rust"
   ],
   "license": "MIT",
   "author": "wangdong233",
@@ -31,7 +38,7 @@
     "type": "git",
     "url": "https://github.com/wangdong233/lasso.git"
   },
-  "homepage": "https://github.com/wangdong233/lasso#readme",
+  "homepage": "https://github.com/wangdong233/lasso",
   "bugs": {
     "url": "https://github.com/wangdong233/lasso/issues"
   },
