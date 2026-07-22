@@ -15,14 +15,14 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 
 <div align="center">
 
-[简体中文](README.md) | **English**
-<!-- To add more languages, append one entry here: | [日本語](README.ja.md) -->
+[简体中文](README.md) | **English** | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
 
 </div>
 
 ## Table of Contents
 
 - [What You Say, What You Get](#what-you-say-what-you-get)
+- [💰 Cost at a Glance](#-cost-at-a-glance)
 - [60-Second Start](#60-second-start)
 - [What It Can Do for You](#what-it-can-do-for-you)
 - [Install](#install)
@@ -53,6 +53,23 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 | "Is Lasso set up correctly?" | A health-check report (tells you what's missing) |
 
 > You don't need to memorize any capability names. Just say what you want — Claude picks the right way to get it done.
+
+---
+
+## 💰 Cost at a Glance
+
+Lasso itself is **completely free + MIT open source**. Here's what each capability actually costs:
+
+| Capability | Cost | Notes |
+|---|---|---|
+| Lasso itself (MCP server + all core capabilities) | ✅ Free | MIT open source, free forever |
+| Search (Zhipu + Brave + Bing) | ✅ Free tier available | Zhipu billed by token; Brave **2,000 queries/mo free**, Bing **1,000 queries/mo free** — usable without paying |
+| Scrape public pages / screenshots / PDF / network audit / raw bytes | ✅ Free | Runs locally, no key, no payment |
+| Scrape logged-in pages (reuse local Chrome) | ✅ Free | Runs locally, no key, no payment |
+| Drive desktop (macOS / Windows / Linux) | ✅ Free | Built and run locally, only OS authorization needed; **optional** Apple Developer account \$99/yr for signed persistent authorization (works without signing too — just re-authorize each time) |
+| Cloud browser (browserbase / stagehand) | ⚠️ Paid, off by default | Paid after trial; **costs nothing if you don't configure it** — Lasso's only paid item |
+
+> In one sentence: **as long as you don't turn on the cloud browser, Lasso costs zero** — search has free tiers enough for daily use, and everything else is completely free.
 
 ---
 
@@ -192,7 +209,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's it — no key
 
 Below, each of the four modules is broken out with the shortest path to "it just works".
 
-### 1. Search (one key is enough; configure all three for near-zero failures)
+### 1. Search (✅ Free · free tier; one key to start, three for near-zero failures)
 
 **What it does**: Searches anything, returns structured results (title, snippet, link).
 
@@ -228,7 +245,7 @@ Key names match what's written in the table above — just fill them in. Save th
 
 **How to apply for keys, free-tier quotas, multi-key rotation details** → see the [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索).
 
-### 2. Scrape Logged-in Pages (no key — run one command)
+### 2. Scrape Logged-in Pages (✅ Free · no key, run one command)
 
 **What it does**: Scrapes pages you're logged into — Jira to-dos, private GitHub repos, company intranets, paid-subscription content.
 
@@ -246,7 +263,7 @@ After that, say "open my logged-in Jira" to Claude and it'll connect automatical
 
 **Details** → [Key Configuration Guide · Logged-in Browsing](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
-### 3. Drive the Desktop (no key — authorize once in your OS)
+### 3. Drive the Desktop (✅ Free · no key, authorize once in your OS)
 
 **What it does**: Drives native apps on macOS / Windows / Linux (click, type, read window contents, run hotkeys).
 
@@ -262,7 +279,7 @@ After that, say "open my logged-in Jira" to Claude and it'll connect automatical
 
 **Details** → [Key Configuration Guide · Desktop Control](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
-### 4. Cloud Anti-Bot (off by default; needs double confirmation)
+### 4. Cloud Anti-Bot (⚠️ Paid, off by default · needs double confirmation)
 
 **What it does**: Scrapes sites guarded by Cloudflare or heavy anti-bot protection.
 
