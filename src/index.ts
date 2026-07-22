@@ -157,7 +157,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.0.0-rc.1";
+const LASSO_SERVER_VERSION = "1.1.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。

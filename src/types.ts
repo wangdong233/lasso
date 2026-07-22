@@ -93,6 +93,15 @@ export interface BrowseResult {
   bounded_output?: import("./util/output-envelope.js").BoundedOutput;
   /** v0.3：完整 chain 结果（actions_and_results 审计链；仅小 chain 直传） */
   chain?: import("./browse/steps-types.js").ChainResult;
+  // ============================================================
+  // v1.1 新增（parse12 §3.3.1）—— markdown 档抽取元数据（仅 extract_mode=markdown* 填）
+  // ============================================================
+  /** markdown 档：defuddle 抽出的作者（若有）；raw 档不填（v1.0 调用方不读） */
+  byline?: string;
+  /** markdown_cited 档：去重引用表（applyCitations 产出；角标编号 1-based） */
+  citations?: Array<{ n: number; url: string }>;
+  /** markdown 档：服务引擎名（"defuddle+turndown" / fallback "turndown-only"） */
+  markdown_engine?: string;
 }
 
 // ============================================================
@@ -142,6 +151,23 @@ export interface BrowseOptions {
   network_include_bodies?: boolean;
   /** PerformanceObserver 采集窗口（默认 3000ms；超时后断开 observer 读 entries） */
   network_timeout_ms?: number;
+  // ============================================================
+  // v1.1 新增（parse12 §1.3 + §2.2）—— MarkdownExtractor mode-aware 三模式
+  // ============================================================
+  /**
+   * extract_mode 控制 BrowseChannel `extract` action 的输出形态（v1.1 parse12 §1.3）。
+   *
+   * 用户硬约束（parse12 §1.3 最高优先级）：
+   *  - undefined / "raw"     : v1.0 行为 byte-identical（take_snapshot → a11y 文本树）
+   *  - "markdown"            : defuddle+turndown 精炼为 LLM 友好 markdown（opt-in）
+   *  - "markdown_cited"      : markdown + ⟨N⟩ 引用角标 + References 段（RAG opt-in）
+   *
+   * 铁律：schema 用 z.enum(...).optional()（无 .default()），防 zod 自动注入致
+   *       raw byte-identical 断言失真；undefined 与 "raw" 在代码内等价但测试能区分
+   *       「字段不存在」vs「字段显式传 raw」。仅 `extract` action 读此字段；
+   *       snapshot/navigate/screenshot 等忽略（守 raw 路径 byte-identical v1.0）。
+   */
+  extract_mode?: "raw" | "markdown" | "markdown_cited";
 }
 
 // ============================================================
@@ -284,6 +310,17 @@ export interface FetchUrlOptions {
   timeout_ms: number;
   max_bytes: number;
   no_cache: boolean;
+  /**
+   * v1.1 新增（parse12 §1.3 + §3.3.2）：HTML→markdown 抽取模式。
+   *
+   *  - undefined / "raw" : v1.0 行为 byte-identical（原始 HTML/JSON/text 字节）
+   *  - "markdown"        : route.kind=html 时 bodyText 过 MarkdownExtractor（opt-in）
+   *  - "markdown_cited"  : markdown + ⟨N⟩ 引用角标（RAG opt-in）
+   *
+   * 非 html route（json/text/binary）忽略此字段（文档化：强行走 markdown 语义错；
+   * 守 raw byte-identical v1.0）。schema 用 .optional() 无 default（parse12 §1.3）。
+   */
+  extract_mode?: "raw" | "markdown" | "markdown_cited";
 }
 
 /**
@@ -307,6 +344,11 @@ export interface FetchUrlResult {
   location?: string;
   /** bounded output（preview + truncated 标记 + @oN ref） */
   envelope?: import("./util/output-envelope.js").BoundedOutput;
+  // ============================================================
+  // v1.1 新增（parse12 §3.3.2）—— markdown_cited 档引用表（仅 extract_mode=markdown_cited 且 route=html 填）
+  // ============================================================
+  /** markdown_cited 档：去重引用表（applyCitations 产出；raw/undefined 档不填） */
+  citations?: Array<{ n: number; url: string }>;
 }
 
 // ============================================================

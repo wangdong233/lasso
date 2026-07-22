@@ -55,6 +55,10 @@ const browseSchema = {
         .optional(),
       timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
+      // v1.1（parse12 §1.3 + §3.3.1）：extract action 的 markdown 抽取模式。
+      // .optional() 无 default（防 zod 自动注入致 raw byte-identical 断言失真）。
+      // 仅 action="extract" 读此字段；snapshot/navigate/screenshot 等忽略。
+      extract_mode: z.enum(["raw", "markdown", "markdown_cited"]).optional(),
       // v0.1 忽略（types.ts 里有定义，仅供 LLM 提前写好）
       expect: z
         .object({

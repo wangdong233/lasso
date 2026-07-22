@@ -73,10 +73,11 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { promises as fs, constants as fsConstants } from "node:fs";
+import { promises as fs, constants as fsConstants, readFileSync } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { BAIDU_SELECTORS, GOOGLE_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
@@ -110,7 +111,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.0.0-rc.1";
+export const LASSO_VERSION = "1.1.0";
 
 // ============================================================
 // 类型
@@ -600,6 +601,13 @@ export async function runDoctor(
   checks.push(
     await checkRecordingBaselineCount(opts.recordingBaselineDir),
   );
+
+  // ---- v1.1 Phase B（parse12 §2.2 + §6）----
+  // #33 markdown_extractor_engine：defuddle/turndown 版本 + loadable（静态 require.resolve，不加载引擎）
+  // #34 markdown_smoke：跑 smokeTestMarkdownEngine 验引擎端到端可用（dynamic import，仅此 check 加载引擎）
+  // 两项均 warn-only（markdown 是 opt-in；未装/失败不阻塞 ready —— raw 默认路径 byte-identical v1.0）
+  checks.push(checkMarkdownExtractorEngine());
+  checks.push(await checkMarkdownSmoke(cacheDir));
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -1937,4 +1945,138 @@ async function checkRecordingBaselineCount(
     detail: `${totalHtml} 条 fixture（${engineBreakdown}；建议补到 ≥10 条覆盖更多 selector 改版场景）`,
     next_step: `当前 ${totalHtml}/10 条；可调 LASSO_RECORD_SEARCH=true 加录（INV-62：禁录 logged_in cookie 场景）`,
   };
+}
+
+// ============================================================
+// v1.1 Phase B 新增（parse12 §2.2 + §6.1 #10 + §6.2 M5 —— #33 markdown_extractor_engine）
+// ============================================================
+/**
+ * 33. markdown_extractor_engine（v1.1 §2.2 + §6.1 #10）。
+ *
+ * 静态探测 defuddle + turndown 两个 npm 包是否已装 + 版本（不加载引擎代码）。
+ *
+ * 设计（守 INV-68 衍生：doctor 不引第三运行时；用 require.resolve 探测包存在性
+ *              + 读 package.json 版本，不实际 import defuddle/turndown 引擎本体）：
+ *  - 用 createRequire(import.meta.url).require("<pkg>/package.json") 读版本
+ *    （只读 package.json，不触发引擎模块加载 → doctor 不因 #33 慢）
+ *  - 两包都 loadable + 版本非空 → pass
+ *  - 任一缺失 → warn（markdown 是 opt-in；raw 默认路径 byte-identical v1.0，不阻塞 ready）
+ *
+ * INV-68 镜像：markdown-extractor.ts 只 import defuddle/turndown（JS 包，无 spawn/python）。
+ *              doctor 本 check 进一步只读 package.json，连 JS 引擎本体都不加载。
+ */
+function checkMarkdownExtractorEngine(): DoctorCheck {
+  const require = createRequire(import.meta.url);
+
+  /**
+   * Robust 版本解析：require.resolve("<pkg>") 取主入口路径，walk-up 找最近的
+   * package.json（name 匹配）读 version。
+   * 不用 require("<pkg>/package.json") —— defuddle 有 exports 字段限制 subpath。
+   */
+  const resolvePkgVersion = (pkgName: string): string | undefined => {
+    try {
+      const entry = require.resolve(pkgName);
+      let dir = path.dirname(entry);
+      for (let i = 0; i < 20 && dir !== path.dirname(dir); i++) {
+        const pj = path.join(dir, "package.json");
+        try {
+          const pkg = JSON.parse(readFileSync(pj, "utf8")) as {
+            name?: string;
+            version?: string;
+          };
+          if (pkg.name === pkgName && pkg.version) return pkg.version;
+        } catch {
+          // try parent dir
+        }
+        dir = path.dirname(dir);
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const defuddleVer = resolvePkgVersion("defuddle");
+  const turndownVer = resolvePkgVersion("turndown");
+
+  if (!defuddleVer || !turndownVer) {
+    const missing: string[] = [];
+    if (!defuddleVer) missing.push("defuddle");
+    if (!turndownVer) missing.push("turndown");
+    return {
+      name: "markdown_extractor_engine",
+      status: "warn",
+      detail: `markdown 引擎未装：${missing.join(" + ")}（extract_mode=markdown 不可用；raw 默认路径不受影响）`,
+      next_step: `npm install（package.json 已声明 defuddle ^0.19.1 + turndown ^7.2.4）`,
+    };
+  }
+
+  return {
+    name: "markdown_extractor_engine",
+    status: "pass",
+    detail: `defuddle@${defuddleVer} + turndown@${turndownVer}（MIT；extract_mode=markdown/markdown_cited 可用）`,
+  };
+}
+
+/**
+ * 34. markdown_smoke（v1.1 §2.2 + §6.1 + §5.5）。
+ *
+ * 跑 smokeTestMarkdownEngine() 验 defuddle+turndown 引擎端到端可用（固定 fixture HTML
+ * 跑一次 extractMarkdown，验输出非空 + 含预期正文）。
+ *
+ * 设计（守 INV-68：dynamic import 只在此 check 加载引擎；doctor.ts 无静态 import
+ *              markdown-extractor.ts → MCP server 启动不加载 defuddle/turndown）：
+ *  - dynamic import("../browse/markdown-extractor.js") 只在此处触发引擎加载
+ *  - smoke ok=true + markdown_preview 含 "Hello" → pass
+ *  - smoke ok=false → warn（引擎装了但跑不通；raw 默认路径不受影响，不阻塞 ready）
+ *  - 同时把 smoke 结果（ok + engine + elapsed_ms + timestamp）写入 cacheDir/markdown-smoke.json
+ *    （后续 doctor 调可见上次 smoke 时间戳；parse12 §2.2 #34 「最后一次 smoke 时间戳」）
+ */
+async function checkMarkdownSmoke(cacheDir: string): Promise<DoctorCheck> {
+  try {
+    // dynamic import（守 INV-66 精神：doctor 静态不 import markdown-extractor；
+    // 仅此 check 运行时才 lazy-load defuddle/turndown）
+    const { smokeTestMarkdownEngine } = await import(
+      "../browse/markdown-extractor.js"
+    );
+    const smoke = await smokeTestMarkdownEngine();
+
+    // 写 smoke 时间戳到 cache（parse12 §2.2 #34 「最后一次 smoke 时间戳」）
+    const smokeRecord = {
+      ok: smoke.ok,
+      engine: smoke.engine,
+      elapsed_ms: smoke.elapsed_ms,
+      timestamp: new Date().toISOString(),
+    };
+    try {
+      await fs.mkdir(cacheDir, { recursive: true });
+      await fs.writeFile(
+        path.join(cacheDir, "markdown-smoke.json"),
+        JSON.stringify(smokeRecord, null, 2),
+      );
+    } catch {
+      // 写 cache 失败不阻塞 check（只报诊断）
+    }
+
+    if (smoke.ok) {
+      return {
+        name: "markdown_smoke",
+        status: "pass",
+        detail: `smoke ok（engine=${smoke.engine}, ${smoke.elapsed_ms}ms）；preview="${smoke.markdown_preview.slice(0, 60)}..."`,
+      };
+    }
+    return {
+      name: "markdown_smoke",
+      status: "warn",
+      detail: `smoke 失败（engine=${smoke.engine}）；markdown opt-in 可能不可用，raw 默认路径不受影响`,
+      next_step: "检查 defuddle/turndown 安装完整性；npm rebuild 或 npm install",
+    };
+  } catch (e) {
+    return {
+      name: "markdown_smoke",
+      status: "warn",
+      detail: String(e),
+      next_step: "markdown 引擎加载失败（#33 查包是否装）；raw 路径不受影响",
+    };
+  }
 }

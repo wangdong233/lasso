@@ -255,6 +255,12 @@ export abstract class BrowseChannel extends UiChannel {
           preview: truncatePreview(partial.preview ?? ""),
           title: partial.title,
           final_url: partial.final_url ?? url,
+          // v1.1（parse12 §3.3.1）：markdown 档元数据透传（仅 extract_mode=markdown* 时 partial 含这些字段）
+          ...(partial.byline ? { byline: partial.byline } : {}),
+          ...(partial.citations ? { citations: partial.citations } : {}),
+          ...(partial.markdown_engine
+            ? { markdown_engine: partial.markdown_engine }
+            : {}),
         },
         served_by: this.name,
         fallback_used: false,
@@ -625,12 +631,62 @@ async function doScreenshot(
 async function doExtract(
   c: McpClient,
   _url: string,
-  _opts: BrowseOptions,
+  opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  // extract 复用 take_snapshot，再剥 snapshot 文本作为整页抽取。
-  const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
-  const { title, text } = extractSnapshot(r);
-  return { title, preview: text };
+  // ---------- v1.1 mode 分流（parse12 §3.3.1；INV-66 raw byte-identical v1.0） ----------
+  // 铁律：extract_mode 未传 / "raw" → 完全走 v1.0 take_snapshot 路径（零改）。
+  //       INV-66 守：raw 档不调 extractMarkdown / 不静态 import markdown-extractor。
+  const mode = opts.extract_mode;
+  if (mode === undefined || mode === "raw") {
+    // v1.0 路径 byte-identical：take_snapshot → a11y 文本树
+    const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
+    const { title, text } = extractSnapshot(r);
+    return { title, preview: text };
+  }
+
+  // ---------- markdown / markdown_cited 档（v1.1 新增） ----------
+  // 取渲染后 HTML（evaluate_script 注入 document.documentElement.outerHTML）。
+  // raw 档不走此路径 → INV-66 raw 零回归；markdown 档 dynamic import lazy-load 引擎。
+  const expr = `(function(){
+    try {
+      return JSON.stringify({
+        html: document.documentElement.outerHTML,
+        url: window.location.href,
+        title: document.title || ""
+      });
+    } catch(e) { return JSON.stringify({ html: "", url: "", title: "" }); }
+  })()`;
+  const evalResult = (await c.callTool("evaluate_script", {
+    function: expr,
+  })) as EvaluateResult;
+  const parsed = JSON.parse(extractEvalPreview(evalResult) || "{}") as {
+    html: string;
+    url: string;
+    title: string;
+  };
+
+  if (!parsed.html) {
+    // 取 HTML 失败 → 抛错走 outcome=unknown（BrowseChannel.browse catch → classifyBrowseError）
+    throw new Error("[markdown-extractor] evaluate_script returned empty html");
+  }
+
+  // dynamic import（守 INV-66：raw 档不加载 defuddle/turndown；markdown 档才 lazy-load）
+  const { extractMarkdown } = await import("../browse/markdown-extractor.js");
+  const mdResult = await extractMarkdown(parsed.html, {
+    mode,
+    headingStyle: "atx",
+    bulletMarker: "-",
+    enableCitations: mode === "markdown_cited",
+  });
+
+  return {
+    title: mdResult.title ?? parsed.title ?? undefined,
+    preview: mdResult.markdown,
+    // markdown 专属元数据（v1.1 扩展；raw 档不填，v1.0 调用方不读）
+    ...(mdResult.byline ? { byline: mdResult.byline } : {}),
+    ...(mdResult.citations ? { citations: mdResult.citations } : {}),
+    ...(mdResult.served_by ? { markdown_engine: mdResult.served_by } : {}),
+  };
 }
 
 async function doClick(

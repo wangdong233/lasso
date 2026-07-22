@@ -16,6 +16,7 @@
  *                     + parse11 §3.4 + §7.2 Phase D v1.0 加 INV-63 version 真源单一化（package.json + index.ts + doctor.ts 三处一致）
  *                     + parse11 §3.3 + §7.2 Phase D v1.0 加 INV-64 launcher 不引新 npm dep（launcher/*.ts 只 node:* 内置）
  *                     + parse11 §3.3 + §3.4 + §7.2 Phase E v1.0 加 INV-65 README/ARCHITECTURE 必引用 08/09（文档完整化）
+ *                     + parse12 §2.2 + §6 v1.1 Phase A 加 INV-66..69 MarkdownExtractor mode-aware 三模式 + 引擎约束 + 子组件定位 + citation reimplement）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -91,6 +92,10 @@
  *  INV-63 version 真源单一化（package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致）—— v1.0 Phase D
  *  INV-64 launcher 不引新 npm dep（launcher/*.ts 只 import node:* 内置；child_process/path/fs/process/url）—— v1.0 Phase D
  *  INV-65 README/ARCHITECTURE 必引用 doc/08 + doc/09（用户手册与架构概览链向深度文档；文档完整化）—— v1.0 Phase E
+ *  INV-66 raw 默认 byte-identical —— extractMarkdown mode="raw" passthrough 返原始 html；BrowseChannel/fetch-url 不静态 import markdown-extractor（守 raw 路径不加载引擎）—— v1.1 Phase A
+ *  INV-67 MarkdownExtractor 是内部子组件 —— markdown-extractor.ts 在 browse/ 下不 extends Channel；src/ 无 server.tool("markdown*") —— v1.1 Phase A
+ *  INV-68 引擎无第三运行时 —— markdown-extractor.ts 禁 spawn/exec/child_process/python；只 import defuddle/turndown JS 包 —— v1.1 Phase A
+ *  INV-69 citation 无 Crawl4AI 依赖 —— content-filter-cite.ts 纯 TS reimplement；package.json 不含 crawl4ai —— v1.1 Phase A
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -2704,6 +2709,174 @@ const assertions = [
       const archHas08 = /doc\/08|08-media-interact/i.test(archText);
       const archHas09 = /doc\/09|09-media-interact/i.test(archText);
       if (!archHas08 || !archHas09) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.1 Phase A 新增（parse12 §2.2 + §6 —— INV-66..69 MarkdownExtractor mode-aware）
+  // ============================================================
+  // parse12 §1.3 用户硬约束 + §6 CI 闸门 #5-#10：
+  //  INV-66  raw 默认 byte-identical —— extractMarkdown mode="raw" passthrough 返原始 html 不变；
+  //          BrowseChannel.ts / fetch-url.ts 代码本体不静态 import markdown-extractor（守 raw 路径
+  //          不加载 defuddle/turndown 引擎；Phase B/C 集成时 dynamic import 只在 markdown 分支）
+  //  INV-67  MarkdownExtractor 是内部子组件 —— markdown-extractor.ts 在 src/browse/ 下，不 extends
+  //          BaseChannel/UiChannel（INV-2/6 衍生），src/ 全树无 server.tool("markdown*") 注册
+  //  INV-68  引擎无第三运行时 —— markdown-extractor.ts 代码本体禁 spawn/exec/child_process/python
+  //          （守 01 §3.4 有害象限；只 import defuddle/turndown JS 包）
+  //  INV-69  citation 无 Crawl4AI 依赖 —— content-filter-cite.ts 是纯 TS reimplement，不 import crawl4ai；
+  //          package.json dependencies 不含 crawl4ai（守 R-CI-02）
+  {
+    id: "INV-66-raw-default-byte-identical-passthrough",
+    desc:
+      "v1.1 Phase A：raw 默认 byte-identical（parse12 §1.3 用户硬约束 + §4.3 + §6 #2/#5）：" +
+      "（a）extractMarkdown 函数处理 mode===\"raw\" 为 passthrough（返原始 html 不经 defuddle/turndown）；" +
+      "（b）BrowseChannel.ts + fetch-url.ts 代码本体不静态 import markdown-extractor" +
+      "（守 raw 路径不加载引擎；Phase B/C 集成用 dynamic import 只在 markdown 分支）",
+    check: () => {
+      // ----- (a) markdown-extractor.ts 必须存在 -----
+      const me = SRC.find((s) =>
+        /browse\/markdown-extractor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!me) return false; // v1.1 Phase A 起必须存在
+      const meCode = stripComments(me.text);
+
+      // extractMarkdown 函数必须存在
+      if (!/export\s+async\s+function\s+extractMarkdown\b/.test(meCode)) return false;
+
+      // 必须 有 raw passthrough 分支：grep mode === "raw" 在 extractMarkdown 体内
+      //   或等价的 opts.mode === "raw" 早返（返原始 html 不变）
+      const extractBody = meCode.match(
+        /export\s+async\s+function\s+extractMarkdown\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}\n/s,
+      )?.[1] ?? "";
+      if (extractBody.length === 0) return false;
+      // 必须出现 mode === "raw" 或 opts.mode === "raw" 判定
+      if (!/mode\s*===\s*["']raw["']/.test(extractBody)) return false;
+      // raw 分支必须返 markdown: html（passthrough，不经引擎）
+      //   grep raw 分支体内返 markdown 字段赋原始输入
+      //   接受 { markdown: html, served_by: "raw" } 形式
+      const rawBranchMatch = extractBody.match(
+        /mode\s*===\s*["']raw["'][\s\S]*?return\s*\{[^}]*markdown\s*:\s*(?:html|input)/,
+      );
+      if (!rawBranchMatch) return false;
+
+      // ----- (b) BrowseChannel.ts + fetch-url.ts 代码本体不静态 import markdown-extractor -----
+      //   守 raw 路径不加载 defuddle/turndown（Phase B/C 集成时只能用 dynamic import()
+      //   在 markdown 分支内）。静态 import 会让 raw 档也加载引擎 → 违 raw 零回归。
+      //   注：只查静态 import（import ... from "..."）；dynamic import("...") 允许。
+      for (const fname of ["channels/BrowseChannel.ts", "tools/fetch-url.ts"]) {
+        const f = SRC.find((s) =>
+          s.f.replace(/\\/g, "/").endsWith(fname),
+        );
+        if (!f) continue;
+        const code = stripComments(f.text);
+        // 禁静态 import ... from "..." 含 markdown-extractor
+        //   匹配 import { ... } from "...markdown-extractor..." 或 import ... from "...markdown-extractor..."
+        if (/import\s+[^;]*from\s+["'][^"']*markdown-extractor(\.js)?["']/.test(code)) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+  },
+  {
+    id: "INV-67-markdown-extractor-internal-subcomponent",
+    desc:
+      "v1.1 Phase A：MarkdownExtractor 是内部子组件（parse12 §1.2 + §6 #6 + §8.1 R-CI-02）：" +
+      "（a）markdown-extractor.ts 在 src/browse/ 下（不开新顶级目录；类比 cdp-actions.ts）；" +
+      "（b）markdown-extractor.ts 代码本体不 extends BaseChannel/UiChannel（不是新通道类）；" +
+      "（c）src/ 全树无 server.tool(\"markdown...\") 注册（不开新 server.tool）",
+    check: () => {
+      // ----- (a) markdown-extractor.ts 必须在 src/browse/ 下 -----
+      const me = SRC.find((s) =>
+        /browse\/markdown-extractor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!me) return false;
+
+      // ----- (b) markdown-extractor.ts 不 extends BaseChannel / UiChannel / *Channel -----
+      const meCode = stripComments(me.text);
+      if (/extends\s+(BaseChannel|UiChannel|\w*Channel)\b/.test(meCode)) return false;
+
+      // ----- (c) src/ 全树无 server.tool("markdown*") 注册 -----
+      //   守 INV-67 红线：MarkdownExtractor 是子组件，不注册独立 tool
+      //   匹配 server.tool("markdown...") / server.tool('markdown...')
+      for (const s of SRC) {
+        const code = stripComments(s.text);
+        if (/server\.tool\s*\(\s*["']markdown/.test(code)) return false;
+      }
+
+      return true;
+    },
+  },
+  {
+    id: "INV-68-markdown-engine-no-third-runtime",
+    desc:
+      "v1.1 Phase A：引擎无第三运行时（parse12 §4 决策表 + §6 #7 + §8.5；01 §3.4 有害象限）：" +
+      "（a）markdown-extractor.ts 代码本体禁 child_process / spawn / execSync / python / trafilatura" +
+      "（守 R-CI-02 第三运行时红线；Node+Rust 已两套，Python 是第三套）；" +
+      "（b）markdown-extractor.ts 必须 import defuddle 或 turndown（确认 JS 引擎接入）",
+    check: () => {
+      const me = SRC.find((s) =>
+        /browse\/markdown-extractor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!me) return false;
+      const code = stripComments(me.text);
+
+      // ----- (a) 禁 child_process / spawn / exec / python / trafilatura -----
+      //   守 R-CI-02：引擎必须是 JS require/import 可加载（INV-68 核心）
+      if (/\bchild_process\b/.test(code)) return false;
+      if (/\bspawn\s*\(|\bexecSync\s*\(|\bexecFile\s*\(/.test(code)) return false;
+      if (/\bpython\b|\btrafilatura\b/.test(code)) return false;
+
+      // ----- (b) 必须 import defuddle 或 turndown -----
+      //   确认引擎真的接入了（不是空壳）
+      const hasDefuddle = /from\s+["']defuddle(\/node)?["']/.test(code);
+      const hasTurndown = /from\s+["']turndown["']/.test(code);
+      if (!hasDefuddle && !hasTurndown) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-69-citation-no-crawl4ai-dependency",
+    desc:
+      "v1.1 Phase A：citation 无 Crawl4AI 依赖（parse12 §3.4 + §6 #9 + §8.5）：" +
+      "（a）content-filter-cite.ts 是纯 TS reimplement（导出 applyCitations 纯函数）；" +
+      "（b）content-filter-cite.ts 不 import crawl4ai（Apache-2.0 算法借鉴不 vendored）；" +
+      "（c）package.json dependencies 不含 crawl4ai（守 R-CI-02 不引 Python 包）",
+    check: () => {
+      // ----- (a) content-filter-cite.ts 必须存在 + 导出 applyCitations -----
+      const cfc = SRC.find((s) =>
+        /browse\/content-filter-cite\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cfc) return false; // v1.1 Phase A 起必须存在
+      const code = stripComments(cfc.text);
+
+      // applyCitations 必须是导出的纯函数
+      if (!/export\s+function\s+applyCitations\b/.test(code)) return false;
+
+      // CitationResult 类型必须导出（markdown_cited 档引用表形状）
+      if (!/export\s+(?:interface|type)\s+CitationResult\b/.test(code)) return false;
+
+      // ----- (b) 不 import crawl4ai（纯 TS reimplement） -----
+      if (/from\s+["'][^"']*crawl4ai[^"']*["']/.test(code)) return false;
+
+      // ----- (c) package.json dependencies 不含 crawl4ai -----
+      const pkgPath = fileURLToPath(
+        new URL("../../package.json", import.meta.url),
+      );
+      let pkg;
+      try {
+        const pkgBody = readFileSync(pkgPath, "utf8");
+        pkg = JSON.parse(pkgBody);
+      } catch {
+        return false;
+      }
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      for (const k of Object.keys(deps)) {
+        if (/crawl4ai/i.test(k)) return false;
+      }
 
       return true;
     },

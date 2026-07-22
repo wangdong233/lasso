@@ -55,6 +55,10 @@ export const fetchUrlSchema = {
         .max(16 * 1024 * 1024)
         .default(2 * 1024 * 1024),
       no_cache: z.boolean().default(false),
+      // v1.1（parse12 §3.3.2）：HTML→markdown 抽取模式。.optional() 无 default
+      // （防 zod 自动注入致 raw byte-identical 断言失真；undefined=raw=byte-identical v1.0）。
+      // 仅 route.kind=html 时生效；json/text/binary 忽略（文档化）。
+      extract_mode: z.enum(["raw", "markdown", "markdown_cited"]).optional(),
     })
     .default({}),
 };
@@ -259,6 +263,29 @@ export async function doFetchUrl(
     bodyKind = route.kind; // "html" | "text"
   }
 
+  // ---------- 6b. v1.1 新增（parse12 §3.3.2）：html + markdown mode → MarkdownExtractor ----------
+  // 铁律（INV-66 raw byte-identical v1.0）：
+  //   - extract_mode 未传 / "raw" / route.kind 非 html → v1.0 路径 byte-identical（不进本块）
+  //   - 仅 route.kind === "html" 且 mode === markdown/markdown_cited 才进 MarkdownExtractor
+  //   - json/text/binary 忽略 extract_mode（文档化「非 html 不走 markdown」；语义错）
+  // dynamic import 守 INV-66：raw 档不加载 defuddle/turndown 引擎。
+  const mode = opts.extract_mode;
+  let mdCitations: Array<{ n: number; url: string }> | undefined;
+  if (route.kind === "html" && (mode === "markdown" || mode === "markdown_cited")) {
+    const { extractMarkdown } = await import("../browse/markdown-extractor.js");
+    const md = await extractMarkdown(bodyText, {
+      mode,
+      headingStyle: "atx",
+      bulletMarker: "-",
+      enableCitations: mode === "markdown_cited",
+    });
+    bodyText = md.markdown;
+    bodyKind = `markdown:${md.served_by}`; // "markdown:defuddle+turndown" / "markdown:turndown-only"
+    if (md.citations && md.citations.length > 0) {
+      mdCitations = md.citations;
+    }
+  }
+
   // envelope（48KiB / 2000 行自动落盘 .txt + 16KiB preview + @oN ref）
   // INV-34 同源：所有独立 tool 输出必经 applyOutputEnvelope 或 writeState
   const envelope = applyOutputEnvelope(
@@ -279,6 +306,8 @@ export async function doFetchUrl(
       body_kind: bodyKind,
       body_bytes: bodyBuf.byteLength,
       envelope,
+      // v1.1（parse12 §3.3.2）：markdown_cited 档引用表（仅 mode=markdown_cited 且 route=html 填）
+      ...(mdCitations ? { citations: mdCitations } : {}),
     },
     served_by: "fetch_url",
     fallback_used: false,
@@ -329,6 +358,8 @@ export function registerFetchUrlTool(
         timeout_ms: args.options.timeout_ms,
         max_bytes: args.options.max_bytes,
         no_cache: args.options.no_cache,
+        // v1.1（parse12 §3.3.2）：透传 extract_mode（undefined 时 doFetchUrl 内等价 raw）
+        extract_mode: args.options.extract_mode,
       };
 
       const result = await doFetchUrl(url, opts, subproc, ssrfConfig);

@@ -204,9 +204,9 @@ describe("doctor INV-63 镜像：LASSO_VERSION 常量", () => {
     expect(LASSO_VERSION.length).toBeGreaterThan(0);
   });
 
-  it("LASSO_VERSION 当前值为 1.0.0（v1.0 Phase E 去 -dev）", () => {
+  it("LASSO_VERSION 当前值为 1.1.0（v1.1 MarkdownExtractor 增量）", () => {
     // 守 INV-63：package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致。
     // 本 spec 只验 doctor.ts 这处；INV-63 grep 守全 3 处对齐。
-    expect(LASSO_VERSION).toBe("1.0.0");
+    expect(LASSO_VERSION).toBe("1.1.0");
   });
 });
