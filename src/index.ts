@@ -87,6 +87,21 @@ import { ToolManager } from "./runtime/ToolManager.js";
 import { CallerTierTracker, readCallerCapFromEnv } from "./runtime/CallerTierTracker.js";
 import { installSighupHotReload } from "./runtime/hot-reload.js";
 import { registerAdminTool } from "./tools/admin.js";
+// v0.7 M0.7 接线（parse8 §3 + §7.2）—— observability 增量（长熔断 + 指标 + 资源 + SERP）
+// 守 INV-41：长熔断复用 BreakerState（同 src/fallback/，不开第二引擎）
+// 守 INV-42：长熔断 onOpen 经 bag.disable（不绕过 INV-37 task 联动链）
+// 守 INV-43：observ/ 进程内无远程遥测（禁 prometheus）
+// 守 INV-46：observ 暴露走 admin action-enum（不开新 observability tool）
+import { LongCircuitBreaker } from "./fallback/LongCircuitBreaker.js";
+import { MetricsCollector } from "./observ/MetricsCollector.js";
+import { ResourceMonitor } from "./observ/ResourceMonitor.js";
+import { SelectorRegistry } from "./serp/SelectorRegistry.js";
+import { HitRateStats } from "./serp/HitRateStats.js";
+import { ChangeDetection } from "./serp/ChangeDetection.js";
+import { RecordingStore } from "./serp/RecordingStore.js";
+import { SerpHealthMonitor } from "./serp/SerpHealthMonitor.js";
+import * as path from "node:path";
+import * as os from "node:os";
 
 // ============================================================
 // v0.3.5 常量（parse4 §3.5 装配）
@@ -106,9 +121,11 @@ const DEFAULT_RUST_HELPER_PATH =
  * v0.5 M0.5c（parse6 §1.1 + §6 验收）：4 工具（fetch_url/screenshot/pdf/network）全装配 → 0.5.0-dev
  * v0.6 M0.6（parse7 §1.1 + §6 验收）：runtime CapabilityBag + admin tool + ToolManager
  *   + CallerTierTracker + hot-reload → 0.6.0-dev
+ * v0.7 M0.7（parse8 §1.1 + §6 验收）：observability 增量 —— 长熔断 + MetricsCollector
+ *   + ResourceMonitor + SerpHealthMonitor + admin 3 只读 action → 0.7.0-dev
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验）。
  */
-const LASSO_SERVER_VERSION = "0.6.0-dev";
+const LASSO_SERVER_VERSION = "0.7.0-dev";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -333,6 +350,22 @@ async function runMcpServer(): Promise<void> {
     };
   };
 
+  // ----- v0.7 M0.7：SerpHealthMonitor 早期装配（parse8 §3.4）-----
+  // 需在 registerSearchTool 之前实例化，作为第 8 参注入。
+  // 4 件骨架首次实例化（v0.2 全 0 命中 → v0.7 装配段首次实例化）。
+  // 守 INV-45：SerpHealthMonitor 禁自动重写 selector 表（保守人工升级）
+  const serpCacheDir = path.join(os.homedir(), ".cache", "lasso", "serp");
+  const serpRegistry = new SelectorRegistry();
+  const serpHitRate = new HitRateStats();
+  const serpChange = new ChangeDetection(path.join(serpCacheDir, "baseline"));
+  const serpRecordings = new RecordingStore(path.join(serpCacheDir, "recordings"));
+  const serpHealth = new SerpHealthMonitor(
+    serpRegistry,
+    serpHitRate,
+    serpChange,
+    serpRecordings,
+  );
+
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
@@ -347,6 +380,7 @@ async function runMcpServer(): Promise<void> {
     brave,
     config.registry,
     searchCache,
+    serpHealth,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
   registerDesktopTool(server, desktop, decider);
@@ -537,20 +571,90 @@ async function runMcpServer(): Promise<void> {
     await subproc.shutdownOne(specName);
   });
 
+  // ============================================================
+  // v0.7 M0.7 装配段（parse8 §3 + §7.2 Phase A-D）
+  // ============================================================
+  // 零回归承诺（parse8 §1.3）：
+  //  - 本段加在 v0.6 装配尾部；v0.5 / v0.6 装配一行不动
+  //  - 长熔断 onOpen 联动 bag.disable（INV-42：不绕过 INV-37 task 联动链）
+  //  - MetricsCollector 经 setter 挂回 decider（late-binding：避免重构 200+ 行装配顺序）
+  //  - ResourceMonitor 旁路采样 subproc 受管子进程（INV-46：不渗协议帧）
+  //  - SerpHealthMonitor 粘合 v0.2 四件骨架（INV-45：禁自动重写 selector 表）
+  // 守 INV-41：长熔断复用 BreakerState（与 CircuitBreaker 并列在 src/fallback/）
+  // 守 INV-43：observ/ 进程内无远程遥测（指标经 logger JSON 行日志）
+  // 守 INV-44：MetricsCollector per-channel 维度（record 必带 channel 名）
+  // 守 INV-46：observ 暴露走 admin action-enum（不开新 observability tool）
+  // 守 INV-47：doctor runtime_state 扩 metrics/breakers/serp_health（不开新 section）
+
+  // ---- v0.7-1. MetricsCollector（per-channel 成功率 / p95）----
+  const metrics = new MetricsCollector();
+  decider.attachMetrics(metrics);
+
+  // ---- v0.7-2. LongCircuitBreaker Map（60min 长熔断 + onOpen 联动 bag.disable）----
+  // INV-42：onOpen 闭包内显式调 bag.disable + 标 reason="long_circuit_open"
+  // （走 v0.6 既有 onChange → toolManager.disableChannel + subproc.shutdownOne 链）
+  const longBreakers = new Map<string, LongCircuitBreaker>();
+  for (const name of [
+    "search.zhipu",
+    "search.brave",
+    "browse_headless",
+    "browse_logged_in",
+    "browse_cloud_browserbase",
+    "browse_cloud_stagehand",
+    "desktop.ax",
+    "desktop.appleScript",
+    "desktop.cgEvent",
+    "desktop.screenshotVlm",
+  ]) {
+    longBreakers.set(
+      name,
+      new LongCircuitBreaker(
+        10, // threshold：1h 内 10 次失败 → open
+        3_600_000, // windowMs：1h 滑动窗
+        3_600_000, // resetMs：open 持续 60min
+        async (n) => {
+          logger.warn({ evt: "long_circuit_opened", channel: n });
+          // INV-42：长熔断 open 必经 CapabilityBag.disable（不绕过 INV-37 task 链）
+          await bag.disable(n, {
+            callerId: "system",
+            reason: "long_circuit_open",
+          });
+        },
+        name,
+      ),
+    );
+  }
+  decider.attachLongBreakers(longBreakers);
+
+  // ---- v0.7-3. ResourceMonitor（旁路采样 subproc 子进程 RSS/CPU）----
+  // 60s setInterval + unref → 不阻止 Node 退出（守 v0.6 INV-7 衍生 lifecycle 纯净性）
+  // INV-46：listManagedPids 只读 pid 数字，不渗协议帧（不读 stdin/stdout）
+  const resourceMonitor = new ResourceMonitor(() => subproc.listManagedPids());
+  resourceMonitor.start();
+
+  // ---- v0.7-4. SerpHealthMonitor 已在装配段早期实例化（line 351 一带）----
+  // 此处不再重复；serpHealth 句柄已传入 registerSearchTool（parse8 §3.4 onResult hook）
+
   // ---- 5. admin tool 注册（parse7 §3.5）----
   // INV-37：经 toolManager.register（不直调 server.tool）；channel="admin" 永不被 disable
   // （CapabilityBag.initial 不含 "admin" → bag.disable("admin") 返 false 不触发联动）。
+  // v0.7（parse8 §3.5）：注入 4 个 observ 数据源（INV-46：observ 走 admin action-enum）
   registerAdminTool({
     bag,
     toolManager,
     callerTier,
     registry: config.registry,
+    metrics,
+    breakers,
+    longBreakers,
+    serpHealth,
   });
 
   // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
   // 经 doctorOpts 变量（v0.5 装配段命名捕获）注入；零回归：runtimeState 可选字段，未注入时
   // runDoctor 跳过 runtime_state section（v0.5 行为）；注入后 doctor 报告新增 section。
   // 守 INV-35：doctor.ts 不 import runtime/；此处仅注入「数据快照函数」，不传 bag/callerTier 句柄。
+  // v0.7（parse8 §3.5 / INV-47）：runtimeState provider 返回对象扩 metrics/breakers/serp_health
   doctorOpts.runtimeState = () => ({
     capabilities: bag.snapshot().map((s) => ({
       name: s.name,
@@ -562,6 +666,25 @@ async function runMcpServer(): Promise<void> {
     })),
     caller_caps: callerTier.snapshot(),
     tool_manager: Object.fromEntries(toolManager.listByChannel()),
+    // v0.7：observ 子字段（INV-47：不开第二套 doctor section）
+    metrics: metrics.snapshot(),
+    breakers: [
+      ...Array.from(breakers.entries()).map(([name, b]) => ({
+        channel: name,
+        kind: "short" as const,
+        state: b.state,
+        failure_count: b.failureCountReadOnly,
+        opened_at: b.openedAtReadOnly,
+      })),
+      ...Array.from(longBreakers.entries()).map(([name, b]) => ({
+        channel: name,
+        kind: "long" as const,
+        state: b.state,
+        window_failure_count: b.windowFailureCount,
+        opened_at: b.openedAtReadOnly,
+      })),
+    ],
+    serp_health: serpHealth.snapshot(),
   });
 
   // ---- 6. SIGHUP 热更新（parse7 §3.6）----
@@ -588,6 +711,8 @@ async function runMcpServer(): Promise<void> {
     if (shuttingDown) return; // 防双信号竞态
     shuttingDown = true;
     logger.info({ evt: "lasso_shutdown", sig, run_id: runId });
+    // v0.7：停 ResourceMonitor timer（避免 timer 残留；INV-7 衍生 lifecycle 纯净性）
+    resourceMonitor.stop();
     try {
       await subproc.shutdown();
     } catch (e) {

@@ -102,7 +102,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "0.6.0-dev";
+export const LASSO_VERSION = "0.7.0-dev";
 
 // ============================================================
 // 类型
@@ -148,6 +148,43 @@ export interface DoctorReport {
     }>;
     /** 当前已注册 tool 总数 + 归属 channel（ToolManager.listByChannel()） */
     tool_manager?: Record<string, string[]>;
+    /**
+     * v0.7 新增（parse8 §3.5 / INV-47）：observability 子节。
+     *
+     * 全部经 provider 注入（同 runtime_state 范式：不开第二套 doctor section）；
+     * 未注入 → undefined → section 字段不出现在 report 里（零回归）。
+     */
+    metrics?: Array<{
+      channel: string;
+      total: number;
+      success_count: number;
+      failure_count: number;
+      success_rate: number;
+      latency_ms_p50: number;
+      latency_ms_p95: number;
+      last_error?: string;
+      last_error_at?: number;
+    }>;
+    breakers?: Array<{
+      channel: string;
+      kind: "short" | "long";
+      state: "closed" | "open" | "half-open";
+      failure_count?: number;
+      window_failure_count?: number;
+      opened_at: number;
+    }>;
+    serp_health?: {
+      engines: Array<{
+        engine: string;
+        hit_rate: number;
+        hit: number;
+        miss: number;
+        last_known_good: string;
+        redesign_suspected: boolean;
+      }>;
+      recent_alerts: Array<{ key: string; rate: number; at: number }>;
+      recordings_count: number;
+    };
   };
 }
 
@@ -220,6 +257,41 @@ export interface DoctorOptions {
       windowMs: number;
     }>;
     tool_manager?: Record<string, string[]>;
+    /**
+     * v0.7 新增（parse8 §3.5）：observ 子节 provider。
+     * 未注入 → 子节不出现在 runtime_state（零回归）。
+     */
+    metrics?: Array<{
+      channel: string;
+      total: number;
+      success_count: number;
+      failure_count: number;
+      success_rate: number;
+      latency_ms_p50: number;
+      latency_ms_p95: number;
+      last_error?: string;
+      last_error_at?: number;
+    }>;
+    breakers?: Array<{
+      channel: string;
+      kind: "short" | "long";
+      state: "closed" | "open" | "half-open";
+      failure_count?: number;
+      window_failure_count?: number;
+      opened_at: number;
+    }>;
+    serp_health?: {
+      engines: Array<{
+        engine: string;
+        hit_rate: number;
+        hit: number;
+        miss: number;
+        last_known_good: string;
+        redesign_suspected: boolean;
+      }>;
+      recent_alerts: Array<{ key: string; rate: number; at: number }>;
+      recordings_count: number;
+    };
   };
 }
 

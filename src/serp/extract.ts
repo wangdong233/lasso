@@ -14,6 +14,7 @@
  * open-webSearch selector 级联风格；10 §D.1「SERP 是债不是资产」。
  */
 import type { InteractResult, Outcome, SearchResult } from "../types.js";
+import type { SerpHealthMonitor } from "./SerpHealthMonitor.js";
 
 // ============================================================
 // 类型
@@ -38,11 +39,17 @@ export type BrowseExec = (
  *  - browseExec 返回 worked 但 preview 空 → outcome=unknown（让外层 fallback_decider
  *    走完链，最终记录 fallback_exhausted）
  *  - browseExec 返回 didnt/unknown → 透传给上游
+ *
+ * v0.7（parse8 §3.4）：可选第 4 参 serpHealth 注入：
+ *  - 未注入（null / undefined）→ 行为完全等价 v0.6（零回归）
+ *  - 注入                     → worked 分支末尾按命中数调 onResult
+ *                              （>0 结果 = hit；0 结果 = miss；触发 HitRateStats 告警链）
  */
 export async function serpScrapeFallback(
   query: string,
   limit: number,
   browseExec: BrowseExec,
+  serpHealth?: SerpHealthMonitor | null,
 ): Promise<InteractResult<SearchResult>> {
   const serpUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`;
 
@@ -61,6 +68,8 @@ export async function serpScrapeFallback(
 
   const preview = browseResult.data?.preview ?? "";
   if (!preview) {
+    // v0.7：preview 空 = miss（抽取 0 条）；通知 serpHealth（注入时）
+    serpHealth?.onResult("baidu", "v1", query, "", false);
     return {
       outcome: "unknown",
       data: null,
@@ -71,9 +80,13 @@ export async function serpScrapeFallback(
     };
   }
 
+  const data = extractResultsFromSnapshot(preview, query);
+  // v0.7：按命中数通知 serpHealth（count > 0 = hit；否则 miss）
+  serpHealth?.onResult("baidu", "v1", query, preview, data.count > 0);
+
   return {
     outcome: "worked",
-    data: extractResultsFromSnapshot(preview, query),
+    data,
     served_by: "browse_headless",
     fallback_used: true,
     retrieval_method: "serp_scrape_baidu",

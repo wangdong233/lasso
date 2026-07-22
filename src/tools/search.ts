@@ -33,6 +33,7 @@ import type { FallbackDecider } from "../fallback/FallbackDecider.js";
 import type { ChannelExecutor } from "../fallback/FallbackDecider.js";
 import type { BrowseExec } from "../serp/extract.js";
 import { serpScrapeFallback } from "../serp/extract.js";
+import type { SerpHealthMonitor } from "../serp/SerpHealthMonitor.js";
 import { fanOutSearch, allocateLimit } from "../search/MultiSourceFanout.js";
 import { withAttribution } from "../search/AttributedSearch.js";
 import { filterByFreeTier } from "../search/FreeTierRouter.js";
@@ -81,6 +82,12 @@ export function registerSearchTool(
   brave?: BraveChannel,
   registry?: ProviderRegistry,
   cache?: SearchCache,
+  /**
+   * v0.7 可选（parse8 §3.4）：SerpHealthMonitor 注入。
+   * 未注入（null / undefined）→ serpScrapeFallback 行为完全等价 v0.6（零回归）。
+   * 注入                     → browse_headless 抽完结果后通知 serpHealth（hit/miss 计数）。
+   */
+  serpHealth?: SerpHealthMonitor | null,
 ): void {
   server.tool(
     "search",
@@ -241,7 +248,7 @@ export function registerSearchTool(
             });
           }
           if (channelName === "browse_headless") {
-            return serpScrapeFallback(query, limit, browseHeadlessExec);
+            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth);
           }
           throw new Error(`unknown_channel:${channelName}`);
         };
@@ -276,7 +283,7 @@ export function registerSearchTool(
             });
           }
           if (channelName === "browse_headless") {
-            return serpScrapeFallback(query, limit, browseHeadlessExec);
+            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth);
           }
           throw new Error(`unknown_channel:${channelName}`);
         };

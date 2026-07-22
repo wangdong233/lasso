@@ -32,6 +32,10 @@ import type { ToolManager } from "../runtime/ToolManager.js";
 import type { CallerTierTracker } from "../runtime/CallerTierTracker.js";
 import type { ProviderRegistry } from "../config/provider-registry.js";
 import type { AdminAction } from "../runtime/runtime-types.js";
+import type { CircuitBreaker } from "../fallback/CircuitBreaker.js";
+import type { LongCircuitBreaker } from "../fallback/LongCircuitBreaker.js";
+import type { MetricsCollector } from "../observ/MetricsCollector.js";
+import type { SerpHealthMonitor } from "../serp/SerpHealthMonitor.js";
 import {
   addProvider,
   removeProvider,
@@ -62,6 +66,10 @@ export const adminSchema = {
     "provider_set_tos",
     "caller_cap_set",
     "caller_cap_list",
+    // v0.7 新增 3 个只读 observability action（parse8 §3.5）
+    "metrics_snapshot",
+    "breaker_status",
+    "serp_health",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -112,6 +120,19 @@ export interface AdminToolDeps {
   toolManager: ToolManager;
   callerTier: CallerTierTracker;
   registry: ProviderRegistry;
+  /**
+   * v0.7 新增（parse8 §3.5）：observability action 的数据源注入（全部可选）。
+   *
+   * 守 INV-35（task v0.6 衍生）：admin.ts 经此接口持 observ 句柄，
+   *                        不直接 import observ/ 内部（与 CapabilityBag 同范式）。
+   * 守 INV-46（parse8 §5.3）：observ 暴露走 admin action-enum，不开新 observability tool。
+   *
+   * 未注入 → 3 个 observ action 返 configured:false（零回归：v0.6 行为）。
+   */
+  metrics?: MetricsCollector;
+  breakers?: Map<string, CircuitBreaker>;
+  longBreakers?: Map<string, LongCircuitBreaker>;
+  serpHealth?: SerpHealthMonitor;
 }
 
 // ============================================================
@@ -298,6 +319,44 @@ export function registerAdminTool(
                 cap: args.cap,
               });
             }
+
+            // ---------- v0.7 新增：observability 只读 action（parse8 §3.5）----------
+            // 全部只读、不强制 reason、不写 audit log（与 INV-46 守护一致）
+            case "metrics_snapshot":
+              return ok(action, {
+                configured: !!deps.metrics,
+                channels: deps.metrics ? deps.metrics.snapshot() : [],
+                alerts: deps.metrics ? deps.metrics.scanForAlerts() : [],
+              });
+            case "breaker_status": {
+              const short_ = deps.breakers
+                ? Array.from(deps.breakers.entries()).map(([name, b]) => ({
+                    channel: name,
+                    kind: "short" as const,
+                    state: b.state,
+                    failure_count: b.failureCountReadOnly,
+                    opened_at: b.openedAtReadOnly,
+                  }))
+                : [];
+              const long_ = deps.longBreakers
+                ? Array.from(deps.longBreakers.entries()).map(([name, b]) => ({
+                    channel: name,
+                    kind: "long" as const,
+                    state: b.state,
+                    window_failure_count: b.windowFailureCount,
+                    opened_at: b.openedAtReadOnly,
+                  }))
+                : [];
+              return ok(action, {
+                configured: !!deps.breakers || !!deps.longBreakers,
+                breakers: [...short_, ...long_],
+              });
+            }
+            case "serp_health":
+              return ok(action, {
+                configured: !!deps.serpHealth,
+                ...(deps.serpHealth ? deps.serpHealth.snapshot() : {}),
+              });
 
             default: {
               // 类型穷尽性守护（zod enum 已过滤，但 TS narrowing 兜底）

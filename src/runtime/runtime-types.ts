@@ -152,6 +152,10 @@ export interface HotReloadConfig {
  * v0.6 Phase A：仅类型定义；admin.ts 实装在 M0.6a 末期（admin capability_list/tool_list）
  * 与 M0.6b/M0.6c 剩余 actions。type 先冻结便于 CallerTierTracker.setCap 等接受 admin 入参。
  *
+ * v0.7（parse8 §3.5）：加 3 个只读 observability action（metrics_snapshot /
+ * breaker_status / serp_health），全部只读不要求 reason（守 INV-46：observ 走 admin
+ * action-enum，不开新 observability tool）。
+ *
  * 折叠原则（13 §3.1 #1 必改）：单 admin tool + action enum，禁注册 admin_capability_disable
  * 等拆分 tool（与 INV-17 desktop action-enum 同范式）。
  */
@@ -164,4 +168,8 @@ export type AdminAction =
   | "provider_remove"
   | "provider_set_tos"
   | "caller_cap_set"
-  | "caller_cap_list";
+  | "caller_cap_list"
+  // v0.7 新增 3 个只读 observability action（F3.12.10 + F3.7.5-12）
+  | "metrics_snapshot"
+  | "breaker_status"
+  | "serp_health";

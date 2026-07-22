@@ -1369,6 +1369,248 @@ const assertions = [
       return true;
     },
   },
+
+  // ============================================================
+  // v0.7 Phase A 新增（parse8 §2.2 + §6 + §5.3 —— INV-41..47）
+  // ============================================================
+  // task 版本 INV-41..47 语义（parse8 §1.3：40 → 47 全绿，v0.6 INV-1..40 一行不改）：
+  //  INV-41  长熔断与 CircuitBreaker 并列在 src/fallback/，复用 BreakerState（不开第二套引擎）
+  //  INV-42  长熔断 open 必经 CapabilityBag.disable（不绕过 INV-37 task 联动链）
+  //  INV-43  指标层进程内：observ/ 禁 prometheus/statsd/dogstatsd 字面量；禁远程遥测
+  //  INV-44  MetricsCollector 是 per-channel 维度（record 必带 channel 名）
+  //  INV-45  SerpHealthMonitor 禁自动重写 selector 表（保守人工升级）
+  //  INV-46  observ 暴露走 admin action-enum（不开新 observability tool）
+  //  INV-47  doctor runtime_state 扩 metrics/breakers/serp 子字段（不开第二套 doctor section）
+  {
+    id: "INV-41-long-breaker-reuses-breaker-state",
+    desc: "v0.7：LongCircuitBreaker 与 CircuitBreaker 并列在 src/fallback/，复用 BreakerState 类型不重定义（parse8 §3.1 / §5.3 INV-41；INV-4 单一 fallback 范式衍生）",
+    check: () => {
+      // 必要条件 1：LongCircuitBreaker.ts 在 src/fallback/（不在 src/observ/ 等第二目录）
+      const longBreaker = SRC.find((s) =>
+        /fallback\/LongCircuitBreaker\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!longBreaker) return false;
+
+      const code = stripComments(longBreaker.text);
+
+      // 必要条件 2：import BreakerState from CircuitBreaker（复用类型，不重定义）
+      if (!/from\s+["']\.\/CircuitBreaker\.js?["']/.test(code)) return false;
+      if (!/import\s+type\s+\{\s*BreakerState\s*\}/.test(code)) return false;
+
+      // 必要条件 3：禁 type BreakerState = ... 重定义（grep 反向断言）
+      if (/export\s+type\s+BreakerState\b/.test(code)) return false;
+      if (/type\s+BreakerState\s*=/.test(code)) return false;
+
+      // 必要条件 4：禁 export class CircuitBreaker（不在同文件重定义短熔断）
+      if (/export\s+class\s+CircuitBreaker\b/.test(code)) return false;
+
+      // 必要条件 5：export class LongCircuitBreaker 存在（确认是真正的新类）
+      if (!/export\s+class\s+LongCircuitBreaker\b/.test(code)) return false;
+
+      // 必要条件 6：src/observ/ 全树禁 CircuitBreaker 类定义（守 INV-4 单一 fallback 引擎）
+      const observBreaker = SRC.find((s) =>
+        /observ\/.*\.ts$/.test(s.f.replace(/\\/g, "/")) &&
+        /export\s+class\s+\w*[Cc]ircuitBreaker\b/.test(stripComments(s.text)),
+      );
+      if (observBreaker) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-42-long-breaker-open-via-capability-bag-disable",
+    desc: "v0.7：长熔断 open 必经 CapabilityBag.disable（经 onOpen 回调；不绕过 INV-37 task 链：bag.disable → onChange → toolManager.disableChannel + subproc.shutdownOne）",
+    check: () => {
+      // 必要条件 1：LongCircuitBreaker 支持 onOpen 回调（构造器第 4 参 + recordFailure 内调）
+      const longBreaker = SRC.find((s) =>
+        /fallback\/LongCircuitBreaker\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!longBreaker) return false;
+      const lbCode = stripComments(longBreaker.text);
+      if (!/onOpen/.test(lbCode)) return false;
+      if (!/_safeOnOpen|await\s+this\.onOpen/.test(lbCode)) return false;
+
+      // 必要条件 2：装配层（index.ts）grep new LongCircuitBreaker 实例化
+      const index = SRC.find((s) =>
+        /(^|\/)index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+
+      // 必要条件 3：装配层存在 new LongCircuitBreaker 实例化
+      if (!/new\s+LongCircuitBreaker\b/.test(indexCode)) return false;
+
+      // 必要条件 4：装配层的 onOpen 回调体内必调 bag.disable（INV-42 红线）
+      //   容忍 callers 多种命名（disable / bag.disable / disable(name, ...)），
+      //   但必须出现在 new LongCircuitBreaker 同一文件内 + 与 disable 字面量共现。
+      if (!/bag\.disable\s*\(/.test(indexCode)) return false;
+
+      // 必要条件 5：装配层 long_circuit_open reason 字面量（守 INV-37 task audit 链一致）
+      if (!/long_circuit_open/.test(indexCode)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-43-observ-in-process-no-remote-telemetry",
+    desc: "v0.7：指标层进程内 —— src/observ/ 全树禁 prometheus/statsd/dogstatsd/prom-client 字面量；禁 fetch/http 远程导出（parse8 §3.2 / §5.3 INV-43；08 §5.1 隐私 + 09 §2.8 非目标）",
+    check: () => {
+      const observFiles = SRC.filter((s) =>
+        /observ\//.test(s.f.replace(/\\/g, "/")),
+      );
+      if (observFiles.length === 0) return false; // v0.7 起必有 observ/ 目录
+
+      for (const s of observFiles) {
+        const code = stripComments(s.text);
+        // 禁 Prometheus / statsd / dogstatsd / prom-client 字面量（在代码或字符串中）
+        if (/prom-client|prometheus|statsd|dogstatsd|opentelemetry/.test(code)) {
+          return false;
+        }
+        // 禁 import node:http / node:https / undici / node:fetch（远程遥测红线）
+        if (/import\s+.*from\s+["']node:https?["']/.test(code)) return false;
+        if (/import\s+.*from\s+["']undici["']/.test(code)) return false;
+        // 禁裸 fetch() 调用（globalThis.fetch 远程导出红线）
+        if (/\bfetch\s*\(/.test(code)) return false;
+      }
+      return true;
+    },
+  },
+  {
+    id: "INV-44-metrics-collector-per-channel-dimension",
+    desc: "v0.7：MetricsCollector 是 per-channel 维度 —— record() 必带 channel 名参数（parse8 §3.2 / §5.3 INV-44）",
+    check: () => {
+      const mc = SRC.find((s) =>
+        /observ\/MetricsCollector\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!mc) return false;
+      const code = stripComments(mc.text);
+
+      // 必要条件 1：record( 方法签名首参必为 channel: string（强类型）
+      if (!/record\s*\(\s*channel\s*:\s*string\b/.test(code)) return false;
+
+      // 必要条件 2：内部 Map 以 channel 为 key（per-channel 独立 RingBuffer）
+      if (!/windows\s*=\s*new\s+Map\b/.test(code)) return false;
+      if (!/windows\.get\s*\(\s*channel\s*\)/.test(code)) return false;
+
+      // 必要条件 3：snapshot 返数组每条带 channel 字段（doctor/admin 显示用）
+      if (!/channel:\s*\w+/.test(code)) return false;
+
+      // 必要条件 4：禁 record() 无 channel 重载（保守：禁 record(): void / record(optional)）
+      //   record 必须强制带 channel，不能 record() / record(undefined)
+      if (/record\s*\(\s*\)/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-45-serp-health-monitor-no-selector-rewrite",
+    desc: "v0.7：SerpHealthMonitor 禁自动重写 selector 表（保守人工升级；parse8 §3.4 / §5.3 INV-45；08 §3.8「SERP 是债不是资产」）",
+    check: () => {
+      const shm = SRC.find((s) =>
+        /serp\/SerpHealthMonitor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!shm) return false;
+      const code = stripComments(shm.text);
+
+      // 必要条件 1：禁 selector 表写入操作（保守人工升级红线）
+      //   覆盖 SelectorRegistry 内潜在的 mutator 名 + 通用 set/upgrade 命名
+      const forbiddenMutators =
+        /setSelectors|updateSelectors|upgradeVersion|rewriteSelector|recordHit.*v\d|replaceSelectors|deleteSelectors|mutateSelectors/;
+      if (forbiddenMutators.test(code)) return false;
+
+      // 必要条件 2：禁直接 mutate registry 内部 sets（grep .sets.set / .sets.delete）
+      if (/\.sets\.set\s*\(/.test(code)) return false;
+      if (/\.sets\.delete\s*\(/.test(code)) return false;
+
+      // 必要条件 3：仅允许 registry.recordHit / recordMiss / hitRate / get / engines（只读 API）
+      //   上面已禁 set*；正向断言：必须出现 recordHit / recordMiss 调用（确认主路径接入）
+      if (!/registry\.record(Hit|Miss)/.test(code)) return false;
+
+      // 必要条件 4：改版确认后只 logger.warn + recordings.save（INV-45 红线：禁自动升级）
+      if (!/logger\.warn/.test(code)) return false;
+      if (!/recordings\.save/.test(code)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-46-observ-via-admin-action-enum-no-new-tool",
+    desc: "v0.7：observ 暴露走 admin action-enum（不开新 observability tool；metrics_snapshot / breaker_status / serp_health 在 admin.ts；parse8 §3.5 / §5.3 INV-46）",
+    check: () => {
+      // 必要条件 1：admin.ts 含 3 个 observ action（schema enum + handler case）
+      const admin = SRC.find((s) =>
+        /tools\/admin\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!admin) return false;
+      const adminCode = stripComments(admin.text);
+      for (const act of ["metrics_snapshot", "breaker_status", "serp_health"]) {
+        // 字面量必须出现至少 2 次（schema enum + handler case）
+        const re = new RegExp(`["']${act}["']`, "g");
+        const matches = adminCode.match(re) || [];
+        if (matches.length < 2) return false;
+      }
+
+      // 必要条件 2：runtime-types.ts AdminAction union 含 3 个 observ action
+      const rt = SRC.find((s) =>
+        /runtime\/runtime-types\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!rt) return false;
+      const rtCode = stripComments(rt.text);
+      for (const act of ["metrics_snapshot", "breaker_status", "serp_health"]) {
+        if (!new RegExp(`["']${act}["']`).test(rtCode)) return false;
+      }
+
+      // 必要条件 3：禁注册 observability 独立 tool（grep registerObserv / observ_tool）
+      //   允许出现在注释里（stripComments 已剥），所以这里 SRC 全扫
+      for (const s of SRC) {
+        const c = stripComments(s.text);
+        if (/registerObserv(?:ability)?Tool\b|registerMetricsTool\b|registerBreakerTool\b/.test(c)) {
+          return false;
+        }
+      }
+
+      // 必要条件 4：admin.ts 注入 observ 数据源（AdminToolDeps 含 metrics / serpHealth / breakers）
+      if (!/metrics\?\s*:\s*MetricsCollector/.test(adminCode)) return false;
+      if (!/longBreakers\?\s*:\s*Map<string,\s*LongCircuitBreaker>/.test(adminCode)) return false;
+      if (!/serpHealth\?\s*:\s*SerpHealthMonitor/.test(adminCode)) return false;
+
+      return true;
+    },
+  },
+  {
+    id: "INV-47-doctor-runtime-state-observ-subfields",
+    desc: "v0.7：doctor runtime_state section 扩 metrics / breakers / serp_health 子字段（不开第二套 doctor section；parse8 §3.5 / §5.3 INV-47）",
+    check: () => {
+      const doctor = SRC.find((s) =>
+        /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!doctor) return false;
+      const code = stripComments(doctor.text);
+
+      // 必要条件 1：runtime_state 类型定义含 metrics / breakers / serp_health 三子字段
+      if (!/metrics\?\s*:/.test(code)) return false;
+      if (!/breakers\?\s*:/.test(code)) return false;
+      if (!/serp_health\?\s*:/.test(code)) return false;
+
+      // 必要条件 2：禁开新 doctor 顶级 section（grep forbid new sections）
+      //   守 INV-4 衍生：doctor 报告 shape 不扩新顶级 key（除既有 checks/blockers/runtime_state 等）
+      //   允许的顶级 key（v0.5 既有）：ready / timestamp / lasso_version / checks / blockers / runtime_state
+      //   禁：observability_state / metrics_state 等新顶级 section
+      if (/observability_state\s*:/.test(code)) return false;
+      if (/metrics_state\s*:/.test(code)) return false;
+      if (/breaker_state\s*:/.test(code)) return false;
+      if (/serp_state\s*:/.test(code)) return false;
+
+      // 必要条件 3：observ 子字段经 runtimeState provider 注入（不开新 doctorOpts 顶级 provider）
+      //   允许：runtimeState provider 返对象含 metrics/breakers/serp_health
+      //   禁：metricsState / breakerState / serpState 等独立 provider
+      if (/metricsState\s*\??\s*:/.test(code)) return false;
+      if (/breakerState\s*\??\s*:/.test(code)) return false;
+      if (/serpState\s*\??\s*:/.test(code)) return false;
+
+      return true;
+    },
+  },
 ];
 
 let failed = 0;

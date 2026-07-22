@@ -346,6 +346,32 @@ export class SubprocessManager {
   }
 
   // ============================================================
+  // v0.7 新增（parse8 §3.3 / §7.2 Phase C —— ResourceMonitor 旁路采样用）
+  // ============================================================
+  /**
+   * v0.7: 只读 pid 枚举器（ResourceMonitor 注入用）。
+   *
+   * 设计：
+   *  - 返回当前已 spawn 的所有受管子进程（MCP + Rust），name + pid 形式
+   *  - 已退出（closed=true）/ 未启动的 spec 不列（pid=null 对应 spec 不返）
+   *  - INV-7 仍守：纯 lifecycle 读取，不读协议帧；INV-46 衍生：调用方只读 pid 数字
+   *
+   * @returns 数组 [{name, pid}]；pid 可能为 null（已 spawn 但 transport 未暴露 pid 时）
+   */
+  listManagedPids(): Array<{ name: string; pid: number | null }> {
+    const out: Array<{ name: string; pid: number | null }> = [];
+    for (const [name, m] of this.procs) {
+      if (m.closed) continue; // 已退出，不列
+      out.push({ name, pid: m.client.pid });
+    }
+    for (const [name, m] of this.rustProcs) {
+      if (m.closed) continue;
+      out.push({ name, pid: m.proc.pid ?? null });
+    }
+    return out;
+  }
+
+  // ============================================================
   // 私有
   // ============================================================
   /**

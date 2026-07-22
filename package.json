@@ -1,6 +1,6 @@
 {
   "name": "lasso-mcp",
-  "version": "0.6.0-dev",
+  "version": "0.7.0-dev",
   "description": "Lasso — CC 的全交互对外抓手 MCP（浏览器+桌面）",
   "type": "module",
   "main": "dist/index.js",
