@@ -221,6 +221,8 @@ export const DESKTOP_DESCRIPTION = [
   "",
   "Actions (action-enum collapsed, 13 #1):",
   "  snapshot   — AX tree → OutlineNode (default; ≤30ms for maxDepth=3)",
+  "              options.interactive_only=true (v1.2): prune to interactive elements + ancestors (省 token);",
+  "              default off = full tree (byte-identical v1.1).",
   "  find       — query cached snapshot by text/role/ref (no re-walk)",
   "  act        — click/type/press/scroll/hotkey with optional expect postcondition",
   "  wait       — poll for window/element/appFrontmost (tri-state)",

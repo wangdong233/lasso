@@ -31,6 +31,25 @@ import type { AxNode, OutlineNode } from "./desktop-types.js";
 /** pictureOnly 启发式:rect 长宽均需 > 此阈值（parse4 §4.4）。 */
 const PICTURE_ONLY_MIN_DIM = 100;
 
+/**
+ * interactiveOnly 过滤：可交互 role 集合（doc/14 §4.2d Lightpanda-inspired）。
+ * 只含「用户能操作」的元素（点击/输入/选择），排除纯文本/布局/容器。
+ * 取自 ax-role-map.ts unified roles 中语义为 interactive 的子集。
+ * INV-21：用的是 unified role（非平台 AXRole 字面量）。
+ */
+const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
+  "button",
+  "link",
+  "textfield",
+  "textarea",
+  "checkbox",
+  "radio",
+  "select",
+  "menuitem",
+  "menubaritem",
+  "menubutton",
+]);
+
 // ============================================================
 // 公共类型
 // ============================================================
@@ -113,4 +132,54 @@ export function isPictureOnly(
   if (node.role === "unknown") return true;
   if (node.role === "group" && node.label === "") return true;
   return false;
+}
+
+// ============================================================
+// interactiveOnly 过滤（doc/14 §4.2d，v1.2）
+// ============================================================
+/**
+ * 判断 role 是否「可交互」（用户能操作：点击/输入/选择）。
+ * 用于 interactiveOnly opt-in 过滤（pruneToInteractive）。
+ */
+export function isInteractiveRole(role: string): boolean {
+  return INTERACTIVE_ROLES.has(role);
+}
+
+/**
+ * 含交互后代判定（含自身）—— 用于剪枝决策：保留一个节点当它自身可交互
+ * 或它的子树含可交互节点（保留祖先以维持树结构上下文）。
+ */
+function hasInteractiveInSubtree(node: OutlineNode): boolean {
+  if (isInteractiveRole(node.role)) return true;
+  return node.children.some(hasInteractiveInSubtree);
+}
+
+/**
+ * 剪枝 OutlineNode 树到「只含可交互元素 + 其祖先」（doc/14 §4.2d）。
+ *
+ * - **root 永远保留**（即使非交互）—— 上游需要树根 handle；root 是 application/window。
+ * - 非根节点：保留当且仅当「自身可交互 OR 子树含可交互后代」。
+ * - 纯文本/布局/容器（无交互后代）的叶子分支被剪掉。
+ * - 不改原树（返新树；children 数组重建，节点对象复用浅拷贝）。
+ *
+ * 用途：LLM 只需「这页面能点什么/填什么」时，大幅省 token（vs 全 AX tree）。
+ * 默认 off（DesktopOptions.interactive_only 未传 = 不过滤 = byte-identical v1.1）。
+ *
+ * INV-70：本函数是 opt-in 后处理；axTreeToOutline（映射）一行不改（INV-61 三平台共享不变）。
+ */
+export function pruneToInteractive(root: OutlineNode): OutlineNode {
+  const visit = (node: OutlineNode, isRoot: boolean): OutlineNode | null => {
+    const selfInteractive = isInteractiveRole(node.role);
+    // root 永远保留；非 root 且既非交互也无交互后代 → 剪
+    if (!isRoot && !selfInteractive && !hasInteractiveInSubtree(node)) {
+      return null;
+    }
+    const children = node.children
+      .map((c) => visit(c, false))
+      .filter((c): c is OutlineNode => c !== null);
+    return { ...node, children };
+  };
+  const pruned = visit(root, true);
+  // pruned 非 null（root 永远保留）；防御性兜底
+  return pruned ?? root;
 }

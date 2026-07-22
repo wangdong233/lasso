@@ -163,6 +163,12 @@ export interface DesktopOptions {
   app?: string;
   state_id?: string;
   max_depth?: number;
+  /**
+   * v1.2（doc/14 §4.2d Lightpanda-inspired）：只保留可交互元素 + 其祖先。
+   * 默认 undefined = 不过滤 = byte-identical v1.1（INV-70）。
+   * LLM 只需「能点什么/填什么」时省 token。
+   */
+  interactive_only?: boolean;
   actions?: UiAction[];
   expect?: DesktopExpect;
   where?: WhereClause;

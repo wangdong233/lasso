@@ -96,6 +96,7 @@
  *  INV-67 MarkdownExtractor 是内部子组件 —— markdown-extractor.ts 在 browse/ 下不 extends Channel；src/ 无 server.tool("markdown*") —— v1.1 Phase A
  *  INV-68 引擎无第三运行时 —— markdown-extractor.ts 禁 spawn/exec/child_process/python；只 import defuddle/turndown JS 包 —— v1.1 Phase A
  *  INV-69 citation 无 Crawl4AI 依赖 —— content-filter-cite.ts 纯 TS reimplement；package.json 不含 crawl4ai —— v1.1 Phase A
+ *  INV-70 interactiveOnly opt-in 后处理 —— OutlineMapper 导出 pruneToInteractive（axTreeToOutline 体内不过滤 INV-61 不变）；AxProvider 经 opts.interactive_only 条件调；DesktopOptions optional 无 default —— v1.2
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -2877,6 +2878,56 @@ const assertions = [
       for (const k of Object.keys(deps)) {
         if (/crawl4ai/i.test(k)) return false;
       }
+
+      return true;
+    },
+  },
+  {
+    id: "INV-70-interactiveonly-optin-passthrough",
+    desc:
+      "v1.2（doc/14 §4.2d Lightpanda-inspired）：interactiveOnly 是 opt-in 后处理，默认不过滤 byte-identical v1.1：" +
+      "（a）OutlineMapper.ts 导出 pruneToInteractive + isInteractiveRole 纯函数；" +
+      "（b）axTreeToOutline 体内不含 interactive 过滤（INV-61 三平台共享映射不变，prune 是独立后处理）；" +
+      "（c）AxProvider 经 opts.interactive_only 条件调 pruneToInteractive（未传=false 不剪）；" +
+      "（d）DesktopOptions.interactive_only 是 optional 无 default",
+    check: () => {
+      const om = SRC.find((s) =>
+        /desktop\/OutlineMapper\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!om) return false;
+      const code = stripComments(om.text);
+
+      // (a) 导出 pruneToInteractive + isInteractiveRole
+      if (!/export\s+function\s+pruneToInteractive\b/.test(code)) return false;
+      if (!/export\s+function\s+isInteractiveRole\b/.test(code)) return false;
+
+      // (b) axTreeToOutline 体内不含 interactive 过滤（映射保持纯；prune 是独立函数）
+      //     守 INV-61：axTreeToOutline 三平台共享 byte-identical
+      const axFnMatch = code.match(
+        /export\s+function\s+axTreeToOutline[\s\S]*?^}/m,
+      );
+      if (axFnMatch && /interactive|INTERACTIVE_ROLES|pruneToInteractive/.test(axFnMatch[0])) {
+        return false;
+      }
+
+      // (c) AxProvider 条件调 pruneToInteractive（经 opts.interactive_only）
+      const ap = SRC.find((s) =>
+        /desktop\/AxProvider\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!ap) return false;
+      const apCode = stripComments(ap.text);
+      if (!/pruneToInteractive/.test(apCode)) return false;
+      if (!/opts\.interactive_only/.test(apCode)) return false;
+      // 必须是条件调用（三目或 if），不是无条件
+      if (!/interactive_only\s*\?/.test(apCode)) return false;
+
+      // (d) DesktopOptions.interactive_only optional
+      const dt = SRC.find((s) =>
+        /desktop\/desktop-types\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!dt) return false;
+      const dtCode = stripComments(dt.text);
+      if (!/interactive_only\??\s*:/.test(dtCode)) return false;
 
       return true;
     },

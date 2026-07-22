@@ -42,6 +42,7 @@ const desktopSchema = {
       app: z.string().optional(),
       state_id: z.string().optional(),
       max_depth: z.number().int().positive().max(20).default(8),
+      interactive_only: z.boolean().optional(),
       actions: z
         .array(
           z.union([

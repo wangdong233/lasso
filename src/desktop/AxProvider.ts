@@ -32,7 +32,7 @@
  */
 import type { AxBackend } from "./AxBackend.js";
 import type { RustResponse } from "../subprocess/RustBridge.js";
-import { axTreeToOutline } from "./OutlineMapper.js";
+import { axTreeToOutline, pruneToInteractive } from "./OutlineMapper.js";
 import type {
   AxNode,
   DesktopOptions,
@@ -154,9 +154,11 @@ export class AxProvider {
       };
     }
     const { root: outlineRoot } = axTreeToOutline(root);
+    // v1.2（doc/14 §4.2d）：interactiveOnly opt-in 后处理剪枝（INV-70：默认不过滤 byte-identical v1.1）
+    const finalRoot = opts.interactive_only ? pruneToInteractive(outlineRoot) : outlineRoot;
     const snapshot: OutlineSnapshot = {
       stateId: newStateId(),
-      root: outlineRoot,
+      root: finalRoot,
       createdAt: Date.now(),
     };
     return {
