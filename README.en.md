@@ -53,14 +53,14 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 ### 30 seconds · One-line install (zero config)
 
 ```bash
-claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
+claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-Restart Claude Code → type `/mcp` → see `lasso ✓ Connected`. Done.
+Restart Claude Code → type `/mcp` → see `lasso ✓ Connected`. Done. **No keys in the install command** — configuration is a separate step (next tier).
 
 ### 30 seconds · With nothing configured, you can already do all this
 
-No keys needed right after install:
+No keys needed right after install (this is **Tier 1: zero config**):
 
 - Scrape the text of any **public web page**, converted to clean markdown
 - **Full-page screenshots** and **save-as-PDF**, returning a file path
@@ -72,9 +72,9 @@ Your first output — just say to Claude:
 
 > "Grab the text of example.com and turn it into markdown"
 
-### Want more? Add one line
+### Want more? Add it in the config file (Tier 2)
 
-- **Search** → add a Zhipu key (see [Configure](#configure))
+- **Search** → run `lasso config init` to create `~/.lasso/config.json`, then fill in a Zhipu key (see [Configure](#configure))
 - **Scrape logged-in pages** (Jira / private GitHub / company intranet) → run `lasso launch-chrome` once
 - **Control the macOS desktop** → run `lasso doctor` once to be guided through authorization
 
@@ -158,10 +158,10 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ```bash
 # Claude Code (recommended)
-claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
+claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-Restart Claude Code → `/mcp` → `lasso ✓ Connected`.
+Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's it — no keys in the install command.** Browsing / screenshots / PDF / desktop control work immediately (search is the only exception — see [Configure](#configure)).
 
 **macOS users wanting desktop control**: run `lasso doctor` once and follow the prompts to tick `lasso-rust-helper` under "System Settings → Privacy & Security" for both Accessibility and Screen Recording (`doctor` guides you — no need to hunt for the path yourself).
 
@@ -169,7 +169,37 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`.
 
 ## Configure
 
-Look up by **what you want to do** — the right column tells you what to set; for how to obtain keys, see the [Key Configuration Guide](./doc/KEY-GUIDE.md).
+**Install is zero-config** — the install command above already enables browsing / fetching / screenshots / PDF / third-party resource inspection / desktop control. **Only search requires a key.**
+
+### Want to add keys? Do it in the config file (recommended)
+
+```bash
+lasso config init        # creates the ~/.lasso/config.json template
+```
+
+Open `~/.lasso/config.json` and fill in only what you need — e.g. just search:
+
+```json
+{
+  "ZHIPU_API_KEY": "your_key"
+}
+```
+
+For "near-zero search failures" (multi-source; auto-fails-over if one is down), add a few more lines:
+
+```json
+{
+  "ZHIPU_API_KEY": "your_zhipu_key",
+  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
+  "BING_API_KEYS": "bingkey1,bingkey2"
+}
+```
+
+The file is **flat JSON** — key names match the env variable names in the table below, so there's no new schema to learn. Save it; Lasso picks it up on next start.
+
+How to obtain each key, free quotas, multi-key rotation details — see [**doc/KEY-GUIDE.md**](./doc/KEY-GUIDE.md).
+
+### Look up by what you want to do
 
 | What you want | What to configure | What it unlocks |
 |---|---|---|
@@ -183,15 +213,7 @@ Look up by **what you want to do** — the right column tells you what to set; f
 | Scrape Cloudflare-protected sites | `LASSO_ALLOW_CLOUD_BROWSER=true` + a cloud key | Off by default; needs your double confirmation |
 | fake-ip proxy networks (Surge / Clash TUN) | **Nothing** | Already allowed out of the box |
 
-**How to obtain each key, free quotas, multi-key rotation, and full JSON config examples**: see [**doc/KEY-GUIDE.md**](./doc/KEY-GUIDE.md).
-
-Minimum viable config (search only):
-
-```bash
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=your_key \
-  -- npx -y lasso-mcp@1.2.0
-```
+> **Backward compatible**: if you previously installed with `claude mcp add -e KEY=VAL`, those env variables **still work** and **override** the config file (precedence: env > `~/.lasso/config.json` > defaults). The config file is an additional user-friendly path; it does not replace env.
 
 ---
 

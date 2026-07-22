@@ -106,12 +106,15 @@ import { CDP_UPSTREAM_TOOL_NAMES } from "../browse/cdp-actions.js";
 // 守 INV-60：AxBackendFactory 单一真源（不在 doctor 内 new 任一 backend class）
 // 守 INV-62：录制基线 fixture 只读 fs，永不读 logged_in cookie 场景
 import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
+// v1.3 Phase A：config 文件机制（#35 config_file doctor check）
+// 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
+import { getConfigFilePath, loadConfigFileEnv } from "../config/config.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.2.0";
+export const LASSO_VERSION = "1.3.0";
 
 // ============================================================
 // 类型
@@ -608,6 +611,12 @@ export async function runDoctor(
   // 两项均 warn-only（markdown 是 opt-in；未装/失败不阻塞 ready —— raw 默认路径 byte-identical v1.0）
   checks.push(checkMarkdownExtractorEngine());
   checks.push(await checkMarkdownSmoke(cacheDir));
+
+  // ---- v1.3 Phase A：config 文件机制（parse-v1.3 §Phase A）----
+  // #35 config_file：报 config 文件路径 + 是否存在 + 从中加载的 key 数
+  // 永不 fail（config 是 advisory；零配置启动可用；仅 search 需 key）
+  // 引导：没配 key？跑 `lasso config init` 创建配置文件
+  checks.push(await checkConfigFile());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2077,6 +2086,61 @@ async function checkMarkdownSmoke(cacheDir: string): Promise<DoctorCheck> {
       status: "warn",
       detail: String(e),
       next_step: "markdown 引擎加载失败（#33 查包是否装）；raw 路径不受影响",
+    };
+  }
+}
+
+// ============================================================
+// v1.3 Phase A 新增（parse-v1.3 §Phase A —— #35 config_file）
+// ============================================================
+/**
+ * 35. config_file（v1.3 Phase A：config 文件机制；INV-71 镜像）。
+ *
+ * 报 ~/.lasso/config.json（或 LASSO_CONFIG_PATH 覆盖）的：
+ *  - 绝对路径
+ *  - 是否存在（stat）
+ *  - 从中加载的 key 数（loadConfigFileEnv 解析扁平 JSON 后的非空元数据键数）
+ *
+ * 永不 fail：config 是 advisory；零配置启动可用（browse/fetch/desktop 不需 key；仅 search 需）。
+ *  - 文件不存在 → warn（引导跑 `lasso config init`）
+ *  - 文件存在 + 0 key → pass（用户可能只填空模板）
+ *  - 文件存在 + ≥1 key → pass with detail（detail 报 key 数；env 覆盖 file 的语义由 loadConfig 守）
+ *
+ * 守 INV-51 红线不接触：config 文件不含 cookie/session 明文（那是 logged_in 加密包）；
+ *                      本 check 只读 ~/.lasso/config.json 扁平 JSON，与 cookie store 完全隔离。
+ * 守 INV-35 衍生：doctor.ts 经 config.js 顶级函数读元数据；不 import config/provider-registry 业务层。
+ */
+async function checkConfigFile(): Promise<DoctorCheck> {
+  try {
+    const filePath = getConfigFilePath();
+    let exists = false;
+    try {
+      await fs.access(filePath);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (!exists) {
+      return {
+        name: "config_file",
+        status: "warn",
+        detail: `config 文件不存在：${filePath}（零配置启动可用；browse/fetch/desktop 不需 key，仅 search 需）`,
+        next_step:
+          "（可选）跑 `lasso-mcp config init` 创建配置文件模板，填入你的 key（env 仍可覆盖文件）",
+      };
+    }
+    const fileEnv = loadConfigFileEnv();
+    const keyCount = Object.keys(fileEnv).length;
+    return {
+      name: "config_file",
+      status: "pass",
+      detail: `${filePath} 存在；加载 ${keyCount} 个 key（env 覆盖 file；详见 doc/KEY-GUIDE.md）`,
+    };
+  } catch (e) {
+    return {
+      name: "config_file",
+      status: "warn",
+      detail: String(e),
     };
   }
 }

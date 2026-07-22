@@ -33,6 +33,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config/config.js";
+import { getConfigFilePath, writeConfigTemplate } from "./config/config.js";
 import { logger } from "./util/logger.js";
 import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
@@ -157,7 +158,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.2.0";
+const LASSO_SERVER_VERSION = "1.3.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -197,13 +198,80 @@ function readCloudBrowserEnv(): {
 // doctor CLI 模式
 // ============================================================
 async function runDoctorCli(): Promise<void> {
+  // v1.3 Phase B：doctor CLI 也走 loadConfig（file→env 合并），与 MCP doctor tool 一致。
+  // 守用户硬约束②：配置文件改的 key 在 CLI doctor 也要反映——否则用户按 README 跑 lasso config init
+  // 填了 key，lasso doctor 仍报"ZHIPU_API_KEY 未设置"，体验断裂。
+  // env 仍优先（loadConfig 合并顺序 file→env；既有 -e KEY=VAL / shell env 用户零回归）。
+  const config = loadConfig({ runId: "doctor-cli" });
   const report = await runDoctor({
-    zhipuKey: process.env.ZHIPU_API_KEY,
-    zhipuEndpoint: process.env.ZHIPU_ENDPOINT,
-    cdpPort: parseInt(process.env.LASSO_CDP_PORT ?? "9222", 10),
+    zhipuKey: config.zhipuApiKey,
+    zhipuEndpoint: config.zhipuEndpoint,
+    cdpPort: config.cdpPort,
   });
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
   process.exit(report.ready ? 0 : 1);
+}
+
+// ============================================================
+// v1.3 Phase A：config 子命令（config init / config path）
+// ============================================================
+/**
+ * `lasso config init`：写 ~/.lasso/config.json 模板（扁平 JSON，所有已知 key 空值占位）。
+ * `lasso config path`：打印 config 文件绝对路径 + 是否存在。
+ *
+ * 设计（守用户硬约束：安装命令无配置；要新增配置时在配置文件配）：
+ *  - init 模板含 _comment 说明段（JSON 无注释，用 _comment 字段作内嵌文档）
+ *  - init 不覆盖既有文件（created=false 时打印路径 + 提示手改）
+ *  - 复用 doctor CLI 的 argv dispatch 范式（process.argv[2] === "config"）
+ */
+async function runConfigCli(args: string[]): Promise<void> {
+  const sub = args[0];
+  if (sub === "init") {
+    try {
+      const { path: p, created } = await writeConfigTemplate();
+      if (created) {
+        process.stdout.write(
+          `Created config template at:\n  ${p}\n\n` +
+            `Edit it to fill in your keys (see doc/KEY-GUIDE.md).\n` +
+            `Env variables still override this file (backward compatible).\n`,
+        );
+      } else {
+        process.stdout.write(
+          `Config file already exists (not overwritten):\n  ${p}\n\n` +
+            `Edit it directly to change your keys.\n`,
+        );
+      }
+      process.exit(0);
+    } catch (e) {
+      process.stderr.write(`config init failed: ${String(e)}\n`);
+      process.exit(1);
+    }
+    return;
+  }
+  if (sub === "path") {
+    const p = getConfigFilePath();
+    let exists = false;
+    try {
+      await fsStat(p);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    process.stdout.write(
+      `${p} (${exists ? "exists" : "not found"})\n` +
+        (exists
+          ? ""
+          : "\nRun `lasso-mcp config init` to create a template.\n"),
+    );
+    process.exit(0);
+    return;
+  }
+  process.stderr.write(
+    "usage: lasso-mcp config <init|path>\n" +
+      "  init  Create ~/.lasso/config.json template (flat JSON; keys match env names)\n" +
+      "  path  Print config file path + existence\n",
+  );
+  process.exit(1);
 }
 
 // ============================================================
@@ -910,6 +978,13 @@ async function main(): Promise<void> {
   // CLI: `lasso doctor`
   if (process.argv[2] === "doctor") {
     await runDoctorCli();
+    return;
+  }
+  // v1.3 Phase A：`lasso config <init|path>`
+  // 守用户硬约束：安装命令无配置（claude mcp add lasso -- npx -y lasso-mcp 不带 -e）；
+  //              要新增配置时跑 `lasso config init` 创建 ~/.lasso/config.json 改文件配。
+  if (process.argv[2] === "config") {
+    await runConfigCli(process.argv.slice(3));
     return;
   }
   // v1.0 Phase D（parse11 §3.3 + §7.2）：`lasso launch-chrome [--port N] [--profile <dir>]`

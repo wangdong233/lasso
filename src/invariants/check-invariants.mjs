@@ -97,6 +97,7 @@
  *  INV-68 引擎无第三运行时 —— markdown-extractor.ts 禁 spawn/exec/child_process/python；只 import defuddle/turndown JS 包 —— v1.1 Phase A
  *  INV-69 citation 无 Crawl4AI 依赖 —— content-filter-cite.ts 纯 TS reimplement；package.json 不含 crawl4ai —— v1.1 Phase A
  *  INV-70 interactiveOnly opt-in 后处理 —— OutlineMapper 导出 pruneToInteractive（axTreeToOutline 体内不过滤 INV-61 不变）；AxProvider 经 opts.interactive_only 条件调；DesktopOptions optional 无 default —— v1.2
+ *  INV-71 config 文件机制 —— loadConfigFileEnv 读 ~/.lasso/config.json 扁平 JSON；loadConfig 合并 file→env（env 覆盖 file 向后兼容）；index.ts config init/path 子命令；扁平 JSON 红线禁嵌套 schema —— v1.3 Phase A
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -2928,6 +2929,85 @@ const assertions = [
       if (!dt) return false;
       const dtCode = stripComments(dt.text);
       if (!/interactive_only\??\s*:/.test(dtCode)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.3 Phase A 新增（parse-v1.3 §Phase A —— INV-71 config 文件机制）
+  // ============================================================
+  // 用户硬约束（parse-v1.3 §1）：① 安装命令无配置（claude mcp add lasso -- npx -y lasso-mcp 不带 -e）
+  //                             ② 要新增配置时在配置文件配（~/.lasso/config.json）
+  // 守简单性（架构想法/01/02）：config 文件用扁平 JSON（env-key 同名），不搞嵌套 schema（缠绕）。
+  //  INV-71  config 文件机制：
+  //    (a) src/config/config.ts 导出 loadConfigFileEnv（读 ~/.lasso/config.json；LASSO_CONFIG_PATH 可覆盖）
+  //    (b) loadConfig 体内合并 file→env（fileEnv base + env 覆盖；env 优先向后兼容）
+  //    (c) src/index.ts 有 `config init` + `config path` 子命令 dispatch（argv === "config"）
+  //    (d) config.ts 导出 CONFIG_TEMPLATE 或 writeConfigTemplate（init 模板生成器）
+  //    (e) config.ts 代码本体禁嵌套 schema（扁平 JSON 红线：只接受 Record<string, string|bool|num>）
+  {
+    id: "INV-71-config-file-mechanism",
+    desc:
+      "v1.3 Phase A：config 文件机制（~/.lasso/config.json 扁平 JSON；file→env 合并；env 覆盖 file；config init/path CLI 子命令）：" +
+      "（a）config.ts 导出 loadConfigFileEnv（读 ~/.lasso/config.json；LASSO_CONFIG_PATH 可覆盖）；" +
+      "（b）loadConfig 合并 file→env（{...fileEnv,...env}，env 覆盖向后兼容）；" +
+      "（c）index.ts 有 `config init` + `config path` 子命令 dispatch；" +
+      "（d）config.ts 导出 CONFIG_TEMPLATE / writeConfigTemplate（init 模板）；" +
+      "（e）扁平 JSON 红线：loadConfigFileEnv 不递归嵌套对象",
+    check: () => {
+      const config = SRC.find((s) =>
+        /config\/config\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!config) return false; // 必须存在
+      const code = stripComments(config.text);
+
+      // ----- (a) loadConfigFileEnv 导出 + 读 ~/.lasso/config.json + LASSO_CONFIG_PATH 覆盖 -----
+      if (!/export\s+function\s+loadConfigFileEnv\b/.test(code)) return false;
+      if (!/\.lasso/.test(code)) return false;
+      if (!/LASSO_CONFIG_PATH/.test(code)) return false;
+
+      // ----- (b) loadConfig 体内合并 file→env（fileEnv base + env 覆盖）-----
+      const loadBody = code.match(
+        /export\s+function\s+loadConfig\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}\n/s,
+      )?.[1] ?? "";
+      if (loadBody.length === 0) return false;
+      // 必须调 loadConfigFileEnv
+      if (!/loadConfigFileEnv\s*\(/.test(loadBody)) return false;
+      // 必须有合并形式 {...fileEnv, ...<envSource> }（fileEnv 在前 = base；env 在后 = 覆盖）
+      //   容忍变量名差异（envSource / env / opts.env）：grep `{ ...fileEnv, ...` 形式
+      if (!/\{\s*\.\.\.\s*fileEnv\s*,\s*\.\.\./.test(loadBody)) return false;
+
+      // ----- (c) index.ts 有 config init + config path 子命令 dispatch -----
+      const index = SRC.find((s) =>
+        /^index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+      // argv[2] === "config" 分支
+      if (!/process\.argv\[\s*2\s*\]\s*===\s*["']config["']/.test(indexCode)) {
+        return false;
+      }
+      // config init + config path 子命令字面量
+      if (!/["']init["']/.test(indexCode)) return false;
+      if (!/["']path["']/.test(indexCode)) return false;
+
+      // ----- (d) config.ts 导出 CONFIG_TEMPLATE 或 writeConfigTemplate -----
+      const hasTemplateExport =
+        /export\s+const\s+CONFIG_TEMPLATE\b/.test(code) ||
+        /export\s+async\s+function\s+writeConfigTemplate\b/.test(code) ||
+        /export\s+function\s+writeConfigTemplate\b/.test(code);
+      if (!hasTemplateExport) return false;
+
+      // ----- (e) 扁平 JSON 线：loadConfigFileEnv 体内禁递归归一化嵌套对象 -----
+      //   grep loadConfigFileEnv 函数体，验体内不出现 Object.assign(out, v) 或递归调用自身
+      const loadFileEnvBody = code.match(
+        /export\s+function\s+loadConfigFileEnv\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}\n/s,
+      )?.[1] ?? "";
+      if (loadFileEnvBody.length === 0) return false;
+      // 禁递归调用自身（防嵌套 schema 展开为扁平 key）
+      if (/loadConfigFileEnv\s*\(/.test(loadFileEnvBody)) return false;
+      // 禁 Object.assign(out, ...) 把嵌套对象 merge 进 out（扁平红线）
+      if (/Object\.assign\s*\(\s*out\b/.test(loadFileEnvBody)) return false;
 
       return true;
     },

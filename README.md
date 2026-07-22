@@ -53,14 +53,14 @@
 ### 30 秒｜一行接入（零配置）
 
 ```bash
-claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
+claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-重启 Claude Code → 输入 `/mcp` → 看到 `lasso ✓ Connected` 就装好了。
+重启 Claude Code → 输入 `/mcp` → 看到 `lasso ✓ Connected` 就装好了。**安装命令不带任何 key**——下一档再说配置。
 
 ### 30 秒｜不配任何东西，已经能干这些
 
-装完就能用，一个 key 都不用配：
+装完就能用，一个 key 都不用配（这是**第一档：零配置**）：
 
 - 抓任何**公开网页**的文字、转成干净正文
 - **截整页长图**、**存 PDF**，返回文件路径
@@ -72,9 +72,9 @@ claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
 
 > 「抓一下 example.com 的文字，转成 markdown」
 
-### 想要更多？配一行就行
+### 想要更多？在配置文件里加（第二档）
 
-- **搜东西** → 配一个智谱 key（见 [配置](#配置)）
+- **搜东西** → 跑 `lasso config init` 创建 `~/.lasso/config.json`，填一个智谱 key（见 [配置](#配置)）
 - **抓登录态页面**（Jira / GitHub 私有 / 公司内网）→ 跑一次 `lasso launch-chrome`
 - **控制 macOS 桌面** → 跑一次 `lasso doctor` 引导授权
 
@@ -158,10 +158,10 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ```bash
 # Claude Code（推荐）
-claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
+claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-重启 Claude Code → `/mcp` → `lasso ✓ Connected`。
+重启 Claude Code → `/mcp` → `lasso ✓ Connected`。**就这一行——安装命令不带任何 key**，装完 browse / 截图 / PDF / 控桌面立即可用（搜索除外，见 [配置](#配置)）。
 
 **macOS 用户想控桌面**：跑一次 `lasso doctor`，按提示在「系统设置 → 隐私与安全」里给 `lasso-rust-helper` 勾上辅助功能和屏幕录制权限即可（`doctor` 会引导你，不用自己找路径）。
 
@@ -169,7 +169,37 @@ claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
 
 ## 配置
 
-按「**我想干什么**」查表——右边告诉你要配什么，获取步骤看 [Key 配置指南](./doc/KEY-GUIDE.md)。
+**安装零配置**——上面的安装命令已经能让 browse / fetch / 截图 / PDF / 看第三方资源 / 控桌面全部跑起来。**只有搜索需要 key。**
+
+### 要加 key？在配置文件里配（推荐）
+
+```bash
+lasso config init        # 创建 ~/.lasso/config.json 模板
+```
+
+打开 `~/.lasso/config.json`，按需填——比如只配搜索：
+
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key"
+}
+```
+
+想搜索「≈永不失败」就再加几行多源（任一家挂了自动切，你无感）：
+
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key",
+  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
+  "BING_API_KEYS": "bingkey1,bingkey2"
+}
+```
+
+文件是**扁平 JSON**——key 名和下方表格里的环境变量同名，填法一目了然，不用学新 schema。改完存盘，下次启动 Lasso 自动读。
+
+每个 key 怎么申请、有哪些免费额度、多 key 轮询细节——看 [**doc/KEY-GUIDE.md**](./doc/KEY-GUIDE.md)。
+
+### 按「我想干什么」查表
 
 | 你想干什么 | 要配什么 | 配了能立刻用 |
 |---|---|---|
@@ -183,15 +213,7 @@ claude mcp add lasso --scope user -- npx -y lasso-mcp@1.2.0
 | 抓有 Cloudflare 的站 | `LASSO_ALLOW_CLOUD_BROWSER=true` + 云端 key | 默认关，要你双重确认才开 |
 | fake-ip 代理网络（Surge/Clash TUN） | **什么都不用配** | 已内置放行 |
 
-**每个 key 怎么申请、免费额度、多 key 轮询、完整 JSON 配置示例**：见 [**doc/KEY-GUIDE.md**](./doc/KEY-GUIDE.md)。
-
-最小可用配置（只要能搜就行）：
-
-```bash
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你的key \
-  -- npx -y lasso-mcp@1.2.0
-```
+> **向后兼容**：如果你以前用 `claude mcp add -e KEY=VAL` 装过，那些 env 变量**仍然生效**，且会**覆盖**配置文件（优先级：env > `~/.lasso/config.json` > 默认）。配置文件只是新增的 user-friendly 途径，不废除 env。
 
 ---
 
@@ -247,7 +269,7 @@ claude mcp add lasso --scope user \
 
 MIT © wangdong233。桌面辅助进程与浏览器引擎依赖均选 MIT / Apache-2.0，企业可商用。
 
-> 想看内部架构、设计原则、跨平台边界、开发命令？见 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [doc/TROUBLESHOOTING.md](./doc/TROUBLESHOOTING.md)。
+> 想看内部架构、设计原则、跨平台边界、开发命令？见 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [doc/TROUBLESHOOTING.md](./doc/TROUBLESHOOTING.md)。深度架构基线（F 编号 / 能力矩阵）见 [doc/08](./doc/08-media-interact-功能架构.md)，v0.1 → v1.0 实施排期与决策记录见 [doc/09](./doc/09-media-interact-实施排期.md)。
 
 ---
 

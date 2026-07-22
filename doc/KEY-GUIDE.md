@@ -3,10 +3,18 @@
 这份手册讲清楚：**每个 key 用在哪、去哪申请、有没有免费额度、配在哪里**。
 
 > **配置位置说明（重要，先读）**
-> Lasso 当前只读取**进程环境变量**（`process.env`），**暂不读取** `~/.claude.json`。也就是说：
-> - 用 **Claude Code** 时，请用 `claude mcp add -e KEY=VAL` 把 key 注入 MCP 进程的 env，或写进你 MCP client 配置里对应的 `env` 块。
-> - 用**其他 MCP client** 时，把 key 写进该 client 的 MCP server `env` 配置，或直接放在 shell 的 `~/.zshrc` / `~bashrc` 里。
-> - 后续版本会合并读取 `~/.claude.json`（代码里已留接口），届时此段会更新。
+>
+> Lasso 支持两种 key 配置方式，**任选其一**：
+>
+> - **推荐：配置文件**——跑 `lasso config init` 创建 `~/.lasso/config.json`，按需编辑。文件是**扁平 JSON**，key 名同环境变量名（无需学新 schema）：
+>
+>   ```json
+>   { "ZHIPU_API_KEY": "你的key", "BRAVE_API_KEYS": "k1,k2,k3" }
+>   ```
+>
+> - **高级/临时覆盖：env 变量**——`claude mcp add -e KEY=VAL`、shell `~/.zshrc` / `~bashrc`、或 MCP client 的 `env` 块仍生效；**env 优先级高于配置文件**（向后兼容：既有 env 用户不破）。
+>
+> 安装命令本身**不需要带任何 key**（`claude mcp add lasso -- npx -y lasso-mcp`）。装完 browse / 截图 / PDF / 控桌面立即可用；只有搜索等需要 key 的能力才按上面任一方式配。下文每个 key 的「怎么配」默认示范配置文件方式，并提示 env 覆盖。
 
 ---
 
@@ -39,21 +47,22 @@
 
 **怎么配**：
 
-```bash
-# Claude Code（推荐）
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你刚才复制的key \
-  -- npx -y lasso-mcp@1.2.0
+**推荐：写进 `~/.lasso/config.json`**（跑 `lasso config init` 创建）：
+
+```json
+{
+  "ZHIPU_API_KEY": "你刚才复制的key"
+}
 ```
 
-或写进其他 MCP client 的 `env` 块：
+或临时覆盖（env，优先级高于配置文件）：export `ZHIPU_API_KEY=...` 到 shell，或写进其他 MCP client 的 `env` 块：
 
 ```json
 {
   "mcpServers": {
     "lasso": {
       "command": "npx",
-      "args": ["-y", "lasso-mcp@1.2.0"],
+      "args": ["-y", "lasso-mcp"],
       "env": {
         "ZHIPU_API_KEY": "你刚才复制的key"
       }
@@ -80,16 +89,24 @@ claude mcp add lasso --scope user \
 
 **怎么配**：
 
-```bash
-# 单 key
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你的智谱key \
-  -e BRAVE_API_KEYS=你的bravekey \
-  -- npx -y lasso-mcp@1.2.0
+**写进 `~/.lasso/config.json`**：
 
-# 多 key 轮询（推荐，3 个 key = 6000 次/月）
-# -e BRAVE_API_KEYS=k1,k2,k3
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key",
+  "BRAVE_API_KEYS": "你的bravekey"
+}
 ```
+
+多 key 轮询（推荐，3 个 key = 6000 次/月）用 CSV 字符串：
+
+```json
+{
+  "BRAVE_API_KEYS": "k1,k2,k3"
+}
+```
+
+（env 覆盖同样支持：`export BRAVE_API_KEYS=k1,k2,k3`，优先级高于配置文件。）
 
 **免费额度**：**2000 次查询/月**（Free 计划）；多 key 线性叠加。
 
@@ -107,13 +124,17 @@ claude mcp add lasso --scope user \
 
 **怎么配**：
 
-```bash
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你的智谱key \
-  -e BRAVE_API_KEYS=你的bravekey \
-  -e BING_API_KEYS=你的bingkey \
-  -- npx -y lasso-mcp@1.2.0
+**写进 `~/.lasso/config.json`**：
+
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key",
+  "BRAVE_API_KEYS": "你的bravekey",
+  "BING_API_KEYS": "你的bingkey"
+}
 ```
+
+（env 覆盖：`export BING_API_KEYS=...`，优先级高于配置文件。）
 
 **免费额度**：**1000 次/月**（F0 免费层）。新订阅可用性受限，配了不用也不影响主流程。
 
@@ -195,13 +216,17 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 
 **怎么配**：
 
-```bash
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你的智谱key \
-  -e LASSO_ALLOW_CLOUD_BROWSER=true \
-  -e BROWSERBASE_API_KEY=你的browserbasekey \
-  -- npx -y lasso-mcp@1.2.0
+**写进 `~/.lasso/config.json`**（注意布尔值用 `true` 不是字符串）：
+
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key",
+  "LASSO_ALLOW_CLOUD_BROWSER": true,
+  "BROWSERBASE_API_KEY": "你的browserbasekey"
+}
 ```
+
+（env 覆盖：`export LASSO_ALLOW_CLOUD_BROWSER=true` + `export BROWSERBASE_API_KEY=...`，优先级高于配置文件。）
 
 ---
 
@@ -225,9 +250,15 @@ claude mcp add lasso --scope user \
 
 默认情况下，Lasso 用 **macOS 钥匙串**（Keychain）保护你的登录 cookie。如果你不在 macOS、或想跨机器使用同一份加密 cookie，可以显式设一个口令：
 
-```bash
--e LASSO_COOKIE_PASSPHRASE=一串足够长的密码
+**写进 `~/.lasso/config.json`**：
+
+```json
+{
+  "LASSO_COOKIE_PASSPHRASE": "一串足够长的密码"
+}
 ```
+
+（env 覆盖：`export LASSO_COOKIE_PASSPHRASE=...`，优先级高于配置文件。）
 
 设了之后，cookie 会用这个口令加密落盘（不设则走系统钥匙串）。**口令丢失 = cookie 无法解密**，请妥善保管。
 
@@ -251,19 +282,23 @@ lasso doctor
 
 ## 完整配置示例（一次配齐）
 
-```bash
-# Claude Code（推荐）
-claude mcp add lasso --scope user \
-  -e ZHIPU_API_KEY=你的智谱key \
-  -e BRAVE_API_KEYS=bravekey1,bravekey2,bravekey3 \
-  -e BING_API_KEYS=bingkey1,bingkey2 \
-  -- npx -y lasso-mcp@1.2.0
+**推荐：写进 `~/.lasso/config.json`**（跑 `lasso config init` 创建模板，按需编辑）：
 
-# 然后跑一次自检
+```json
+{
+  "ZHIPU_API_KEY": "你的智谱key",
+  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
+  "BING_API_KEYS": "bingkey1,bingkey2"
+}
+```
+
+然后跑一次自检：
+
+```bash
 lasso doctor
 ```
 
-其他 MCP client，把上面 `-e KEY=VAL` 的键值对填进 server 的 `env` 块即可（见 [A 节智谱示例](#1-智谱zhipu_api_key-默认引擎中文主力)的 JSON 片段）。
+> 用其他 MCP client 想走 env？把上面 JSON 的键值对填进 server 的 `env` 块即可（env 优先级**高于**配置文件；见 [A 节智谱示例](#1-智谱zhipu_api_key-默认引擎中文主力)的 JSON 片段）。安装命令本身仍是零配置的 `claude mcp add lasso -- npx -y lasso-mcp`。
 
 ---
 
