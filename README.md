@@ -387,6 +387,12 @@ lasso launch-chrome
 
 ---
 
+## 更多文档
+
+- 想看深度架构？见 [功能架构](doc/08-media-interact-功能架构.md)
+- 想看版本路线？见 [实施排期](doc/09-media-interact-实施排期.md)
+- 想看 key 获取？见 [Key 配置指南](doc/KEY-GUIDE.md)
+
 ## License
 
 **MIT** © wangdong233。桌面辅助进程与浏览器引擎依赖均选 MIT / Apache-2.0，企业可商用。

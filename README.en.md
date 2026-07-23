@@ -387,6 +387,12 @@ Or ⭐ [Star this repo](../../stargazers), [open an Issue](../../issues), or [se
 
 ---
 
+## More Docs
+
+- Deep architecture? See [Feature Architecture](doc/08-media-interact-功能架构.md)
+- Version roadmap? See [Implementation Roadmap](doc/09-media-interact-实施排期.md)
+- Key setup? See [Key Configuration Guide](doc/KEY-GUIDE.md)
+
 ## License
 
 **MIT** © wangdong233. The desktop helper process and browser-engine dependencies are all MIT / Apache-2.0 — safe for enterprise use.
