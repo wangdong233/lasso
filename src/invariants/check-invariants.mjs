@@ -98,6 +98,7 @@
  *  INV-69 citation 无 Crawl4AI 依赖 —— content-filter-cite.ts 纯 TS reimplement；package.json 不含 crawl4ai —— v1.1 Phase A
  *  INV-70 interactiveOnly opt-in 后处理 —— OutlineMapper 导出 pruneToInteractive（axTreeToOutline 体内不过滤 INV-61 不变）；AxProvider 经 opts.interactive_only 条件调；DesktopOptions optional 无 default —— v1.2
  *  INV-71 config 文件机制 —— loadConfigFileEnv 读 ~/.lasso/config.json 扁平 JSON；loadConfig 合并 file→env（env 覆盖 file 向后兼容）；index.ts config init/path 子命令；扁平 JSON 红线禁嵌套 schema —— v1.3 Phase A
+ *  INV-72 机器 MCP 复用安全 —— MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；fallback_order[0]=search.machine_mcp 默认顺序首位 —— v1.4 Phase A
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -3008,6 +3009,170 @@ const assertions = [
       if (/loadConfigFileEnv\s*\(/.test(loadFileEnvBody)) return false;
       // 禁 Object.assign(out, ...) 把嵌套对象 merge 进 out（扁平红线）
       if (/Object\.assign\s*\(\s*out\b/.test(loadFileEnvBody)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.4 Phase A 新增（parse-v1.4 §Phase A —— INV-72 机器 MCP 复用安全）
+  // ============================================================
+  // 用户需求（parse-v1.4 §1）：零配置优先——机器装过 web-search-prime MCP（CC 全局 ~/.claude.json）
+  // 就能搜，不需用户单独配 ZHIPU_API_KEY。
+  // 守：
+  //  INV-72  机器 MCP 复用安全：
+  //    (a) MachineMcpDetector 只读 ~/.claude.json（禁 writeFileSync / writeFile / rename / unlink）
+  //    (b) Detector + Channel 永不 log Authorization 值（grep 代码本体无 logger.* 含 authorization 字段引用）
+  //    (c) Detector 检测不到 graceful skip 不崩（readFileSync + JSON.parse 都包 try/catch → null）
+  //    (d) MachineMcpSearchChannel 注册条件=detected（index.ts 仅在 detectMachineSearchMcp() 命中时实例化）
+  //    (e) providers.ts 导出 MACHINE_MCP ProviderConfig（enabled=false 默认禁用；不进 BUILTIN_PROVIDERS）
+  //    (f) FallbackChain DEFAULT_FALLBACK_ORDER[0]="search.machine_mcp"（首位优先 machine key）
+  {
+    id: "INV-72-machine-mcp-reuse-safe",
+    desc:
+      "v1.4 Phase A：机器 MCP 复用安全（MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；DEFAULT_FALLBACK_ORDER[0]=search.machine_mcp）：" +
+      "（a）Detector 只用 readFileSync（禁 write/rename/unlink）；" +
+      "（b）Detector + Channel + index.ts 永不 logger.* 直接打印 authorization 字段；" +
+      "（c）readFileSync + JSON.parse 包 try/catch（graceful skip null）；" +
+      "（d）index.ts 仅在 detectMachineSearchMcp() 命中时实例化 MachineMcpSearchChannel；" +
+      "（e）providers.ts 导出 MACHINE_MCP（enabled=false 默认，不进 BUILTIN_PROVIDERS）；" +
+      "（f）FallbackChain DEFAULT_FALLBACK_ORDER 首项是 search.machine_mcp",
+    check: () => {
+      // ----- (a) MachineMcpDetector 只读 ~/.claude.json -----
+      const detector = SRC.find((s) =>
+        /search\/MachineMcpDetector\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!detector) return false; // v1.4 起必须存在
+      const detectorCode = stripComments(detector.text);
+
+      // 必要条件 1：Detector 代码本体只用 readFileSync（禁 write/rename/unlink）
+      if (!/readFileSync\s*\(/.test(detectorCode)) return false;
+      if (/writeFileSync\s*\(|writeFile\s*\(|\.rename\s*\(|\.unlink\s*\(/.test(detectorCode)) {
+        return false;
+      }
+
+      // 必要条件 2：Detector 必须导出 detectMachineSearchMcp + getClaudeJsonPath
+      if (!/export\s+function\s+detectMachineSearchMcp\b/.test(detectorCode)) return false;
+      if (!/export\s+function\s+getClaudeJsonPath\b/.test(detectorCode)) return false;
+
+      // 必要条件 3：Detector 读 ~/.claude.json（默认路径含 .claude.json）
+      if (!/\.claude\.json/.test(detectorCode)) return false;
+      // 必要条件 4：LASSO_MACHINE_CLAUDE_JSON_PATH 可覆盖路径（测试 + 多实例隔离）
+      if (!/LASSO_MACHINE_CLAUDE_JSON_PATH/.test(detectorCode)) return false;
+
+      // 必要条件 5：URL 启发式必须含 web_search_prime + bigmodel.cn（双重信号）
+      if (!/web_search_prime/.test(detectorCode)) return false;
+      if (!/bigmodel\.cn/.test(detectorCode)) return false;
+
+      // 必要条件 6：readFileSync 包 try/catch（graceful skip 不崩）
+      //   简单 grep：try {  ... readFileSync ... } catch（容许多行；只验 readFileSync 后续 catch 关键字共现）
+      if (!/try\s*\{[\s\S]*?readFileSync[\s\S]*?\}\s*catch/.test(detectorCode)) return false;
+      // 必要条件 7：JSON.parse 也包 try/catch
+      if (!/try\s*\{[\s\S]*?JSON\.parse[\s\S]*?\}\s*catch/.test(detectorCode)) return false;
+
+      // 必要条件 8：type=http 严格匹配（禁混 stdio / sse transport）
+      if (!/["']http["']/.test(detectorCode)) return false;
+
+      // 必要条件 9：Detector + Channel 代码本体禁 logger.* / console.* 含 authorization 字段引用
+      //   （守「永不 log Authorization 值」红线）
+      //   容忍 logger.* 不接 authorization；只禁 logger.X(...authorization...) / console.X(...authorization...) 形式
+      const channel = SRC.find((s) =>
+        /channels\/MachineMcpSearchChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!channel) return false; // v1.4 起必须存在
+      const channelCode = stripComments(channel.text);
+
+      // 禁 logger.X({ ..., authorization: ... }) / logger.X(authorization) 形式
+      //   精确：logger.<meth>(<args>) 的 args 内出现 `authorization` 标识符引用（非字符串字面量）
+      //   容忍：error message 字符串中含 "authorization" 单词（如 "machine_mcp_authorization_missing"）
+      //   做法：禁 logger.{info,warn,error,debug}({...authorization...}) 或 logger.X(authorization)
+      const loggerAuthLeak = /logger\.\w+\s*\([^)]*\bauthorization\b(?!\w)/.test(channelCode);
+      if (loggerAuthLeak) return false;
+      const detectorLoggerAuthLeak = /logger\.\w+\s*\([^)]*\bauthorization\b(?!\w)/.test(detectorCode);
+      if (detectorLoggerAuthLeak) return false;
+
+      // 必要条件 10：channel name 必须是 "search.machine_mcp"
+      if (!/readonly\s+name\s*=\s*["']search\.machine_mcp["']/.test(channelCode)) return false;
+
+      // 必要条件 11：channel 必须 extends BaseChannel（INV-2 守护；类名 MachineMcpSearchChannel）
+      if (!/class\s+MachineMcpSearchChannel\s+extends\s+BaseChannel\b/.test(channelCode)) {
+        return false;
+      }
+
+      // 必要条件 12：channel 调 McpClient.connectHttp（与 ZhipuSearchChannel 同范式）
+      if (!/McpClient\.connectHttp\s*\(/.test(channelCode)) return false;
+
+      // 必要条件 13：channel callTool("web_search_prime", ...)（同 ZhipuSearchChannel）
+      if (!/callTool\s*\(\s*["']web_search_prime["']/.test(channelCode)) return false;
+
+      // ----- (d) index.ts 仅在 detectMachineSearchMcp() 命中时实例化 MachineMcpSearchChannel -----
+      const index = SRC.find((s) =>
+        /^index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+      if (!/detectMachineSearchMcp\s*\(/.test(indexCode)) return false;
+      if (!/new\s+MachineMcpSearchChannel\b/.test(indexCode)) return false;
+      // 必要条件 14：装配段 log 必须只用 detected 帮尔 + channel 名（不 log url/auth）
+      //   grep logger.info({...evt: "machine_search_mcp_detected"...detected: true/false...})
+      //   且该 logger.* 的 (...) 内不含 authorization / url 字段引用
+      if (!/machine_search_mcp_detected/.test(indexCode)) return false;
+      // 检查 machine_search_mcp_detected 那条 log 的字面量参数块不含 authorization / .url
+      //   抽所有 evt: "machine_search_mcp_detected" 的 logger.* 调用，逐块验内不含 authorization 字段引用
+      //   用 [^}]* 限定单对象内（不跨 new MachineMcpSearchChannel(url, authorization) 等行）
+      const logBlocks = [
+        ...indexCode.matchAll(
+          /logger\.\w+\s*\(\s*\{[^}]*machine_search_mcp_detected[^}]*\}\s*\)/g,
+        ),
+      ].map((m) => m[0]);
+      if (logBlocks.length === 0) return false;
+      for (const block of logBlocks) {
+        // 整块内禁出现 authorization 标识符引用（防 log key 值）
+        if (/\bauthorization\b/.test(block)) return false;
+        // 整块内禁出现 machineMcpDetection.url / .authorization 字段访问（防 log url + key）
+        if (/machineMcpDetection\.(url|authorization)/.test(block)) return false;
+      }
+
+      // 必要条件 15：装配段有条件分支（if (machineMcpDetection) { new ... } else { skip log }）
+      //   零回归铁律：detector 未命中 → 不实例化 → 不注册到 breakers/runFallbackChainEngine
+      if (!/if\s*\(\s*machineMcpDetection\s*\)/.test(indexCode)) return false;
+
+      // ----- (e) providers.ts 导出 MACHINE_MCP（enabled=false，不进 BUILTIN_PROVIDERS）-----
+      const prov = SRC.find((s) =>
+        /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!prov) return false;
+      if (!/const\s+MACHINE_MCP\s*:\s*ProviderConfig/.test(prov.text)) return false;
+      // MACHINE_MCP 块 enabled 必须 false（默认禁用；条件注册）
+      const mcpBlock = prov.text.match(
+        /const\s+MACHINE_MCP\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
+      )?.[1] ?? "";
+      if (!/enabled\s*:\s*false/.test(mcpBlock)) return false;
+      // tags 必须含 search
+      if (!/tags\s*:\s*\[[^\]]*["']search["']/.test(mcpBlock)) return false;
+      // MACHINE_MCP 不进 BUILTIN_PROVIDERS（零回归承诺）
+      const builtinBlock = prov.text.match(
+        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/\bMACHINE_MCP\b/.test(builtinBlock)) return false;
+      // 单独导出便于 INV-72 grep + 测试断言
+      if (!/export\s+\{\s*MACHINE_MCP\s*\}/.test(prov.text)) return false;
+
+      // ----- (f) FallbackChain DEFAULT_FALLBACK_ORDER 首项是 search.machine_mcp -----
+      const fc = SRC.find((s) =>
+        /search\/FallbackChain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fc) return false;
+      const fcCode = stripComments(fc.text);
+      // DEFAULT_FALLBACK_ORDER 数组字面量第一项必须是 "search.machine_mcp"
+      const orderMatch = fcCode.match(
+        /DEFAULT_FALLBACK_ORDER[^=]*=\s*\[([\s\S]*?)\]/,
+      );
+      if (!orderMatch) return false;
+      const orderBody = orderMatch[1];
+      // 取数组首项（trim 后首引号到次引号）
+      const firstItem = orderBody.match(/\[?\s*["']([^"']+)["']/);
+      if (!firstItem) return false;
+      if (firstItem[1] !== "search.machine_mcp") return false;
 
       return true;
     },

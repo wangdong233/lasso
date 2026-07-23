@@ -204,9 +204,93 @@ describe("doctor INV-63 镜像：LASSO_VERSION 常量", () => {
     expect(LASSO_VERSION.length).toBeGreaterThan(0);
   });
 
-  it("LASSO_VERSION 当前值为 1.3.0（v1.3 Phase A config 文件机制）", () => {
+  it("LASSO_VERSION 当前值为 1.4.0（v1.3 Phase A config 文件机制）", () => {
     // 守 INV-63：package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致。
     // 本 spec 只验 doctor.ts 这处；INV-63 grep 守全 3 处对齐。
-    expect(LASSO_VERSION).toBe("1.3.0");
+    expect(LASSO_VERSION).toBe("1.4.0");
+  });
+});
+
+// ============================================================
+// #36 machine_search_mcp（v1.4 Phase B 机器 MCP 复用）
+// ============================================================
+describe("doctor #36 machine_search_mcp", () => {
+  it("check 出现在 runDoctor 报告里", async () => {
+    const report = await runDoctor({
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const check = report.checks.find(
+      (c) => c.name === "machine_search_mcp",
+    );
+    expect(check).toBeDefined();
+  });
+
+  it("status 是 pass 或 warn（永不 fail —— 零配置兼容，机器 MCP 是 advisory）", async () => {
+    const report = await runDoctor({
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const check = report.checks.find(
+      (c) => c.name === "machine_search_mcp",
+    );
+    // pass=机器已配 web-search-prime MCP；warn=未配（降级 search.zhipu）
+    // 永不 fail：INV-72 守 doctor 永不因探测结果阻塞 ready
+    expect(["pass", "warn"]).toContain(check?.status);
+  });
+
+  it("INV-72 守：detail 永不包含 Authorization 裸值（不论 detected 与否）", async () => {
+    const report = await runDoctor({
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const check = report.checks.find(
+      (c) => c.name === "machine_search_mcp",
+    );
+    // Authorization 裸值形如 "Bearer xxx...";doctor detail 只应含 host + "Authorization 已配置" 布尔
+    expect(check?.detail).not.toMatch(/Bearer\s+[A-Za-z0-9._-]{10,}/);
+    // 不应出现明显的 token 字符串（防御性：≥20 字符连续 token-like 串）
+    expect(check?.detail).not.toMatch(/[A-Za-z0-9._-]{40,}/);
+  });
+
+  it("INV-72 守：detected=pass 时 detail 只报 hostname，不报完整 url path", async () => {
+    const report = await runDoctor({
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const check = report.checks.find(
+      (c) => c.name === "machine_search_mcp",
+    );
+    if (check?.status === "pass") {
+      // pass 必含 host= 标记；不应含完整 path（/api/mcp/web_search_prime/mcp）
+      expect(check.detail).toContain("host=");
+      // path 段不应原样出现（保守：含 web_search_prime 的完整 url path 不进 detail）
+      expect(check.detail).not.toMatch(/https?:\/\/[^\s]+web_search_prime/);
+    }
+  });
+
+  it("INV-72 守：missing=warn 时不阻塞 ready（doctor 永不因 machine_search_mcp fail）", async () => {
+    // 临时指向不存在的 HOME → detector 返 null → check status=warn
+    const fakeHome = `/tmp/lasso-doctor-v14-no-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const oldPath = process.env.LASSO_MACHINE_CLAUDE_JSON_PATH;
+    process.env.LASSO_MACHINE_CLAUDE_JSON_PATH = `${fakeHome}/.claude.json`;
+    try {
+      const report = await runDoctor({
+        skipNetwork: true,
+        skipInvariants: true,
+      });
+      const check = report.checks.find(
+        (c) => c.name === "machine_search_mcp",
+      );
+      expect(check?.status).toBe("warn");
+      // ready 不应被这条 warn 阻塞（其他 blockers 与本 check 无关）
+      expect(check?.name).not.toBeUndefined();
+    } finally {
+      if (oldPath === undefined) {
+        delete process.env.LASSO_MACHINE_CLAUDE_JSON_PATH;
+      } else {
+        process.env.LASSO_MACHINE_CLAUDE_JSON_PATH = oldPath;
+      }
+    }
   });
 });

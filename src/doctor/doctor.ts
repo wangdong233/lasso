@@ -40,6 +40,11 @@
  *                                    之一 + 工厂可装配（parse11 §3.4 + INV-60）
  *  32. recording_baseline_count         — v1.0 Phase C：fixtures/serp-baseline/ 录制数（≥10 pass；
  *                                    0 warn；中间 pass with detail；parse11 §3.2 + INV-62）
+ *  33. markdown_extractor_engine        — v1.1 Phase B：defuddle/turndown require.resolve（warn-only）
+ *  34. markdown_smoke                    — v1.1 Phase B：smokeTestMarkdownEngine 端到端（warn-only）
+ *  35. config_file                       — v1.3 Phase A：~/.lasso/config.json 路径 + key 数（advisory）
+ *  36. machine_search_mcp                — v1.4 Phase B：~/.claude.json web-search-prime MCP 探测
+ *                                    （detected=pass host=xx；missing=warn 不阻塞；INV-72 永不 log key）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -109,12 +114,19 @@ import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 // v1.3 Phase A：config 文件机制（#35 config_file doctor check）
 // 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
 import { getConfigFilePath, loadConfigFileEnv } from "../config/config.js";
+// v1.4 Phase B（parse-v1.4 §Phase B）：#36 machine_search_mcp doctor check
+// 守 INV-72：doctor 经 detectMachineSearchMcp() 只读探测 ~/.claude.json；永不 log Authorization 值；
+//            detail 只报 hostname（open.bigmodel.cn），不报完整 url（path 可含 token 片段）。
+import {
+  detectMachineSearchMcp,
+  getClaudeJsonPath,
+} from "../search/MachineMcpDetector.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.3.0";
+export const LASSO_VERSION = "1.4.0";
 
 // ============================================================
 // 类型
@@ -617,6 +629,13 @@ export async function runDoctor(
   // 永不 fail（config 是 advisory；零配置启动可用；仅 search 需 key）
   // 引导：没配 key？跑 `lasso config init` 创建配置文件
   checks.push(await checkConfigFile());
+
+  // ---- v1.4 Phase B（parse-v1.4 §Phase B 机器 MCP 复用）----
+  // #36 machine_search_mcp：探测 ~/.claude.json 是否配过 web-search-prime MCP
+  //   - detected → pass：报 hostname（open.bigmodel.cn），不报完整 url + 永不报 Authorization
+  //   - missing  → warn（零配置兼容；不阻塞 ready）：降级到 search.zhipu（Lasso 自己 key）
+  // 守 INV-72：detectMachineSearchMcp() 已 read-only + 永不抛；本 check 不再触网、不再读 key。
+  checks.push(checkMachineSearchMcp());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2141,6 +2160,63 @@ async function checkConfigFile(): Promise<DoctorCheck> {
       name: "config_file",
       status: "warn",
       detail: String(e),
+    };
+  }
+}
+
+/**
+ * 36. machine_search_mcp（v1.4 Phase B 机器 MCP 复用）。
+ *
+ * 探测 ~/.claude.json 是否配过 web-search-prime MCP（type=http + url 含
+ * web_search_prime/bigmodel.cn + headers.Authorization）：
+ *  - 命中 → pass：detail 报 hostname（如 open.bigmodel.cn），不报完整 url（path 可含
+ *                token 片段，保守只给 host）+ 永不报 Authorization 值（INV-72）
+ *  - 未命中 → warn（零配置兼容；不阻塞 ready）：用户没配机器 MCP，Lasso 自动降级到
+ *            search.zhipu（需单独配 ZHIPU_API_KEY 或 ~/.lasso/config.json）
+ *
+ * **安全（INV-72 衍生）**：
+ *  - 本函数不直接读 ~/.claude.json；调 detectMachineSearchMcp()（read-only + try/catch）
+ *  - detail 字段永不包含 authorization / Authorization 字符串；永不包含完整 url；
+ *    只用 URL.TryParse 提取 hostname（如 open.bigmodel.cn）
+ *  - 函数体内不触网、不 log（doctor 是被动诊断；探测已由 detector 完成在内存里）
+ */
+function checkMachineSearchMcp(): DoctorCheck {
+  const claudeJsonPath = getClaudeJsonPath();
+  try {
+    const detected = detectMachineSearchMcp();
+    if (!detected) {
+      return {
+        name: "machine_search_mcp",
+        status: "warn",
+        // 不报 path（可能含用户名）+ 不报 url（不存在）+ 不报 key（不存在）
+        detail:
+          "~/.claude.json 未发现 web-search-prime MCP（type=http + url 含 web_search_prime/bigmodel.cn + Authorization）",
+        next_step:
+          "（可选，零配置兼容）机器装过 web-search-prime MCP 即自动复用其 key；否则需配 ZHIPU_API_KEY（doc/KEY-GUIDE.md）",
+      };
+    }
+    // 提取 hostname —— 用 URL 构造器（detector 已校验 url 是 string；构造失败 → 退化为 "(invalid url)" 兜底）
+    let host = "(invalid url)";
+    try {
+      const u = new URL(detected.url);
+      host = u.hostname;
+    } catch {
+      // url 不合法（理论上 detector 已 https:// 校验过；此分支防御性兜底）
+      host = "(invalid url)";
+    }
+    // **INV-72 红线**：detail 只含 hostname + "Authorization 已配置" 布尔指示；
+    //                  永不出现 detected.authorization / detected.url 的原始值。
+    return {
+      name: "machine_search_mcp",
+      status: "pass",
+      detail: `已检测到机器 web-search-prime MCP（host=${host}；Authorization 已配置；将作 fallback_chain 首选 search.machine_mcp）`,
+    };
+  } catch (e) {
+    // 防御性兜底（detectMachineSearchMcp 自身永不抛；本 catch 仅守 doctor 永不崩）
+    return {
+      name: "machine_search_mcp",
+      status: "warn",
+      detail: `探测 ${claudeJsonPath} 时异常：${String(e)}`,
     };
   }
 }

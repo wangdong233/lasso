@@ -38,6 +38,8 @@
 
 ### 1. 智谱（`ZHIPU_API_KEY`）—— 默认引擎，中文主力
 
+> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave → Bing → `browse_headless` 兜底。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
+
 **去哪申请**：<https://open.bigmodel.cn/console/apikey>
 
 **步骤**：

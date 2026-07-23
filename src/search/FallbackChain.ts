@@ -43,15 +43,20 @@ import type { FallbackDecider } from "../fallback/FallbackDecider.js";
 import type { BudgetTracker } from "../fallback/BudgetTracker.js";
 
 /**
- * 默认 fallback_order（parse10 §1 决策 6）。
+ * 默认 fallback_order（parse10 §1 决策 6 + v1.4 Phase A 机器 MCP 复用）。
  * 单独导出便于 index.ts / doctor / 单测引用（不重新 hardcode）。
  *
  * 顺序语义：
- *  - search.zhipu   —— 中文主力（fallback_order=0）
- *  - search.brave   —— 英文/质量层（fallback_order=3）
- *  - search.bing    —— 兜底第三源（fallback_order=4，v0.9 新增）
+ *  - search.machine_mcp —— **零配置优先**（v1.4 Phase A）：~/.claude.json 已配过
+ *                           web-search-prime MCP 时优先复用机器 key；detector 未命中
+ *                           时 index.ts 不实例化该 channel，FallbackChain 自动跳过
+ *                           （行为等价 v1.3，byte-identical；INV-72 守）
+ *  - search.zhipu       —— 中文主力（fallback_order=0 in v1.3；v1.4 起退为第二档）
+ *  - search.brave       —— 英文/质量层（fallback_order=3）
+ *  - search.bing        —— 兜底第三源（fallback_order=4，v0.9 新增）
  */
 export const DEFAULT_FALLBACK_ORDER: readonly string[] = [
+  "search.machine_mcp",
   "search.zhipu",
   "search.brave",
   "search.bing",

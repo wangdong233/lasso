@@ -44,6 +44,10 @@ import type { SearchChannel } from "../channels/SearchChannel.js";
 import type { BraveChannel } from "../channels/BraveChannel.js";
 // v0.9 Phase B（parse10 §3.1）：BingChannel 第三源
 import type { BingChannel } from "../channels/BingChannel.js";
+// v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
+// 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时由 index.ts 注入；否则为 undefined
+//            → channelOrder 不含 search.machine_mcp（零回归 byte-identical v1.3）
+import type { MachineMcpSearchChannel } from "../channels/MachineMcpSearchChannel.js";
 import type { ProviderRegistry } from "../config/provider-registry.js";
 import type { FallbackDecider } from "../fallback/FallbackDecider.js";
 import type { ChannelExecutor } from "../fallback/FallbackDecider.js";
@@ -133,6 +137,16 @@ export function registerSearchTool(
    *                 replay 查的是过去录制 fixture，与本次 LASSO_RECORD_SEARCH 开关无关）。
    */
   recordingStore?: RecordingStore | null,
+  /**
+   * v1.4 Phase A 可选（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用。
+   * 未注入 / null / undefined → engine="fallback_chain" 路径 channelOrder 不含 search.machine_mcp
+   *                             （行为 byte-identical v1.3；INV-72 零回归承诺）。
+   * 注入          → channelOrder 首位 unshift search.machine_mcp（零配置优先，machine key 先试；
+   *                 失败 → fallback 链自动降级到 search.zhipu → brave → bing → browse_headless）。
+   * 注：machine_mcp 是 self_hosted L1，永远在 free_only 任何档位下（L1 ≤ L1/L2/L3/L4），
+   *     故不参与 free_only 过滤剔除（不同于 zhipu/brave/bing 经 allowedSearchProviders 过滤）。
+   */
+  machineMcp?: MachineMcpSearchChannel | null,
 ): void {
   server.tool(
     "search",
@@ -267,6 +281,8 @@ export function registerSearchTool(
           braveAllowedByFreeTier,
           zhipuAllowedByFreeTier,
           allowedSearchProviders,
+          // v1.4 Phase A：machine MCP 复用注入（detector 命中时由 index.ts 传入）
+          machineMcp ?? null,
         );
 
         // ---------- attributed 后处理（与 v0.8 路径同范式）----------
@@ -467,15 +483,26 @@ export async function runFallbackChainEngine(
   braveAllowedByFreeTier: boolean,
   zhipuAllowedByFreeTier: boolean,
   allowedSearchProviders: ProviderConfig[] | null,
+  /**
+   * v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用。
+   * 未注入 / null → channelOrder 不含 search.machine_mcp（byte-identical v1.3）。
+   * 注入         → channelOrder 首位 unshift（machine key 先试；失败 fallback 链降级）。
+   */
+  machineMcp: MachineMcpSearchChannel | null = null,
 ): Promise<InteractResult<SearchResult>> {
-  // ---------- 1. 构造 channelOrder（parse10 §3.2 + §3.5）----------
-  // 默认顺序 DEFAULT_FALLBACK_ORDER = [search.zhipu, search.brave, search.bing]；
+  // ---------- 1. 构造 channelOrder（parse10 §3.2 + §3.5 + v1.4 Phase A machine_mcp）----------
+  // 默认顺序 DEFAULT_FALLBACK_ORDER = [search.machine_mcp, search.zhipu, search.brave, search.bing]；
   // 按 channel 是否注入 + free_only 过滤剔除。
   const bingAllowedByFreeTier = allowedSearchProviders
     ? allowedSearchProviders.some((p) => p.name === "bing")
     : true;
 
   const channelOrder: string[] = [];
+  // v1.4 Phase A：machine_mcp 首位（零配置优先）。
+  // machine_mcp 是 self_hosted L1（providers.ts），永远在 free_only 任何档位下（L1 ≤ L1/L2/L3/L4）；
+  // 故不参与 allowedSearchProviders 过滤剔除（不同于 zhipu/brave/bing 经 ProviderRegistry 过滤）。
+  // 只看是否注入（注入即 channelOrder 首位；channel.isAvailable 由 decider 运行时判）。
+  if (machineMcp) channelOrder.push("search.machine_mcp");
   if (zhipuAllowedByFreeTier) channelOrder.push("search.zhipu");
   if (brave && braveAllowedByFreeTier) channelOrder.push("search.brave");
   if (bing && bingAllowedByFreeTier) channelOrder.push("search.bing");
@@ -486,10 +513,18 @@ export async function runFallbackChainEngine(
 
   // ---------- 2. FallbackChain 走 decider.runWithFallback（INV-55）----------
   // availabilityPredicate：只对真正注入的 channel 返 true；
-  //   - brave / bing 未注入 → 从 channelOrder 已剔除（上面 if 守）
-  //   - 实际可用性（key 是否 exhausted）交给 decider 内部 breaker + channel.isAvailable
-  //     做运行时剔除；这里仅做「channel 是否注入」过滤（plan 形状层面）。
+  //   - brave / bing / machine_mcp 未注入 → 从 channelOrder 已剔除（上面 if 守）
+  //   - 实际可用性（key 是否 exhausted / detector 是否命中）交给 decider 内部 breaker +
+  //     channel.isAvailable 做运行时剔除；这里仅做「channel 是否注入」过滤（plan 形状层面）。
   const executor: ChannelExecutor<SearchResult> = async (channelName) => {
+    if (channelName === "search.machine_mcp" && machineMcp) {
+      return machineMcp.search(query, {
+        limit,
+        engine: "machine_mcp",
+        region,
+        no_cache: noCache,
+      });
+    }
     if (channelName === "search.zhipu") {
       return search.search(query, {
         limit,

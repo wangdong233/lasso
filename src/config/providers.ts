@@ -331,6 +331,62 @@ export const SEARCH_FALLBACK_PROVIDERS: readonly ProviderConfig[] = [BING];
 /** 单独导出便于 INV-54 grep + 测试断言（policy_risk=watched + fallback_order=4）。 */
 export { BING };
 
+// ============================================================
+// v1.4 Phase A 新增（parse-v1.4 §Phase A —— 机器 MCP 复用 provider）
+// ============================================================
+/**
+ * Machine MCP —— v1.4 Phase A：复用 CC 全局 ~/.claude.json 已配的 web-search-prime MCP。
+ *
+ * **零配置优先**（parse-v1.4 §1 用户需求）：
+ *  - 用户机器已装过 web-search-prime MCP（headers.Authorization 含 Bearer key）
+ *    时，Lasso 直接借力该 key 先搜；额度不足/失败 → fallback 链降级到 search.zhipu。
+ *  - 不需用户在 Lasso config 再配一遍 ZHIPU_API_KEY（key 来自机器，不在 Lasso 拥有域内）。
+ *
+ * **conditional 装配**（INV-72 守）：
+ *  - 默认 enabled=false（占位；不进 BUILTIN_PROVIDERS，保 v1.3 测试断言）
+ *  - index.ts 装配段调 detectMachineSearchMcp()：
+ *      - 命中 → 实例化 MachineMcpSearchChannel + 注册到 registry（临时 enabled=true）
+ *      - 未命中 → skip（链路降级到 search.zhipu，byte-identical v1.3）
+ *  - 用户 key 在 headers.Authorization（非 env）—— 与 ZHIPU/BRAVE/BING 三源的本质差异：
+ *    本 provider 不走 QuotaLedger（机器 key 不在 Lasso 计费域内；失败就 fallback）
+ *
+ * **安全红线（INV-72）**：
+ *  - 永不 log Authorization 值；detector 返 { url, authorization } 仅用于 McpClient.connectHttp
+ *  - 读 ~/.claude.json 只读，永不写 / rename / unlink
+ *  - 文件不存在 / 无 web-search-prime / 缺 auth → graceful skip 不崩
+ *
+ * INV-72 grep：本 provider 单独导出，不进 BUILTIN_PROVIDERS（保零回归范式）。
+ */
+const MACHINE_MCP: ProviderConfig = {
+  name: "machine_mcp", // channel 名 search.machine_mcp（与 MachineMcpSearchChannel.name 对齐）
+  type: "self_hosted", // 复用机器已配 MCP（Lasso 不付钱、不经 QuotaLedger；type=self_hosted 最贴近）
+  endpoint_url: null, // 运行时由 detector 注入（来自 ~/.claude.json）；不进静态 schema
+  keys: [], // 不走 env / 不走 QuotaLedger；authorization 由 detector 直接传 channel 构造器
+  free_quota_per_month: 0, // 机器 key 配额归 CC 用户域，Lasso 不感知
+  quota_model: "request", // 失败就 fallback；不计费
+  fallback_order: -1, // v1.4 默认 order 最前（search.machine_mcp 在 DEFAULT_FALLBACK_ORDER[0]）
+  free_tier_level: "L1", // 借力已有 MCP，对 Lasso 是零成本
+  policy_risk: "safe", // 读自己机器的 CC 全局配置，不外发
+  licence: "mit",
+  commercial_safe: true,
+  tags: ["search"],
+  enabled: false, // 默认禁用；index.ts 探测命中时条件注册（INV-72）
+};
+
+/**
+ * v1.4 Phase A 机器 MCP provider（parse-v1.4 §Phase A）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS /
+ * SEARCH_FALLBACK_PROVIDERS 范式，保 v1.3 零回归）：
+ *  - v1.3 ProviderRegistry 测试断言 byCap("search") 不含 machine_mcp 仍绿
+ *  - INV-72 grep MACHINE_MCP 字面量在 providers.ts 即合规（不要求进 BUILTIN_PROVIDERS）
+ *  - index.ts 装配段：detectMachineSearchMcp() 命中时 new MachineMcpSearchChannel
+ */
+export const MACHINE_MCP_PROVIDERS: readonly ProviderConfig[] = [MACHINE_MCP];
+
+/** 单独导出便于 INV-72 grep + 测试断言（tags=["search"] + enabled=false 默认禁用）。 */
+export { MACHINE_MCP };
+
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
   ZHIPU,
   BROWSE_HEADLESS,

@@ -63,7 +63,7 @@ Lasso 本体**完全免费 + MIT 开源**。每一项能力到底要不要花钱
 | 能力 | 费用 | 说明 |
 |---|---|---|
 | Lasso 本体（MCP server + 全部核心能力） | ✅ 免费 | MIT 开源，永远免费 |
-| 搜索（智谱 + Brave + Bing） | ✅ 有免费额度 | 智谱按 token 计费；Brave **2000 次/月免费**、Bing **1000 次/月免费**——不花钱就能用 |
+| 搜索（智谱 + Brave + Bing） | ✅ 有免费额度 | 智谱按 token 计费；Brave **2000 次/月免费**、Bing **1000 次/月免费**——不花钱就能用。**机器已配过 `web-search-prime` 智谱 MCP？Lasso 自动检测复用，连 ZHIPU_API_KEY 都不用单独配** |
 | 抓公开页 / 截图 / PDF / 网络审计 / 抓原始字节 | ✅ 免费 | 本地运行，无 key 无付费 |
 | 抓登录态页面（复用本机 Chrome） | ✅ 免费 | 本地运行，无 key 无付费 |
 | 控桌面（macOS / Windows / Linux） | ✅ 免费 | 本地构建运行，仅需系统授权；**可选** Apple 开发者账号 \$99/年做签名持久授权（不签名也能用，只是每次重授权） |
@@ -213,9 +213,11 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 **能干什么**：搜任何东西，返回结构化结果（标题、摘要、链接）。
 
-**要不要 key**：要，一个智谱 key（免费申请）就够用。
+**要不要 key**：要——但如果你机器已经配过智谱 `web-search-prime` MCP（写在本机 `~/.claude.json` 的 `mcpServers` 里，type=http + Authorization），**Lasso 启动时自动检测复用它的 key 作搜索首选源，连 ZHIPU_API_KEY 都不用单独配**。机器 MCP 临时限流或失败，自动降级到 Lasso 自己配的 key（按下面填）。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）就知道。
 
-**怎么配**：
+> 零配置优先顺序：机器 MCP 复用 → Lasso `ZHIPU_API_KEY` → Brave → Bing → `browse_headless` 兜底。前一个挂了自动切下一个，你无感。
+
+**怎么配**（只在机器没配智谱 MCP / 想要独立 key 时需要）：
 
 ```bash
 lasso config init        # 创建 ~/.lasso/config.json 模板

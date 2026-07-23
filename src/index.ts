@@ -43,6 +43,11 @@ import { SearchChannel } from "./channels/SearchChannel.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
 // v0.9 Phase B（parse10 §3.1）：BingChannel 第三源
 import { BingChannel } from "./channels/BingChannel.js";
+// v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
+// 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时实例化；否则不注册保零回归
+import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
+// v1.4 Phase A：detectMachineSearchMcp（只读 ~/.claude.json，永不 log key 值）
+import { detectMachineSearchMcp } from "./search/MachineMcpDetector.js";
 import { HeadlessChannel } from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
@@ -158,7 +163,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.3.0";
+const LASSO_SERVER_VERSION = "1.4.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -309,6 +314,37 @@ async function runMcpServer(): Promise<void> {
     config.zhipuEndpoint,
     config.zhipuApiKey,
   );
+
+  // ----- v1.4 Phase A：机器 MCP 复用（parse-v1.4 §Phase A）-----
+  // **零配置优先**：detectMachineSearchMcp() 读 ~/.claude.json mcpServers，找 type=http +
+  // url 含 web_search_prime/bigmodel.cn + headers.Authorization 的 entry。
+  //   - 命中 → 实例化 MachineMcpSearchChannel + 注册到 breakers（条件装配，类比 cloud 浏览器双重解锁）
+  //   - 未命中 → machineMcpSearch=undefined（不注册；FallbackChain 跳过 search.machine_mcp，
+  //     行为 byte-identical v1.3；INV-72 守零回归承诺）
+  // **安全（INV-72）**：detector 返 { url, authorization } 仅传入 channel 构造器；本装配段
+  //                    **永不** log authorization 值，只 log detected=true/false 布尔。
+  const machineMcpDetection = detectMachineSearchMcp();
+  let machineMcpSearch: MachineMcpSearchChannel | undefined;
+  if (machineMcpDetection) {
+    machineMcpSearch = new MachineMcpSearchChannel(
+      machineMcpDetection.url,
+      machineMcpDetection.authorization,
+    );
+    logger.info({
+      evt: "machine_search_mcp_detected",
+      // INV-72 安全：只 log detected=true，不 log url/auth（url 可能含用户 token 路径片段；
+      //            保险起见同样不报）。channel.name 是公开常量，可 log。
+      detected: true,
+      channel: machineMcpSearch.name,
+    });
+  } else {
+    logger.info({
+      evt: "machine_search_mcp_detected",
+      detected: false,
+      note: "no web_search_prime MCP in ~/.claude.json; fallback chain skips search.machine_mcp",
+    });
+  }
+
   const headless = new HeadlessChannel(subproc);
   // v0.8（parse9 §3.2）：LoggedInChannel 注入 ProfileRegistry + CookieStore 工厂
   const logged_in = new LoggedInChannel(
@@ -414,6 +450,10 @@ async function runMcpServer(): Promise<void> {
     // v0.9 Phase B（parse10 §3.2）：search.bing 第三源 breaker（key=[] 时仍创建，
     // decider 内部 channel 不可用会经 FallbackChain 过滤；breaker 仅在 bing 注入后被记录）
     ["search.bing", new CircuitBreaker()],
+    // v1.4 Phase A（parse-v1.4 §Phase A）：search.machine_mcp breaker
+    // **零回归**：detector 未命中 → machineMcpSearch=undefined → 此 breaker 仍创建但不被任何
+    // channel 引用（FallbackChain 跳过 search.machine_mcp；行为等价 v1.3）。
+    ["search.machine_mcp", new CircuitBreaker()],
     ["fanout", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
@@ -543,6 +583,10 @@ async function runMcpServer(): Promise<void> {
     // 仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链。
     bing,
     searchRecordings,
+    // v1.4 Phase A（parse-v1.4 §Phase A）：machineMcpSearch 机器 MCP 复用注入
+    // detector 未命中 → undefined → fallback_chain channelOrder 不含 search.machine_mcp
+    // （行为 byte-identical v1.3；INV-72 零回归守）
+    machineMcpSearch,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
   registerDesktopTool(server, desktop, decider);

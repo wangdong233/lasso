@@ -63,7 +63,7 @@ Lasso itself is **completely free + MIT open source**. Here's what each capabili
 | Capability | Cost | Notes |
 |---|---|---|
 | Lasso itself (MCP server + all core capabilities) | ✅ Free | MIT open source, free forever |
-| Search (Zhipu + Brave + Bing) | ✅ Free tier available | Zhipu billed by token; Brave **2,000 queries/mo free**, Bing **1,000 queries/mo free** — usable without paying |
+| Search (Zhipu + Brave + Bing) | ✅ Free tier available | Zhipu billed by token; Brave **2,000 queries/mo free**, Bing **1,000 queries/mo free** — usable without paying. **Already configured Zhipu's `web-search-prime` MCP on your machine? Lasso auto-detects and reuses it — no need to configure a separate ZHIPU_API_KEY** |
 | Scrape public pages / screenshots / PDF / network audit / raw bytes | ✅ Free | Runs locally, no key, no payment |
 | Scrape logged-in pages (reuse local Chrome) | ✅ Free | Runs locally, no key, no payment |
 | Drive desktop (macOS / Windows / Linux) | ✅ Free | Built and run locally, only OS authorization needed; **optional** Apple Developer account \$99/yr for signed persistent authorization (works without signing too — just re-authorize each time) |
@@ -213,9 +213,11 @@ Below, each of the four modules is broken out with the shortest path to "it just
 
 **What it does**: Searches anything, returns structured results (title, snippet, link).
 
-**Does it need a key**: Yes — one Zhipu key (free to apply) is enough.
+**Does it need a key**: Yes — but if your machine already has Zhipu's `web-search-prime` MCP configured (in your local `~/.claude.json` under `mcpServers` with type=http + Authorization), **Lasso auto-detects and reuses that key as the first-choice source at startup — no need to set a separate ZHIPU_API_KEY**. If the machine MCP is rate-limited or fails, Lasso falls back to its own configured key (fill it in below). Run `lasso doctor` and check whether `#36 machine_search_mcp` is `pass` (host=open.bigmodel.cn) or `warn` (not detected).
 
-**How to configure**:
+> Zero-config priority order: machine MCP reuse → Lasso's own `ZHIPU_API_KEY` → Brave → Bing → `browse_headless` fallback. The first one that fails auto-switches to the next; you don't feel a thing.
+
+**How to configure** (only needed if you don't have the machine MCP / want an independent key):
 
 ```bash
 lasso config init        # creates the ~/.lasso/config.json template
