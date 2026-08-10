@@ -47,6 +47,11 @@
  *                                    （detected=pass host=xx；missing=warn 不阻塞；INV-72 永不 log key）
  *  37. steel_endpoint_reachable           — v1.6 Phase B：STEEL_ENDPOINT GET /health 可达性
  *                                    （双重解锁后才探测；未配 warn-skip；永不 fail —— Steel 是可选 cloud 通道）
+ *  38. stealth_creepjs_regression          — v1.7 Phase A：creepjs 回归门禁（opt-in stealthCheck=true
+ *                                    时跑 creepjs-probe + 比对 baseline；**回归门禁语义：lies 数不得恶化**，
+ *                                    不是达标线——Lasso JS defineProperty 范式结构性过不了 prototype lie 检测）
+ *  39. stagehand_rest_contract_probe       — v1.7 Phase A：HEAD 探 api.stagehand.dev/verify 确认 R-ECO-6
+ *                                    （404=REST 契约虚构确认 → warn；2xx=契约存在 → pass；永不 fail —— 已知状态）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -123,12 +128,18 @@ import {
   detectMachineSearchMcp,
   getClaudeJsonPath,
 } from "../search/MachineMcpDetector.js";
+// v1.7 Phase A（parse15 §3.1 + §3.3）：#38 stealth_creepjs_regression doctor check
+// 守 INV-75：creepjs 门禁纯 doctor 侧（probeCreepjs 仅 doctor 调用，不入运行时四通道）；
+//            CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const（INV-30 衍生：不从 env/config 读）。
+import { probeCreepjs, type CreepjsLiesReport } from "./creepjs-probe.js";
+import type { StealthProfileName } from "../browse/stealth-profiles.js";
+import type { McpClient } from "../subprocess/McpClient.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.6.0";
+export const LASSO_VERSION = "1.7.0";
 
 // ============================================================
 // 类型
@@ -395,6 +406,41 @@ export interface DoctorOptions {
    *            无 logged_in / cookie / session 字面量。
    */
   recordingBaselineDir?: string;
+  /**
+   * v1.7 Phase A 新增（parse15 §3.3 + INV-75）：opt-in creepjs 隐身回归探测。
+   *
+   * 默认 false（parse15 §1.2 诚实定位：需浏览器实跑，重；doctor CLI 不实跑）。
+   *  - false（默认）→ #38 warn-skip（不触网，不开浏览器；零回归）
+   *  - true → 需 stealthCheckClientProvider 同时注入；否则 warn
+   *  - true + provider 注入 → 实跑 creepjs-probe + 比对 baseline
+   *
+   * 守 INV-75：creepjs 门禁纯 doctor 侧；stealthCheck=true 经 provider 注入的 McpClient
+   *           **不进 runtime 四通道**（probeCreepjs 仅在 doctor/ 内调用）。
+   */
+  stealthCheck?: boolean;
+  /**
+   * v1.7 Phase A：探测用 stealth profile（默认 windows_chrome_120）。
+   *
+   * profile 名必须存在于 STEALTH_PROFILES 顶级 const（INV-30）；否则
+   * StealthEngine.injectProfile 抛 unknown_stealth_profile:<name>，#38 降级 warn。
+   */
+  stealthCheckProfile?: StealthProfileName;
+  /**
+   * v1.7 Phase A：注入已连 9222 的 McpClient provider（CLI 模式不注入 → warn skip）。
+   *
+   * doctor tool 经 index.ts v1.7 装配段注入：连接 chrome-devtools-mcp 子进程返回 client。
+   * 返 null（9222 未开 / HeadlessChannel 未就绪）→ #38 warn（不 fail）。
+   *
+   * 守 INV-75：provider 返回的 client 仅 doctor 探测路径使用；BrowseChannel/StepEngine
+   *           运行时路径不经此 provider（grep 守：stealthCheckClientProvider 仅出现在 doctor/）。
+   */
+  stealthCheckClientProvider?: () => Promise<McpClient | null>;
+  /**
+   * v1.7 Phase A：覆盖 creepjs-baseline.json 路径（默认 src/doctor/fixtures/）。
+   *
+   * 测试注入用：单测可指向临时 fixture 文件验证 baseline 比对逻辑。
+   */
+  stealthCheckBaselinePath?: string;
 }
 
 // ============================================================
@@ -660,6 +706,53 @@ export async function runDoctor(
       steelEndpoint: process.env.STEEL_ENDPOINT ?? "",
       skipNetwork: opts.skipNetwork,
     }),
+  );
+
+  // ---- v1.7 Phase A（parse15 §3.3 + §3.4 + §1.2 诚实定位）----
+  // #38 stealth_creepjs_regression：opt-in creepjs 回归门禁
+  //   - 默认 stealthCheck=false → warn-skip（不触网，不开浏览器；零回归）
+  //   - stealthCheck=true 但 stealthCheckClientProvider 未注入（doctor CLI 模式）→ warn
+  //   - stealthCheck=true + provider 注入 → 实跑 probeCreepjs + 比对 baseline
+  //   - **回归门禁语义**（parse15 §1.2）：lies 数不得恶化（tolerance.totalLiesDelta=0），
+  //     不是达标线——Lasso JS defineProperty 范式结构性过不了 prototype lie 检测。
+  //   - baseline fixture 待 freeze（frozenAt=null）→ warn-skip（不 fail）
+  //   - fingerprintComputed=false（creepjs 页面未跑完 / 网络不可达）→ warn（非 Lasso 回归）
+  //   - creepjsPageSha 变（上游升级）→ warn（提示重 freeze，不是 Lasso 回归）
+  // 守 INV-75：probeCreepjs 仅此处调用；不入运行时四通道。
+  if (!opts.stealthCheck) {
+    checks.push({
+      name: "stealth_creepjs_regression",
+      status: "warn",
+      detail:
+        "skipped (stealthCheck=false；opt-in via --stealth-check 开启 creepjs 回归门禁)",
+    });
+  } else if (!opts.stealthCheckClientProvider) {
+    checks.push({
+      name: "stealth_creepjs_regression",
+      status: "warn",
+      detail:
+        "stealthCheck=true 但 stealthCheckClientProvider 未注入（doctor CLI 不实跑；doctor tool 经 index.ts v1.7 装配注入）",
+    });
+  } else {
+    checks.push(
+      await checkStealthCreepjsRegression({
+        clientProvider: opts.stealthCheckClientProvider,
+        profile: opts.stealthCheckProfile ?? "windows_chrome_120",
+        skipNetwork: opts.skipNetwork,
+        baselinePath: opts.stealthCheckBaselinePath,
+      }),
+    );
+  }
+
+  // #39 stagehand_rest_contract_probe：HEAD 探 api.stagehand.dev/verify 裁决 R-ECO-6
+  //   - skipNetwork=true → warn-skip（同 #3/#4/#21 范式）
+  //   - 404 / 连接拒 → warn（REST 契约不存在；R-ECO-6 确认；StagehandChannel 为 v0.4 设计期假设）
+  //   - 2xx → pass（契约存在；R-ECO-6 反驳；StagehandChannel 可用）
+  //   - 网络错 → warn（按不存在处理）
+  //   - **永不 fail**（同 #37 Steel 范式）：契约不存在是已知状态，不是 Lasso ready 阻断项。
+  //   - parse15 §3.4：用 L2 运行时证据闭环 R-ECO-6（之前是白盒推断）。
+  checks.push(
+    await checkStagehandRestContract({ skipNetwork: opts.skipNetwork }),
   );
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
@@ -2355,6 +2448,258 @@ async function checkSteelEndpointReachable(opts: {
       detail: `STEEL_ENDPOINT=${opts.steelEndpoint} 不可达：${String(e).slice(0, 120)}`,
       next_step:
         "docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser（启 Steel Docker）",
+    };
+  }
+}
+
+// ============================================================
+// v1.7 Phase A 新增（parse15 §3.3 + §1.2 诚实定位 —— #38 stealth_creepjs_regression）
+// ============================================================
+/**
+ * 38. stealth_creepjs_regression（v1.7 Phase A creepjs 回归门禁）。
+ *
+ * **诚实定位**（parse15 §1.2 + §8.1）：
+ *  - 本 check 是**回归门禁**（防 lies 数恶化），**不是 stealth 质量分数**。
+ *  - Lasso v1.5 16 路 JS defineProperty evasion 结构性命中 creepjs prototype lie 检测点
+ *    （Navigator.webdriver/languages/plugins/vendor + WebGLRenderingContext.getParameter +
+ *    Permissions.query）——JS defineProperty 范式的上限，不是 bug。
+ *  - 期待「跑出低 lies」=范式误解（需 C++ 源码级补丁 = Camoufox 范式 = v2.0+ 架构扩张）。
+ *
+ * 流程（parse15 §3.3）：
+ *  1. skipNetwork → warn-skip（同 #3/#4/#21 范式）
+ *  2. clientProvider() → null → warn（9222 未开 / HeadlessChannel 未就绪）
+ *  3. StealthEngine.injectProfile(client, profile) 注入与运行时一致的 16 路 evasion
+ *     （parse15 §3.3 步骤 3：测的不是 Lasso stealth 须注入一致）
+ *  4. probeCreepjs(client) → CreepjsLiesReport
+ *  5. 读 baseline fixture（fs.readFile creepjs-baseline.json）
+ *  6. 比对：
+ *     - baseline.frozenAt=null（待 freeze）→ warn（不 fail）
+ *     - !report.fingerprintComputed → warn（creepjs 页面未跑完；非 Lasso 回归）
+ *     - report.totalLies > baseline.totalLies + tolerance.totalLiesDelta → **fail**（退化）
+ *     - report.totalLies === baseline.totalLies 且 liedModules 一致 → **pass**
+ *
+ * 守 INV-75：probeCreepjs 仅此处调用；不入运行时四通道（grep 守）。
+ */
+async function checkStealthCreepjsRegression(opts: {
+  clientProvider: () => Promise<McpClient | null>;
+  profile: StealthProfileName;
+  skipNetwork?: boolean;
+  baselinePath?: string;
+}): Promise<DoctorCheck> {
+  const CHECK_NAME = "stealth_creepjs_regression";
+
+  // (1) skipNetwork → warn-skip（同 #3/#4/#21 范式）
+  if (opts.skipNetwork) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        "skipped (skipNetwork=true：creepjs-probe 需 navigate creepjs 页面，触网)",
+    };
+  }
+
+  // (2) clientProvider → null → warn（9222 未开 / HeadlessChannel 未就绪）
+  let client: McpClient | null;
+  try {
+    client = await opts.clientProvider();
+  } catch (e) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail: `stealthCheckClientProvider 抛错：${String(e).slice(0, 120)}`,
+    };
+  }
+  if (!client) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        "stealthCheckClientProvider 返 null（9222 未开 / HeadlessChannel 未就绪；启动本机 Chrome --remote-debugging-port=9222 后重试）",
+      next_step:
+        "open -na 'Google Chrome' --args --remote-debugging-port=9222（macOS）；或 lasso doctor --stealth-check 在 HeadlessChannel 就绪时跑",
+    };
+  }
+
+  // (3) StealthEngine 注入（延迟 import 防 v1.6 装配期循环依赖）
+  // 注：StealthEngine 实例化在 doctor 内合法（仅注入 client，不连运行时通道）
+  const { StealthEngine } = await import("../browse/StealthEngine.js");
+  const stealth = new StealthEngine();
+  try {
+    await stealth.injectProfile(client, opts.profile);
+  } catch (e) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail: `stealth.injectProfile 失败 (profile=${opts.profile})：${String(e).slice(0, 120)}`,
+    };
+  }
+
+  // (4) probeCreepjs
+  let report: CreepjsLiesReport;
+  try {
+    report = await probeCreepjs(client, { timeoutMs: 30_000 });
+  } catch (e) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail: `probeCreepjs 抛错：${String(e).slice(0, 120)}`,
+    };
+  }
+
+  // (5) 读 baseline fixture
+  const baselineFile =
+    opts.baselinePath ??
+    path.join(__dirname, "fixtures", "creepjs-baseline.json");
+  let baseline: {
+    frozenAt: string | null;
+    creepjsPageSha: string | null;
+    baseline: {
+      totalLies: number | null;
+      navigatorLied: boolean | null;
+      screenLied: boolean | null;
+      canvasWebglLied: boolean | null;
+      liedModules: string[];
+    };
+    tolerance: { totalLiesDelta: number };
+  };
+  try {
+    const raw = await fs.readFile(baselineFile, "utf8");
+    baseline = JSON.parse(raw);
+  } catch (e) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail: `creepjs-baseline.json 读取失败：${String(e).slice(0, 120)}`,
+      next_step: `检查 ${baselineFile} 存在 + JSON 合法`,
+    };
+  }
+
+  // (6a) baseline 待 freeze → warn-skip（不 fail）
+  if (baseline.frozenAt === null || baseline.baseline.totalLies === null) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        `creepjs-baseline.json 未 freeze (frozenAt=null)。本次实跑：totalLies=${report.totalLies}, ` +
+        `navigatorLied=${report.navigatorLied}, liedModules=[${report.liedModules.join(",")}]。` +
+        `首次 freeze 须把此数值写入 baseline 后再跑回归比对。`,
+      next_step:
+        `把实跑结果写入 ${baselineFile} 的 baseline 字段 + frozenAt = 当前 ISO 时间`,
+    };
+  }
+
+  // (6b) fingerprintComputed=false → warn（creepjs 页面未跑完；非 Lasso 回归）
+  if (!report.fingerprintComputed) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        `probeCreepjs reachable=${report.reachable}, fingerprintComputed=false ` +
+        `(creepjs 页面未跑完 / wait_for "FP ID:" timeout / window.Fingerprint 未就绪；非 Lasso 回归)。` +
+        `rawSample=${report.rawSample.slice(0, 100)}`,
+    };
+  }
+
+  // (6c) totalLies 退化 → fail（核心回归门禁语义）
+  const baselineTotalLies = baseline.baseline.totalLies ?? 0;
+  const tolerance = baseline.tolerance?.totalLiesDelta ?? 0;
+  const liesDetail =
+    `totalLies=${report.totalLies} (baseline ${baselineTotalLies}, tolerance ${tolerance}); ` +
+    `navigatorLied=${report.navigatorLied}; modules=[${report.liedModules.join(",")}]`;
+
+  if (report.totalLies > baselineTotalLies + tolerance) {
+    return {
+      name: CHECK_NAME,
+      status: "fail",
+      detail:
+        `creepjs lies **退化**：${liesDetail}。本次跑 lies 数超 baseline + tolerance，` +
+        `说明新 PR 引入 lie / 破坏既有 evasion。`,
+      next_step:
+        "git diff src/browse/stealth-evasions/ src/browse/stealth-profiles.ts；逐路 evasion bisect 找回归点",
+    };
+  }
+
+  // (6d) totalLies 持平或减少 → pass
+  return {
+    name: CHECK_NAME,
+    status: "pass",
+    detail: `creepjs 回归门禁持平/改善：${liesDetail}（parse15 §1.2：本门禁是防退化锚，非 stealth 质量分数）`,
+  };
+}
+
+/**
+ * 39. stagehand_rest_contract_probe（v1.7 Phase A parse15 §3.4 + R-ECO-6）。
+ *
+ * 目的：用运行时证据（L2 真实流量）确认/否定 R-ECO-6（doc/16 L507 StagehandChannel
+ * REST 契约 api.stagehand.dev/{verify|extract} 在 stagehand 上游 repo 无源码佐证）。
+ *
+ * 实装（仿 #21 probeCloudEndpoint / #37 Steel GET /health 范式，纯 fetch 不需浏览器）：
+ *  - skipNetwork → warn-skip
+ *  - HEAD https://api.stagehand.dev/verify（3s 超时；redirect: manual 避免被静默重写）
+ *  - 404 / 连接拒 → warn（契约不存在；R-ECO-6 确认；StagehandChannel 仍可降级保留）
+ *  - 2xx → pass（契约存在；R-ECO-6 反驳）
+ *  - 网络错 → warn（按不存在处理）
+ *
+ * 永不 fail（同 #37 Steel 范式）：契约不存在是已知状态，不是 Lasso ready 阻断项。
+ */
+async function checkStagehandRestContract(opts: {
+  skipNetwork?: boolean;
+}): Promise<DoctorCheck> {
+  const CHECK_NAME = "stagehand_rest_contract_probe";
+
+  // (1) skipNetwork → warn-skip
+  if (opts.skipNetwork) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail: "skipped (skipNetwork=true)",
+    };
+  }
+
+  // (2) HEAD https://api.stagehand.dev/verify（3s 超时）
+  try {
+    const resp = await fetch("https://api.stagehand.dev/verify", {
+      method: "HEAD",
+      signal: AbortSignal.timeout(3000),
+      redirect: "manual",
+    });
+    // 404 / 连接拒（status=0）→ 契约不存在（R-ECO-6 确认）→ warn（不 fail）
+    if (resp.status === 404 || resp.status === 0) {
+      return {
+        name: CHECK_NAME,
+        status: "warn",
+        detail:
+          `api.stagehand.dev/verify → ${resp.status}（REST 契约不存在；R-ECO-6 确认；` +
+          `StagehandChannel 为 v0.4 设计期假设，observe 调用将失败）`,
+        next_step:
+          "v1.8 据用户需求决：删 StagehandChannel 或改 SDK 直连（成本高，架构冲突）",
+      };
+    }
+    // 2xx → 契约存在（R-ECO-6 反驳）→ pass
+    if (resp.status >= 200 && resp.status < 300) {
+      return {
+        name: CHECK_NAME,
+        status: "pass",
+        detail:
+          `api.stagehand.dev/verify → ${resp.status}（REST 契约存在；StagehandChannel 可用；` +
+          `R-ECO-6 反驳——白盒判断过严）`,
+      };
+    }
+    // 3xx / 4xx (非 404) / 5xx → 不确定 → warn
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        `api.stagehand.dev/verify → ${resp.status} ${resp.statusText}（状态不确定；` +
+        `按 R-ECO-6 默认假设契约虚构处理）`,
+    };
+  } catch (e) {
+    return {
+      name: CHECK_NAME,
+      status: "warn",
+      detail:
+        `api.stagehand.dev/verify 探测失败：${String(e).slice(0, 100)}（按 R-ECO-6 不存在处理；` +
+        `StagehandChannel observe 调用预期失败）`,
     };
   }
 }

@@ -168,9 +168,14 @@ const DEFAULT_RUST_HELPER_PATH =
  * v1.6（parse14 §1.1 + §6 验收）：SteelChannel 自托管 cloud 通道（"自托管 Browserbase"，
  *   零 per-session 费 + cookie 不出本地）+ STEEL provider + steel tool + doctor #37 +
  *   INV-74（v1.5 INV-1..73 零回归）→ 1.6.0
+ * v1.7（parse15 §1.1 + §6 验收）：doctor #38 stealth_creepjs_regression 回归门禁（opt-in；
+ *   **回归门禁语义非质量分数**——Lasso JS defineProperty 范式结构性上限）+
+ *   doctor #39 stagehand_rest_contract_probe（HEAD 探测裁决 R-ECO-6）+
+ *   creepjs-probe.ts + creepjs-baseline.json fixture + StagehandChannel.ts 头注释 R-ECO-6 标记 +
+ *   INV-75（v1.6 INV-1..74 零回归）→ 1.7.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.6.0";
+const LASSO_SERVER_VERSION = "1.7.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。

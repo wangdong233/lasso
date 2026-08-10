@@ -5,6 +5,13 @@
  *  - 仅 expose observe(verify|extract)，**不 act**（agent loop 越界；parse5 §3.2.1 边界）
  *  - 走 stagehand REST API：POST /verify { prompt } → bool；POST /extract { prompt, schema } → JSON
  *
+ * ⚠️ R-ECO-6（doc/16 §5 建议 3 + parse15 §3.4）：本通道 REST 契约 api.stagehand.dev/{verify|extract}
+ *    在 stagehand 上游 repo（browserbase/stagehand）无源码佐证——Stagehand 实际是
+ *    Playwright-extension SDK（page.act/extract/observe/verify），非 REST 客户端。
+ *    doctor #39 stagehand_rest_contract_probe 将 HEAD 探测裁决（HEAD api.stagehand.dev/verify：
+ *    404 → warn 确认契约虚构；2xx → pass 反驳 R-ECO-6；永不 fail —— 已知状态非 ready 阻断）。
+ *    v1.7 不删不重写（parse15 §1.3 选项 A），据探测结果 + 用户需求在 v1.8 决。
+ *
  * 用途（parse5 §3.2.3）：
  *  CC 在 browse_logged_in 走完多步后，调 stagehand.verify(prompt) 做语义验证（比
  *  chrome-devtools-mcp evaluate_script 写 JS 更自然），或 stagehand.extract(prompt, schema)

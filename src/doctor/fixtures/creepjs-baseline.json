@@ -1,0 +1,21 @@
+{
+  "_doc": "v1.7 Phase A creepjs 回归门禁基线（parse15 §3.2 + §8.1 诚实定位）。",
+  "_honest_positioning": "此基线是 JS defineProperty 范式的结构性上限（Lasso v1.5 16 路 evasion 正好命中 creepjs prototype lie 检测点：Navigator.webdriver/languages/plugins/vendor/hardwareConcurrency + WebGLRenderingContext.getParameter + Permissions.query）。它是回归门禁的退化检测锚点，**不是 stealth 质量达标线**。期待 Lasso JS 路线跑出低 lies 数 = 范式误解（需 C++ 源码级补丁 = Camoufox 范式 = v2.0+ 架构扩张）。",
+  "_freeze_status": "pending-realrun —— v1.7 实施期未实跑本机 Chrome freeze（parse15 §3.2 freeze 流程步骤 2-3 待 e2e 手测）；当前数值为 placeholder 结构占位，doctor #38 在 stealthCheck=true 实跑时按 'baseline_pending_freeze' warn-skip（不 fail）。首次 freeze 后须把本字段改 'frozen' 并填实跑 totalLies/liedModules。",
+  "frozenAt": null,
+  "lassoVersion": "1.7.0",
+  "creepjsPageSha": null,
+  "profile": "windows_chrome_120",
+  "baseline": {
+    "totalLies": null,
+    "navigatorLied": null,
+    "screenLied": null,
+    "canvasWebglLied": null,
+    "liedModules": []
+  },
+  "tolerance": {
+    "totalLiesDelta": 0,
+    "_doc": "零容忍退化（parse15 §3.2）：后续 PR 若 totalLies 增加 → #38 fail。creepjsPageSha 变（上游升级）→ #38 warn（提示重 freeze，不是 Lasso 回归）。"
+  },
+  "rationale": "v1.7 freeze: Lasso JS defineProperty 范式结构性被 creepjs prototype lie 检测命中（doc/16 建议 6 Camoufox 批评成立）。本基线是回归门禁的退化检测锚点，不是质量达标线。Lasso stealth 定位为过 sannysoft / 基础 bot 检测，不承诺过 CreepJS / Datadome / Kasada（parse15 §1.2 + doc/16 §6.3 L425）。"
+}

@@ -3402,6 +3402,143 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // v1.7 Phase A 新增（parse15 §3.6 —— INV-75 creepjs 门禁纯 doctor 侧零回归守护）
+  // ============================================================
+  // parse15 §1.2 + §3.1 + §3.6：creepjs 回归门禁是 doctor 侧可观测性增强，
+  //   **绝不入运行时四通道**（parse15 §2.3「不动的文件」承诺：stealth-profiles.ts /
+  //   stealth-evasions/*.ts / BrowseChannel.ts / SteelChannel.ts / HeadlessChannel.ts /
+  //   index.ts（装配）/ 四通道运行时路径全部不动）。
+  // 守：
+  //  INV-75  creepjs 门禁纯 doctor 侧零回归守护：
+  //    (a) creepjs-probe.ts 在 src/doctor/ 下（不在 src/channels/ 或 src/browse/）
+  //    (b) CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const（grep 守：不从 process.env / config 读）
+  //    (c) creepjs-baseline.json fixture 存在且含 totalLies 字段（防误删 fixture 致门禁失效）
+  //    (d) probeCreepjs 仅被 doctor/ 下文件 import（grep 守：不出现在 src/channels/ 或 src/browse/）
+  //    (e) checkStealthCreepjsRegression 默认 stealthCheck=false（grep 守：runDoctor 内默认 push warn-skip）
+  //    (f) StagehandChannel.ts 头注释含 R-ECO-6 标记（parse15 §3.4：契约未验证文档化）
+  //    (g) creepjs-probe.ts 含 reachable/fingerprintComputed/totalLies 字段（CreepjsLiesReport 契约）
+  {
+    id: "INV-75-creepjs-gate-pure-doctor-side-zero-regression",
+    desc:
+      "v1.7 Phase A：creepjs 门禁纯 doctor 侧零回归守护（parse15 §3.6 + §2.3 + §1.2）：" +
+      "（a）creepjs-probe.ts 在 src/doctor/ 下；" +
+      "（b）CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const（不从 env/config 读）；" +
+      "（c）creepjs-baseline.json fixture 存在含 totalLies；" +
+      "（d）probeCreepjs 仅 doctor/ 下 import（不入运行时四通道）；" +
+      "（e）runDoctor 默认 stealthCheck=false（warn-skip）；" +
+      "（f）StagehandChannel.ts 头注释含 R-ECO-6 标记；" +
+      "（g）CreepjsLiesReport 含 reachable/fingerprintComputed/totalLies 字段",
+    check: () => {
+      // ----- (a) creepjs-probe.ts 在 src/doctor/ 下 -----
+      const probe = SRC.find((s) =>
+        /doctor\/creepjs-probe\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!probe) return false;
+      const probeCode = stripComments(probe.text);
+
+      // ----- (a2) creepjs-probe.ts **不**在 src/channels/ 或 src/browse/ 下（INV-75 红线）-----
+      const badProbe = SRC.find((s) =>
+        /(channels|browse)\/.*creepjs-probe\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (badProbe) return false;
+
+      // ----- (b) CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const -----
+      //   必须用 const 声明（顶层）；不得从 process.env / config 读
+      if (!/export\s+const\s+CREEPJS_LIES_EXTRACT_SCRIPT\s*=/.test(probeCode)) {
+        return false;
+      }
+      if (/CREEPJS_LIES_EXTRACT_SCRIPT\s*=.*process\.env/.test(probeCode)) {
+        return false;
+      }
+      //   必须含 window.Fingerprint 访问（脚本逻辑正确性最小校验）
+      if (!/window\.Fingerprint/.test(probe.text)) return false;
+
+      // ----- (c) creepjs-baseline.json fixture 存在含 totalLies 字段 -----
+      //   注：fixture 是 .json 不在 SRC（SRC 只扫 .ts），用 readFileSync 直读
+      //   本文件在 src/invariants/，fixture 在 src/doctor/fixtures/
+      const baselinePath = fileURLToPath(
+        new URL("../doctor/fixtures/creepjs-baseline.json", import.meta.url),
+      );
+      let baselineBody;
+      try {
+        baselineBody = readFileSync(baselinePath, "utf8");
+      } catch {
+        return false;
+      }
+      if (!/"totalLies"\s*:/.test(baselineBody)) return false;
+      if (!/"tolerance"\s*:/.test(baselineBody)) return false;
+      if (!/"lassoVersion"\s*:\s*"1\.7\.0"/.test(baselineBody)) return false;
+      //   诚实定位字段（parse15 §3.2：rationale + freeze_status 必须含）
+      if (!/"rationale"\s*:/.test(baselineBody)) return false;
+      if (!/"_honest_positioning"\s*:/.test(baselineBody)) return false;
+
+      // ----- (d) probeCreepjs 仅 doctor/ 下文件 import -----
+      //   grep 全 src 树：import probeCreepjs 的文件路径必须以 doctor/ 开头
+      const probeImporters = SRC.filter((s) =>
+        /import\s+(\{[^}]*\bprobeCreepjs\b[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+["'][^"']*creepjs-probe/.test(
+          s.text,
+        ),
+      );
+      if (probeImporters.length === 0) return false; // doctor.ts 必须 import
+      for (const imp of probeImporters) {
+        if (!/^doctor\//.test(imp.f.replace(/\\/g, "/"))) return false;
+      }
+
+      // ----- (d2) probeCreepjs **不**出现在 src/channels/ 或 src/browse/ 下任何文件 -----
+      const leakedToRuntime = SRC.some((s) => {
+        const f = s.f.replace(/\\/g, "/");
+        return (
+          (/^channels\//.test(f) || /^browse\//.test(f)) &&
+          /\bprobeCreepjs\b/.test(s.text)
+        );
+      });
+      if (leakedToRuntime) return false;
+
+      // ----- (e) runDoctor 默认 stealthCheck=false -----
+      //   doctor.ts 必须含 stealth_creepjs_regression check + 默认 warn-skip 分支
+      const doctor = SRC.find((s) =>
+        /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!doctor) return false;
+      const doctorCode = stripComments(doctor.text);
+      if (!/"stealth_creepjs_regression"/.test(doctorCode)) return false;
+      //   默认 warn-skip 分支（stealthCheck=false 时 push warn）
+      if (!/stealthCheck\s*=(\s*=\s*)?false|!\s*opts\.stealthCheck/.test(doctorCode)) {
+        return false;
+      }
+      //   #39 stagehand_rest_contract_probe 也必须存在
+      if (!/"stagehand_rest_contract_probe"/.test(doctorCode)) return false;
+      if (!/api\.stagehand\.dev\/verify/.test(doctorCode)) return false;
+      //   R-ECO-6 文案在 doctor #39 detail 中
+      if (!/R-ECO-6/.test(doctor.text)) return false;
+
+      // ----- (f) StagehandChannel.ts 头注释含 R-ECO-6 标记 -----
+      const stagehand = SRC.find((s) =>
+        /channels\/StagehandChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!stagehand) return false;
+      if (!/R-ECO-6/.test(stagehand.text)) return false;
+      //   标记必须出现在文件头部注释（前 30 行；防误放在末尾）
+      const headBlock = stagehand.text.split("\n").slice(0, 30).join("\n");
+      if (!/R-ECO-6/.test(headBlock)) return false;
+
+      // ----- (g) CreepjsLiesReport 含 reachable/fingerprintComputed/totalLies 字段 -----
+      //   抽 export interface CreepjsLiesReport 块（容嵌套）
+      const ifaceStart = probeCode.indexOf("export interface CreepjsLiesReport");
+      if (ifaceStart < 0) return false;
+      const nextExport = probeCode.indexOf("export ", ifaceStart + 10);
+      const ifaceRegion = probeCode.slice(
+        ifaceStart,
+        nextExport > 0 ? nextExport : ifaceStart + 800,
+      );
+      for (const f of ["reachable", "fingerprintComputed", "totalLies", "liedModules"]) {
+        if (!new RegExp("\\b" + f + "\\s*:").test(ifaceRegion)) return false;
+      }
+
+      return true;
+    },
+  },
 ];
 
 let failed = 0;
