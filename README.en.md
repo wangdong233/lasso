@@ -49,7 +49,8 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 | "List everything I can control right now" | One unified list (web pages and desktop windows all in it) |
 | "Turn off dark mode" | Auto click / type / hotkey (with result verification — it confirms it actually happened) |
 | "Just fetch this JSON endpoint" | Raw bytes (fastest, cheapest) |
-| "This site has Cloudflare, I can't scrape it" | Cloud Chrome anti-bot bypass (off by default; you explicitly opt in) |
+| "This site seems to have some anti-bot, let's try" | `browse_headless` has built-in anti-detection (passes basic bot checks) — many sites scrape directly, no config needed |
+| "This site has Cloudflare, I can't scrape it" | Cloud Chrome anti-bot — **Steel self-hosted (free)** or browserbase/stagehand (paid, off by default) |
 | "Is Lasso set up correctly?" | A health-check report (tells you what's missing) |
 
 > You don't need to memorize any capability names. Just say what you want — Claude picks the right way to get it done.
@@ -67,9 +68,11 @@ Lasso itself is **completely free + MIT open source**. Here's what each capabili
 | Scrape public pages / screenshots / PDF / network audit / raw bytes | ✅ Free | Runs locally, no key, no payment |
 | Scrape logged-in pages (reuse local Chrome) | ✅ Free | Runs locally, no key, no payment |
 | Drive desktop (macOS / Windows / Linux) | ✅ Free | Built and run locally, only OS authorization needed; **optional** Apple Developer account \$99/yr for signed persistent authorization (works without signing too — just re-authorize each time) |
-| Cloud browser (browserbase / stagehand) | ⚠️ Paid, off by default | Paid after trial; **costs nothing if you don't configure it** — Lasso's only paid item |
+| Cloud browser · self-hosted Steel (v1.6 new) | ✅ Free | Run Steel (Apache-2.0 open source) in local Docker — **zero per-session cost + cookies never leave your machine**; needs `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
+| Cloud browser · hosted (browserbase / stagehand) | ⚠️ Paid, off by default | Pay-as-you-go after trial; **costs nothing if you don't configure it** |
+| `browse_headless` anti-detection (v1.5 new) | ✅ Free | Injects 16 anti-detection layers by default (UA / webdriver / webgl, etc.) — passes many basic bot checks out of the box |
 
-> In one sentence: **as long as you don't turn on the cloud browser, Lasso costs zero** — search has free tiers enough for daily use, and everything else is completely free.
+> In one sentence: **as long as you don't turn on the hosted cloud browser (browserbase/stagehand), Lasso costs zero** — search has free tiers enough for daily use, and the self-hosted Steel cloud browser is free too.
 
 ---
 
@@ -92,6 +95,8 @@ No keys needed right after install (this is **Tier 1: zero config**):
 - See **what third-party trackers a page loads**
 - Fetch raw bytes from a JSON API or file directly
 - Control native macOS apps (Finder / Mail / System Settings, etc. — requires a one-time tick in System Settings)
+
+> 💡 **Search may be zero-config too**: if your machine's `~/.claude.json` already has the Zhipu `web-search-prime` MCP configured, Lasso auto-detects and reuses it at startup — no need to set a separate `ZHIPU_API_KEY`, search just works. Run `lasso doctor` and check whether `#36 machine_search_mcp` is `pass`.
 
 Your first output — just say to Claude:
 
@@ -122,6 +127,8 @@ Defaults to Zhipu (strong for Chinese); you can add Brave and Bing for multi-sou
 > You: "Grab the text of example.com" → clean article text, three granularities available
 
 Auto-strips nav bars, ads, sidebars and other clutter — **saves 30–70% on tokens** (and money). Need citation markers (great for research, feeding RAG)? One sentence switches modes.
+
+> **As of v1.5, `browse_headless` has anti-detection on by default** (spoofed UA / `navigator.webdriver` removed / faked webgl, plugins, codecs, and a dozen more layers). **Zero config — automatic.** Many "detect headless" sites now scrape directly. Only Cloudflare-grade heavy anti-bot needs the cloud browser (see "Anti-Bot Bypass" below). Want to verify the anti-detection effect? Run `lasso doctor --stealth-check` for a creepjs detection comparison.
 
 ### Scrape Logged-in Pages (even with 2FA)
 
@@ -173,7 +180,10 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 > You: "This site has Cloudflare, I can't scrape it" → cloud Chrome anti-bot
 
-**Completely off by default.** Only activates when you explicitly turn it on AND have configured a cloud-browser key. You don't need it for normal pages.
+**Completely off by default.** Only activates when you explicitly turn it on AND have configured a cloud browser (self-hosted Steel or hosted browserbase/stagehand). Light anti-bot is already handled by `browse_headless`'s built-in anti-detection — **only Cloudflare-grade heavy protection needs the cloud browser**.
+
+- **Steel self-hosted (recommended · free)**: run an open-source cloud browser in local Docker — zero per-session cost, cookies never leave your machine. One command to set up, see [Key Guide · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **browserbase / stagehand (hosted · paid)**: pay-as-you-go after trial; the fallback when you don't want to run Docker yourself.
 
 ---
 
@@ -205,7 +215,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's it — no key
 | Near-zero search failures (multi-source) | Add Brave / Bing keys (both have free tiers) | Auto-fails-over if one is down — you don't feel a thing |
 | Scrape logged-in pages | Run `lasso launch-chrome` once | Reuses your local Chrome session |
 | Drive the macOS desktop | Run `lasso doctor` once | Drive native apps |
-| Scrape Cloudflare-protected sites | Double confirmation + a cloud key | Off by default; needs your explicit opt-in |
+| Scrape Cloudflare-protected sites | Double confirmation + a cloud browser channel (self-hosted Steel free / hosted paid) | Off by default; needs your explicit opt-in |
 
 Below, each of the four modules is broken out with the shortest path to "it just works".
 
@@ -281,18 +291,33 @@ After that, say "open my logged-in Jira" to Claude and it'll connect automatical
 
 **Details** → [Key Configuration Guide · Desktop Control](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
-### 4. Cloud Anti-Bot (⚠️ Paid, off by default · needs double confirmation)
+### 4. Cloud Browser: Self-Hosted or Hosted (self-hosted free / hosted paid, off by default · needs double confirmation)
 
-**What it does**: Scrapes sites guarded by Cloudflare or heavy anti-bot protection.
+**What it does**: Scrapes sites guarded by Cloudflare or heavy anti-bot protection (light anti-bot is already handled by `browse_headless`'s built-in anti-detection — this section is only for the heavy stuff).
 
-**Does it need a key**: Yes — and it only activates when **you explicitly turn it on**.
+**Does it need a key**: Depends on which path you take. Pick one of three cloud channels — **only the hosted path needs a key**:
+
+- **(a) Steel self-hosted (recommended · free)**: run an open-source cloud browser in local Docker — **zero per-session cost + cookies never leave your machine**. No key to apply for; just run Docker yourself.
+- **(b) browserbase hosted (paid)**: 100-minute trial, then pay-as-you-go.
+- **(c) stagehand hosted (paid)**: AI-friendly page observation; trial-oriented.
 
 **How to configure**: Both conditions must be met at the same time:
 
 1. Master switch: set `LASSO_ALLOW_CLOUD_BROWSER` to `true`
-2. At least one cloud key (browserbase or stagehand — pick one)
+2. At least one cloud channel — Steel (set `STEEL_ENDPOINT`) or browserbase/stagehand (set the corresponding key)
 
-Write it into `~/.lasso/config.json`:
+**Shortest config · Steel self-hosted (free, recommended)**:
+
+```json
+{
+  "LASSO_ALLOW_CLOUD_BROWSER": true,
+  "STEEL_ENDPOINT": "http://localhost:3000"
+}
+```
+
+Start Steel with one Docker command: `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`. Full setup steps in [Key Guide · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+
+**Shortest config · browserbase hosted (paid)**:
 
 ```json
 {
@@ -301,9 +326,9 @@ Write it into `~/.lasso/config.json`:
 }
 ```
 
-> Off by default — no config means no such capability. You don't need it for normal pages, **and it only activates when you explicitly opt in**.
+> Off by default — no config means no such capability. You don't need it for normal pages, **and it only activates when you explicitly opt in**. Light anti-bot doesn't need the cloud browser at all — `browse_headless`'s built-in anti-detection handles it.
 
-**How to apply for cloud keys, trial quotas** → see the [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+**How to apply for hosted keys, how to set up Steel Docker** → see the [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
 
 <details>
 <summary><b>Advanced tuning (optional — ordinary users can skip)</b></summary>
@@ -316,6 +341,7 @@ You can **completely ignore** the below for daily use. These are only for specia
 - Allow company intranet / special proxy ranges
 - Set your own passphrase to encrypt login cookies (if unset, macOS Keychain is used)
 - Save search-result snapshots to disk (for regression testing)
+- Set the Steel self-hosted cloud browser endpoint (`STEEL_ENDPOINT`, e.g. `http://localhost:3000`; needs `LASSO_ALLOW_CLOUD_BROWSER=true` too in order to activate)
 
 Full variable list and defaults: [Key Configuration Guide · Advanced Tuning](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Surge / Clash TUN proxy networks (fake-ip) are already allowed out of the box.**
 
@@ -350,6 +376,7 @@ Your data is yours.
 | Search keeps returning nothing | Check whether the key expired / quota is exhausted; adding multiple providers (Zhipu + Brave + Bing) dramatically lowers the failure rate |
 | A link won't open | Say "this link is dead, find an archive" to check the Internet Archive |
 | Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
+| Want to verify the anti-detection effect | Run `lasso doctor --stealth-check` — it drives the creepjs detection page and compares against a baseline (optional, doesn't affect daily use) |
 
 Full FAQ and debugging tips in [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
 

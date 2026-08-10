@@ -49,7 +49,8 @@
 | 「列一下我现在能控的所有窗口和网页」 | 一个统一清单（网页和桌面窗口都在里面） |
 | 「把系统深色模式关掉」 | 自动点按 / 输入 / 快捷键（带结果验证，做完了会确认） |
 | 「直接取这个 JSON 接口的返回值」 | 原始字节（最快最省） |
-| 「这个站有 Cloudflare 我抓不动」 | 云端 Chrome 反爬（默认关，你明确要开才开） |
+| 「这个站好像有点反爬，试试看」 | `browse_headless` 自带反检测（过基础 bot 检测），很多站点直接能抓，无需配置 |
+| 「这个站有 Cloudflare 我抓不动」 | 云端 Chrome 反爬——**Steel 自托管（免费）** 或 browserbase/stagehand（付费，默认关） |
 | 「Lasso 现在配好了吗？」 | 一份健康自检报告（告诉你哪里没配好） |
 
 > 你不用记任何能力名，直接说你想干什么，Claude 自己挑最合适的方式完成。
@@ -67,9 +68,11 @@ Lasso 本体**完全免费 + MIT 开源**。每一项能力到底要不要花钱
 | 抓公开页 / 截图 / PDF / 网络审计 / 抓原始字节 | ✅ 免费 | 本地运行，无 key 无付费 |
 | 抓登录态页面（复用本机 Chrome） | ✅ 免费 | 本地运行，无 key 无付费 |
 | 控桌面（macOS / Windows / Linux） | ✅ 免费 | 本地构建运行，仅需系统授权；**可选** Apple 开发者账号 \$99/年做签名持久授权（不签名也能用，只是每次重授权） |
-| 云浏览器（browserbase / stagehand） | ⚠️ 付费，默认关 | 试用后付费；**不配不花钱**，是 Lasso 唯一付费项 |
+| 云浏览器 · 自托管 Steel（v1.6 新） | ✅ 免费 | 本地 Docker 跑 Steel（Apache-2.0 开源），**零 per-session 费 + cookie 不出本地**；需 `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
+| 云浏览器 · 托管型（browserbase / stagehand） | ⚠️ 付费，默认关 | 试用后按量付费；**不配不花钱** |
+| `browse_headless` 反检测（v1.5 新） | ✅ 免费 | 默认注入 16 路反检测（UA / webdriver / webgl 等），很多基础 bot 检测直接过 |
 
-> 一句话总结：**只要不开云浏览器，Lasso 全程 0 成本**——搜索有免费额度够日常用，其余能力完全免费。
+> 一句话总结：**只要不开托管型云浏览器（browserbase/stagehand），Lasso 全程 0 成本**——搜索有免费额度够日常用，Steel 自托管也是免费的。
 
 ---
 
@@ -92,6 +95,8 @@ claude mcp add lasso -- npx -y lasso-mcp
 - 看**一个页面加载了哪些第三方跟踪**
 - 直接取 JSON 接口或文件的**原始返回**
 - 控制 macOS 原生 app（Finder / Mail / 系统设置等，需在系统设置里勾一下授权）
+
+> 💡 **搜索也可能零配置可用**：如果你机器的 `~/.claude.json` 已经配过智谱 `web-search-prime` MCP，Lasso 启动时自动检测复用，连 `ZHIPU_API_KEY` 都不用单独配——搜索直接能用。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是不是 `pass` 就知道。
 
 第一份产出——直接对 Claude 说：
 
@@ -122,6 +127,8 @@ claude mcp add lasso -- npx -y lasso-mcp
 > 你：「抓 example.com 的文字」 → 干净正文，三种粒度可选
 
 自动剥掉导航条、广告、侧边栏等冗余，**省 30–70% 字数**（也更省钱）。要带引用角标（适合做调研、喂给 RAG）也能一句话切换。
+
+> **v1.5 起，`browse_headless` 默认开启反检测**（伪装 UA / 抹除 `navigator.webdriver` / 伪造 webgl、plugins、codecs 等共十几路）。**无需配置，自动生效**——很多「检测 headless」的站点现在能直接抓。只有 Cloudflare 级重度反爬才需要走云浏览器（见下方「反爬强攻」）。想验证反检测效果？跑 `lasso doctor --stealth-check` 看 creepjs 检测对比。
 
 ### 抓登录态页（有 2FA 的也行）
 
@@ -173,7 +180,10 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 > 你：「这个站有 Cloudflare，抓不动」 → 云端 Chrome 反爬
 
-默认**完全关闭**。只有你明确要开、并且配了云端浏览器的 key，才会启用。普通页面用不上。
+默认**完全关闭**。只有你明确要开、并且配了云浏览器（自托管 Steel 或托管型 browserbase/stagehand），才会启用。轻度反爬 `browse_headless` 自带反检测就能过，**只有 Cloudflare 级重度反爬才需要走云浏览器**。
+
+- **Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，零 per-session 费、cookie 不出本地。一行命令开通，见 [Key 配置指南 · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
+- **browserbase / stagehand（托管型 · 付费）**：试用后按量付费，不想自己跑 Docker 时的备选。
 
 ---
 
@@ -205,7 +215,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 | 搜索几乎不挂 | 再加 Brave / Bing key（都有免费额度） | 任一家挂了自动切，你无感 |
 | 抓登录态页面 | 跑一次 `lasso launch-chrome` | 复用本机 Chrome 登录态 |
 | 控 macOS 桌面 | 跑一次 `lasso doctor` | 控原生 app |
-| 抓有 Cloudflare 的站 | 双重确认 + 云端 key | 默认关，要你明确要开才开 |
+| 抓有 Cloudflare 的站 | 双重确认 + 云浏览器通道（自托管 Steel 免费 / 托管型付费） | 默认关，要你明确要开才开 |
 
 下面按四个模块拆开讲，每个都给「最短能跑通」的配法。
 
@@ -281,18 +291,33 @@ lasso launch-chrome
 
 **详见** → [Key 配置指南 · 桌面控制](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key)。
 
-### 四、云端反爬（⚠️ 付费，默认关 · 双重确认才开）
+### 四、云浏览器：自托管或托管（自托管免费 / 托管付费，默认关 · 双重确认才开）
 
-**能干什么**：抓被 Cloudflare、重度反爬挡住的站。
+**能干什么**：抓被 Cloudflare、重度反爬挡住的站（轻度反爬 `browse_headless` 自带反检测就能过，这里只针对重度）。
 
-**要不要 key**：要，并且**必须你明确要开**才会启用。
+**要不要 key**：取决于走哪条路。三种云通道任选其一，**只有走托管型才要 key**：
+
+- **(a) Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，**零 per-session 费 + cookie 不出本地**。无需申请 key，自己跑 Docker 即可。
+- **(b) browserbase 托管（付费）**：100 分钟试用，之后按量付费。
+- **(c) stagehand 托管（付费）**：AI 友好的页面观察，试用为主。
 
 **怎么配**：需要两个条件同时满足——
 
 1. 总开关：`LASSO_ALLOW_CLOUD_BROWSER` 设为 `true`
-2. 至少一个云端 key（browserbase 或 stagehand，二选一）
+2. 至少一个云通道——Steel（设 `STEEL_ENDPOINT`）或 browserbase/stagehand（设对应 key）
 
-写进 `~/.lasso/config.json`：
+**最短配置 · Steel 自托管（免费推荐）**：
+
+```json
+{
+  "LASSO_ALLOW_CLOUD_BROWSER": true,
+  "STEEL_ENDPOINT": "http://localhost:3000"
+}
+```
+
+Steel 用 Docker 一行启动：`docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`。完整开通步骤见 [Key 配置指南 · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
+
+**最短配置 · browserbase 托管（付费）**：
 
 ```json
 {
@@ -301,9 +326,9 @@ lasso launch-chrome
 }
 ```
 
-> 默认完全关闭——没配就等于没这个能力。普通页面用不上，**只有你明确要开才会启用**。
+> 默认完全关闭——没配就等于没这个能力。普通页面用不上，**只有你明确要开才会启用**。轻度反爬根本不需要云浏览器，`browse_headless` 自带反检测就能过。
 
-**怎么申请云端 key、有哪些试用额度** → 见 [Key 配置指南 · 云浏览器](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**怎么申请托管 key、Steel Docker 怎么开通** → 见 [Key 配置指南 · 云浏览器](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>高级调优（可选，普通用户不用展开）</b></summary>
@@ -316,6 +341,7 @@ lasso launch-chrome
 - 放行公司内网 / 特殊代理网段
 - 给登录 cookie 加一个自己的加密口令（不设则走 macOS 钥匙串）
 - 落盘搜索结果快照（做回归测试用）
+- 设 Steel 自托管云浏览器端点（`STEEL_ENDPOINT`，如 `http://localhost:3000`；需同时开 `LASSO_ALLOW_CLOUD_BROWSER=true` 才启用）
 
 完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip）已内置放行，无需额外配置。**
 
@@ -350,6 +376,7 @@ lasso launch-chrome
 | 搜索一直没结果 | 检查 key 是否过期 / 额度用完；配多家（智谱 + Brave + Bing）可大幅降低失败率 |
 | 链接打不开 | 改说「这个链接找不到了，找找存档」，去查互联网档案馆 |
 | 提示要内网访问被拒 | 确认 URL 没写错；TUN 代理网络已默认放行，其他内网需手动允许 |
+| 想验证反检测效果 | 跑 `lasso doctor --stealth-check`，会驱动 creepjs 检测页对比基线（可选，不影响日常使用） |
 
 完整 FAQ 与调试技巧见 [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md)。
 

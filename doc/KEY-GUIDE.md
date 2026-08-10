@@ -26,6 +26,7 @@
 | `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 否 | **2000 次/月**（Free 计划） |
 | `BING_API_KEYS` | 搜索第三源（再兜底） | [Azure 门户](https://portal.azure.com/) | 否 | **1000 次/月**（F0 免费层） |
 | `LASSO_ALLOW_CLOUD_BROWSER` | 云浏览器总开关（值设 `true`） | 无需申请 | 启用云浏览器时**必填** | — |
+| `STEEL_ENDPOINT` | 自托管云浏览器端点（v1.6 新·推荐） | 无需申请（自己跑 Docker） | 启用 Steel 时**必填** | —（零 per-session 费，自托管） |
 | `BROWSERBASE_API_KEY` | 云端反爬 Chrome | [browserbase.com](https://www.browserbase.com/) | 启用 browserbase 时**必填** | **100 分钟试用**（之后付费） |
 | `STAGEHAND_API_KEY` | AI 友好的页面观察 | [api.stagehand.dev](https://api.stagehand.dev) | 启用 stagehand 时**必填** | 试用（付费为主） |
 | `LASSO_COOKIE_PASSPHRASE` | 登录 cookie 加密口令 | 自己设一串足够长的密码即可 | 否 | — |
@@ -193,14 +194,69 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 
 ## D. 云浏览器反爬（默认关，双重解锁）
 
-默认**完全关闭**。仅当你需要抓被 Cloudflare / 反爬严重的站点时才开启。开启需要**两个条件同时满足**：
+默认**完全关闭**。仅当你需要抓被 Cloudflare / 反爬严重的站点时才开启（轻度反爬 `browse_headless` 自带反检测就能过，不必开云浏览器）。开启需要**两个条件同时满足**：
 
 1. `LASSO_ALLOW_CLOUD_BROWSER=true`（总开关）
-2. 至少一个云 key（`BROWSERBASE_API_KEY` 或 `STAGEHAND_API_KEY`）
+2. 至少一个云通道——`STEEL_ENDPOINT`（自托管，推荐免费）或 `BROWSERBASE_API_KEY` / `STAGEHAND_API_KEY`（托管型，付费）
 
 缺任一，云通道行为完全等价于「没配」（零回归）。
 
-### `BROWSERBASE_API_KEY` —— 云端反爬 Chrome
+---
+
+### `STEEL_ENDPOINT` —— 自托管云浏览器（v1.6 新·推荐·免费）
+
+[Steel](https://github.com/steel-dev/steel-browser)（Apache-2.0 开源）是一个云端浏览器服务，你**自己用 Docker 跑**——**零 per-session 费 + cookie 不出本地**。适合不想用付费托管型（browserbase/stagehand）、又需要过 Cloudflare 级反爬的场景。Steel 自带指纹伪装和 stealth 插件，反检测能力比 browserbase 更强。
+
+**去哪申请**：无需申请——自己跑 Docker 即可。
+
+**前提**：Docker 已装（[Docker Desktop](https://www.docker.com/products/docker-desktop/) 下载安装，启动后 `docker --version` 能出版本号就行）。
+
+**步骤**：
+
+1. 一行启动 Steel（`3000`=REST API 端口，`9223`=CDP 端口）：
+
+   ```bash
+   docker run -d -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser
+   ```
+
+   （`-d` 后台跑；想看实时日志去掉 `-d`。）
+
+2. 验证 Steel 已就绪——任选其一：
+
+   ```bash
+   curl http://localhost:3000/health     # 返回 JSON（健康检查，doctor 也探这个）
+   ```
+
+   或浏览器打开 <http://localhost:3000> 看到 Steel 就绪页即可。
+
+3. 配 Lasso（写进 `~/.lasso/config.json`）：
+
+   ```json
+   {
+     "LASSO_ALLOW_CLOUD_BROWSER": true,
+     "STEEL_ENDPOINT": "http://localhost:3000"
+   }
+   ```
+
+   （env 覆盖：`export LASSO_ALLOW_CLOUD_BROWSER=true` + `export STEEL_ENDPOINT=http://localhost:3000`，优先级高于配置文件。）
+
+4. 跑 `lasso doctor`，看 `#37 steel_endpoint_reachable` 是 `pass`（GET `/health` 通）还是 `warn`（没配 / 不可达）。
+
+**费用**：**完全免费**（自托管，无 per-session 费）。代价是要自己维护一个 Docker 容器——机器关机后下次 `docker start` 重启即可（用了 `-d` 的容器不会自动重启，可加 `--restart unless-stopped` 让它开机自启）。
+
+**与托管型（browserbase / stagehand）对比**：
+
+| 维度 | Steel 自托管 | browserbase / stagehand 托管型 |
+|---|---|---|
+| 费用 | ✅ **完全免费** | ⚠️ 试用后按量付费 |
+| 登录 cookie | ✅ **不出本地**（在你的 Docker 里） | 出本地（发到云端） |
+| 反检测能力 | ✅ 内置指纹伪装 + stealth 插件（更强） | 依赖 Lasso 注入 |
+| 部署复杂度 | 自己跑一个 Docker 容器 | 注册账号拿 key 即可 |
+| 适合谁 | 想零成本、不想 cookie 出本地 | 不想维护 Docker、能接受付费 |
+
+---
+
+### `BROWSERBASE_API_KEY` —— 云端反爬 Chrome（托管型·付费）
 
 **去哪申请**：<https://www.browserbase.com/>
 
@@ -277,6 +333,8 @@ lasso doctor
 - 登录态 Chrome 是否已启动
 - 桌面授权是否通过
 - 缓存目录是否可写
+
+doctor 现包含 38 项检查，其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）。
 
 `ready: true` 就可以正常用了。**遇到任何错误，第一步永远是 `lasso doctor`。**
 
