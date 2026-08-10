@@ -100,6 +100,7 @@
  *  INV-71 config 文件机制 —— loadConfigFileEnv 读 ~/.lasso/config.json 扁平 JSON；loadConfig 合并 file→env（env 覆盖 file 向后兼容）；index.ts config init/path 子命令；扁平 JSON 红线禁嵌套 schema —— v1.3 Phase A
  *  INV-72 机器 MCP 复用安全 —— MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；fallback_order[0]=search.machine_mcp 默认顺序首位 —— v1.4 Phase A
  *  INV-73 stealth 16 路 + header 一致性 + HeadlessChannel 接入 —— STEALTH_INJECTION_SCRIPT 含 12 新路 vendored evasion import（stealth-evasions/ 目录 12 文件均带 MIT 头）；StealthProfile 接口含 secChUa/secFetch* header 集；UA ≥ Chrome 130；HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）—— v1.5 Phase A
+ *  INV-74 Steel cloud 通道零回归守护 —— SteelChannel（browse_cloud_steel）必经 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；STEEL ProviderConfig 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归）；SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）—— v1.6 Phase A
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -3299,6 +3300,104 @@ const assertions = [
       if (!/new\s+HeadlessChannel\s*\([^)]*StealthEngine|new\s+HeadlessChannel\s*\(\s*\w+\s*,\s*\w+/.test(indexCode)) {
         return false;
       }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.6 Phase A 新增（parse14 §8.1 —— INV-74 Steel cloud 通道零回归守护）
+  // ============================================================
+  // parse14 §1.1 + §8.1：Steel 自托管 cloud 浏览器（"自托管 Browserbase"）零回归守护。
+  // 守：
+  //  INV-74  Steel cloud 通道零回归守护：
+  //    (a) providers.ts 导出 STEEL_PROVIDERS + 单独 export { STEEL }（不进 BUILTIN_PROVIDERS）
+  //    (b) STEEL ProviderConfig 含 policy_risk 字段 + tags 含 "cloud" 子标签
+  //    (c) index.ts 有 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT（双重解锁条件）
+  //    (d) SteelChannel.ts extends BrowseChannel（平级兄弟子类，与 BrowserbaseChannel 同构）
+  //    (e) SteelChannel.ts 禁自造 fallback（无 class FallbackDecider；INV-18 同源）
+  //    (f) SteelChannel.ts channel name = "browse_cloud_steel"（cloud 前缀触发 PolicyGate INV-25）
+  {
+    id: "INV-74-steel-cloud-channel-zero-regression",
+    desc:
+      "v1.6 Phase A：Steel cloud 通道零回归守护（parse14 §8.1 + §3.1 + §3.3）：" +
+      "（a）providers.ts 导出 STEEL_PROVIDERS + export { STEEL }（不进 BUILTIN_PROVIDERS）；" +
+      "（b）STEEL ProviderConfig 含 policy_risk + tags 含 cloud；" +
+      "（c）index.ts 有 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；" +
+      "（d）SteelChannel extends BrowseChannel（平级兄弟子类）；" +
+      "（e）SteelChannel 禁自造 fallback（无 class FallbackDecider）；" +
+      "（f）SteelChannel name = browse_cloud_steel（cloud 前缀触发 PolicyGate）",
+    check: () => {
+      // ----- (a) providers.ts 导出 STEEL_PROVIDERS + export { STEEL } -----
+      const prov = SRC.find((s) =>
+        /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!prov) return false;
+      if (!/export\s+const\s+STEEL_PROVIDERS\b/.test(prov.text)) return false;
+      if (!/export\s*\{\s*STEEL\s*\}/.test(prov.text)) return false;
+
+      // STEEL ProviderConfig 字面量必须存在
+      if (!/const\s+STEEL\s*:\s*ProviderConfig/.test(prov.text)) return false;
+
+      // ----- (a2) STEEL 不进 BUILTIN_PROVIDERS（零回归承诺）-----
+      const builtinBlock = prov.text.match(
+        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/\bSTEEL\b/.test(builtinBlock)) return false;
+
+      // ----- (b) STEEL ProviderConfig 含 policy_risk + tags 含 cloud -----
+      const steelBlock = prov.text.match(
+        /const\s+STEEL\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
+      )?.[1] ?? "";
+      if (steelBlock.length === 0) return false;
+      if (!/policy_risk\s*:/.test(steelBlock)) return false;
+      if (!/tags\s*:\s*\[[^\]]*["']cloud["']/.test(steelBlock)) return false;
+      // STEEL enabled 必须 false（默认禁用；条件装配）
+      if (!/enabled\s*:\s*false/.test(steelBlock)) return false;
+
+      // ----- (c) index.ts 有 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁 -----
+      const index = SRC.find((s) =>
+        /^index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+      if (!/LASSO_ALLOW_CLOUD_BROWSER/.test(indexCode)) return false;
+      if (!/STEEL_ENDPOINT/.test(indexCode)) return false;
+      // 必须实例化 SteelChannel（条件装配落地）
+      if (!/new\s+SteelChannel\b/.test(indexCode)) return false;
+      // 必须注册 registerSteelTool（条件注册落地）
+      if (!/registerSteelTool\s*\(/.test(indexCode)) return false;
+
+      // ----- (d) SteelChannel extends BrowseChannel（平级兄弟子类）-----
+      const steel = SRC.find((s) =>
+        /channels\/SteelChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!steel) return false; // v1.6 起必须存在
+      const steelCode = stripComments(steel.text);
+      if (!/class\s+SteelChannel\s+extends\s+BrowseChannel\b/.test(steelCode)) {
+        return false;
+      }
+
+      // ----- (e) SteelChannel 禁自造 fallback（INV-18 同源）-----
+      if (/class\s+FallbackDecider\b/.test(steelCode)) return false;
+
+      // ----- (f) SteelChannel name = browse_cloud_steel（cloud 前缀触发 PolicyGate）-----
+      if (!/readonly\s+name\s*=\s*["']browse_cloud_steel["']/.test(steelCode)) {
+        return false;
+      }
+
+      // ----- (g) SteelChannel 有单例 session mutex（parse14 §3.1 R-V16-1 核心设计）-----
+      if (!/sessionLock/.test(steelCode)) return false;
+      if (!/acquireSessionLock/.test(steelCode)) return false;
+
+      // ----- (h) SteelChannel 有 releaseSession（POST /v1/sessions/release）-----
+      if (!/releaseSession\s*\(/.test(steelCode)) return false;
+      if (!/\/v1\/sessions\/release/.test(steelCode)) return false;
+
+      // ----- (i) STEEL_PROVIDERS 含恰好 1 个 provider（STEEL 本身）-----
+      const steelProvidersBlock = prov.text.match(
+        /STEEL_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (!/\bSTEEL\b/.test(steelProvidersBlock)) return false;
 
       return true;
     },

@@ -382,6 +382,59 @@ export const BROWSERBASE_DESCRIPTION = [
 ].join("\n");
 
 // ============================================================
+// STEEL（v1.6 Phase A 新增，parse14 §3.4 + §3.1 —— 自托管 cloud Chrome）
+// ============================================================
+export const STEEL_DESCRIPTION = [
+  "Self-hosted cloud Chrome via Steel (steel-dev/steel-browser) — anti-bot circumvention",
+  "WITHOUT per-session fees or cookies leaving your machine. Steel is 'self-hosted",
+  "Browserbase': same paradigm as the browserbase tool, but Chrome runs in YOUR Docker",
+  "container (zero credits, cookies stay local).",
+  "",
+  "REQUIREMENTS (manual-switch, INV-25/INV-74 double unlock):",
+  "  1. LASSO_ALLOW_CLOUD_BROWSER=true (explicit opt-in)",
+  "  2. STEEL_ENDPOINT set (e.g. http://localhost:3000 — your Steel Docker REST API)",
+  "  3. Steel Docker running: docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser",
+  "All must be set or this tool is NOT registered (default OFF, zero regression).",
+  "",
+  "DOES NOT:",
+  "  - act as the default browser path (prefer browse_headless / browse_logged_in)",
+  "  - solve 2FA / CAPTCHA (cloud_browser_requires_manual_switch on challenge)",
+  "  - share login state with browse_logged_in (separate Steel Docker Chrome profile)",
+  "  - send cookies to an external cloud (Steel Chrome runs in your local Docker)",
+  "",
+  "policy_risk=safe + licence=apache2: Steel is Apache-2.0 (compatible with Lasso MIT).",
+  "                           Self-hosted = no commercial ToS risk, no per-session billing.",
+  "",
+  "Same action set + options as browse_headless (navigate / snapshot / click / fill / ...).",
+  "Steel has BUILT-IN anti-detection (fingerprint-generator + stealth plugins, stronger",
+  "than Browserbase which relies on Lasso StealthEngine injection). Lasso StealthEngine",
+  "is layered on top as optional additional evasion.",
+  "",
+  "Use for:",
+  "  - Cloudflare-protected public pages where browse_headless is blocked",
+  "  - Anti-bot checkpoints (bot.sannysoft-style) when you want ZERO cloud cost",
+  "  - Privacy-sensitive scraping (cookies/localStorage never leave your machine)",
+  "",
+  "[Prefer browse_headless for]:    public pages without anti-bot (faster, no Docker needed).",
+  "[Prefer browse_logged_in for]:   authenticated sites (Steel Chrome has no login state).",
+  "[Prefer browserbase for]:        anti-bot when you can't run Docker locally.",
+  "[Prefer search for]:             keyword discovery when you don't have a URL.",
+  "",
+  "SECURITY: same SSRF guard as browse_headless. Steel Chrome runs in your Docker",
+  "container — cookies/localStorage stay on your machine (INV-48..53 cookie=身份 friendly).",
+  "",
+  "STEALTH ESCALATION: if Cloudflare challenge is detected post-navigate,",
+  "returns outcome=didnt + retrieval_method='cloudflare_manual_switch' — you",
+  "(the model) should ask the user before retrying; never auto-solve CAPTCHA.",
+  "",
+  "Args:  url (str, required)   — http(s) URL",
+  "       action (str, default 'snapshot')",
+  "       options (object, optional) — { selectors?, js?, expect?, ... }",
+  "",
+  "Returns: InteractResult<BrowseResult> as JSON text.",
+].join("\n");
+
+// ============================================================
 // FETCH_URL（v0.5 M0.5a 新增，parse6 §3.1 + §1.4 路由决策表）
 // ============================================================
 export const FETCH_URL_DESCRIPTION = [

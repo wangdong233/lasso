@@ -233,6 +233,27 @@ export const adminAnnotations: ToolAnnotations = {
 };
 
 /**
+ * steel tool annotations（v1.6 Phase A 新增，parse14 §3.4 + §3.1）。
+ *
+ * 四象限归属：
+ *   |  tool  | readOnly | openWorld | 含义                                |
+ *   |  ----- | -------- | --------- | ----------------------------------- |
+ *   |  steel |   false  |   true    | 可 click/fill（副作用）；cloud Chrome 外网 |
+ *
+ * 与 browserbase 同档（都是可副作用的 openWorld cloud browse 通道），但 description
+ * 明确标 policy_risk=safe + 自托管零成本 —— model 应优先 browse_headless / browse_logged_in，
+ * 需反爬且不想付 Browserbase 费用时升 steel（cookie 不出本地）。
+ *
+ * - readOnlyHint=false：与 browse_headless / browserbase 同 —— navigate/click/fill 可副作用。
+ * - openWorldHint=true：经 chrome-devtools-mcp --browser-url=http://host:9223 触外网
+ *   （Chrome 跑在用户自托管 Docker 容器内，CDP 经 nginx 9223 暴露）。
+ */
+export const steelAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: true,
+};
+
+/**
  * wayback_lookup tool annotations（v0.9 Phase B 新增，parse10 §3.3 + §6 M3）。
  *
  * 四象限归属：

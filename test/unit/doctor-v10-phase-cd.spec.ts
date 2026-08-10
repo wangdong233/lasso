@@ -204,10 +204,10 @@ describe("doctor INV-63 镜像：LASSO_VERSION 常量", () => {
     expect(LASSO_VERSION.length).toBeGreaterThan(0);
   });
 
-  it("LASSO_VERSION 当前值为 1.5.0（v1.5 Phase A stealth 16 路 + header 一致性）", () => {
+  it("LASSO_VERSION 当前值为 1.6.0（v1.6 Phase A SteelChannel 自托管 cloud 通道）", () => {
     // 守 INV-63：package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致。
     // 本 spec 只验 doctor.ts 这处；INV-63 grep 守全 3 处对齐。
-    expect(LASSO_VERSION).toBe("1.5.0");
+    expect(LASSO_VERSION).toBe("1.6.0");
   });
 });
 

@@ -387,6 +387,64 @@ export const MACHINE_MCP_PROVIDERS: readonly ProviderConfig[] = [MACHINE_MCP];
 /** 单独导出便于 INV-72 grep + 测试断言（tags=["search"] + enabled=false 默认禁用）。 */
 export { MACHINE_MCP };
 
+// ============================================================
+// v1.6 Phase A 新增（parse14 §3.3 —— Steel 自托管 cloud 浏览器 provider）
+// ============================================================
+/**
+ * Steel —— 自托管 Browserbase（parse14 §1.1 + doc/16 §0 #3）。
+ *
+ * Steel（Apache-2.0，steel-dev/steel-browser）自托管 cloud 浏览器服务，与 Lasso
+ * BrowserbaseChannel 范式 1:1 同构，但自托管 = 零 per-session 费 + cookie 不出本地
+ * （对 INV-48..53 cookie=身份红线极友好）。
+ *
+ * 与 BROWSERBASE / STAGEHAND 的关键差异：
+ *  - type="self_hosted"（自托管 Docker；非 api_key 型）
+ *  - keys=[]（无 API key；自托管默认无 auth）
+ *  - endpoint_url=null（运行时从 STEEL_ENDPOINT 读 http://localhost:3000）
+ *  - policy_risk="safe"（自托管无收购/商用风险；doc/16 §5 建议 2）
+ *  - licence="apache2"（Steel Apache-2.0 兼容 Lasso MIT；parse14 §8.3）
+ *  - commercial_safe=true（用户自己跑 Docker，无 ToS 风险）
+ *  - tags=["browse","cloud","self_hosted"]（cloud 前缀触发 PolicyGate INV-25 守）
+ *
+ * INV-74（parse14 §8.1）：Steel cloud 通道零回归守护：
+ *  - STEEL 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归范式，参照 DESKTOP/CLOUD/BING/MACHINE_MCP）
+ *  - SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）
+ *  - 双重解锁：LASSO_ALLOW_CLOUD_BROWSER=true + STEEL_ENDPOINT 存在
+ *
+ * Steel license Apache-2.0 与 Lasso MIT 双向兼容（parse14 §8.3）：
+ *  - Lasso SteelChannel 是 HTTP 客户端调用 Steel REST API（非代码 link/import Steel 源码）
+ *  - 法律上更干净——独立进程、无衍生作品；Lasso 仍保持 MIT（只需保留 Apache NOTICE）
+ */
+const STEEL: ProviderConfig = {
+  name: "steel", // channel 名 browse_cloud_steel
+  type: "self_hosted", // 自托管 Docker（非 api_key 型）
+  endpoint_url: null, // 运行时从 STEEL_ENDPOINT 读（http://localhost:3000）
+  keys: [], // 无 API key（自托管无 auth）
+  free_quota_per_month: 0, // 零成本（用户自己的 Docker）
+  quota_model: "request",
+  fallback_order: 12, // 在 stagehand(11) 之后（cloud 链尾）
+  free_tier_level: "L1", // self_hosted 等价零成本
+  policy_risk: "safe", // 自托管无收购/商用风险（doc/16 §5 建议 2）
+  licence: "apache2", // Steel Apache-2.0（LICENSE 确认）
+  commercial_safe: true, // 用户自己跑 Docker，无 ToS 风险
+  tags: ["browse", "cloud", "self_hosted"],
+  enabled: false, // 默认禁用；LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁
+};
+
+/**
+ * v1.6 Phase A Steel provider（parse14 §3.3）。
+ *
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS /
+ * SEARCH_FALLBACK_PROVIDERS / MACHINE_MCP_PROVIDERS 范式，保 v1.5 零回归）：
+ *  - v1.5 ProviderRegistry 测试断言 byCap("browse") 不含 steel 仍绿（零回归承诺）
+ *  - INV-74 grep STEEL_PROVIDERS / STEEL 字面量在 providers.ts 即合规（不要求进 BUILTIN_PROVIDERS）
+ *  - v1.6 实装时在 index.ts 条件装配：STEEL_ENDPOINT 注入时 new SteelChannel
+ */
+export const STEEL_PROVIDERS: readonly ProviderConfig[] = [STEEL];
+
+/** 单独导出便于 INV-74 grep + 测试断言（tags 含 "cloud" + "self_hosted" 子标签）。 */
+export { STEEL };
+
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
   ZHIPU,
   BROWSE_HEADLESS,

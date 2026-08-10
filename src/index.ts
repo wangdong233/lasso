@@ -59,6 +59,7 @@ import { CGEventProvider } from "./desktop/CGEventProvider.js";
 // v0.4 M0.4c：cloud 浏览器通道（条件装配，默认 OFF）
 import { BrowserbaseChannel } from "./channels/BrowserbaseChannel.js";
 import { StagehandChannel } from "./channels/StagehandChannel.js";
+import { SteelChannel } from "./channels/SteelChannel.js";
 import { StealthEngine } from "./browse/StealthEngine.js";
 import { PolicyGate } from "./fallback/PolicyGate.js";
 import { FallbackDecider } from "./fallback/FallbackDecider.js";
@@ -68,6 +69,7 @@ import { runDoctor } from "./doctor/doctor.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
 import { registerBrowserbaseTool } from "./tools/browserbase.js";
+import { registerSteelTool } from "./tools/steel.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
 import { registerDesktopTool } from "./tools/desktop.js";
 import { registerInteractTools } from "./tools/interact.js";
@@ -161,9 +163,14 @@ const DEFAULT_RUST_HELPER_PATH =
  *   三平台同构 OutlineNode）+ 录制回放回归（replay-baseline）+ 跨平台 launcher（launch-chrome）+
  *   doctor #31/#32 + 文档完整化（README/ARCHITECTURE/TROUBLESHOOTING/SELECTOR-MAINTENANCE）+
  *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
+ * v1.5（parse13 §1.1 + §6 验收）：stealth 16 路 vendored evasion + header 一致性（secChUa/secFetch*）
+ *   + HeadlessChannel 接入 StealthEngine（修 v1.4 零 stealth 注入 P0）→ 1.5.0
+ * v1.6（parse14 §1.1 + §6 验收）：SteelChannel 自托管 cloud 通道（"自托管 Browserbase"，
+ *   零 per-session 费 + cookie 不出本地）+ STEEL provider + steel tool + doctor #37 +
+ *   INV-74（v1.5 INV-1..73 零回归）→ 1.6.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.5.0";
+const LASSO_SERVER_VERSION = "1.6.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -177,6 +184,8 @@ function readCloudBrowserEnv(): {
   enabled: boolean;
   browserbaseKey: string;
   stagehandKey: string;
+  /** v1.6（parse14 §3.3）：Steel 自托管 endpoint（http://localhost:3000）；非 API key 型解锁 */
+  steelEndpoint: string;
   /** 已配置 API key 的 cloud provider 名集合（PolicyGate 双重解锁用） */
   cloudBrowserKeys: Set<string>;
   /** manual-switch 是否开（audit log 用） */
@@ -185,15 +194,19 @@ function readCloudBrowserEnv(): {
   const manualSwitchOn = process.env.LASSO_ALLOW_CLOUD_BROWSER === "true";
   const browserbaseKey = process.env.BROWSERBASE_API_KEY ?? "";
   const stagehandKey = process.env.STAGEHAND_API_KEY ?? "";
+  // v1.6（parse14 §3.3）：Steel 解锁条件 = endpoint（非 key）；自托管无 auth
+  const steelEndpoint = process.env.STEEL_ENDPOINT ?? "";
   const cloudBrowserKeys = new Set<string>();
   if (browserbaseKey) cloudBrowserKeys.add("browserbase");
   if (stagehandKey) cloudBrowserKeys.add("stagehand");
-  // 双重解锁：manual-switch + 至少一个 API key
+  if (steelEndpoint) cloudBrowserKeys.add("steel");
+  // 双重解锁：manual-switch + 至少一个 cloud provider（key 或 endpoint）
   const enabled = manualSwitchOn && cloudBrowserKeys.size > 0;
   return {
     enabled,
     browserbaseKey,
     stagehandKey,
+    steelEndpoint,
     cloudBrowserKeys,
     manualSwitchOn,
   };
@@ -472,6 +485,7 @@ async function runMcpServer(): Promise<void> {
   //          行为完全等价 M0.4b（零回归承诺，parse5 §1.4 + §3.4.2）。
   const cloudEnv = readCloudBrowserEnv();
   let browserbaseChannel: BrowserbaseChannel | undefined;
+  let steelChannel: SteelChannel | undefined;
   if (cloudEnv.enabled) {
     const stealth = new StealthEngine();
     if (cloudEnv.browserbaseKey) {
@@ -498,6 +512,22 @@ async function runMcpServer(): Promise<void> {
         note: "observe-only; no standalone tool registered in v0.4",
       });
     }
+    // v1.6（parse14 §3.3）：Steel 自托管 cloud 浏览器条件装配
+    // 双重解锁：LASSO_ALLOW_CLOUD_BROWSER=true + STEEL_ENDPOINT 存在
+    // Steel 是 Browserbase 的自托管替代（零 per-session 费 + cookie 不出本地）
+    if (cloudEnv.steelEndpoint) {
+      steelChannel = new SteelChannel(
+        subproc,
+        cloudEnv.steelEndpoint,
+        stealth,
+      );
+      breakers.set("browse_cloud_steel", new CircuitBreaker());
+      logger.info({
+        evt: "cloud_browser_channel_wired",
+        channel: "browse_cloud_steel",
+        endpoint: cloudEnv.steelEndpoint,
+      });
+    }
   } else {
     // 默认 OFF 路径：明确日志（便于运维排查为何 cloud 通道未注册）
     logger.info({
@@ -508,6 +538,7 @@ async function runMcpServer(): Promise<void> {
       manual_switch: cloudEnv.manualSwitchOn,
       has_browserbase_key: !!cloudEnv.browserbaseKey,
       has_stagehand_key: !!cloudEnv.stagehandKey,
+      has_steel_endpoint: !!cloudEnv.steelEndpoint,
     });
   }
 
@@ -598,6 +629,11 @@ async function runMcpServer(): Promise<void> {
   if (browserbaseChannel) {
     registerBrowserbaseTool(server, browserbaseChannel, decider, ssrfConfig);
   }
+  // v1.6（parse14 §3.4）：Steel 自托管 cloud 浏览器工具条件注册
+  // 默认 OFF：未双重解锁时 server.listTools() 不含 steel（INV-25/INV-74 守）
+  if (steelChannel) {
+    registerSteelTool(server, steelChannel, decider, ssrfConfig);
+  }
   // v0.5 M0.5a：fetch_url 独立 HTTP 工具（parse6 §3.1）
   // 与 browse_headless 同 SSRF guard；不经浏览器、不挂 fallback 链（INV-23 衍生：caller-tier）
   registerFetchUrlTool(server, subproc, ssrfConfig);
@@ -679,6 +715,7 @@ async function runMcpServer(): Promise<void> {
     browse_logged_in: "logged_in",
     browse_cloud_browserbase: "browserbase",
     browse_cloud_stagehand: null,
+    browse_cloud_steel: "steel", // v1.6（parse14 §3.3）：Steel CDP subprocess spec
     desktop: "rust-helper", // SHARED by 4 desktop.* providers；bag handler 守 R-RT-2
   };
 
@@ -692,6 +729,7 @@ async function runMcpServer(): Promise<void> {
     browse_headless: "browse_headless",
     browse_logged_in: "browse_logged_in",
     browserbase: "browse_cloud_browserbase",
+    steel: "browse_cloud_steel", // v1.6（parse14 §3.4）
     desktop: "desktop",
     interact_roots: "forest",
     interact_observe: "forest",
@@ -732,6 +770,10 @@ async function runMcpServer(): Promise<void> {
   }
   if (cloudEnv.enabled && cloudEnv.stagehandKey) {
     initialCapabilities.push("browse_cloud_stagehand");
+  }
+  // v1.6（parse14 §3.3）：Steel 条件加入 initialCapabilities
+  if (cloudEnv.enabled && cloudEnv.steelEndpoint) {
+    initialCapabilities.push("browse_cloud_steel");
   }
   // search providers（dot 形式 "search.<name>"）
   initialCapabilities.push("search.zhipu");
@@ -829,6 +871,7 @@ async function runMcpServer(): Promise<void> {
     "browse_logged_in",
     "browse_cloud_browserbase",
     "browse_cloud_stagehand",
+    "browse_cloud_steel", // v1.6（parse14 §3.3）：Steel 长熔断
     "desktop.ax",
     "desktop.appleScript",
     "desktop.cgEvent",

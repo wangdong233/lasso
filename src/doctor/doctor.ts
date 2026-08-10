@@ -45,6 +45,8 @@
  *  35. config_file                       — v1.3 Phase A：~/.lasso/config.json 路径 + key 数（advisory）
  *  36. machine_search_mcp                — v1.4 Phase B：~/.claude.json web-search-prime MCP 探测
  *                                    （detected=pass host=xx；missing=warn 不阻塞；INV-72 永不 log key）
+ *  37. steel_endpoint_reachable           — v1.6 Phase B：STEEL_ENDPOINT GET /health 可达性
+ *                                    （双重解锁后才探测；未配 warn-skip；永不 fail —— Steel 是可选 cloud 通道）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
@@ -126,7 +128,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.5.0";
+export const LASSO_VERSION = "1.6.0";
 
 // ============================================================
 // 类型
@@ -636,6 +638,29 @@ export async function runDoctor(
   //   - missing  → warn（零配置兼容；不阻塞 ready）：降级到 search.zhipu（Lasso 自己 key）
   // 守 INV-72：detectMachineSearchMcp() 已 read-only + 永不抛；本 check 不再触网、不再读 key。
   checks.push(checkMachineSearchMcp());
+
+  // ---- v1.6 Phase B（parse14 §3.5 + §3.2 Steel 健康检查表）----
+  // #37 steel_endpoint_reachable：Steel 自托管 Docker 可达性探测
+  //   - LASSO_ALLOW_CLOUD_BROWSER=false（默认）→ pass（cloud 浏览器关闭，安全默认）
+  //   - LASSO_ALLOW_CLOUD_BROWSER=true + STEEL_ENDPOINT 未配 → warn（双重解锁未满足；同 #21 范式）
+  //   - 双重解锁且 endpoint 配 → GET $STEEL_ENDPOINT/health 探测
+  //     · 2xx/3xx/4xx 都算"可达"（TCP/TLS+HTTP 通即可；与 #21 probeCloudEndpoint 同范式）
+  //     · 5xx → warn（Steel 不健康）；网络错/timeout → warn（Steel Docker 未启）
+  //   - skipNetwork=true → warn-skip（同 #3/#4/#6/#21 范式）
+  //   - **永不 fail**：Steel 是可选 cloud fallback 链尾，不可达不阻塞 Lasso 整体 ready
+  //   - 源码证据（parse14 §3.2 表 + §4.3）：Steel sessions.routes.ts L27-40 GET /health
+  //     返 {status:"ok"} 或 503 {status:"service_unavailable"}。
+  //     不走 /v1/sessions（POST 才创建 session，HEAD /v1/sessions 在 Steel 路由未必支持）。
+  //   - INV-25/INV-74 衍生：doctor 不解锁 cloud 通道；仅诊断 endpoint 可达性。
+  //                     PolicyGate 在 runtime 守双重解锁（manual-switch + endpoint）。
+  checks.push(
+    await checkSteelEndpointReachable({
+      allowed: opts.cloudBrowserAllowed ??
+        process.env.LASSO_ALLOW_CLOUD_BROWSER === "true",
+      steelEndpoint: process.env.STEEL_ENDPOINT ?? "",
+      skipNetwork: opts.skipNetwork,
+    }),
+  );
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2217,6 +2242,119 @@ function checkMachineSearchMcp(): DoctorCheck {
       name: "machine_search_mcp",
       status: "warn",
       detail: `探测 ${claudeJsonPath} 时异常：${String(e)}`,
+    };
+  }
+}
+
+// ============================================================
+// v1.6 Phase B 新增（parse14 §3.5 + §3.2 —— #37 steel_endpoint_reachable）
+// ============================================================
+/**
+ * 37. steel_endpoint_reachable（v1.6 §3.5 Steel 自托管 Docker 可达性）。
+ *
+ * 探测 STEEL_ENDPOINT（默认 http://localhost:3000）是否在监听 + Steel 服务健康。
+ *
+ * 设计（守 INV-25/INV-74 衍生 + parse14 §3.2 健康检查表 + #21 cloud_browser_manual_switch 范式）：
+ *  - LASSO_ALLOW_CLOUD_BROWSER=false（默认） → pass（cloud 浏览器关闭，安全默认；同 #21 范式）
+ *  - LASSO_ALLOW_CLOUD_BROWSER=true + STEEL_ENDPOINT 未配 → warn（双重解锁未满足，
+ *    PolicyGate 在 runtime 将阻断 browse_cloud_steel；同 #21 manual-switch ON 但 key 全缺语义）
+ *  - 双重解锁且 endpoint 配 → GET $STEEL_ENDPOINT/health 探测：
+ *      · 返 {status:"ok"} 或 2xx/3xx/4xx → pass（Steel 可达）
+ *      · 返 5xx → warn（Steel 不健康：service_unavailable）
+ *      · 网络错 / timeout(3s) → warn（Steel Docker 未启 / 端口未暴露）
+ *  - skipNetwork=true → warn-skip（与 #3/#4/#6/#21 同范式）
+ *
+ * **永不 fail**（守 parse14 §5.5：Steel 是可选 cloud fallback 链尾通道，不可达不阻塞 Lasso
+ *                整体 ready；用户随时可启 Steel Docker 升 pass）。
+ *
+ * Steel 健康检查契约（parse14 §3.2 表 + §4.3 路径表，全部源码证据）：
+ *  - 路径：GET /health（sessions.routes.ts L27-40）
+ *  - 200 返 { status: "ok" }；503 返 { status: "service_unavailable" }
+ *  - 不走 /v1/sessions：POST 才创建 session（L67-89），HEAD /v1/sessions 在 Steel 路由表
+ *    未必注册（返 404/405 算可达但语义混乱）；GET /health 是 Steel 自暴露的健康探测点。
+ *
+ * 与 #21 cloud_browser_manual_switch 的关系：
+ *  - #21 探测 Browserbase 云 SaaS（api.browserbase.com）+ manual-switch + key 状态
+ *  - #37 探测 Steel 自托管 Docker（localhost:3000）+ manual-switch + endpoint 状态
+ *  - 同族 cloud 浏览器探测；范式 1:1 同构（同 probeCloudEndpoint 复用语义）
+ */
+async function checkSteelEndpointReachable(opts: {
+  allowed: boolean;
+  steelEndpoint: string;
+  skipNetwork?: boolean;
+}): Promise<DoctorCheck> {
+  // (1) LASSO_ALLOW_CLOUD_BROWSER=false（默认）→ pass（cloud 浏览器关闭，安全默认）
+  if (!opts.allowed) {
+    return {
+      name: "steel_endpoint_reachable",
+      status: "pass",
+      detail:
+        "LASSO_ALLOW_CLOUD_BROWSER=false（默认；Steel 通道未启用；PolicyGate 将阻断 browse_cloud_steel）",
+    };
+  }
+
+  // (2) manual-switch ON 但 STEEL_ENDPOINT 未配 → warn（双重解锁未满足）
+  if (!opts.steelEndpoint) {
+    return {
+      name: "steel_endpoint_reachable",
+      status: "warn",
+      detail:
+        "LASSO_ALLOW_CLOUD_BROWSER=true 但 STEEL_ENDPOINT 未配（PolicyGate 将阻断 browse_cloud_steel）",
+      next_step:
+        "export STEEL_ENDPOINT=http://localhost:3000（Steel Docker 启动后设此 env 解锁 Steel 通道）",
+    };
+  }
+
+  // (3) skipNetwork=true → warn-skip（不触网；同 #21 范式）
+  if (opts.skipNetwork) {
+    return {
+      name: "steel_endpoint_reachable",
+      status: "warn",
+      detail: `STEEL_ENDPOINT=${opts.steelEndpoint}（skipNetwork=true：GET /health 探测跳过）`,
+    };
+  }
+
+  // (4) GET $STEEL_ENDPOINT/health 探测（与 #21 probeCloudEndpoint 同范式，3s 超时）
+  try {
+    const url = `${opts.steelEndpoint.replace(/\/+$/, "")}/health`;
+    const resp = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+      // 不带 Authorization（Steel 自托管默认无 auth；session.controller.ts 不读 auth）
+      redirect: "manual",
+    });
+    // 5xx → warn（Steel 服务不健康）；2xx/3xx/4xx 都算"可达"
+    if (resp.status >= 500) {
+      return {
+        name: "steel_endpoint_reachable",
+        status: "warn",
+        detail: `${url} 返 ${resp.status} ${resp.statusText}（Steel 服务不健康：service_unavailable）`,
+        next_step:
+          "检查 Steel Docker 容器状态（docker ps + docker logs <container>）；重启 Steel",
+      };
+    }
+    // 尝读 body 中的 status 字段（Steel /health 返 {status:"ok"} 或 {status:"service_unavailable"}）
+    let bodyStatus = "";
+    try {
+      const body = (await resp.json()) as { status?: string };
+      bodyStatus = body?.status ?? "";
+    } catch {
+      // body 非 JSON（用户配错 endpoint 指向其他服务）；只报 HTTP status
+    }
+    const detailSuffix = bodyStatus ? `; body.status=${bodyStatus}` : "";
+    return {
+      name: "steel_endpoint_reachable",
+      status: "pass",
+      detail: `STEEL_ENDPOINT=${opts.steelEndpoint} GET /health → ${resp.status} ${resp.statusText}${detailSuffix}`,
+    };
+  } catch (e) {
+    // 网络错 / timeout → warn（Steel Docker 未启 / 端口未暴露；不 fail）
+    return {
+      name: "steel_endpoint_reachable",
+      status: "warn",
+      detail: `STEEL_ENDPOINT=${opts.steelEndpoint} 不可达：${String(e).slice(0, 120)}`,
+      next_step:
+        "docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser（启 Steel Docker）",
     };
   }
 }
