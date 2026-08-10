@@ -40,13 +40,20 @@ export class StealthEngine {
   /**
    * 在 navigate 前注入 stealth profile（CDP methods 直调 + evaluate_script）。
    *
-   * 流程（parse5 §3.3.1）：
+   * v1.5 流程（parse13 §3.1 + §4.5）：
    *  1. profile 校验（未知 profile 名 → throw；caller catch 走 didnt）
-   *  2. evaluate_script(STEALTH_INJECTION_SCRIPT) → navigator.webdriver / languages /
-   *     window.chrome / permissions 抹除
-   *  3. evaluate_script(userAgentOverride) → navigator.userAgent 改写（CDP
-   *     Network.setUserAgentOverride 在 chrome-devtools-mcp 暂未暴露独立工具，
-   *     evaluate 是 fallback；browserbase 自带 stealth 时本步幂等）
+   *  2. evaluate_script(buildUserAgentOverrideScript) → navigator.userAgent / platform /
+   *     language 改写（**先执行**，使后续 UA client hints 能读到正确 Chrome 版本）
+   *  3. evaluate_script(STEALTH_INJECTION_SCRIPT 16 路) → webdriver / languages / permissions /
+   *     chrome.runtime/app/csi/loadTimes / plugins / vendor / hardwareConcurrency / media.codecs /
+   *     webgl.vendor / iframe.contentWindow / outerdimensions / userAgentData（brands 版本与
+   *     UA 一致；Safari/Firefox profile 跳过）
+   *
+   * HTTP header 侧 sec-ch-ua / sec-fetch-* 注入（parse13 §4.5）：依赖 chrome-devtools-mcp
+   * 暴露 setExtraHTTPHeaders（spike 未解），v1.5 MVP 暂只走 JS 侧 navigator.userAgentData
+   * （ua-client-hints.ts 是 sec-ch-ua 的 JS API 投影）。profile 的 header 字段
+   * （secChUa / secFetch* / accept*）已定义在 StealthProfile 顶级 const（INV-30），供后续
+   * chrome-devtools-mcp 暴露 header 注入工具时直用。
    *
    * 注：viewport / timezone 由 chrome-devtools-mcp 启动 flag 控制
    *    （subprocess spec 加 --window-size / --timezone）；StealthEngine 不在这里设。
@@ -64,23 +71,23 @@ export class StealthEngine {
       throw new Error(`unknown_stealth_profile:${profileName}`);
     }
 
-    // 1. 注入 navigator.webdriver / languages / window.chrome / permissions 抹除脚本
-    //    STEALTH_INJECTION_SCRIPT 是顶级 const，**所有 profile 共用**（webdriver=false
-    //    等是通用反检测，与具体 UA 无关）
-    await this.evaluate(client, STEALTH_INJECTION_SCRIPT, "inject_stealth_core");
-
-    // 2. userAgent override（profile-specific；chrome-devtools-mcp 暂未暴露独立
-    //    setUserAgentOverride 工具，evaluate 是 fallback）
+    // 1. userAgent override（profile-specific；**先执行**，使 STEALTH_INJECTION_SCRIPT 内的
+    //    UA client hints 能读到正确的 navigator.userAgent 解析 Chrome 版本）
     await this.evaluate(
       client,
       buildUserAgentOverrideScript(profile),
       "inject_stealth_useragent",
     );
 
+    // 2. 注入 16 路 evasion（STEALTH_INJECTION_SCRIPT 顶级 const，所有 profile 共用核心
+    //    15 路；UA client hints 路 15 读 navigator.userAgent 已被上一步 override）
+    await this.evaluate(client, STEALTH_INJECTION_SCRIPT, "inject_stealth_core");
+
     logger.info({
       evt: "stealth_injected",
       profile: profileName,
       ua: profile.userAgent.slice(0, 40) + "...",
+      roads: 16,
     });
   }
 

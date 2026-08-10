@@ -99,6 +99,7 @@
  *  INV-70 interactiveOnly opt-in 后处理 —— OutlineMapper 导出 pruneToInteractive（axTreeToOutline 体内不过滤 INV-61 不变）；AxProvider 经 opts.interactive_only 条件调；DesktopOptions optional 无 default —— v1.2
  *  INV-71 config 文件机制 —— loadConfigFileEnv 读 ~/.lasso/config.json 扁平 JSON；loadConfig 合并 file→env（env 覆盖 file 向后兼容）；index.ts config init/path 子命令；扁平 JSON 红线禁嵌套 schema —— v1.3 Phase A
  *  INV-72 机器 MCP 复用安全 —— MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；fallback_order[0]=search.machine_mcp 默认顺序首位 —— v1.4 Phase A
+ *  INV-73 stealth 16 路 + header 一致性 + HeadlessChannel 接入 —— STEALTH_INJECTION_SCRIPT 含 12 新路 vendored evasion import（stealth-evasions/ 目录 12 文件均带 MIT 头）；StealthProfile 接口含 secChUa/secFetch* header 集；UA ≥ Chrome 130；HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）—— v1.5 Phase A
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -3173,6 +3174,131 @@ const assertions = [
       const firstItem = orderBody.match(/\[?\s*["']([^"']+)["']/);
       if (!firstItem) return false;
       if (firstItem[1] !== "search.machine_mcp") return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.5 Phase A 新增（parse13 §3.1 + §3.2 + §3.4 —— INV-73 stealth 16 路 + header 一致性）
+  // ============================================================
+  // 业务缺口（parse13 §1.2 白盒）：v1.4 HeadlessChannel 38 行零 stealth override；
+  //   StealthEngine 只 4 路 JS（vs 业界 16）；UA Chrome 120 过期；HTTP header 一致性空白。
+  // 守：
+  //  INV-73  stealth 16 路 + header 一致性 + HeadlessChannel 接入：
+  //    (a) stealth-evasions/ 目录存在 + 12 文件均带 MIT copyright notice 头
+  //    (b) stealth-profiles.ts STEALTH_INJECTION_SCRIPT 由 12 路 import join（grep 12 个 from "./stealth-evasions/"）
+  //    (c) StealthProfile 接口含 header 集（secChUa / secChUaMobile / secChUaPlatform / accept / acceptEncoding /
+  //        acceptLanguage / secFetchSite / secFetchMode / secFetchUser / secFetchDest / upgradeInsecureRequests）
+  //    (d) UA 升 Chrome 130+：windows_chrome_120 profile UA 含 "Chrome/130"；Firefox profile 含 "Firefox/130"；Safari 含 "Version/17.5"
+  //    (e) HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）
+  //    (f) index.ts 装配段 new HeadlessChannel 含 stealth 实例参数
+  {
+    id: "INV-73-stealth-16-roads-header-consistency-headless-wired",
+    desc:
+      "v1.5 Phase A：stealth 16 路 + header 一致性 + HeadlessChannel 接入（parse13 §3.1 + §3.2 + §3.4）：" +
+      "（a）stealth-evasions/ 目录 12 文件均带 MIT 头；" +
+      "（b）STEALTH_INJECTION_SCRIPT 由 12 路 import join；" +
+      "（c）StealthProfile 接口含 secChUa/secFetch*/accept* header 集；" +
+      "（d）UA 升 Chrome 130 / Firefox 130 / Safari 17.5；" +
+      "（e）HeadlessChannel override beforeNavigate 调 stealth.injectProfile；" +
+      "（f）index.ts new HeadlessChannel 传 stealth 实例",
+    check: () => {
+      // ----- (a) stealth-evasions/ 目录 12 文件均带 MIT 头 -----
+      const evasionFiles = SRC.filter((s) =>
+        /browse\/stealth-evasions\/[^/]+\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      // 必要条件 1：至少 12 个 evasion 文件
+      if (evasionFiles.length < 12) return false;
+      // 必要条件 2：每文件头含 MIT copyright notice（vendored from puppeteer-extra-plugin-stealth）
+      for (const ef of evasionFiles) {
+        if (!/Vendored from puppeteer-extra-plugin-stealth/.test(ef.text)) return false;
+        if (!/MIT/.test(ef.text)) return false;
+        if (!/Copyright \(c\) berstend/.test(ef.text)) return false;
+      }
+
+      // ----- (b) STEALTH_INJECTION_SCRIPT 由 12 路 import join -----
+      const sp = SRC.find((s) =>
+        /browse\/stealth-profiles\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!sp) return false;
+      const spCode = stripComments(sp.text);
+      // 必要条件 3：stealth-profiles.ts import 12 个 stealth-evasions 文件
+      const evasionImports = [
+        ...spCode.matchAll(/from\s+["']\.\/stealth-evasions\/([^"']+)["']/g),
+      ];
+      if (evasionImports.length < 12) return false;
+      // 必要条件 4：STEALTH_INJECTION_SCRIPT 是数组 join（非内联单字符串）
+      //   形如 STEALTH_INJECTION_SCRIPT = [ ... ].join("\n")
+      const joinMatch = spCode.match(
+        /STEALTH_INJECTION_SCRIPT\s*=\s*\[([\s\S]*?)\]\.join\("\\n"\)/,
+      );
+      if (!joinMatch) return false;
+      // 必要条件 5：join 数组含 CORE_STEALTH_SCRIPT + 12 import 标识符（共 ≥13 元素）
+      const arrayBody = joinMatch[1];
+      const identifiers = [
+        ...arrayBody.matchAll(/\b([A-Z_]+_SCRIPT)\b/g),
+      ].map((m) => m[1]);
+      if (identifiers.length < 13) return false; // CORE + 12 import
+
+      // ----- (c) StealthProfile 接口含 header 集 -----
+      //   必要条件 6：StealthProfile 接口含 11 个 header 字段（直接 grep spCode 字段声明，
+      //   不依赖 interface 块提取 —— interface 含嵌套 {} 会使非贪婪正则提前终止）
+      const requiredHeaders = [
+        "secChUa", "secChUaMobile", "secChUaPlatform",
+        "accept", "acceptEncoding", "acceptLanguage",
+        "secFetchSite", "secFetchMode", "secFetchUser", "secFetchDest",
+        "upgradeInsecureRequests",
+      ];
+      // 取 export interface StealthProfile 到下个 export 之间的区域（容嵌套 {}）
+      const ifaceStart = spCode.indexOf("export interface StealthProfile");
+      const nextExport = spCode.indexOf("export ", ifaceStart + 10);
+      const ifaceRegion = ifaceStart >= 0
+        ? spCode.slice(ifaceStart, nextExport > 0 ? nextExport : ifaceStart + 800)
+        : "";
+      if (ifaceRegion.length === 0) return false;
+      for (const h of requiredHeaders) {
+        if (!new RegExp("\\b" + h + "\\s*:").test(ifaceRegion)) return false;
+      }
+
+      // ----- (d) UA 升 Chrome 130+ / Firefox 130 / Safari 17.5 -----
+      //   必要条件 7：windows_chrome_120 profile UA 含 Chrome/130（直接字面量子串，容错性强）
+      if (!/Chrome\/130\./.test(spCode)) return false;
+      //   必要条件 8：linux_firefox_121 profile UA 含 Firefox/130 + rv:130
+      if (!/Firefox\/130\./.test(spCode)) return false;
+      if (!/rv:130\./.test(spCode)) return false;
+      //   必要条件 9：mac_safari_17 profile UA 含 Version/17.5
+      if (!/Version\/17\.5/.test(spCode)) return false;
+      //   必要条件 10：UA 不含 Chrome/120 / Firefox/121 / Version/17.0（旧版必须清掉）
+      if (/Chrome\/120\./.test(spCode)) return false;
+      if (/Firefox\/121\./.test(spCode)) return false;
+      if (/Version\/17\.0\s/.test(spCode)) return false;
+
+      // ----- (e) HeadlessChannel override beforeNavigate 调 stealth.injectProfile -----
+      const hc = SRC.find((s) =>
+        /channels\/HeadlessChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!hc) return false;
+      const hcCode = stripComments(hc.text);
+      // 必要条件 11：HeadlessChannel import StealthEngine
+      if (!/from\s+["'][^"']*StealthEngine(\.js)?["']/.test(hcCode)) return false;
+      // 必要条件 12：HeadlessChannel override beforeNavigate（仿 BrowserbaseChannel）
+      if (!/override\s+async\s+beforeNavigate/.test(hcCode)) return false;
+      // 必要条件 13：beforeNavigate 体内调 this.stealth.injectProfile
+      if (!/this\.stealth\.injectProfile\s*\(/.test(hcCode)) return false;
+      // 必要条件 14：失败容忍（try/catch + logger.warn，best-effort 语义）
+      if (!/try\s*\{[\s\S]*?injectProfile[\s\S]*?\}\s*catch/.test(hcCode)) return false;
+
+      // ----- (f) index.ts new HeadlessChannel 传 stealth 实例 -----
+      const index = SRC.find((s) =>
+        /^index\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+      // 必要条件 15：new HeadlessChannel(...) 含 ≥2 个参数（subproc + stealth）
+      //   形如 new HeadlessChannel(subproc, <stealth instance>, ...)
+      if (!/new\s+HeadlessChannel\s*\([^)]*StealthEngine|new\s+HeadlessChannel\s*\(\s*\w+\s*,\s*\w+/.test(indexCode)) {
+        return false;
+      }
 
       return true;
     },

@@ -152,6 +152,111 @@ describe("STEALTH_INJECTION_SCRIPT — navigator.webdriver 抹除（parse5 §3.3
 });
 
 // ============================================================
+// v1.5 UA 130+ + header 集（parse13 §3.2）
+// ============================================================
+describe("STEALTH_PROFILES v1.5 — UA 升级 Chrome 130+ + header 集（parse13 §3.2）", () => {
+  it("windows_chrome_120 UA 含 Chrome/130（profile key 是稳定标识符，UA 值升 130）", () => {
+    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).toMatch(/Chrome\/130\./);
+  });
+
+  it("windows_chrome_120 UA 不含 Chrome/120（旧版必须清掉）", () => {
+    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).not.toMatch(/Chrome\/120\./);
+  });
+
+  it("linux_firefox_121 UA 含 Firefox/130", () => {
+    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/Firefox\/130\./);
+    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/rv:130\./);
+  });
+
+  it("mac_safari_17 UA 含 Version/17.5", () => {
+    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Version\/17\.5/);
+  });
+
+  it("windows_chrome_120 含 secChUa 字段且 brands 版本与 UA 一致（= 130）", () => {
+    const p = STEALTH_PROFILES.windows_chrome_120;
+    expect(p.secChUa).toBeTruthy();
+    expect(p.secChUa).toContain('v="130"');
+    // UA major 与 secChUa major 一致（parse13 §8.2 producer 契约核心）
+    const uaMajor = p.userAgent.match(/Chrome\/(\d+)/)![1];
+    expect(p.secChUa).toContain(`v="${uaMajor}"`);
+  });
+
+  it("windows_chrome_120 含完整 sec-ch-ua 三件套（secChUa / secChUaMobile / secChUaPlatform）", () => {
+    const p = STEALTH_PROFILES.windows_chrome_120;
+    expect(p.secChUaMobile).toBe("?0");
+    expect(p.secChUaPlatform).toContain("Windows");
+  });
+
+  it("所有 profile 含 Accept-* + Sec-Fetch-* + Upgrade-Insecure-Requests header 字段", () => {
+    const headerFields = [
+      "accept", "acceptEncoding", "acceptLanguage",
+      "secFetchSite", "secFetchMode", "secFetchUser", "secFetchDest",
+      "upgradeInsecureRequests",
+    ] as const;
+    for (const profile of Object.values(STEALTH_PROFILES)) {
+      for (const h of headerFields) {
+        const v = (profile as Record<string, string>)[h];
+        expect(typeof v).toBe("string");
+        expect(v.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("所有 profile 的 secFetchMode=navigate / secFetchDest=document（navigate 首请求标准）", () => {
+    for (const profile of Object.values(STEALTH_PROFILES)) {
+      expect(profile.secFetchMode).toBe("navigate");
+      expect(profile.secFetchDest).toBe("document");
+    }
+  });
+});
+
+// ============================================================
+// v1.5 STEALTH_INJECTION_SCRIPT 16 路（parse13 §3.1）
+// ============================================================
+describe("STEALTH_INJECTION_SCRIPT v1.5 — 16 路 evasion（parse13 §3.1）", () => {
+  it("SCRIPT 含 chrome.runtime / chrome.app / chrome.csi / chrome.loadTimes（路 4-7）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/chrome\.runtime/);
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/chrome\.app/);
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/chrome\.csi/);
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/chrome\.loadTimes/);
+  });
+
+  it("SCRIPT 含 navigator.plugins mock（路 8，headless 头号破绽修复）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/navigator.*plugins|PDF Viewer/);
+    expect(STEALTH_INJECTION_SCRIPT).toContain("PDF Viewer");
+  });
+
+  it("SCRIPT 含 navigator.vendor / hardwareConcurrency（路 9-10）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/["']vendor["']/);
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/hardwareConcurrency/);
+  });
+
+  it("SCRIPT 含 media.codecs canPlayType + webgl.vendor 37445（路 11-12）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/canPlayType/);
+    expect(STEALTH_INJECTION_SCRIPT).toContain("37445");
+    expect(STEALTH_INJECTION_SCRIPT).toContain("Intel Inc.");
+  });
+
+  it("SCRIPT 含 iframe.contentWindow + outerDimensions（路 13-14）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/contentWindow|createElement/);
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/outerWidth|outerHeight/);
+  });
+
+  it("SCRIPT 含 navigator.userAgentData（路 15 UA client hints，sec-ch-ua JS 投影）", () => {
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/userAgentData/);
+    // brands 从 navigator.userAgent 解析 Chrome 版本（parse13 §4.5）
+    expect(STEALTH_INJECTION_SCRIPT).toMatch(/Chrom.*\(e|ium\).*\\\/.*\(\\d\+\)/);
+  });
+
+  it("SCRIPT 是多段 IIFE join（≥13 段独立 try/catch）", () => {
+    const iifeCount = (STEALTH_INJECTION_SCRIPT.match(/\(function\(\)\s*\{/g) || []).length;
+    expect(iifeCount).toBeGreaterThanOrEqual(13);
+    const tryCount = (STEALTH_INJECTION_SCRIPT.match(/try\s*\{/g) || []).length;
+    expect(tryCount).toBeGreaterThanOrEqual(13);
+  });
+});
+
+// ============================================================
 // CLOUDFLARE_DETECTION
 // ============================================================
 describe("CLOUDFLARE_DETECTION — marker 检测（parse5 §3.3.1）", () => {

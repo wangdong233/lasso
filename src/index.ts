@@ -163,7 +163,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-60..65（v0.9 INV-1..59 零回归）→ 1.0.0（去 -dev）
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.4.0";
+const LASSO_SERVER_VERSION = "1.5.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -345,7 +345,10 @@ async function runMcpServer(): Promise<void> {
     });
   }
 
-  const headless = new HeadlessChannel(subproc);
+  // v1.5（parse13 §3.4 P0 核心修复）：HeadlessChannel 接 StealthEngine —— 修 v1.4
+  // 「browse_headless 零 stealth 注入」P0 业务缺口。stealth 实例在 headless 装配前建。
+  const headlessStealth = new StealthEngine();
+  const headless = new HeadlessChannel(subproc, headlessStealth, "windows_chrome_120");
   // v0.8（parse9 §3.2）：LoggedInChannel 注入 ProfileRegistry + CookieStore 工厂
   const logged_in = new LoggedInChannel(
     subproc,

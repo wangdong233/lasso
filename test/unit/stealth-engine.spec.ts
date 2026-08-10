@@ -19,7 +19,10 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { StealthEngine } from "../../src/browse/StealthEngine.js";
-import { STEALTH_INJECTION_SCRIPT } from "../../src/browse/stealth-profiles.js";
+import {
+  STEALTH_INJECTION_SCRIPT,
+  STEALTH_PROFILES,
+} from "../../src/browse/stealth-profiles.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
 
 // ============================================================
@@ -79,34 +82,38 @@ describe("StealthEngine.injectProfile — 注入 webdriver 抹除脚本", () => 
     ).rejects.toThrow(/unknown_stealth_profile:totally_made_up_profile/);
   });
 
-  it("已知 profile → 调 evaluate_script 注入 STEALTH_INJECTION_SCRIPT", async () => {
+  it("已知 profile → 调 evaluate_script 注入 STEALTH_INJECTION_SCRIPT（v1.5 16 路）", async () => {
     const engine = new StealthEngine();
     const { client, calls } = makeMockClient();
     await engine.injectProfile(client, "windows_chrome_120");
-    // 第一次 callTool 是 STEALTH_INJECTION_SCRIPT
+    // v1.5：UA override 先执行（evalCalls[0]），STEALTH_INJECTION_SCRIPT 后执行（evalCalls[1]）
     const evalCalls = calls.filter((c) => c.name === "evaluate_script");
-    expect(evalCalls.length).toBeGreaterThanOrEqual(1);
-    expect(evalCalls[0]!.args.function).toBe(STEALTH_INJECTION_SCRIPT);
+    expect(evalCalls.length).toBeGreaterThanOrEqual(2);
+    // 用 find 而非 index（顺序不依赖；v1.5 UA override 在 SCRIPT 前）
+    const scriptCall = evalCalls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    expect(scriptCall).toBeTruthy();
   });
 
   it("注入脚本含 navigator.webdriver override（payload 来自 stealth-profiles）", async () => {
     const engine = new StealthEngine();
     const { client, calls } = makeMockClient();
     await engine.injectProfile(client, "mac_safari_17");
-    const evalCall = calls.find((c) => c.name === "evaluate_script");
-    expect(evalCall).toBeTruthy();
-    expect(String(evalCall!.args.function)).toMatch(/navigator.*webdriver/s);
+    // v1.5：UA override 先执行（第一次 evaluate），STEALTH_INJECTION_SCRIPT 第二次；
+    // webdriver hook 在 STEALTH_INJECTION_SCRIPT 内 → 找 SCRIPT 那次 call
+    const scriptCall = calls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    expect(scriptCall).toBeTruthy();
+    expect(String(scriptCall!.args.function)).toMatch(/navigator.*webdriver/s);
   });
 
-  it("userAgent override 脚本含 profile 的 userAgent 字面量", async () => {
+  it("userAgent override 脚本含 profile 的 userAgent 字面量（v1.5 先于 SCRIPT 执行）", async () => {
     const engine = new StealthEngine();
     const { client, calls } = makeMockClient();
     await engine.injectProfile(client, "linux_firefox_121");
-    // 第二次 callTool 是 userAgent override（含 profile UA 字符串片段）
+    // v1.5：UA override 是第一次 evaluate（先执行以使 UA client hints 读到正确版本）
     const evalCalls = calls.filter((c) => c.name === "evaluate_script");
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
-    const uaScript = String(evalCalls[1]!.args.function);
-    expect(uaScript).toContain("Firefox/121.0");
+    const uaScript = String(evalCalls[0]!.args.function);
+    expect(uaScript).toContain("Firefox/130.0"); // v1.5 升 Firefox 130
     expect(uaScript).toContain("Linux x86_64");
   });
 
@@ -126,6 +133,104 @@ describe("StealthEngine.injectProfile — 注入 webdriver 抹除脚本", () => 
     expect(typeof engine.injectProfile).toBe("function");
     expect(typeof engine.detectCloudflareChallenge).toBe("function");
     expect(typeof engine.escalateManualSwitch).toBe("function");
+  });
+});
+
+// ============================================================
+// v1.5 16 路 evasion 覆盖（parse13 §3.1 + §5.1）
+// ============================================================
+describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () => {
+  it("STEALTH_INJECTION_SCRIPT 含 16 路 evasion 关键 hook（webdriver / languages / permissions + chrome.runtime/app/csi/loadTimes / plugins / vendor / hardwareConcurrency / media.codecs / webgl.vendor / iframe.contentWindow / outerdimensions / userAgentData）", async () => {
+    const engine = new StealthEngine();
+    const { client, calls } = makeMockClient();
+    await engine.injectProfile(client, "windows_chrome_120");
+    const scriptCall = calls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    expect(scriptCall).toBeTruthy();
+    const script = String(scriptCall!.args.function);
+    // CORE 3 路
+    expect(script).toMatch(/["']webdriver["']/); // 路 1
+    expect(script).toMatch(/["']languages["']/); // 路 2
+    expect(script).toMatch(/notifications/); // 路 3 permissions
+    // vendored 12 路（每路关键标识）
+    expect(script).toMatch(/chrome\.runtime/); // 路 4 chrome.runtime 增强
+    expect(script).toMatch(/chrome\.app/); // 路 5
+    expect(script).toMatch(/chrome\.csi/); // 路 6
+    expect(script).toMatch(/chrome\.loadTimes/); // 路 7
+    expect(script).toMatch(/navigator.*plugins/); // 路 8
+    expect(script).toMatch(/["']vendor["']/); // 路 9
+    expect(script).toMatch(/hardwareConcurrency/); // 路 10
+    expect(script).toMatch(/canPlayType/); // 路 11 media.codecs
+    expect(script).toMatch(/37445|UNMASKED_VENDOR/); // 路 12 webgl.vendor
+    expect(script).toMatch(/contentWindow|createElement/); // 路 13 iframe
+    expect(script).toMatch(/outerWidth|outerHeight/); // 路 14 outerdimensions
+    expect(script).toMatch(/userAgentData/); // 路 15 UA client hints
+  });
+
+  it("STEALTH_INJECTION_SCRIPT 是 13 段 join（CORE + 12 vendored import）", () => {
+    // 静态：SCRIPT 由多段 IIFE join 而成，每段 try/catch 自包
+    // 统计独立 IIFE 数（"(function(){" 出现次数）
+    const iifeCount = (STEALTH_INJECTION_SCRIPT.match(/\(function\(\)\s*\{/g) || []).length;
+    expect(iifeCount).toBeGreaterThanOrEqual(13); // CORE + 12 路
+  });
+
+  it("每路 evasion 自包 try/catch（best-effort，单路失败不影响其它）", () => {
+    // try { 数量 ≥ catch 数量 ≥ 13（每路独立 try/catch）
+    const tryCount = (STEALTH_INJECTION_SCRIPT.match(/try\s*\{/g) || []).length;
+    const catchCount = (STEALTH_INJECTION_SCRIPT.match(/catch\s*\(/g) || []).length;
+    expect(tryCount).toBeGreaterThanOrEqual(13);
+    expect(catchCount).toBeGreaterThanOrEqual(13);
+  });
+
+  it("userAgent override 脚本先于 STEALTH_INJECTION_SCRIPT 执行（v1.5 顺序，使 UA client hints 读到正确版本）", async () => {
+    const engine = new StealthEngine();
+    const { client, calls } = makeMockClient();
+    await engine.injectProfile(client, "windows_chrome_120");
+    const evalCalls = calls.filter((c) => c.name === "evaluate_script");
+    expect(evalCalls.length).toBeGreaterThanOrEqual(2);
+    // evalCalls[0] = UA override（含 profile UA），evalCalls[1] = STEALTH_INJECTION_SCRIPT
+    expect(String(evalCalls[0]!.args.function)).toContain("Chrome/130");
+    expect(evalCalls[1]!.args.function).toBe(STEALTH_INJECTION_SCRIPT);
+  });
+});
+
+// ============================================================
+// v1.5 header 一致性（parse13 §3.2 + §5.1 UA ↔ sec-ch-ua ↔ userAgentData 三方一致）
+// ============================================================
+describe("StealthEngine v1.5 — UA ↔ sec-ch-ua 一致性（parse13 §8.2 producer 契约）", () => {
+  it("windows_chrome_120：UA Chrome 版本(130) == secChUa 版本(130)", () => {
+    const p = STEALTH_PROFILES.windows_chrome_120;
+    const uaMatch = p.userAgent.match(/Chrome\/(\d+)/);
+    expect(uaMatch).toBeTruthy();
+    const uaMajor = uaMatch![1];
+    // secChUa 含相同 major 版本
+    expect(p.secChUa).toContain(`v="${uaMajor}"`);
+  });
+
+  it("windows_chrome_120：secChUa 三件套 brands（Google Chrome / Chromium / Not?A_Brand）", () => {
+    const p = STEALTH_PROFILES.windows_chrome_120;
+    expect(p.secChUa).toContain("Google Chrome");
+    expect(p.secChUa).toContain("Chromium");
+    expect(p.secChUa).toMatch(/Not.A_Brand/); // ghost brand 变体（Not?A_Brand）
+  });
+
+  it("Safari / Firefox profile secChUa 为空（浏览器原生不发 client hints）", () => {
+    expect(STEALTH_PROFILES.mac_safari_17.secChUa).toBe("");
+    expect(STEALTH_PROFILES.linux_firefox_121.secChUa).toBe("");
+  });
+
+  it("所有 profile 含完整 header 集 11 字段（parse13 §3.2 方案 A）", () => {
+    const requiredHeaders = [
+      "secChUa", "secChUaMobile", "secChUaPlatform",
+      "accept", "acceptEncoding", "acceptLanguage",
+      "secFetchSite", "secFetchMode", "secFetchUser", "secFetchDest",
+      "upgradeInsecureRequests",
+    ] as const;
+    for (const [name, profile] of Object.entries(STEALTH_PROFILES)) {
+      for (const h of requiredHeaders) {
+        expect(profile).toHaveProperty(h);
+        expect(typeof (profile as Record<string, unknown>)[h]).toBe("string");
+      }
+    }
   });
 });
 
