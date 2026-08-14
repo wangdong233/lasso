@@ -78,6 +78,8 @@ export const adminSchema = {
     "profile_list",
     "profile_switch",
     "cookie_restore",
+    // v1.8 Phase D（D7）：breaker_reset —— 短/长熔断手工唤醒（mutation 必传 reason）
+    "breaker_reset",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -501,6 +503,48 @@ export function registerAdminTool(
                 });
                 return fail(action, `cookie_restore(${op}) failed: ${String(e)}`);
               }
+            }
+
+            // ---------- v1.8 Phase D（D7）：breaker_reset —— 熔断手工唤醒 ----------
+            // mutation（必传 name + reason）。对同名 channel 的短熔断（CircuitBreaker）
+            // 与长熔断（LongCircuitBreaker）同时 reset 到 closed；不联动 CapabilityBag
+            // （长熔断 open 时 bag 已被 disable，仍需 capability_enable 显式恢复——保守设计）。
+            case "breaker_reset": {
+              const err = requireArgs(action, args, ["name", "reason"]);
+              if (err) return err;
+              const shortBreaker = deps.breakers?.get(args.name!);
+              const longBreaker = deps.longBreakers?.get(args.name!);
+              if (!shortBreaker && !longBreaker) {
+                audit(action, callerId, args.reason, {
+                  name: args.name,
+                  error: "unknown_breaker_channel",
+                });
+                return fail(
+                  action,
+                  `unknown breaker channel: ${args.name} (run breaker_status to list valid names)`,
+                );
+              }
+              const before = {
+                short: shortBreaker?.state ?? null,
+                long: longBreaker?.state ?? null,
+              };
+              shortBreaker?.reset();
+              longBreaker?.reset();
+              audit(action, callerId, args.reason, {
+                name: args.name,
+                before,
+              });
+              return ok(action, {
+                name: args.name,
+                reset_short: !!shortBreaker,
+                reset_long: !!longBreaker,
+                before,
+                after: {
+                  short: shortBreaker?.state ?? null,
+                  long: longBreaker?.state ?? null,
+                },
+                note: "breaker state reset to closed; if capability was disabled by long_circuit_open, run capability_enable to restore it (reset does not auto-enable)",
+              });
             }
 
             default: {

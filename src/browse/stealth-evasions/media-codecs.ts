@@ -36,4 +36,4 @@ export const MEDIA_CODECS_SCRIPT = `(function(){
       };
     } catch (e) {}
   } catch (e) {}
-)();`;
+})();`;

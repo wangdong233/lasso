@@ -26,6 +26,7 @@
  * 借鉴：BrowseChannel.ts 第 570-606 行 doNavigate / doSnapshot / doScreenshot 同档风格。
  */
 import type { McpClient } from "../subprocess/McpClient.js";
+import { parseEvalResult } from "./upstream-response.js";
 import type { BrowseOptions, BrowseResult } from "../types.js";
 
 // ============================================================
@@ -172,7 +173,9 @@ export async function doNetwork(
 
   // 注入表达式（与 parse6 §3.4.2 伪码逐行对齐）
   // 注：JSON.stringify entries 数组在 page 端完成；CDP 透传 text 回来
-  const expr = `(function(){
+  // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 evaluate_script 契约，上游会 await
+  // 返回的 Promise），不再传 IIFE 语句串。
+  const expr = `() => {
     return new Promise((resolve) => {
       var entries = [];
       if (typeof PerformanceObserver === "undefined") {
@@ -201,7 +204,7 @@ export async function doNetwork(
         resolve("[]");
       }
     });
-  })()`;
+  }`;
 
   let r: ContentResult;
   try {
@@ -222,8 +225,11 @@ export async function doNetwork(
   }
 
   // entries JSON 作为 preview 返回；network.ts 工具层会做 3rd-party 标记 + 过滤 + envelope
-  // 空字符串兜底为 "[]"（让上层 JSON.parse 不炸；空 entries 是合法结果）
-  const text = firstText(r) ?? "[]";
+  // W1-DEF-1b（v1.8）：经 parseEvalResult 解围栏（脚本 return JSON.stringify(entries)）；
+  // 无围栏/解析失败兜底 "[]"（空 entries 是合法结果，上层 JSON.parse 不炸）
+  const v = parseEvalResult(r);
+  const text =
+    v == null ? "[]" : typeof v === "string" ? v : JSON.stringify(v);
   return { preview: text };
 }
 

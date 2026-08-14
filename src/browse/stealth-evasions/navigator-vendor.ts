@@ -16,4 +16,4 @@ export const NAVIGATOR_VENDOR_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-)();`;
+})();`;

@@ -55,6 +55,13 @@ import type { BrowseExec } from "../serp/extract.js";
 import { serpScrapeFallback } from "../serp/extract.js";
 import type { SerpHealthMonitor } from "../serp/SerpHealthMonitor.js";
 import { fanOutSearch, allocateLimit } from "../search/MultiSourceFanout.js";
+import type { FanoutRpmOptions } from "../search/MultiSourceFanout.js";
+import type { RpmLimiter } from "../util/rpm-limiter.js";
+import type { CallerTierTracker } from "../runtime/CallerTierTracker.js";
+import {
+  callerIdFromMeta,
+  callerCapExceededResult,
+} from "../runtime/CallerTierTracker.js";
 import { withAttribution } from "../search/AttributedSearch.js";
 import { filterByFreeTier } from "../search/FreeTierRouter.js";
 import type { SearchCache } from "../search/SearchCache.js";
@@ -147,13 +154,48 @@ export function registerSearchTool(
    *     故不参与 free_only 过滤剔除（不同于 zhipu/brave/bing 经 allowedSearchProviders 过滤）。
    */
   machineMcp?: MachineMcpSearchChannel | null,
+  /**
+   * v1.8 Phase E（W1-DEF-10）：CallerTierTracker per-caller 滑动窗配额。
+   * 未注入 / null / undefined → 无事前 gate（零回归，byte-identical v1.7）。
+   * 注入          → handler 入口 tryAcquire（callerId 取 request _meta.callerId，
+   *                 CC 不传则 "anonymous"）；超额 → tri-state didnt +
+   *                 retrieval_method="caller_cap_exceeded" 透明返回（parse7 §3.3）。
+   */
+  callerTier?: CallerTierTracker | null,
+  /**
+   * v1.8 Phase E（D6）：共享 RPM 滑动窗限频器（per-process 单例，由 index.ts 持有）。
+   * 未注入 / null / undefined → fanOutSearch 不传 rpmOptions（byte-identical v1.7）。
+   * 注入          → engine="auto" 多源扇出经 buildFanoutRpmOptions 接入
+   *                 （maxBySource 从 registry ledger.rpmMax 读；未配置的源走
+   *                 limiter.defaultMax=Infinity 即不限频，行为等价）。
+   */
+  rpmLimiter?: RpmLimiter | null,
 ): void {
   server.tool(
     "search",
     SEARCH_DESCRIPTION,
     searchSchema,
     searchAnnotations,
-    async (args) => {
+    async (args, extra) => {
+      // ---------- 0. caller-tier 事前 gate（v1.8 Phase E / W1-DEF-10）----------
+      // parse7 §3.3 设计意图落地：handler 入口 tryAcquire；超额 transparent didnt。
+      // 未注入 callerTier → 跳过（零回归）。cap=0（admin caller_cap_set）= 该 caller 封禁。
+      if (callerTier) {
+        const callerId = callerIdFromMeta(extra?._meta);
+        if (!callerTier.tryAcquire(callerId)) {
+          const denied = callerCapExceededResult(
+            callerId,
+            callerTier.currentUsage(callerId),
+            callerTier.currentCap(callerId),
+          );
+          return {
+            content: [
+              { type: "text", text: JSON.stringify(denied, null, 2) },
+            ],
+          };
+        }
+      }
+
       const query: string = args.query;
       const limit: number = args.limit;
       const engine: "zhipu" | "brave" | "auto" | "fallback_chain" = args.engine;
@@ -348,24 +390,33 @@ export function registerSearchTool(
         };
         executor = async (channelName) => {
           if (channelName === "fanout") {
-            return fanOutSearch(query, limit, sources, async (cn, sub) => {
-              if (cn === "search.zhipu") {
-                return search.search(query, {
-                  limit: sub,
-                  engine: "zhipu",
-                  region,
-                  no_cache: noCache,
-                });
-              }
-              if (cn === "search.brave" && brave) {
-                return brave.search(query, {
-                  limit: sub,
-                  region: region === "cn" ? "CN" : "US",
-                  no_cache: noCache,
-                });
-              }
-              throw new Error(`unknown_fanout_channel:${cn}`);
-            });
+            // v1.8 Phase E（D6）：rpmOptions 接线——v1.7 前此调用只传 4 参，
+            // RpmLimiter/F3.1.12 设计从未生效。limiter 注入时传入（maxBySource 从
+            // registry ledger.rpmMax 读）；未注入保持 v1.7 调用形状（零回归）。
+            return fanOutSearch(
+              query,
+              limit,
+              sources,
+              async (cn, sub) => {
+                if (cn === "search.zhipu") {
+                  return search.search(query, {
+                    limit: sub,
+                    engine: "zhipu",
+                    region,
+                    no_cache: noCache,
+                  });
+                }
+                if (cn === "search.brave" && brave) {
+                  return brave.search(query, {
+                    limit: sub,
+                    region: region === "cn" ? "CN" : "US",
+                    no_cache: noCache,
+                  });
+                }
+                throw new Error(`unknown_fanout_channel:${cn}`);
+              },
+              rpmLimiter ? buildFanoutRpmOptions(rpmLimiter, registry) : undefined,
+            );
           }
           if (channelName === "browse_headless") {
             return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth);
@@ -441,6 +492,33 @@ export function registerSearchTool(
       };
     },
   );
+}
+
+// ============================================================
+// v1.8 Phase E（D6）：fanout RPM 限频配置构造
+// ============================================================
+/**
+ * 从 registry 各 search provider 的 QuotaLedger.rpmMax 构造 FanoutRpmOptions。
+ *
+ *  - ledger.rpmMax 未配置（当前 v1.8 配置面默认）→ maxBySource 空对象；
+ *    limiter.defaultMax=Infinity → allow 恒 true，行为等价不限频（零回归），
+ *    但 record() 记账生效（worked 调用入窗，为后续配置 cap 后立即可用）。
+ *  - ledger.rpmMax 配了（QuotaLedger 构造第 5 参，parse3 §3.6 既有路径）→
+ *    该源 60s 窗口超限被 MultiSourceFanout 跳过 + 记 partial_failures
+ *    reason="rpm_limited:N/M"。
+ *
+ * 单独导出便于单测直接断言映射（不经 MCP 装配）。
+ */
+export function buildFanoutRpmOptions(
+  limiter: RpmLimiter,
+  registry?: ProviderRegistry,
+): FanoutRpmOptions {
+  const maxBySource: Record<string, number> = {};
+  const zhipuRpm = registry?.get("zhipu")?.ledger?.rpmMax;
+  if (typeof zhipuRpm === "number") maxBySource["search.zhipu"] = zhipuRpm;
+  const braveRpm = registry?.get("brave")?.ledger?.rpmMax;
+  if (typeof braveRpm === "number") maxBySource["search.brave"] = braveRpm;
+  return { limiter, maxBySource };
 }
 
 // ============================================================

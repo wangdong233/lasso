@@ -316,10 +316,12 @@ describe("buildAssessExpr — JS 表达式构造", () => {
     expect(expr).toContain(JSON.stringify(evil));
   });
 
-  it("返回表达式是 IIFE（以 (function(){ 开头，以 })() 结尾）", () => {
+  it("返回表达式是函数表达式（W1-DEF-1：上游 0.3.0 evaluate_script 契约）", () => {
     const expr = buildAssessExpr("x");
-    expect(expr.trim().startsWith("(function(){")).toBe(true);
-    expect(expr.trim().endsWith("})()")).toBe(true);
+    // 函数表达式（可 eval 成函数），不再是 IIFE 语句串
+    expect(expr.trim().startsWith("() =>")).toBe(true);
+    expect(expr.trim().endsWith("}")).toBe(true);
+    expect(typeof eval(`(${expr})`)).toBe("function");
   });
 });
 

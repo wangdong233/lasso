@@ -677,6 +677,7 @@ export const ADMIN_DESCRIPTION = [
   "  - provider_set_tos     : {name, tos_ack} mark ToS state (pending|acknowledged|violated)",
   "  - caller_cap_set       : {callerId, cap} per-caller 60s cap override (0 = block)",
   "  - caller_cap_list      : list all caller budgets + current usage",
+  "  - breaker_reset       : {name, reason} reset a short/long circuit breaker to closed (mutation)",
   "",
   "USE ONLY WHEN the user explicitly says one of:",
   "  - \"disable/enable the <channel> channel\" (e.g. browse_headless / desktop)",

@@ -15,4 +15,4 @@ export const HARDWARE_CONCURRENCY_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-)();`;
+})();`;

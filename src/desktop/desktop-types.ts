@@ -210,6 +210,12 @@ export interface DesktopResult {
   expect_verified?: boolean;
   screenshot_base64?: string;
   screenshot_format?: "png";
+  /**
+   * 截图像素尺寸（W1-DEF-8 顺手透出；screenshot action 返回）。
+   * 让调用方无需解码 PNG IHDR 即可断言区域裁剪是否生效。
+   */
+  screenshot_width?: number;
+  screenshot_height?: number;
   fallback_used?: boolean;
 }
 

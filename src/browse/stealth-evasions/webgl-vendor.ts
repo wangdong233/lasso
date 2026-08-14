@@ -35,4 +35,4 @@ export const WEBGL_VENDOR_SCRIPT = `(function(){
       patchGetParameter(WebGL2RenderingContext.prototype);
     }
   } catch (e) {}
-)();`;
+})();`;

@@ -72,6 +72,18 @@ export class CircuitBreaker {
     return this.openedAt;
   }
 
+  /**
+   * v1.8 Phase D（D7）：admin breaker_reset 手工唤醒 —— 状态回 closed + 清零失败计数。
+   * 与 LongCircuitBreaker.reset()（v0.7 已有）对称；admin action 对同名 channel
+   * 的短/长熔断同时 reset。不联动 CapabilityBag（bag 若被长熔断 disable 仍需
+   * capability_enable 显式恢复，保守设计不变）。
+   */
+  reset(): void {
+    this.failureCount = 0;
+    this.openedAt = 0;
+    this.state = "closed";
+  }
+
   /** 测试用：手工快进 resetMs 窗口（不生产用）。 */
   _forceElapsedForTests(ms: number): void {
     this.openedAt = Date.now() - ms;

@@ -69,7 +69,7 @@ Lasso 本体**完全免费 + MIT 开源**。每一项能力到底要不要花钱
 | 抓登录态页面（复用本机 Chrome） | ✅ 免费 | 本地运行，无 key 无付费 |
 | 控桌面（macOS / Windows / Linux） | ✅ 免费 | 本地构建运行，仅需系统授权；**可选** Apple 开发者账号 \$99/年做签名持久授权（不签名也能用，只是每次重授权） |
 | 云浏览器 · 自托管 Steel（v1.6 新） | ✅ 免费 | 本地 Docker 跑 Steel（Apache-2.0 开源），**零 per-session 费 + cookie 不出本地**；需 `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
-| 云浏览器 · 托管型（browserbase / stagehand） | ⚠️ 付费，默认关 | 试用后按量付费；**不配不花钱** |
+| 云浏览器 · 托管型（browserbase / stagehand） | ⚠️ 付费，默认关 | browserbase 试用后按量付费；stagehand 是程序化实验通道（无 MCP 工具入口）；**不配不花钱** |
 | `browse_headless` 反检测（v1.5 新） | ✅ 免费 | 默认注入 16 路反检测（UA / webdriver / webgl 等），很多基础 bot 检测直接过 |
 
 > 一句话总结：**只要不开托管型云浏览器（browserbase/stagehand），Lasso 全程 0 成本**——搜索有免费额度够日常用，Steel 自托管也是免费的。
@@ -128,7 +128,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 自动剥掉导航条、广告、侧边栏等冗余，**省 30–70% 字数**（也更省钱）。要带引用角标（适合做调研、喂给 RAG）也能一句话切换。
 
-> **v1.5 起，`browse_headless` 默认开启反检测**（伪装 UA / 抹除 `navigator.webdriver` / 伪造 webgl、plugins、codecs 等共十几路）。**无需配置，自动生效**——很多「检测 headless」的站点现在能直接抓。只有 Cloudflare 级重度反爬才需要走云浏览器（见下方「反爬强攻」）。想验证反检测效果？跑 `lasso doctor --stealth-check` 看 creepjs 检测对比。
+> **v1.5 起，`browse_headless` 默认开启反检测**（伪装 UA / 抹除 `navigator.webdriver` / 伪造 webgl、plugins、codecs 等共十几路）。**无需配置，自动生效**——很多「检测 headless」的站点现在能直接抓（v1.8 修复了一个注入静默失效的缺陷，现在是真的生效，且注入失败会在日志里如实报错）。只有 Cloudflare 级重度反爬才需要走云浏览器（见下方「反爬强攻」）。想验证反检测效果？跑 `lasso doctor --stealth-check` 看 creepjs 检测对比。
 
 ### 抓登录态页（有 2FA 的也行）
 
@@ -148,7 +148,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 > 你：「截个整页长图」「存成 PDF」 → 落盘文件路径
 
-所有图片和 PDF 都**存到本地、返回路径**，不会把一大坨图片数据塞进对话浪费上下文。
+所有图片和 PDF 都**存到本地、返回路径**，不会把一大坨图片数据塞进对话浪费上下文。超大文本输出（fetch_url / network 等）超过 48 KiB 也会自动落盘，返回预览 + `@oN` 续页句柄——用 `read_text` 工具按页续读（v1.8 起经 MCP 可直接调用）。
 
 ### 看一个页面加载了什么
 
@@ -183,11 +183,14 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 默认**完全关闭**。只有你明确要开、并且配了云浏览器（自托管 Steel 或托管型 browserbase/stagehand），才会启用。轻度反爬 `browse_headless` 自带反检测就能过，**只有 Cloudflare 级重度反爬才需要走云浏览器**。
 
 - **Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，零 per-session 费、cookie 不出本地。一行命令开通，见 [Key 配置指南 · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
-- **browserbase / stagehand（托管型 · 付费）**：试用后按量付费，不想自己跑 Docker 时的备选。
+- **browserbase（托管型 · 付费）**：试用后按量付费，不想自己跑 Docker 时的备选。
+- **stagehand（托管型 · 付费）**：⚠️ 程序化实验通道——配 key 只装配内部 channel，**没有 MCP 工具入口**（REST 契约未经验证；`lasso doctor` #39 `stagehand_rest_contract_probe` 专测此项）。
 
 ---
 
 ## 安装
+
+**当前版本 v1.8.0**（本版修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
 
 **前提**：Node.js ≥ 20；Claude Code（或任何支持 MCP 的客户端）。
 
@@ -231,7 +234,11 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 ```bash
 lasso config init        # 创建 ~/.lasso/config.json 模板
+lasso --version          # 查看版本号（v1.8 起）
+lasso --help             # 查看全部子命令用法
 ```
+
+> v1.8 起命令行符合常规惯例：未知子命令 / 未知参数会打印用法并以非零码退出，不再静默落入 MCP server 模式挂起等输入。
 
 打开 `~/.lasso/config.json`，照着填：
 
@@ -263,11 +270,13 @@ key 名和上面表格里写的一样，照着填即可，存盘后下次启动 
 
 **要不要 key**：不用。
 
-**怎么配**：跑一次下面的命令，它会自动找你本机的 Chrome，复用你已经登录好的全部会话（2FA 你自己解过的也算）：
+**怎么配**：跑一次下面的命令，它会自动找你本机的 Chrome 并带调试端口启动。v1.8 起默认用 Lasso 自己的**独立 profile**（Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退）；第一次在这个窗口里登录你的账号（2FA 自己解），之后**这个 profile 的登录态会被一直复用**：
 
 ```bash
 lasso launch-chrome
 ```
+
+启动后 Lasso 会自动探活调试端口（`curl /json/version` 级验证）：Chrome 没起来 / 端口被占会**明确报错**，不再「返回成功但其实连不上」。想复用某个已有 profile 目录可以 `lasso launch-chrome --profile <目录>`。
 
 之后对 Claude 说「打开我已登录的 Jira」就会自动连上。
 
@@ -299,12 +308,12 @@ lasso launch-chrome
 
 - **(a) Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，**零 per-session 费 + cookie 不出本地**。无需申请 key，自己跑 Docker 即可。
 - **(b) browserbase 托管（付费）**：100 分钟试用，之后按量付费。
-- **(c) stagehand 托管（付费）**：AI 友好的页面观察，试用为主。
+- **(c) stagehand 托管（付费）**：AI 友好的页面观察，试用为主。⚠️ **程序化实验通道**——配了 key 也**没有 MCP 工具入口**（REST 契约未经运行时验证，`lasso doctor` #39 专测此项）；要实际过反爬请选 Steel 或 browserbase。
 
 **怎么配**：需要两个条件同时满足——
 
 1. 总开关：`LASSO_ALLOW_CLOUD_BROWSER` 设为 `true`
-2. 至少一个云通道——Steel（设 `STEEL_ENDPOINT`）或 browserbase/stagehand（设对应 key）
+2. 至少一个云通道——Steel（设 `STEEL_ENDPOINT`）或 browserbase（设对应 key）；stagehand key 只装配内部实验通道，不暴露工具
 
 **最短配置 · Steel 自托管（免费推荐）**：
 
@@ -343,7 +352,7 @@ Steel 用 Docker 一行启动：`docker run -p 3000:3000 -p 9223:9223 ghcr.io/st
 - 落盘搜索结果快照（做回归测试用）
 - 设 Steel 自托管云浏览器端点（`STEEL_ENDPOINT`，如 `http://localhost:3000`；需同时开 `LASSO_ALLOW_CLOUD_BROWSER=true` 才启用）
 
-完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip）已内置放行，无需额外配置。**
+完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip，`198.18.0.0/15`）与 `127.0.0.1`（本机 Chrome CDP 调试端口用）都已内置放行**，无需额外配置——这是设计行为，不是漏配。
 
 > **向后兼容**：如果你以前用 `claude mcp add -e KEY=VAL` 装过，那些环境变量**仍然生效**，且会**覆盖**配置文件。配置文件只是新增的一条更友好的途径，不废除老办法。
 

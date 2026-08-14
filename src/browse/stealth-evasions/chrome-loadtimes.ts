@@ -33,4 +33,4 @@ export const CHROME_LOADTIMES_SCRIPT = `(function(){
       };
     };
   } catch (e) {}
-)();`;
+})();`;

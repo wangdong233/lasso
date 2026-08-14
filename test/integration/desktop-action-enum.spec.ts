@@ -395,6 +395,59 @@ describe("desktop(action:'screenshot')", () => {
     expect(rust.calls.some((c) => c.method === "screenshot")).toBe(true);
   });
 
+  // W1-DEF-8（v1.8 Phase C）：区域裁剪 wire 键 + 尺寸透出
+  it("screenshot_region 传 region → wire 键是 screenshot_region（Rust parse_region 对齐）+ width/height 透出 data", async () => {
+    const { desktop, rust } = assembleDesktop({
+      ping: defaultPing(),
+      // mock 模拟 Rust 收到 screenshot_region 后返 800x600 区域图
+      screenshot: (params) => {
+        const p = params as { screenshot_region?: { x: number; y: number; w: number; h: number } };
+        if (p.screenshot_region) {
+          return {
+            base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+            format: "png",
+            width: p.screenshot_region.w,
+            height: p.screenshot_region.h,
+          };
+        }
+        return {
+          base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+          format: "png",
+          width: 2880,
+          height: 1800,
+        };
+      },
+    });
+    const r = await desktop.screenshot({ screenshot_region: { x: 0, y: 0, w: 800, h: 600 } });
+    expect(r.outcome).toBe("worked");
+    // wire 键对齐：发的键必须是 screenshot_region（此前发 region 被 Rust 忽略）
+    const shotCall = rust.calls.find((c) => c.method === "screenshot");
+    expect(shotCall?.params).toEqual({
+      screenshot_region: { x: 0, y: 0, w: 800, h: 600 },
+    });
+    expect(shotCall?.params).not.toHaveProperty("region");
+    // 尺寸透出：无需解 PNG IHDR 即可断言裁剪生效（W1-DEF-8 顺手项）
+    expect(r.data?.screenshot_width).toBe(800);
+    expect(r.data?.screenshot_height).toBe(600);
+  });
+
+  it("无 screenshot_region → wire params 是空对象（全屏路径不变）", async () => {
+    const { desktop, rust } = assembleDesktop({
+      ping: defaultPing(),
+      screenshot: () => ({
+        base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        format: "png",
+        width: 2880,
+        height: 1800,
+      }),
+    });
+    const r = await desktop.screenshot({});
+    expect(r.outcome).toBe("worked");
+    expect(rust.calls.find((c) => c.method === "screenshot")?.params).toEqual({});
+    expect(r.data?.screenshot_width).toBe(2880);
+    expect(r.data?.screenshot_height).toBe(1800);
+  });
+
   it("fail：rust helper 返 tcc_screen_recording_denied → outcome=didnt", async () => {
     const rust = new MockRustBridge({ ping: defaultPing() });
     rust.setScript("screenshot", () => {

@@ -24,6 +24,7 @@ import { _resetForTests } from "../../src/util/output-envelope.js";
 import { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
 import type { Step } from "../../src/browse/steps-types.js";
+import { mockEvalResponse, mockScreenshotResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // fixture helpers
@@ -58,24 +59,26 @@ function makeProgrammableStubClient(): {
         throw new Error(`forced_error_on:${name}`);
       }
       if (name === "evaluate_script") {
-        // 默认返回 evalValue；若有 plan，按序返回
+        // W1-DEF-1b 真实契约：返回值经 ```json 围栏包裹（helpers/upstream-mock）。
+        // 默认返回 evalValue；若有 plan，按序返回（ExpectPoll 脚本返 boolean）
         if (evalPlan) {
           const v = evalPlan[evalIdx] ?? evalPlan[evalPlan.length - 1];
           evalIdx++;
-          return textContent(v);
+          return mockEvalResponse(v === "true");
         }
-        // quickSnapshot 的 JS 表达式 → 返回 JSON
+        // quickSnapshot 的 JS 表达式 → 脚本 return JSON.stringify({url, body_text})
+        // （上游再包一层围栏 → parseEvalResult 双层解码回对象）
         const fn = args.function as string;
         if (fn.includes("body_text") || fn.includes("window.location.href")) {
-          return textContent(
+          return mockEvalResponse(
             JSON.stringify({ url: "https://example.com/dashboard", body_text: "Welcome" }),
           );
         }
-        return textContent(evalValue);
+        return mockEvalResponse(evalValue === "true");
       }
       if (name === "navigate_page") return textContent("navigated");
       if (name === "take_snapshot") return textContent("Example Domain\n\nWelcome to the page.");
-      if (name === "take_screenshot") return textContent("screenshot saved");
+      if (name === "take_screenshot") return mockScreenshotResponse();
       if (name === "click") return textContent("clicked");
       if (name === "fill_form") return textContent("filled");
       if (name === "wait_for") return textContent("text appeared");
@@ -323,7 +326,7 @@ describe("BrowseChannel.browse — bounded output 48KiB", () => {
       stubInfo.calls.push({ name, args });
       if (name === "navigate_page") return textContent("navigated");
       if (name === "take_snapshot") return textContent(bigText);
-      if (name === "evaluate_script") return textContent("true");
+      if (name === "evaluate_script") return mockEvalResponse(true);
       return textContent("ok");
     });
     const steps: Step[] = [{ action: "navigate" }, { action: "snapshot" }];

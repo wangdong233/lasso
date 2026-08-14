@@ -302,6 +302,49 @@ export class SubprocessManager {
     this.httpAgents.clear();
   }
 
+  /**
+   * W1-DEF-6（v1.8 Phase B）：同步兜底 kill 全部受管子进程。
+   *
+   * 背景：SIGTERM/SIGINT 路径已走 shutdown()（SDK transport 优雅 SIGTERM），
+   * 但「stdin 关闭等自然退出 / uncaughtException 后 exit」不触发信号处理器，
+   * 受管子进程（chrome-devtools-mcp / rust-helper）变 ppid=1 孤儿（wave1 T-BROWSE-24
+   * 受控实验 +1 实证）。process.on("exit") 钩子必须同步，故本方法零 await。
+   *
+   * 语义：
+   *  - 对所有未 closed 的受管 pid 逐个 best-effort SIGKILL（try/catch 单个失败不拖垮其余）
+   *  - 标 closed + 清 map（幂等；重复调用零副作用）
+   *  - 不关 httpAgents / 不清 zombieTimer（exit 路径进程即将终止，无意义）
+   *  - INV-7 仍守：纯 lifecycle，不读协议帧
+   */
+  killAllSync(): void {
+    const pids: Array<{ name: string; pid: number }> = [];
+    for (const [name, m] of this.procs) {
+      if (m.closed) continue;
+      m.closed = true;
+      const pid = m.client.pid;
+      if (pid !== null) pids.push({ name, pid });
+    }
+    for (const [name, m] of this.rustProcs) {
+      if (m.closed) continue;
+      m.closed = true;
+      if (m.proc.pid !== undefined) pids.push({ name, pid: m.proc.pid });
+    }
+    for (const { name, pid } of pids) {
+      try {
+        process.kill(pid, "SIGKILL");
+        logger.info({ evt: "subproc_exit_kill", name, pid, signal: "SIGKILL" });
+      } catch (e) {
+        // 已死（ESRCH）或权限不足（EPERM）——best-effort，不抛
+        logger.warn({
+          evt: "subproc_exit_kill_error",
+          name,
+          pid,
+          error: String(e),
+        });
+      }
+    }
+  }
+
   // ============================================================
   // v0.6 新增（parse7 §3.1 / §4.1 —— runtime CapabilityBag 联动用）
   // ============================================================
@@ -526,6 +569,11 @@ export class SubprocessManager {
           });
         });
         proc.on("error", (e) => {
+          // W1-DEF-9：spawn error（ENOENT 等）不只打日志——标 closed，
+          // 让 ensureRustRunning 下次重 spawn，且 RustBridge 的 error 监听
+          // 会把全部 pending reject（不再烧满超时）。
+          const m = this.rustProcs.get(name);
+          if (m) m.closed = true;
           logger.error({
             evt: "rust_proc_error",
             name,

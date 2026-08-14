@@ -17,6 +17,7 @@
  *                     + parse11 §3.3 + §7.2 Phase D v1.0 加 INV-64 launcher 不引新 npm dep（launcher/*.ts 只 node:* 内置）
  *                     + parse11 §3.3 + §3.4 + §7.2 Phase E v1.0 加 INV-65 README/ARCHITECTURE 必引用 08/09（文档完整化）
  *                     + parse12 §2.2 + §6 v1.1 Phase A 加 INV-66..69 MarkdownExtractor mode-aware 三模式 + 引擎约束 + 子组件定位 + citation reimplement）
+ *                     + v1.8 wave1 修复清单（doc/17-执行记录/wave1-summary.md §4）加 INV-76 上游契约 + 接线回归守护（W1-DEF-1..10 / D1-D2 / D6-D8 / D11 / F-CLI-01）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -101,6 +102,7 @@
  *  INV-72 机器 MCP 复用安全 —— MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；fallback_order[0]=search.machine_mcp 默认顺序首位 —— v1.4 Phase A
  *  INV-73 stealth 16 路 + header 一致性 + HeadlessChannel 接入 —— STEALTH_INJECTION_SCRIPT 含 12 新路 vendored evasion import（stealth-evasions/ 目录 12 文件均带 MIT 头）；StealthProfile 接口含 secChUa/secFetch* header 集；UA ≥ Chrome 130；HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）—— v1.5 Phase A
  *  INV-74 Steel cloud 通道零回归守护 —— SteelChannel（browse_cloud_steel）必经 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；STEEL ProviderConfig 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归）；SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）—— v1.6 Phase A
+ *  INV-75 creepjs 门禁纯 doctor 侧零回归守护（INV-73/74 后）；INV-76 v1.8 wave1 修复回归守护 —— 上游 chrome-devtools-mcp@0.3.0 契约（evaluate_script 函数表达式 / wait_for text string / take_screenshot 自落盘+stat 校验）+ CdpClient Storage 域 + launch-chrome 探活 + 孤儿清理 + rust crash 归因 + screenshot_region 跨语言配对（TS↔rust-helper）+ caller-tier 接线 + read_text 四处联动 + CLI 惯例（--version/--stealth-check/未知参数非零退）—— v1.8
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -3274,7 +3276,8 @@ const assertions = [
       if (/Firefox\/121\./.test(spCode)) return false;
       if (/Version\/17\.0\s/.test(spCode)) return false;
 
-      // ----- (e) HeadlessChannel override beforeNavigate 调 stealth.injectProfile -----
+      // ----- (e) HeadlessChannel override afterNavigate 调 stealth.injectProfile -----
+      // （W1-DEF-1c v1.8：从 beforeNavigate 迁到 afterNavigate——导航前注入随文档重置丢失）
       const hc = SRC.find((s) =>
         /channels\/HeadlessChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
@@ -3282,9 +3285,9 @@ const assertions = [
       const hcCode = stripComments(hc.text);
       // 必要条件 11：HeadlessChannel import StealthEngine
       if (!/from\s+["'][^"']*StealthEngine(\.js)?["']/.test(hcCode)) return false;
-      // 必要条件 12：HeadlessChannel override beforeNavigate（仿 BrowserbaseChannel）
-      if (!/override\s+async\s+beforeNavigate/.test(hcCode)) return false;
-      // 必要条件 13：beforeNavigate 体内调 this.stealth.injectProfile
+      // 必要条件 12：HeadlessChannel override afterNavigate（W1-DEF-1c：导航后注入才不随文档重置丢失）
+      if (!/override\s+async\s+afterNavigate/.test(hcCode)) return false;
+      // 必要条件 13：afterNavigate 体内调 this.stealth.injectProfile
       if (!/this\.stealth\.injectProfile\s*\(/.test(hcCode)) return false;
       // 必要条件 14：失败容忍（try/catch + logger.warn，best-effort 语义）
       if (!/try\s*\{[\s\S]*?injectProfile[\s\S]*?\}\s*catch/.test(hcCode)) return false;
@@ -3468,7 +3471,9 @@ const assertions = [
       }
       if (!/"totalLies"\s*:/.test(baselineBody)) return false;
       if (!/"tolerance"\s*:/.test(baselineBody)) return false;
-      if (!/"lassoVersion"\s*:\s*"1\.7\.0"/.test(baselineBody)) return false;
+      // v1.8 起 lassoVersion 跟随 INV-63 真源走 semver 通配（baseline 尚未 freeze，
+      // frozenAt=null 时该字段是结构占位；硬编码 "1.7.0" 会在每次 version bump 时假红）
+      if (!/"lassoVersion"\s*:\s*"\d+\.\d+\.\d+"/.test(baselineBody)) return false;
       //   诚实定位字段（parse15 §3.2：rationale + freeze_status 必须含）
       if (!/"rationale"\s*:/.test(baselineBody)) return false;
       if (!/"_honest_positioning"\s*:/.test(baselineBody)) return false;
@@ -3535,6 +3540,201 @@ const assertions = [
       for (const f of ["reachable", "fingerprintComputed", "totalLies", "liedModules"]) {
         if (!new RegExp("\\b" + f + "\\s*:").test(ifaceRegion)) return false;
       }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.8 新增（wave1 修复清单 §4 —— INV-76 上游契约 + 接线回归守护）
+  // ============================================================
+  // wave1 实测锚点（doc/17-执行记录/wave1-summary.md §3 探测 B）：
+  //   chrome-devtools-mcp@0.3.0 真实契约 = take_screenshot 无 filePath（返 base64）/
+  //   wait_for.text 要 string / evaluate_script 要函数表达式 / 无 pdf 工具。
+  // 守：
+  //  INV-76  v1.8 wave1 修复回归守护：
+  //    (a) evaluate_script 调用点全部函数表达式（W1-DEF-1；StealthEngine 对语句串脚本
+  //        必经 toFnExpression 包装）
+  //    (b) wait_for.text 传 string 非 数组（W1-DEF-2）
+  //    (c) doScreenshot 不传 filePath + 自落盘后 stat 校验存在且非空（W1-DEF-3 禁伪造路径）
+  //    (d) StealthEngine 记 stealth_injected 前必有 isError 检查（W1-DEF-1 后半：禁误报）
+  //    (e) CdpClient 用 Storage.getCookies/setCookies（W1-DEF-4；Chrome 150 移除 Network 域）
+  //    (f) launch-chrome /json/version 探活 + port_in_use/chrome_exited/cdp_not_ready
+  //        三错误码 + 默认隔离 --user-data-dir（W1-DEF-7）
+  //    (g) 孤儿清理兜底：SubprocessManager.killAllSync + index.ts process.on("exit")（W1-DEF-6）
+  //    (h) rust helper spawn error reject pending + rust_helper_crashed 归因（W1-DEF-9）
+  //    (i) screenshot_region 跨语言配对（03 审查清单 §1.7.7 可机械化同步对）：
+  //        TS 发送键 === rust-helper screenshot.rs 读取键（W1-DEF-8）
+  //    (j) caller-tier 接线：search/browse handler 入口 callerIdFromMeta + tryAcquire（W1-DEF-10）
+  //    (k) read_text 四处联动：注册器 + index.ts 注册调用 + V5_TOOL_TO_CHANNEL + descriptions（D1）
+  //    (l) CLI 惯例：--version/-v + --help + 未知子命令 usage 非零退 + --stealth-check 解析（F-CLI-01/D11）
+  {
+    id: "INV-76-wave1-upstream-contract-and-wiring-regression-guard",
+    desc:
+      "v1.8：wave1 修复回归守护（W1-DEF-1..10 + D1/D11 + F-CLI-01）：" +
+      "（a）evaluate_script 函数表达式契约；（b）wait_for text string；" +
+      "（c）screenshot 自落盘 + stat 校验；（d）stealth_injected 前置 isError 检查；" +
+      "（e）CdpClient Storage 域；（f）launch-chrome 探活 + 隔离 profile；" +
+      "（g）exit 兜底 killAllSync；（h）rust spawn error 归因；" +
+      "（i）screenshot_region TS↔Rust 配对；（j）caller-tier 接线；" +
+      "（k）read_text 四处联动；（l）CLI 惯例（--version/--stealth-check/未知参数）",
+    check: () => {
+      const byPath = (re) =>
+        SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+
+      // ----- (a) evaluate_script 函数表达式（W1-DEF-1）-----
+      const evalCallers = SRC.filter((s) =>
+        s.text.includes('callTool("evaluate_script"'),
+      );
+      // 5 个既有调用文件必须都在（BrowseChannel / cdp-actions / ExpectPoll /
+      // HighRiskGate / StealthEngine / creepjs-probe 中至少 5 个；防误删契约适配）
+      if (evalCallers.length < 5) return false;
+      for (const f of evalCallers) {
+        // IIFE 语句串形态（`(function(){` 字面量）直接作为 function 参数 = 上游拒收
+        if (/\(function\(\)\s*\{/.test(f.text)) return false;
+      }
+      const stealthEngine = byPath(/^browse\/StealthEngine\.ts$/);
+      if (!stealthEngine) return false;
+      // STEALTH_INJECTION_SCRIPT（13 段 IIFE 语句串 join）必经 toFnExpression 包装
+      if (!/toFnExpression\(STEALTH_INJECTION_SCRIPT\)/.test(stealthEngine.text)) {
+        return false;
+      }
+
+      // ----- (b) wait_for text string（W1-DEF-2）-----
+      const waitCallers = SRC.filter((s) =>
+        s.text.includes('callTool("wait_for"'),
+      );
+      if (waitCallers.length < 2) return false; // BrowseChannel doWait + creepjs-probe
+      for (const f of waitCallers) {
+        if (/text:\s*\[/.test(stripComments(f.text))) return false;
+      }
+
+      // ----- (c) doScreenshot 落盘校验（W1-DEF-3）-----
+      const browse = byPath(/^channels\/BrowseChannel\.ts$/);
+      if (!browse) return false;
+      const browseCode = stripComments(browse.text);
+      const shotRegion =
+        browseCode.match(/callTool\("take_screenshot"[\s\S]{0,300}?\}\)\)/)?.[0] ??
+        "";
+      if (!shotRegion) return false;
+      // 上游 0.3.0 无 filePath 参数（被 zod strip → 伪造路径）——禁传
+      if (/filePath\s*:/.test(shotRegion)) return false;
+      // 自落盘 + stat 校验（存在且非空才返路径；W1-DEF-1b 后升级为 size 与解码长度精确一致）
+      if (!/await writeFile\(/.test(browseCode)) return false;
+      if (!/await stat\(/.test(browseCode)) return false;
+      if (!/\.size !== buf\.length/.test(browseCode)) return false;
+      if (!/screenshot_write_failed/.test(browseCode)) return false;
+
+      // ----- (d) stealth_injected 前置 isError 检查（W1-DEF-1 后半）-----
+      const seCode = stripComments(stealthEngine.text);
+      const failedIdx = seCode.indexOf("stealth_inject_failed");
+      const okIdx = seCode.indexOf('"stealth_injected"');
+      if (failedIdx < 0 || okIdx < 0) return false;
+      if (failedIdx > okIdx) return false; // 失败分支必须出现在成功日志之前
+      if (!/isError/.test(seCode)) return false; // evaluate 必须检查上游 isError
+
+      // ----- (e) CdpClient Storage 域（W1-DEF-4）-----
+      const cdp = byPath(/^logged-in\/CdpClient\.ts$/);
+      if (!cdp) return false;
+      const cdpCode = stripComments(cdp.text);
+      if (!/Storage\.getCookies/.test(cdpCode)) return false;
+      if (!/Storage\.setCookies/.test(cdpCode)) return false;
+      if (/Network\.getAllCookies|Network\.setCookie\b/.test(cdpCode)) return false;
+
+      // ----- (f) launch-chrome 探活 + 隔离 profile（W1-DEF-7）-----
+      const launcher = byPath(/^launcher\/launch-chrome\.ts$/);
+      if (!launcher) return false;
+      const launcherCode = stripComments(launcher.text);
+      for (const tok of [
+        "/json/version",
+        "port_in_use",
+        "chrome_exited",
+        "cdp_not_ready",
+        "defaultChromeProfileDir",
+        "--user-data-dir=",
+      ]) {
+        if (!launcherCode.includes(tok)) return false;
+      }
+
+      // ----- (g) exit 兜底孤儿清理（W1-DEF-6）-----
+      const subproc = byPath(/^subprocess\/SubprocessManager\.ts$/);
+      if (!subproc) return false;
+      if (!/killAllSync\(\)\s*:\s*void/.test(stripComments(subproc.text))) {
+        return false;
+      }
+      const index = byPath(/^index\.ts$/);
+      if (!index) return false;
+      const indexCode = stripComments(index.text);
+      if (!/process\.on\("exit"/.test(indexCode)) return false;
+      if (!/killAllSync\(\)/.test(indexCode)) return false;
+
+      // ----- (h) rust spawn error 归因（W1-DEF-9）-----
+      const bridge = byPath(/^subprocess\/RustBridge\.ts$/);
+      if (!bridge) return false;
+      const bridgeCode = stripComments(bridge.text);
+      if (!/proc\.on\("error",\s*this\.onError\)/.test(bridgeCode)) return false;
+      if (!/rust_helper_crashed/.test(bridgeCode)) return false;
+
+      // ----- (i) screenshot_region 跨语言配对（W1-DEF-8 + 03 §1.7.7）-----
+      const vlm = byPath(/^desktop\/ScreenshotVlmProvider\.ts$/);
+      if (!vlm) return false;
+      // 精确匹配 wire 发送键（`screenshot_region:` 对象键形态；opts.screenshot_region
+      // 字段读取形态不算——mutation 实测曾靠它假绿）
+      if (!/screenshot_region\s*:/.test(stripComments(vlm.text))) return false;
+      // emit 键 === rust 读取键（跨编译单元同步对机械化）
+      let rustShot = "";
+      try {
+        rustShot = readFileSync(
+          fileURLToPath(
+            new URL("../../rust-helper/src/screenshot.rs", import.meta.url),
+          ),
+          "utf8",
+        );
+      } catch {
+        return false;
+      }
+      if (!/params\.get\("screenshot_region"\)/.test(rustShot)) return false;
+
+      // ----- (j) caller-tier 接线（W1-DEF-10）-----
+      const search = byPath(/^tools\/search\.ts$/);
+      const browseTool = byPath(/^tools\/browse\.ts$/);
+      if (!search || !browseTool) return false;
+      for (const t of [search, browseTool]) {
+        const code = stripComments(t.text);
+        if (!/callerIdFromMeta/.test(code)) return false;
+        if (!/tryAcquire/.test(code)) return false;
+      }
+
+      // ----- (k) read_text 四处联动（D1）-----
+      const readText = byPath(/^tools\/read-text\.ts$/);
+      if (!readText) return false;
+      if (!/readOnlyHint/.test(readText.text)) return false; // INV-5 衍生
+      if (!/registerReadTextTool\(server\)/.test(indexCode)) return false;
+      if (!/read_text:\s*"read_text"/.test(indexCode)) return false; // V5_TOOL_TO_CHANNEL
+      const descriptions = byPath(/^tools\/descriptions\.ts$/);
+      if (!descriptions) return false;
+      if ((descriptions.text.match(/read_text/g) || []).length < 5) return false;
+
+      // ----- (l) CLI 惯例（F-CLI-01 + D11）-----
+      if (!/--version/.test(indexCode)) return false;
+      if (!/printVersionAndExit/.test(indexCode)) return false;
+      if (!/unknown subcommand/.test(indexCode)) return false;
+      if (!/exit\(1\)/.test(indexCode)) return false;
+      const doctorCli = byPath(/^doctor\/doctor-cli\.ts$/);
+      if (!doctorCli) return false;
+      if (!/--stealth-check/.test(stripComments(doctorCli.text))) return false;
+
+      // ----- (m) W1-DEF-1b 上游响应形状适配器（evaluate_script markdown 围栏 + take_screenshot image block）-----
+      const adapter = byPath(/^browse\/upstream-response\.ts$/);
+      if (!adapter) return false;
+      if (!/parseEvalResult/.test(adapter.text)) return false;
+      if (!/imageBlock/.test(adapter.text)) return false;
+      // 消费点必须经适配器，禁再出现「firstText 结果直接 JSON.parse」旧范式
+      const bc = byPath(/^channels\/BrowseChannel\.ts$/);
+      if (!bc) return false;
+      if (!/parseEvalResult/.test(stripComments(bc.text))) return false;
+      if (!/imageBlock/.test(stripComments(bc.text))) return false;
+      if (!/no_image_block_from_upstream/.test(bc.text)) return false;
+      if (!/not_a_valid_png/.test(bc.text)) return false; // PNG magic 校验（47B 垃圾文件教训）
 
       return true;
     },

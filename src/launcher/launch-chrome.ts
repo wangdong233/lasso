@@ -30,6 +30,8 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs, constants as fsConstants } from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
@@ -65,6 +67,18 @@ export interface LaunchChromeOptions {
     args: string[],
     opts: { detached: boolean; stdio: "ignore" | "pipe" },
   ) => ChildProcess;
+  /**
+   * 测试注入：mock /json/version 探活 fetch（W1-DEF-7）。
+   * 生产路径走 global fetch + 1s 超时；返回 { ok } 即可（只看 HTTP 可达）。
+   */
+  fetchFn?: (url: string) => Promise<{ ok: boolean }>;
+  /** 探活轮询间隔（默认 300ms；测试传 1ms 提速）。W1-DEF-7。 */
+  probeIntervalMs?: number;
+  /**
+   * 覆盖默认隔离 profile 目录（测试注入）。
+   * 生产默认 ~/.cache/lasso/chrome-profile-default（W1-DEF-7）。
+   */
+  defaultProfileDir?: string;
 }
 
 /**
@@ -82,28 +96,71 @@ export interface LaunchChromeResult {
   binaryPath?: string;
   pid?: number;
   port: number;
+  /** 实际使用的 --user-data-dir（W1-DEF-7：默认注入隔离 profile；echo back 便于复用） */
+  profileDir?: string;
   candidateSources?: Array<{ source: string; path: string; desc: string }>;
   error?: string;
+}
+
+// ============================================================
+// W1-DEF-7（v1.8 Phase B）常量：CDP 探活
+// ============================================================
+/** 探活轮询次数：3s 窗口内 10 次（默认 300ms 间隔）。 */
+export const CDP_PROBE_ATTEMPTS = 10;
+/** 探活轮询默认间隔。 */
+export const CDP_PROBE_INTERVAL_MS = 300;
+/** 单次探活 fetch 超时（默认 fetchFn 用 AbortSignal.timeout）。 */
+const CDP_PROBE_FETCH_TIMEOUT_MS = 1_000;
+
+/**
+ * 默认隔离 profile 目录（W1-DEF-7）：~/.cache/lasso/chrome-profile-default。
+ *
+ * 背景（wave1 U-04-1 / T-LI-11）：不带 --user-data-dir 时 Chrome 136+ 对默认
+ * profile 禁远程调试 + 单例转发 → spawn 立即退出、9222 永不可用。
+ */
+export function defaultChromeProfileDir(): string {
+  return path.join(os.homedir(), ".cache", "lasso", "chrome-profile-default");
+}
+
+/** CDP /json/version 探活 URL（只绑 127.0.0.1，与 --remote-debugging-port 一致）。 */
+function cdpVersionUrl(port: number): string {
+  return `http://127.0.0.1:${port}/json/version`;
+}
+
+/**
+ * 默认探活 fetch：global fetch + 1s 超时。
+ * 网络错（ECONNREFUSED / 超时）→ throw → 调用方按「未就绪」处理。
+ */
+async function defaultProbeFetch(url: string): Promise<{ ok: boolean }> {
+  return fetch(url, { signal: AbortSignal.timeout(CDP_PROBE_FETCH_TIMEOUT_MS) });
 }
 
 // ============================================================
 // 主入口
 // ============================================================
 /**
- * 探测 Chrome → spawn with --remote-debugging-port=N。
+ * 探测 Chrome → spawn with --remote-debugging-port=N → CDP 探活（W1-DEF-7）。
  *
- * 设计（parse11 §3.3）：
+ * 设计（parse11 §3.3 + v1.8 Phase B W1-DEF-7）：
  *  1. chromeCandidatesForPlatform() 按平台取候选列表
  *  2. 顺序 fs.access(p, X_OK) 探测；第一个存在的胜出
- *  3. spawn(binaryPath, [--remote-debugging-port=N, --user-data-dir=..., ...extraArgs])
+ *  3. 端口占用预检：/json/version 已有响应 → ok=false + "port_in_use"
+ *  4. spawn(binaryPath, [--remote-debugging-port=N, --user-data-dir=<隔离 profile>, ...extraArgs])
  *     - detached: true → 父进程退出后 Chrome 继续（parse11 §3.3 不接管 lifecycle）
  *     - stdio: 'ignore' → 不接管 Chrome stdout/stderr（避免 IPC 噪声）
- *  4. unref() → 父进程不等待 Chrome（否则 npm script 不会退出）
+ *     - --user-data-dir 始终注入（默认 ~/.cache/lasso/chrome-profile-default；
+ *       Chrome 136+ 默认 profile 禁调试 + 单例退出，wave1 U-04-1 实锤）
+ *  5. unref() → 父进程不等待 Chrome（否则 npm script 不会退出）
+ *  6. CDP 探活：3s 窗口 10 次 /json/version；通才 ok:true
+ *     （子进程早退 → "chrome_exited"；窗口内未通 → "cdp_not_ready"）
  *
  * 失败处理（不抛错，tri-state 诚实）：
- *  - 平台 unsupported（unknown） → ok=false + error="unsupported_platform"
+ *  - 平台 unsupported（unknown） → ok=false + error="unsupported_platform:..."
  *  - 候选路径全不存在 → ok=false + error="chrome_not_found" + candidateSources 帮 debug
- *  - spawn 抛错（ENOENT 等） → ok=false + error=String(e)
+ *  - 端口被既有 Chrome 占住 → ok=false + error="port_in_use"
+ *  - 子进程 spawn 后立即退出 → ok=false + error="chrome_exited"
+ *  - 探活窗口内 /json/version 不通 → ok=false + error="cdp_not_ready"
+ *  - spawn 同步抛错（ENOENT 等） → ok=false + error=String(e)
  *
  * @param opts 见 LaunchChromeOptions
  * @returns LaunchChromeResult（tri-state；ok=false 时 error 字段说明原因）
@@ -112,6 +169,11 @@ export async function launchChrome(
   opts: LaunchChromeOptions = {},
 ): Promise<LaunchChromeResult> {
   const port = opts.port ?? 9222;
+  const fetchFn = opts.fetchFn ?? defaultProbeFetch;
+  const probeIntervalMs = opts.probeIntervalMs ?? CDP_PROBE_INTERVAL_MS;
+  // W1-DEF-7：默认注入隔离 --user-data-dir（显式 --profile 优先）。
+  const profileDir =
+    opts.profileDir ?? opts.defaultProfileDir ?? defaultChromeProfileDir();
 
   // 1. 取候选列表
   const candidates = chromeCandidatesForPlatform({
@@ -155,42 +217,99 @@ export async function launchChrome(
     };
   }
 
-  // 3. 构造 args
+  // 3. 端口占用预检（W1-DEF-7）：spawn 前探一次 /json/version——
+  //    已有响应说明端口被既有 Chrome 占住（wave1 实锤：旧 Chrome pid 占 9222，
+  //    新 Chrome 立即退出但占口者代答，曾误报 ok:true）。拒绝启动。
+  try {
+    const pre = await fetchFn(cdpVersionUrl(port));
+    if (pre.ok) {
+      return {
+        ok: false,
+        binaryPath: found.path,
+        port,
+        profileDir,
+        candidateSources,
+        error: "port_in_use",
+      };
+    }
+  } catch {
+    // 连不上 = 端口空闲，继续
+  }
+
+  // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile）
   const args: string[] = [
     `--remote-debugging-port=${port}`,
     `--no-first-run`,
     `--no-default-browser-check`,
+    `--user-data-dir=${profileDir}`,
   ];
-  if (opts.profileDir) {
-    args.push(`--user-data-dir=${opts.profileDir}`);
-  }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
   }
-
-  // 4. spawn
-  const spawnFn = opts.spawnFn ?? defaultSpawn;
+  // 隔离 profile 目录 best-effort 创建（不存在时 Chrome 会自建，失败不阻断）
   try {
-    const child = spawnFn(found.path, args, {
+    await fs.mkdir(profileDir, { recursive: true });
+  } catch {
+    /* best-effort */
+  }
+
+  // 5. spawn
+  const spawnFn = opts.spawnFn ?? defaultSpawn;
+  let child: ChildProcess;
+  try {
+    child = spawnFn(found.path, args, {
       detached: true,
       stdio: "ignore",
     });
-    child.unref();
-    return {
-      ok: true,
-      binaryPath: found.path,
-      pid: child.pid ?? undefined,
-      port,
-    };
   } catch (e) {
     return {
       ok: false,
       binaryPath: found.path,
       port,
+      profileDir,
       candidateSources,
       error: String(e),
     };
   }
+  // W1-DEF-7：子进程早退检测（默认 profile 单例 / 二进制损坏时 spawn 后立即退出）
+  let exited = false;
+  child.on("exit", () => {
+    exited = true;
+  });
+  child.unref();
+  const pid = child.pid ?? undefined;
+
+  // 6. CDP 探活轮询（W1-DEF-7）：3s 窗口内 10 次 /json/version，通才 ok:true
+  for (let attempt = 0; attempt < CDP_PROBE_ATTEMPTS; attempt++) {
+    if (exited) break;
+    try {
+      const r = await fetchFn(cdpVersionUrl(port));
+      if (r.ok) {
+        return {
+          ok: true,
+          binaryPath: found.path,
+          pid,
+          port,
+          profileDir,
+        };
+      }
+    } catch {
+      /* 未就绪，继续轮询 */
+    }
+    await new Promise((r) => setTimeout(r, probeIntervalMs));
+  }
+
+  // 探活失败：诚实返 ok:false + 原因（chrome_exited / cdp_not_ready）。
+  // 注意：cdp_not_ready 时 Chrome 可能仍在慢启动——按既有设计不接管 lifecycle，不代 kill。
+  return {
+    ok: false,
+    binaryPath: found.path,
+    pid,
+    port,
+    profileDir,
+    candidateSources,
+    error: exited ? "chrome_exited" : "cdp_not_ready",
+  };
 }
 
 // ============================================================

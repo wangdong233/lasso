@@ -4,11 +4,16 @@
  * 覆盖（mock WebSocket + fetch，不连真 Chrome）：
  *  - 连接流程：/json/version → webSocketDebuggerUrl → WebSocket open
  *  - CDP 帧编解码：id 自增 / pending Map 解析 / error 帧抛 cdp_error:*
- *  - getAllCookies：返 cookies 数组
- *  - setCookie：返 success boolean
+ *  - getAllCookies：Storage.getCookies → 返 cookies 数组（W1-DEF-4 新契约）
+ *  - setCookie：Storage.setCookies 批量包装 → 空 {} 结果返 true；error 帧抛错
  *  - close：清 pending + reject
  *  - webSocketDebuggerUrl 缺失 → 抛 cdp_no_websocket_url
  *  - 非数组 cookies result → 返空数组（健壮）
+ *
+ * W1-DEF-4（v1.8 Phase C）：Chrome 150 移除 Network.getAllCookies /
+ * Network.setCookie（本机 9223 Chrome/150.0.7871.182 实测均 -32601），
+ * mock 契约跟着现实走：Storage.getCookies 返 { cookies }（同形）；
+ * Storage.setCookies 入参 { cookies: [单条] }、成功返 {}（无 success 字段）。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -18,8 +23,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const hoisted = vi.hoisted(() => {
   /**
    * 自定义响应 dispatcher：测例可注入 customResponse 来覆盖默认响应。
-   * 默认：Network.getAllCookies → { cookies: mockCookies }；
-   *       Network.setCookie → { success: true }。
+   * 默认：Storage.getCookies → { cookies: mockCookies }；
+   *       Storage.setCookies → {}（Chrome 150 实测空结果，无 success 字段）。
    */
   let customResponse: ((msg: { id: number; method: string; params: any }) => unknown) | null = null;
 
@@ -153,10 +158,10 @@ describe("CdpClient — 连接", () => {
 // ============================================================
 // getAllCookies
 // ============================================================
-describe("CdpClient — getAllCookies", () => {
-  it("默认响应 → 返 mock cookies", async () => {
+describe("CdpClient — getAllCookies（W1-DEF-4：Storage.getCookies）", () => {
+  it("默认响应 → 返 mock cookies；wire method 是 Storage.getCookies（禁回退 Network.*）", async () => {
     hoisted.MockWebSocket.setResponse((msg) => {
-      if (msg.method === "Network.getAllCookies") {
+      if (msg.method === "Storage.getCookies") {
         return { cookies: hoisted.mockCookies };
       }
       return {};
@@ -164,9 +169,9 @@ describe("CdpClient — getAllCookies", () => {
     const cdp = new CdpClient(9222);
     const cookies = await cdp.getAllCookies();
     expect(cookies).toEqual(hoisted.mockCookies);
-    // 校验发出的帧格式
+    // 校验发出的帧格式（W1-DEF-4 核心：method 必须 Storage.getCookies）
     expect(hoisted.MockWebSocket.last!.sent[0]).toMatchObject({
-      method: "Network.getAllCookies",
+      method: "Storage.getCookies",
       params: {},
     });
     expect(typeof hoisted.MockWebSocket.last!.sent[0]!.id).toBe("number");
@@ -183,8 +188,8 @@ describe("CdpClient — getAllCookies", () => {
 
   it("id 自增：两次调用 id 不同", async () => {
     hoisted.MockWebSocket.setResponse((msg) => {
-      if (msg.method === "Network.getAllCookies") return { cookies: [] };
-      if (msg.method === "Network.setCookie") return { success: true };
+      if (msg.method === "Storage.getCookies") return { cookies: [] };
+      if (msg.method === "Storage.setCookies") return {};
       return {};
     });
     const cdp = new CdpClient(9222);
@@ -206,12 +211,12 @@ describe("CdpClient — getAllCookies", () => {
 });
 
 // ============================================================
-// setCookie
+// setCookie（W1-DEF-4：Storage.setCookies 批量包装）
 // ============================================================
 describe("CdpClient — setCookie", () => {
-  it("success=true → 返 true", async () => {
+  it("空 {} 结果 → 返 true（Storage.setCookies 无 success 字段）", async () => {
     hoisted.MockWebSocket.setResponse((msg) => {
-      if (msg.method === "Network.setCookie") return { success: true };
+      if (msg.method === "Storage.setCookies") return {};
       return {};
     });
     const cdp = new CdpClient(9222);
@@ -227,23 +232,37 @@ describe("CdpClient — setCookie", () => {
     await cdp.close();
   });
 
-  it("success 缺失 → 返 false（健壮）", async () => {
-    hoisted.MockWebSocket.setResponse(() => ({}));
-    const cdp = new CdpClient(9222);
-    const ok = await cdp.setCookie({
-      name: "session",
-      value: "abc",
-      domain: "example.com",
-      path: "/",
-      httpOnly: true,
-      secure: true,
+  it("CDP error 帧（如 cookie 参数非法）→ 抛 cdp_error:*（调用方 catch 计 failed）", async () => {
+    hoisted.MockWebSocket.setResponse((msg) => {
+      if (msg.method === "Storage.setCookies") {
+        setTimeout(() => {
+          hoisted.MockWebSocket.last!._emit("message", {
+            data: JSON.stringify({
+              id: msg.id,
+              error: { code: -32000, message: "Invalid cookie fields" },
+            }),
+          });
+        }, 0);
+        return undefined;
+      }
+      return {};
     });
-    expect(ok).toBe(false);
+    const cdp = new CdpClient(9222);
+    await expect(
+      cdp.setCookie({
+        name: "session",
+        value: "abc",
+        domain: "example.com",
+        path: "/",
+        httpOnly: true,
+        secure: true,
+      }),
+    ).rejects.toThrow(/cdp_error:/);
     await cdp.close();
   });
 
-  it("params 透传到 CDP 帧", async () => {
-    hoisted.MockWebSocket.setResponse(() => ({ success: true }));
+  it("params 包装成批量 1 条数组 + wire method 是 Storage.setCookies（禁回退 Network.*）", async () => {
+    hoisted.MockWebSocket.setResponse(() => ({}));
     const cdp = new CdpClient(9222);
     await cdp.setCookie({
       name: "k",
@@ -255,8 +274,10 @@ describe("CdpClient — setCookie", () => {
       sameSite: "Lax",
     });
     const sent = hoisted.MockWebSocket.last!.sent[0]!;
-    expect(sent.method).toBe("Network.setCookie");
-    expect(sent.params).toMatchObject({
+    expect(sent.method).toBe("Storage.setCookies");
+    expect(Array.isArray(sent.params.cookies)).toBe(true);
+    expect(sent.params.cookies).toHaveLength(1);
+    expect(sent.params.cookies[0]).toMatchObject({
       name: "k",
       value: "v",
       domain: "d.com",
@@ -275,7 +296,7 @@ describe("CdpClient — error 帧 + close", () => {
   it("CDP error 帧 → 抛 cdp_error:*", async () => {
     hoisted.MockWebSocket.setResponse((msg) => {
       // 模拟 server-side error：用特殊 method 触发
-      if (msg.method === "Network.getAllCookies") {
+      if (msg.method === "Storage.getCookies") {
         // 不能直接返 error，因为 mockResponse 包装在 result 里；
         // 改用直接 emit 一个 error 帧
         setTimeout(() => {

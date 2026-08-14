@@ -18,6 +18,7 @@ import { setStateStoreContext } from "../../src/util/state-store.js";
 import { _resetRunIdForTests, newRunId } from "../../src/util/run-id.js";
 import { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
+import { mockEvalResponse, mockScreenshotResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // fixture helpers
@@ -43,12 +44,14 @@ function makeStubClient(): {
         );
       }
       if (name === "take_screenshot") {
-        return textContent("screenshot saved");
+        // W1-DEF-1b 真实契约：base64 在 image block，见 helpers/upstream-mock
+        return mockScreenshotResponse();
       }
       if (name === "click") return textContent("clicked");
       if (name === "fill_form") return textContent("filled");
       if (name === "wait_for") return textContent("text appeared");
-      if (name === "evaluate_script") return textContent("42");
+      // W1-DEF-1b 真实契约：```json 围栏包裹
+      if (name === "evaluate_script") return mockEvalResponse(42);
       return textContent(`stubbed ${name}`);
     }),
     listTools: vi.fn(async () => [

@@ -23,12 +23,13 @@ import { WebSocket } from "undici";
 import { logger } from "../util/logger.js";
 
 // ============================================================
-// CDP cookie 类型（CDP Network.getAllCookies 返回形状）
+// CDP cookie 类型（CDP Storage.getCookies 返回形状；W1-DEF-4 后与 Network.Cookie 同形）
 // ============================================================
 /**
  * CDP Network.Cookie 形状（CDP spec 官方；含 httpOnly / secure / session 等）。
  *
  * 用于 CookieStore.export(cookies) 入参 + getAllCookies() 返参。
+ * Chrome 150 实测 Storage.getCookies 返回的 cookie 字段与本接口一致。
  */
 export interface CdpCookie {
   name: string;
@@ -126,21 +127,32 @@ export class CdpClient {
 
   // ============================================================
   // 公开方法（parse9 §3.1）
+  //
+  // W1-DEF-4 修复（v1.8 Phase C）：Chrome 150 已移除 Network 域的
+  // Network.getAllCookies / Network.setCookie（实测 127.0.0.1:9223
+  // Chrome/150.0.7871.182 均 -32601 "wasn't found"），改用 Storage 域：
+  //   - Storage.getCookies  → 返 { cookies: Network.Cookie[] }（与旧
+  //     Network.getAllCookies 返参同形；cookie 字段名/类型 field-by-field 一致）
+  //   - Storage.setCookies  → 批量入参 { cookies: CookieParam[] }，
+  //     返参为空对象 {}（无 success 字段；失败以 protocol error 抛出，
+  //     本类 send() 已把 error 帧转 reject）
   // ============================================================
-  /** CDP Network.getAllCookies —— 返所有 cookie（含 httpOnly）。 */
+  /** CDP Storage.getCookies —— 返所有 cookie（含 httpOnly）。 */
   async getAllCookies(): Promise<CdpCookie[]> {
     await this.connect();
-    const r = (await this.send("Network.getAllCookies", {})) as { cookies?: CdpCookie[] };
+    const r = (await this.send("Storage.getCookies", {})) as { cookies?: CdpCookie[] };
     return r.cookies ?? [];
   }
 
-  /** CDP Network.setCookie —— 单条导入（参数对齐 CDP spec）。 */
+  /** CDP Storage.setCookies —— 单条导入（包装成批量 1 条；参数对齐 CDP spec）。 */
   async setCookie(params: CdpSetCookieParams): Promise<boolean> {
     await this.connect();
-    const r = (await this.send("Network.setCookie", params as unknown as Record<string, unknown>)) as {
-      success?: boolean;
-    };
-    return r.success === true;
+    // Storage.setCookies 成功返 {}（无 success 字段）；任何失败（参数非法等）
+    // 以 CDP error 帧抛出（send() reject cdp_error:*）→ 调用方 catch 计 failed。
+    await this.send("Storage.setCookies", {
+      cookies: [params as unknown as Record<string, unknown>],
+    });
+    return true;
   }
 
   async close(): Promise<void> {

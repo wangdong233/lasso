@@ -208,7 +208,9 @@ export class BrowserbaseChannel extends BrowseChannel {
    * 失败容忍：stealth.injectProfile 失败时仅记 log（不阻断 browse）；caller 经
    * StealthEngine.detectCloudflareChallenge 探知页面状态后再决定是否 escalateManualSwitch。
    */
-  protected override async beforeNavigate(client: McpClient): Promise<void> {
+  // W1-DEF-1c（v1.8）：从 beforeNavigate 迁到 afterNavigate（同 HeadlessChannel——
+  // 导航前注入随文档重置丢失，navigate 后注入才覆盖目标页）。
+  protected override async afterNavigate(client: McpClient): Promise<void> {
     try {
       await this.stealth.injectProfile(client, this.profileName);
     } catch (e) {

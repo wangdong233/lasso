@@ -218,7 +218,8 @@ export function buildAssessExpr(target: string): string {
     kind: p.kind,
     selector: p.selector,
   }));
-  return `(function(){
+  // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 evaluate_script 契约），不再传 IIFE 语句串。
+  return `() => {
     try {
       var target = ${JSON.stringify(target)};
       var pairs = ${JSON.stringify(pairs)};
@@ -251,7 +252,7 @@ export function buildAssessExpr(target: string): string {
     } catch (e) {
       return JSON.stringify({ ok: false, reason: "eval_error:" + String(e) });
     }
-  })()`;
+  }`;
 }
 
 // ============================================================

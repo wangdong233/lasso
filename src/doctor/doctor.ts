@@ -139,7 +139,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.7.0";
+export const LASSO_VERSION = "1.8.0";
 
 // ============================================================
 // 类型
@@ -426,13 +426,15 @@ export interface DoctorOptions {
    */
   stealthCheckProfile?: StealthProfileName;
   /**
-   * v1.7 Phase A：注入已连 9222 的 McpClient provider（CLI 模式不注入 → warn skip）。
+   * v1.7 Phase A：注入已连 9222 的 McpClient provider。
    *
-   * doctor tool 经 index.ts v1.7 装配段注入：连接 chrome-devtools-mcp 子进程返回 client。
-   * 返 null（9222 未开 / HeadlessChannel 未就绪）→ #38 warn（不 fail）。
+   * v1.8（D11）起两个构造点：index.ts 装配段（MCP doctor tool，懒启动 headless
+   * 子进程）+ doctor-cli.ts（CLI `lasso doctor --stealth-check`）。返 null
+   * （9222 未开 / HeadlessChannel 未就绪）→ #38 warn（不 fail）。
    *
    * 守 INV-75：provider 返回的 client 仅 doctor 探测路径使用；BrowseChannel/StepEngine
-   *           运行时路径不经此 provider（grep 守：stealthCheckClientProvider 仅出现在 doctor/）。
+   *           运行时路径不经此 provider（grep 守：probeCreepjs 仅出现在 doctor/，
+   *           provider 构造点=index.ts/doctor-cli.ts 两处白名单）。
    */
   stealthCheckClientProvider?: () => Promise<McpClient | null>;
   /**
@@ -731,7 +733,7 @@ export async function runDoctor(
       name: "stealth_creepjs_regression",
       status: "warn",
       detail:
-        "stealthCheck=true 但 stealthCheckClientProvider 未注入（doctor CLI 不实跑；doctor tool 经 index.ts v1.7 装配注入）",
+        "stealthCheck=true 但 stealthCheckClientProvider 未注入（防御分支：v1.8 起 CLI --stealth-check 与 doctor tool 装配段均注入，不应达）",
     });
   } else {
     checks.push(

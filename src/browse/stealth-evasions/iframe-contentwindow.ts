@@ -50,4 +50,4 @@ export const IFRAME_CONTENTWINDOW_SCRIPT = `(function(){
       };
     } catch (e) {}
   } catch (e) {}
-)();`;
+})();`;

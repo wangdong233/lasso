@@ -103,6 +103,10 @@ export class RustBridge {
         proc.stdout.on("data", this.onData);
       }
       proc.on("exit", this.onExit);
+      // W1-DEF-9（v1.8 Phase B）：spawn error（ENOENT 等）也接线——
+      // reject 全部 pending（归因 rust_helper_crashed:subproc_spawn_failed），
+      // 不再只靠 SubprocessManager 打日志烧满超时。
+      proc.on("error", this.onError);
       this.wired = true;
     }
   }
@@ -118,6 +122,7 @@ export class RustBridge {
    * 错误种类（reject 而非 resolve）：
    *  - rust_call_timeout:<method>   超时
    *  - rust_helper_crashed          子进程退出（exit 事件触发）
+   *  - rust_helper_crashed:subproc_spawn_failed  spawn 失败 ENOENT（W1-DEF-9）
    *  - rust_helper_write_failed     stdin write 抛错（管道断裂）
    */
   async call(
@@ -221,4 +226,39 @@ export class RustBridge {
   pendingCount(): number {
     return this.pending.size;
   }
+
+  /**
+   * 子进程 error 回调（W1-DEF-9，v1.8 Phase B）：spawn 失败（ENOENT 等）
+   * reject 全部 pending——补齐 RustBridge 头注释承诺的 crash 分类
+   * （wave1 T-DESKTOP-18 实锤：此前只打日志，pending 烧满 3s 超时且
+   * 归因 rust_call_timeout）。
+   *
+   * 归因（与 shutdown 侧承诺一致）：
+   *  - ENOENT → "rust_helper_crashed:subproc_spawn_failed"
+   *  - 其他 error → "rust_helper_crashed:<message>"
+   *
+   * 同 onExit：清 pending、proc=null、buffer 清空、wired=false（下次重 spawn 重接线）。
+   */
+  private onError = (e: Error & { code?: string }): void => {
+    const code = e.code ?? e.message;
+    const attribution =
+      code === "ENOENT"
+        ? "rust_helper_crashed:subproc_spawn_failed"
+        : `rust_helper_crashed:${code}`;
+    logger.warn({
+      evt: "rust_helper_error",
+      spec: this.specName,
+      error: String(e),
+      code: code ?? null,
+      pending: this.pending.size,
+    });
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error(attribution));
+    }
+    this.pending.clear();
+    this.proc = null;
+    this.buffer = "";
+    this.wired = false;
+  };
 }

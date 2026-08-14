@@ -44,6 +44,7 @@
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
+import { parseEvalResult } from "../browse/upstream-response.js";
 
 // ============================================================
 // 类型
@@ -101,7 +102,7 @@ export interface CreepjsLiesReport {
  *     canvas2dLied / canvasWebglLied / creepjsVersion（permissionsLied + webglGetParameterLied
  *     在 caller 端从 liedModules 推导，避免 evaluate 脚本过长）。
  */
-export const CREEPJS_LIES_EXTRACT_SCRIPT = `(function(){
+export const CREEPJS_LIES_EXTRACT_SCRIPT = `() => {
   try {
     var fp = window.Fingerprint;
     if (!fp) return JSON.stringify({fingerprintComputed:false});
@@ -121,7 +122,7 @@ export const CREEPJS_LIES_EXTRACT_SCRIPT = `(function(){
   } catch(e) {
     return JSON.stringify({fingerprintComputed:false, error:String(e).slice(0,200)});
   }
-})();`;
+}`;
 
 // ============================================================
 // 默认配置（顶级 const）
@@ -199,7 +200,8 @@ export async function probeCreepjs(
   // 在 fingerprint 完成后才渲染 "FP ID:"，wait_for 命中即 window.Fingerprint 已 populate。
   try {
     await client.callTool("wait_for", {
-      text: [DEFAULT_WAIT_TEXT],
+      // W1-DEF-2（v1.8）：上游 0.3.0 wait_for.text 要 string，不再传数组
+      text: DEFAULT_WAIT_TEXT,
       timeout: waitTimeout,
     });
   } catch (e) {
@@ -224,7 +226,13 @@ export async function probeCreepjs(
     const r = (await client.callTool("evaluate_script", {
       function: CREEPJS_LIES_EXTRACT_SCRIPT,
     })) as ContentResult;
-    rawText = firstText(r) ?? "";
+    // W1-DEF-1b（v1.8）：经 parseEvalResult 解围栏（脚本 return JSON.stringify(payload) 双层编码）
+    rawText =
+      (() => {
+        const v = parseEvalResult(r);
+        if (v == null) return firstText(r) ?? "";
+        return typeof v === "string" ? v : JSON.stringify(v);
+      })() ?? "";
   } catch (e) {
     logger.warn({
       evt: "creepjs_probe_evaluate_failed",

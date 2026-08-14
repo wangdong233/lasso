@@ -35,6 +35,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadConfig } from "./config/config.js";
 import { getConfigFilePath, writeConfigTemplate } from "./config/config.js";
 import { logger } from "./util/logger.js";
+// v1.8 Phase E（D6）：fanout RPM 限频 per-process 单例
+import { RpmLimiter } from "./util/rpm-limiter.js";
 import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
 import { SubprocessManager } from "./subprocess/SubprocessManager.js";
@@ -53,7 +55,11 @@ import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
 import { AxProvider } from "./desktop/AxProvider.js";
 import { AxBackendFactory } from "./desktop/AxBackendFactory.js";
-import { ScreenshotVlmProvider } from "./desktop/ScreenshotVlmProvider.js";
+import {
+  ScreenshotVlmProvider,
+  createMcpVlmCaller,
+  LASSO_VLM_ENDPOINT_ENV,
+} from "./desktop/ScreenshotVlmProvider.js";
 import { AppleScriptProvider } from "./desktop/AppleScriptProvider.js";
 import { CGEventProvider } from "./desktop/CGEventProvider.js";
 // v0.4 M0.4c：cloud 浏览器通道（条件装配，默认 OFF）
@@ -66,6 +72,9 @@ import { FallbackDecider } from "./fallback/FallbackDecider.js";
 import { CircuitBreaker } from "./fallback/CircuitBreaker.js";
 import { loadSsrfConfig } from "./ssrf/ssrf-guard.js";
 import { runDoctor } from "./doctor/doctor.js";
+// v1.8 Phase D（D11）：doctor CLI --stealth-check flag 解析 + provider 装配
+// （守 grep 边界：stealthCheckClientProvider 构造留在 src/doctor/ 下）
+import { buildDoctorCliOptions } from "./doctor/doctor-cli.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
 import { registerBrowserbaseTool } from "./tools/browserbase.js";
@@ -88,6 +97,10 @@ import { registerNetworkTool } from "./tools/network.js";
 // INV-56 守：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）
 // INV-58 守：本 tool 是独立 tool，不在 search 主路径里自动调
 import { registerWaybackTool } from "./tools/wayback.js";
+// v1.8 Phase D（D1）：read_text 续页工具注册（read-text.ts v0.3 已写好但从未装配——
+// browse/StepEngine 超 48KiB spill 后 continue_hint 指向的工具经 MCP 不可达，
+// wave1 T-TOOLS-13/T-TOOLS-08 采证 6 处 description 指向 + continue_hint 落空）
+import { registerReadTextTool } from "./tools/read-text.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -131,7 +144,9 @@ import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { promises as fsPromises } from "node:fs";
+import { fileURLToPath } from "node:url";
 const fsStat = fsPromises.stat;
+const fsReadFile = fsPromises.readFile;
 
 // ============================================================
 // v0.3.5 常量（parse4 §3.5 装配）
@@ -173,9 +188,13 @@ const DEFAULT_RUST_HELPER_PATH =
  *   doctor #39 stagehand_rest_contract_probe（HEAD 探测裁决 R-ECO-6）+
  *   creepjs-probe.ts + creepjs-baseline.json fixture + StagehandChannel.ts 头注释 R-ECO-6 标记 +
  *   INV-75（v1.6 INV-1..74 零回归）→ 1.7.0
+ * v1.8（wave1 修复清单 §4）：W1-DEF-1..10（上游 0.3.0 契约适配 / screenshot 真落盘 /
+ *   Storage.getCookies / navigate 校验 / 孤儿清理 / launch-chrome 探活 / screenshot_region
+ *   配对 / rust crash 归因 / caller-tier 接线）+ D1-D2/D6-D8/D11 + F-CLI-01 + D3 vlmCaller +
+ *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.7.0";
+const LASSO_SERVER_VERSION = "1.8.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -220,18 +239,32 @@ function readCloudBrowserEnv(): {
 // ============================================================
 // doctor CLI 模式
 // ============================================================
-async function runDoctorCli(): Promise<void> {
+async function runDoctorCli(argv: string[]): Promise<void> {
   // v1.3 Phase B：doctor CLI 也走 loadConfig（file→env 合并），与 MCP doctor tool 一致。
   // 守用户硬约束②：配置文件改的 key 在 CLI doctor 也要反映——否则用户按 README 跑 lasso config init
   // 填了 key，lasso doctor 仍报"ZHIPU_API_KEY 未设置"，体验断裂。
   // env 仍优先（loadConfig 合并顺序 file→env；既有 -e KEY=VAL / shell env 用户零回归）。
   const config = loadConfig({ runId: "doctor-cli" });
+  // v1.8 Phase D（D11）：`lasso doctor --stealth-check` —— README 承诺落地。
+  // flag 解析 + provider 装配独立在 doctor-cli.ts（可单测；probeCreepjs 仍只在
+  // doctor/ 内调用——INV-75 的实际 grep 边界，provider 构造点=index.ts+doctor-cli.ts
+  // 两处白名单）。
+  const stealth = buildDoctorCliOptions(argv);
   const report = await runDoctor({
     zhipuKey: config.zhipuApiKey,
     zhipuEndpoint: config.zhipuEndpoint,
     cdpPort: config.cdpPort,
+    ...stealth.doctorOpts,
   });
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  // stealth-check 专用 headless 子进程清理（W1-DEF-6 教训：不留孤儿）
+  if (stealth.shutdown) {
+    try {
+      await stealth.shutdown();
+    } catch {
+      // best-effort：进程即将 exit，失败仅吞
+    }
+  }
   process.exit(report.ready ? 0 : 1);
 }
 
@@ -458,7 +491,15 @@ async function runMcpServer(): Promise<void> {
   const axProvider = new AxProvider(axBackend);
   const appleScriptProvider = new AppleScriptProvider(rustBridge);
   const cgEventProvider = new CGEventProvider(rustBridge);
-  const vlmProvider = new ScreenshotVlmProvider(rustBridge, {});
+  // v1.8 Phase E（D3）：vlmCaller 接线——LASSO_VLM_ENDPOINT 已配时注入生产 MCP 调用器
+  // （connectHttp → callTool("vlm") → close）；未配则不注入，保持 act() 返
+  // didnt + error="vlm_unavailable" 的诚实语义（v1.7 前缺口：endpoint 配了但 caller
+  // 恒 null → screenshotVlm 档恒 unavailable）。
+  const vlmProvider = new ScreenshotVlmProvider(rustBridge, {
+    ...(process.env[LASSO_VLM_ENDPOINT_ENV]
+      ? { vlmCaller: createMcpVlmCaller() }
+      : {}),
+  });
 
   // ----- 装配 FallbackDecider（每 channel 一个 60s 短熔断器）-----
   // v0.2 加 search.brave + fanout 虚拟 channel 的 breaker（parse2 §3.3.4）
@@ -602,6 +643,16 @@ async function runMcpServer(): Promise<void> {
     serpRecordings,
   );
 
+  // ----- v1.8 Phase E：caller-tier + fanout RPM 接线（W1-DEF-10 + D6）-----
+  // CallerTierTracker 原在 v0.6 装配段创建（仅喂 admin/doctor）；wave1 T-RT-06 实锤
+  // tryAcquire 全仓零调用点 → cap_set/cap_list 空转。现提前到 tool 注册前创建，
+  // 注入 search/browse handler 入口（超额透明 didnt + caller_cap_exceeded）。
+  // INV-38：defaultCap 从 readCallerCapFromEnv（构造期一次性读 env；运行时不读）。
+  const callerTier = new CallerTierTracker(readCallerCapFromEnv());
+  // D6：per-process 共享 RpmLimiter 单例（defaultMax=Infinity → 未配 rpm_max 的源
+  // 不限频，行为等价 v1.7；ledger.rpmMax 配了即经 MultiSourceFanout 主动降级）。
+  const searchRpmLimiter = new RpmLimiter();
+
   // ----- MCP server + tool 注册 -----
   const server = new McpServer({
     name: "lasso-mcp",
@@ -626,8 +677,12 @@ async function runMcpServer(): Promise<void> {
     // detector 未命中 → undefined → fallback_chain channelOrder 不含 search.machine_mcp
     // （行为 byte-identical v1.3；INV-72 零回归守）
     machineMcpSearch,
+    // v1.8 Phase E（W1-DEF-10）：handler 入口 tryAcquire（超额 → caller_cap_exceeded）
+    callerTier,
+    // v1.8 Phase E（D6）：fanout rpmOptions 接线（F3.1.12 设计落地）
+    searchRpmLimiter,
   );
-  registerBrowseTools(server, headless, logged_in, decider, ssrfConfig);
+  registerBrowseTools(server, headless, logged_in, decider, ssrfConfig, callerTier);
   registerDesktopTool(server, desktop, decider);
   // v0.4 M0.4c：cloud 浏览器工具条件注册（parse5 §3.2 + §6.3 #16）
   // 默认 OFF：未双重解锁时 server.listTools() 不含 browserbase（INV-25 守）
@@ -651,6 +706,8 @@ async function runMcpServer(): Promise<void> {
   // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
   // network 走新加 entry（doNetwork from cdp-actions = evaluate_script 注入 PerformanceObserver）
   registerNetworkTool(server, headless, ssrfConfig);
+  // v1.8 Phase D（D1）：read_text 注册（@oN 续页；readOnly + 非 openWorld，INV-5）
+  registerReadTextTool(server);
   // v0.9 Phase B（parse10 §3.3 + §6 M3 手测）：wayback_lookup 独立 tool
   // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
   // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
@@ -672,6 +729,17 @@ async function runMcpServer(): Promise<void> {
     // 扫 fixtures/serp-baseline/（与 replay-baseline.ts 默认对齐）。
     // 守 INV-62：此处只传目录路径；doctor 仅 readdir + count，不读 .html 内容。
     recordingBaselineDir: path.join(process.cwd(), "fixtures", "serp-baseline"),
+    // v1.8 Phase D（D11）：MCP doctor tool 也注入 stealthCheckClientProvider（复用装配段
+    // HeadlessChannel 已注册的 "headless" spec，懒启动，不额外开销）。stealthCheck 仍
+    // 默认 false → #38 warn-skip 行为零回归（doctor tool schema 无参，MCP 侧不实跑探测；
+    // 实跑入口是 CLI `lasso doctor --stealth-check`）。
+    stealthCheckClientProvider: async () => {
+      try {
+        return await subproc.ensureRunning("headless");
+      } catch {
+        return null;
+      }
+    },
   };
   registerDoctorTool(server, doctorOpts);
 
@@ -746,6 +814,9 @@ async function runMcpServer(): Promise<void> {
     // v0.9 Phase B（parse10 §3.3）：wayback_lookup 归到 "wayback" channel（独立 caller-tier）。
     // bag.disable("wayback") 仅停 wayback_lookup tool；不影响 search 主路径（INV-58 守）。
     wayback_lookup: "wayback",
+    // v1.8 Phase D（D1）：read_text 归到独立虚拟 channel（与 fetch/screenshot/pdf/network
+    // 同范式——无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
+    read_text: "read_text",
     doctor: "doctor",
   };
   const sdkRegisteredTools = (server as unknown as {
@@ -800,8 +871,8 @@ async function runMcpServer(): Promise<void> {
   const bag = new CapabilityBag(initialCapabilities);
 
   // ---- 3. CallerTierTracker（parse7 §3.3）----
-  // INV-38：defaultCap 从 readCallerCapFromEnv（构造期一次性读 env；运行时不读）。
-  const callerTier = new CallerTierTracker(readCallerCapFromEnv());
+  // v1.8 Phase E（W1-DEF-10）：实例已提前到 tool 注册前创建（search/browse handler
+  // 入口接线需要；此处沿用同一句柄喂 admin/doctor，不再重复 new）。
 
   // ---- 4. bag.onChange handler（parse7 §3.1 末尾示例 + R-RT-2 缓解）----
   // INV-37 task v0.6：channel disable 必经 ToolManager.disableChannel + SubprocessManager.shutdownOne。
@@ -1055,6 +1126,15 @@ async function runMcpServer(): Promise<void> {
     logger.info({ evt: "lasso_shutdown", sig, run_id: runId });
     // v0.7：停 ResourceMonitor timer（避免 timer 残留；INV-7 衍生 lifecycle 纯净性）
     resourceMonitor.stop();
+    // v1.8 Phase B（D5）：停机路径 best-effort 释放 Steel session
+    // （POST /v1/sessions/release；失败仅 warn 不阻断退出——releaseSession 内部已吞错）。
+    if (steelChannel) {
+      try {
+        await steelChannel.releaseSession();
+      } catch (e) {
+        logger.warn({ evt: "steel_release_on_shutdown_failed", error: String(e) });
+      }
+    }
     try {
       await subproc.shutdown();
     } catch (e) {
@@ -1064,15 +1144,77 @@ async function runMcpServer(): Promise<void> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // v1.8 Phase B（W1-DEF-6）：exit 兜底——SIGTERM/SIGINT 优雅路径走 subproc.shutdown()，
+  // 但「stdin 关闭等自然退出 / uncaughtException 后 exit」不触发信号处理器，
+  // 受管子进程（chrome-devtools-mcp / rust-helper）会变 ppid=1 孤儿（wave1 T-BROWSE-24）。
+  // process.on("exit") 钩子必须同步 → killAllSync 零 await best-effort SIGKILL 残留 pid。
+  process.on("exit", () => {
+    subproc.killAllSync();
+  });
+}
+
+// ============================================================
+// v1.8 Phase D（F-CLI-01）：CLI 惯例 —— --version / --help / 未知子命令 usage
+// ============================================================
+const CLI_USAGE = [
+  "lasso-mcp — Claude Code 全交互对外抓手 MCP（search / browse / logged_in / desktop）",
+  "",
+  "Usage:",
+  "  lasso-mcp                                    Start MCP stdio server (default mode; used by",
+  "                                               `claude mcp add lasso -- npx -y lasso-mcp`)",
+  "  lasso-mcp doctor [--stealth-check]           Run environment/health checks, print JSON report",
+  "  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json",
+  "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
+  "                                               Launch a debug-enabled Chrome for logged_in channel",
+  "  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression",
+  "  lasso-mcp --version | -v                     Print version",
+  "  lasso-mcp --help | -h                        Print this usage",
+  "",
+  "Flags:",
+  "  --stealth-check   (doctor) opt in to the creepjs stealth regression gate",
+  "                    (opens a headless browser and touches the network)",
+].join("\n");
+
+/**
+ * F-CLI-01：`--version` / `-v` —— 输出版本号 exit 0。
+ *
+ * 版本读 package.json（单一真源；dist/index.js → ../package.json 对 repo 与
+ * node_modules 安装两种布局都成立）。读失败（打包缺文件等）fallback 到
+ * 编译期 LASSO_SERVER_VERSION，仍 exit 0。
+ */
+async function printVersionAndExit(): Promise<void> {
+  let version = LASSO_SERVER_VERSION;
+  try {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    version = (
+      JSON.parse(await fsReadFile(pkgPath, "utf8")) as { version: string }
+    ).version;
+  } catch {
+    // fallback 到编译期常量（INV-63 三处对齐保证二者一致）
+  }
+  process.stdout.write(`${version}\n`);
+  process.exit(0);
 }
 
 // ============================================================
 // main
 // ============================================================
 async function main(): Promise<void> {
-  // CLI: `lasso doctor`
+  // F-CLI-01（v1.8 Phase D）：--version / -v（输出版本号 exit 0）
+  // 注：子命令 dispatch 保持 process.argv[2] 直读字面量（INV-71 (c) grep 守护点）。
+  if (process.argv[2] === "--version" || process.argv[2] === "-v") {
+    await printVersionAndExit();
+    return;
+  }
+  // F-CLI-01：--help / -h / help（usage → stdout，exit 0）
+  if (process.argv[2] === "--help" || process.argv[2] === "-h" || process.argv[2] === "help") {
+    process.stdout.write(CLI_USAGE + "\n");
+    process.exit(0);
+    return;
+  }
+  // CLI: `lasso doctor [--stealth-check]`
   if (process.argv[2] === "doctor") {
-    await runDoctorCli();
+    await runDoctorCli(process.argv.slice(3));
     return;
   }
   // v1.3 Phase A：`lasso config <init|path>`
@@ -1092,6 +1234,15 @@ async function main(): Promise<void> {
   // 录制回放回归 runner 子命令（CI 用 + 用户本地跑）。runReplayBaselineCli 默认读 slice(3)。
   if (process.argv[2] === "replay-baseline") {
     await runReplayBaselineCli();
+    return;
+  }
+  // F-CLI-01：白名单外参数不再静默落入 MCP server 模式（此前 stdout 0 字节、
+  // 终端挂起等 stdin —— wave1 entry-cli 面板实锤）。usage → stderr，exit 1。
+  if (process.argv[2] !== undefined) {
+    process.stderr.write(
+      `unknown subcommand or flag: ${process.argv[2]}\n\n${CLI_USAGE}\n`,
+    );
+    process.exit(1);
     return;
   }
   await runMcpServer();

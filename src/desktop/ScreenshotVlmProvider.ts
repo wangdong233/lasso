@@ -19,6 +19,7 @@
  * 借鉴：13 §3.5；media-gen-mcp vlm provider（HTTP MCP 模式）；D10 风险缓解。
  */
 import type { RustBridge, RustResponse } from "../subprocess/RustBridge.js";
+import { McpClient } from "../subprocess/McpClient.js";
 import type {
   DesktopOptions,
   DesktopResult,
@@ -89,7 +90,12 @@ export class ScreenshotVlmProvider {
   async captureScreenshot(
     region?: { x: number; y: number; w: number; h: number },
   ): Promise<InteractResult<{ base64: string; format: "png"; width: number; height: number }>> {
-    const resp = await this.rust.call("screenshot", region ? { region } : {});
+    // W1-DEF-8 修复：wire 键名对齐 Rust 端 screenshot.rs parse_region 读的
+    // `screenshot_region`（此前发 `{region}` 键被 Rust 忽略 → 裁剪永不生效）。
+    const resp = await this.rust.call(
+      "screenshot",
+      region ? { screenshot_region: region } : {},
+    );
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {
@@ -230,6 +236,67 @@ export type VlmCaller = (req: {
   prompt: string;
   timeoutMs: number;
 }) => Promise<unknown>;
+
+// ============================================================
+// 生产 vlmCaller（v1.8 Phase E / D3 接线）
+// ============================================================
+/**
+ * 构造生产 VLM 调用器：每次调用 connectHttp(endpoint) → callTool("vlm", ...) → close。
+ *
+ * v1.8 Phase E（D3）前：ScreenshotVlmProvider 构造时 opts.vlmCaller 恒缺省 null
+ * → 即便配了 LASSO_VLM_ENDPOINT，act() 也恒走 `vlm_unavailable`（接线缺口）。
+ * 现由 index.ts 装配：LASSO_VLM_ENDPOINT 已配 → 注入本工厂产物；未配 → 不注入
+ * （保持 unavailable 诚实语义，不伪造可用性）。
+ *
+ * 设计（D10 解耦不变）：
+ *  - 每次调用独立 connect/close（VLM 调用频率低，不值得常驻连接 + 断线重连状态机）
+ *  - timeoutMs 经 Promise.race 兜底（McpClient.callTool 无 signal 参数）
+ *  - VLM 返回 shape 不在本层锁（v0.3.5 既定；M0.5b 验收后再锁 schema）
+ */
+export function createMcpVlmCaller(): VlmCaller {
+  return async (req) => {
+    const client = await McpClient.connectHttp(
+      { name: "lasso-vlm", version: "0.1.0" },
+      req.endpoint,
+      {},
+    );
+    try {
+      return await withTimeout(
+        client.callTool(DEFAULT_VLM_TOOL, {
+          image: `data:image/png;base64,${req.base64}`,
+          prompt: req.prompt,
+          width: req.width,
+          height: req.height,
+        }),
+        req.timeoutMs,
+        "vlm_timeout",
+      );
+    } finally {
+      await client.close();
+    }
+  };
+}
+
+/** Promise.race 超时兜底（timer unref：不阻止进程退出；测试进程不等残留 timer）。 */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label}:${ms}ms`)), ms);
+    // Node 的 setTimeout 返回 Timeout（有 unref）；非 Node 环境（理论不达）防御跳过
+    if (typeof t === "object" && t !== null && "unref" in t) {
+      (t as { unref: () => void }).unref();
+    }
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
 
 /**
  * 把 DesktopOptions 转 VLM prompt（v0.3.5 简化文本拼接）。

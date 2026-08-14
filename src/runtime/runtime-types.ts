@@ -181,4 +181,6 @@ export type AdminAction =
   // profile_list 只读；profile_switch mutation；cookie_restore 显式 opt-in（INV-52）
   | "profile_list"
   | "profile_switch"
-  | "cookie_restore";
+  | "cookie_restore"
+  // v1.8 Phase D（D7）：breaker_reset —— 短/长熔断手工唤醒（mutation 必传 reason）
+  | "breaker_reset";

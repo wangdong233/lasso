@@ -89,6 +89,16 @@ const desktopSchema = {
         .optional(),
       timeout_ms: z.number().int().positive().default(30000),
       picture_only: z.boolean().optional(),
+      // ------------------------------------------------------------------
+      // D8 修复（v1.8 Phase C）：补 appleScript 档两键（desktop-types.ts
+      // DesktopOptions 早已声明，zod 缺失导致 MCP 入参被 strip →
+      // AppleScriptProvider 恒走 missing_applescript_action 分支，
+      // 档 2 经 MCP 不可达）。类型与 AppleScriptProvider 读取处对齐。
+      // ------------------------------------------------------------------
+      /** AppleScript typed action 名（APPLE_SCRIPT_WHITELIST 校验；INV-22）。 */
+      appleScriptAction: z.string().optional(),
+      /** AppleScript 模板参数（key 须为 action 对应 allowedParams 子集）。 */
+      appleScriptParams: z.record(z.unknown()).optional(),
     })
     .default({}),
 };

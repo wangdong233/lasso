@@ -113,7 +113,8 @@ export async function doScreenshotTool(
 
   // ---------- 2. 透传 BrowseOptions 形状（与 browse.ts schema 对齐） ----------
   // region / format / viewport v0.5 暂不映射（doScreenshot 现不支持；上游 chrome-devtools-mcp
-  // take_screenshot 接 fullPage + format + filePath；region 在 v0.5 不接入，description 明确）
+  // 0.3.0 take_screenshot 只接 fullPage + format、返回 base64（W1-DEF-3：Lasso 侧自行
+  // 落盘 /tmp/lasso-screenshot-*.png 并 fs 校验）；region 在 v0.5 不接入，description 明确）
   const browseOpts: BrowseOptions = {
     screenshot: { full: opts.full_page },
     wait_until: opts.wait_until,

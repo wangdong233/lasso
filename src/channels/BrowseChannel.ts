@@ -32,6 +32,7 @@
  * mcp-chrome chrome_computer action-enum 折叠思想。
  */
 import { randomUUID } from "node:crypto";
+import { writeFile, stat } from "node:fs/promises";
 import { UiChannel } from "./UiChannel.js";
 import type {
   BrowseOptions,
@@ -54,6 +55,11 @@ import {
 import { StepEngine, type HighRiskGateLike } from "../browse/StepEngine.js";
 import { BudgetTracker } from "../fallback/BudgetTracker.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
+import {
+  parseEvalResult,
+  imageBlock,
+  firstText as upstreamFirstText,
+} from "../browse/upstream-response.js";
 // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：doPdf + doConsole + doNetwork
 //   追加进 actionDispatch Map
 // INV-33 守：pdf + console + network 三 action 必经 dispatch Map，禁第二套 dispatch
@@ -129,13 +135,25 @@ export abstract class BrowseChannel extends UiChannel {
   }
 
   /**
+   * W1-DEF-1c（v1.8）：navigate **后** hook —— stealth 注入的正确时机。
+   * 页面 JS 上下文随导航重置，导航前注入在新文档全部丢失（wave2 smoke 实证
+   * navigator.webdriver 仍 true）；上游 0.3.0 不暴露
+   * Page.addScriptToEvaluateOnNewDocument，只能在每次 navigate 完成后补注入
+   * （覆盖当前文档直到下一次导航）。default no-op。
+   */
+  protected async afterNavigate(_client: McpClient): Promise<void> {}
+
+  /**
    * wrapNavigate：把 navigate handler 包一层 beforeNavigate hook。
    * 私有 helper —— INV-6 dispatch Map 不动（仍是 8 条 entry，只 navigate 包一层）。
    */
   private wrapNavigate(handler: ActionHandler): ActionHandler {
     return async (c, url, opts) => {
       await this.beforeNavigate(c);
-      return handler(c, url, opts);
+      const r = await handler(c, url, opts);
+      // W1-DEF-1c：导航后注入（beforeNavigate 注入会随文档重置全部丢失）
+      await this.afterNavigate(c);
+      return r;
     };
   }
 
@@ -199,6 +217,30 @@ export abstract class BrowseChannel extends UiChannel {
       const resourceId = `${this.name}:${url}`;
       // epoch = 0（v0.3 不接 ResourceScheduler；parse3 §4.3 推迟到 v0.5+）
       return withOperation(resourceId, 0, async () => {
+        // W1-DEF-2b（v1.8）：action="navigate" + steps 时**先导航再跑链**
+        // （此前 steps 分支丢弃 action，链跑在 about:blank 上——expectPoll 在
+        // 空白页 30s 全 false，wave2 smoke 实证）。链内首 step 为 navigate 的
+        // 旧范式（U-03-1）不受影响（StepEngine 自行处理）。
+        if (action === "navigate" && url) {
+          const nav = this.actionDispatch.get("navigate");
+          if (nav) {
+            try {
+              const c = await this.getMcpClient();
+              await nav(c, url, options);
+            } catch (e) {
+              // 导航失败（404 / DNS / 落盘类 didnt）→ 整链诚实终止
+              const outcome = classifyBrowseError(String(e), action);
+              return {
+                outcome,
+                data: null,
+                served_by: this.name,
+                fallback_used: false,
+                retrieval_method: this.retrievalMethod(),
+                error: String(e).slice(0, 200),
+              };
+            }
+          }
+        }
         const chain = await this.runChain(url, options.steps as Step[]);
         return this.wrapChainResult(chain);
       });
@@ -399,6 +441,12 @@ export abstract class BrowseChannel extends UiChannel {
       selectors: step.selectors,
       js: step.js,
       timeout_ms: step.timeout_ms,
+      // wait step：expect 就是等待目标（等到了 postcondition 自然成立）——
+      // 不剥则链内 wait 永远报 "opts.expect.text required"（wave2 smoke 实证）。
+      // 其余 action 仍剥 expect（防 doWait 误把 postcondition 当 wait 目标）。
+      ...(step.action === "wait" && step.expect
+        ? { expect: step.expect }
+        : {}),
     };
 
     try {
@@ -448,7 +496,9 @@ export abstract class BrowseChannel extends UiChannel {
    * - 失败时返回不含字段的 snapshot（caller 会跳过 preexisting 判定）
    */
   private async quickSnapshot(c: McpClient): Promise<ConditionSnapshot> {
-    const expr = `(function(){
+    // W1-DEF-1（v1.8）：chrome-devtools-mcp@0.3.0 evaluate_script 契约要求
+    // **函数表达式**（上游自行调用），不再传 IIFE 语句串。
+    const expr = `() => {
       try {
         var body = (document.body && document.body.innerText) || "";
         if (body.length > 16384) body = body.slice(0, 16384);
@@ -456,15 +506,17 @@ export abstract class BrowseChannel extends UiChannel {
       } catch (e) {
         return JSON.stringify({ url: "", body_text: "" });
       }
-    })()`;
+    }`;
     try {
       const r = (await c.callTool("evaluate_script", {
         function: expr,
       })) as EvaluateResult;
-      const parsed = JSON.parse(extractEvalPreview(r) || "{}") as {
+      // W1-DEF-1b（v1.8）：上游 evaluate_script 返回 markdown 围栏包裹（见
+      // browse/upstream-response.ts 实测契约），parseEvalResult 负责围栏提取 + 双层解码。
+      const parsed = (parseEvalResult(r) as {
         url?: string;
         body_text?: string;
-      };
+      } | undefined) ?? { url: "", body_text: "" };
       return {
         url: parsed.url ?? "",
         body_text: parsed.body_text ?? "",
@@ -590,17 +642,104 @@ function parseListPages(
 // ============================================================
 // 注意：chrome-devtools-mcp 工具返回 SDK 标准 { content: [{type:'text', text:'...'}], isError }。
 
+/**
+ * Chrome 导航错误签名（W1-DEF-5，v1.8）：navigate_page 返回文本或错误页 snapshot
+ * 命中任一签名即判 dns_or_nav_error（outcome=didnt）。覆盖 DNS 失败 / 连接失败 /
+ * 超时（Chrome 错误页文案 + net::ERR_* 代码）。
+ */
+const NAV_ERROR_SIGNATURES =
+  /err_name_not_resolved|dns_probe|nxdomain|enotfound|err_connection_refused|err_connection_reset|err_connection_closed|err_address_unreachable|err_internet_disconnected|err_empty_response|err_timed_out|err_aborted|this site can'?t be reached|can'?t reach this page|webpage not available|took too long to respond/i;
+
+/** 404 页特征（W1-DEF-5）：title 以 404 开头，或 "404" 与 "not found" 邻近出现。 */
+const HTTP_404_SIGNATURE =
+  /\b404\b[\s:.\-–—]{0,40}not\s*found|not\s*found[\s:.\-–—]{0,40}\b404\b|http\s*404/i;
+
 async function doNavigate(
   c: McpClient,
   url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  const r = (await c.callTool("navigate_page", {
-    type: "url",
-    url,
-    ignoreCache: opts.no_cache ?? false,
-  })) as NavigateResult;
-  return { final_url: extractFinalUrl(r), preview: "navigated" };
+  let r: NavigateResult;
+  try {
+    r = (await c.callTool("navigate_page", {
+      type: "url",
+      url,
+      ignoreCache: opts.no_cache ?? false,
+    })) as NavigateResult;
+  } catch (e) {
+    const msg = String(e);
+    // W1-DEF-5：上游 navigate 直接抛导航错（DNS / 连接失败）→ 显式 dns_or_nav_error
+    if (NAV_ERROR_SIGNATURES.test(msg)) {
+      throw new Error(`dns_or_nav_error:${msg.slice(0, 200)}`);
+    }
+    throw e;
+  }
+
+  if (r.isError) {
+    const detail = firstText(r) ?? "navigate_is_error";
+    if (NAV_ERROR_SIGNATURES.test(detail)) {
+      throw new Error(`dns_or_nav_error:${detail.slice(0, 200)}`);
+    }
+    throw new Error(`nav_error:${detail.slice(0, 200)}`);
+  }
+
+  const finalUrl = extractFinalUrl(r) ?? url;
+
+  // W1-DEF-5（v1.8）：navigate 成功 ≠ 页面正常——上游对 404 页 / Chrome DNS 错误页
+  // 同样返成功（wave1 T-BROWSE-27 / U-08-3 实锤「假 worked」）。再取一次快照按
+  // title/内容特征校验真实加载结果；校验通道自身失败不阻断（正常页仍 worked）。
+  await verifyNavigatedPage(c, firstText(r) ?? "");
+
+  return { final_url: finalUrl, preview: "navigated" };
+}
+
+/**
+ * W1-DEF-5：navigate 后校验真实加载结果。
+ *  - navigate 返回文本 / snapshot 内容命中 NAV_ERROR_SIGNATURES → throw dns_or_nav_error
+ *  - snapshot title/content 命中 404 特征 → throw http_404
+ *  - take_snapshot 失败（通道断/页面未就绪）→ 放行（校验 best-effort，不因校验工具
+ *    失败把正常导航误判 didnt）
+ */
+async function verifyNavigatedPage(
+  c: McpClient,
+  navText: string,
+): Promise<void> {
+  if (NAV_ERROR_SIGNATURES.test(navText)) {
+    throw new Error(`dns_or_nav_error:${navText.slice(0, 200)}`);
+  }
+  let snapText = "";
+  try {
+    const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
+    snapText = (firstText(r) ?? "").slice(0, 2000);
+  } catch {
+    return;
+  }
+  if (NAV_ERROR_SIGNATURES.test(snapText)) {
+    throw new Error(`dns_or_nav_error:${snapText.slice(0, 200)}`);
+  }
+  // HTTP 状态码权威检测（wave2 smoke 实证：httpbin /status/404 空 body 无内容特征，
+  // 内容签名检测不可达）。PerformanceNavigationTiming.responseStatus（Chrome 109+）。
+  try {
+    const sr = (await c.callTool("evaluate_script", {
+      function: `() => {
+        try {
+          var e = performance.getEntriesByType("navigation")[0];
+          return e && typeof e.responseStatus === "number" ? e.responseStatus : 0;
+        } catch (err) { return 0; }
+      }`,
+    })) as ContentResult;
+    const status = Number(parseEvalResult(sr) ?? 0);
+    if (status >= 400) {
+      throw new Error(`http_${status}:${status >= 500 ? "server_error" : "client_error"}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && /^http_\d+/.test(e.message)) throw e;
+    // evaluate 失败（页面 CSP / 未就绪）→ 跳过状态码检测，走内容签名兜底
+  }
+  const title = snapText.split("\n", 1)[0]?.trim() ?? "";
+  if (/^404\b/.test(title) || HTTP_404_SIGNATURE.test(snapText)) {
+    throw new Error(`http_404:${(title || snapText.slice(0, 120))}`);
+  }
 }
 
 async function doSnapshot(
@@ -618,13 +757,45 @@ async function doScreenshot(
   _url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  // chrome-devtools-mcp 接受 filePath 落盘；由它自己生成，我们只回路径占位。
-  const filePath = `/tmp/lasso-screenshot-${randomUUID()}.png`;
-  await c.callTool("take_screenshot", {
+  // W1-DEF-3（v1.8）：chrome-devtools-mcp@0.3.0 take_screenshot 无 filePath 参数
+  // （被 zod strip），返回 base64 —— Lasso 自行落盘 + fs 校验后才把 path 放进返回，
+  // 禁伪造路径。写失败 throw screenshot_write_failed（classifyBrowseError → didnt）。
+  const r = (await c.callTool("take_screenshot", {
     format: "png",
-    filePath,
     fullPage: opts.screenshot?.full ?? false,
-  });
+  })) as ContentResult;
+
+  if (r.isError) {
+    throw new Error(
+      `screenshot_write_failed:upstream_is_error:${firstText(r) ?? "unknown"}`,
+    );
+  }
+
+  // W1-DEF-1b（v1.8）：base64 在 type:"image" content block 的 data 字段
+  // （实测契约见 browse/upstream-response.ts），不在 text block。
+  const img = imageBlock(r);
+  if (!img) {
+    throw new Error("screenshot_write_failed:no_image_block_from_upstream");
+  }
+  const buf = Buffer.from(img.data, "base64");
+
+  // PNG magic 校验（上游返回错误占位串时 base64 解出非 PNG——47 字节垃圾文件的教训）
+  if (buf.length < 100 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+    throw new Error("screenshot_write_failed:not_a_valid_png");
+  }
+
+  const filePath = `/tmp/lasso-screenshot-${randomUUID()}.png`;
+  try {
+    await writeFile(filePath, buf);
+    // 落盘后校验：文件存在且大小与解码后一致才返路径（禁伪造）
+    const st = await stat(filePath);
+    if (!st.isFile() || st.size !== buf.length) {
+      throw new Error(`empty_or_missing_file:${filePath}`);
+    }
+  } catch (e) {
+    throw new Error(`screenshot_write_failed:${String(e).slice(0, 200)}`);
+  }
+
   return { preview: `screenshot saved to ${filePath}` };
 }
 
@@ -647,7 +818,8 @@ async function doExtract(
   // ---------- markdown / markdown_cited 档（v1.1 新增） ----------
   // 取渲染后 HTML（evaluate_script 注入 document.documentElement.outerHTML）。
   // raw 档不走此路径 → INV-66 raw 零回归；markdown 档 dynamic import lazy-load 引擎。
-  const expr = `(function(){
+  // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 契约），不再传 IIFE 语句串。
+  const expr = `() => {
     try {
       return JSON.stringify({
         html: document.documentElement.outerHTML,
@@ -655,15 +827,16 @@ async function doExtract(
         title: document.title || ""
       });
     } catch(e) { return JSON.stringify({ html: "", url: "", title: "" }); }
-  })()`;
+  }`;
   const evalResult = (await c.callTool("evaluate_script", {
     function: expr,
   })) as EvaluateResult;
-  const parsed = JSON.parse(extractEvalPreview(evalResult) || "{}") as {
+  // W1-DEF-1b（v1.8）：同 quickSnapshot——经 parseEvalResult 解围栏 + 双层解码。
+  const parsed = (parseEvalResult(evalResult) as {
     html: string;
     url: string;
     title: string;
-  };
+  } | undefined) ?? { html: "", url: "", title: "" };
 
   if (!parsed.html) {
     // 取 HTML 失败 → 抛错走 outcome=unknown（BrowseChannel.browse catch → classifyBrowseError）
@@ -721,7 +894,9 @@ async function doWait(
 ): Promise<Partial<BrowseResult>> {
   const text = opts.expect?.text;
   if (!text) throw new Error("wait: opts.expect.text required");
-  await c.callTool("wait_for", { text: [text] });
+  // W1-DEF-2（v1.8）：上游 0.3.0 wait_for.text 要 string（数组被 zod 拒
+  // -32602 Expected string, received array）——直接传单条 string。
+  await c.callTool("wait_for", { text });
   return { preview: `waited for "${text}"` };
 }
 
@@ -731,10 +906,21 @@ async function doEvaluate(
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
   if (!opts.js) throw new Error("evaluate: opts.js required");
+  // W1-DEF-1b（v1.8）：MCP 侧 js 是语句体（`return ...` / 裸表达式两种都支持）——
+  // 包进函数体交上游调用；直接透传 `return ...` 会被当函数表达式语法错
+  // （wave2 smoke 实证 "Unexpected token 'return'"）。
   const r = (await c.callTool("evaluate_script", {
-    function: opts.js,
+    function: `() => {\n${opts.js}\n}`,
   })) as EvaluateResult;
-  return { preview: extractEvalPreview(r) };
+  // 经 parseEvalResult 解围栏取脚本返回值；拿不到就退回原文展示
+  const v = parseEvalResult(r);
+  const preview =
+    v == null
+      ? extractEvalPreview(r)
+      : typeof v === "string"
+        ? v
+        : JSON.stringify(v).slice(0, PREVIEW_MAX_CHARS);
+  return { preview: truncatePreview(preview) };
 }
 
 // ============================================================
@@ -769,12 +955,9 @@ function extractEvalPreview(r: EvaluateResult): string {
   return firstText(r) ?? "(no eval output)";
 }
 
+// W1-DEF-1b（v1.8）：firstText 统一来自 upstream-response 适配器（单一权威解析入口）
 function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
+  return upstreamFirstText(r);
 }
 
 // ============================================================
@@ -802,5 +985,10 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   if (m.includes("404") || m.includes("not_found")) return "didnt";
   if (m.includes("403") || m.includes("forbidden")) return "didnt";
   if (m.includes("enotfound") || m.includes("nxdomain")) return "didnt";
+  // v1.8（W1-DEF-3 / W1-DEF-5）：screenshot 落盘失败与导航失败（404 / DNS / 连接错）
+  // 都是明确「目标不可得」信号 → didnt（不 fallback、不假装 worked）
+  if (m.includes("screenshot_write_failed")) return "didnt";
+  if (m.includes("dns_or_nav_error")) return "didnt";
+  if (m.includes("http_404")) return "didnt";
   return "unknown";
 }

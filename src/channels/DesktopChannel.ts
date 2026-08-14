@@ -361,6 +361,10 @@ export class DesktopChannel extends UiChannel {
         actions_and_results: [],
         screenshot_base64: shot.data.base64,
         screenshot_format: "png",
+        // W1-DEF-8：把截图尺寸透出到返回 data（此前 channel 层丢弃，
+        // 用例只能解 PNG IHDR 才能断言区域裁剪生效）
+        screenshot_width: shot.data.width,
+        screenshot_height: shot.data.height,
         fallback_used: false,
       },
       served_by: shot.served_by,

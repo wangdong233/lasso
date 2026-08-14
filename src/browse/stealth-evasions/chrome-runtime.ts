@@ -98,4 +98,4 @@ export const CHROME_RUNTIME_SCRIPT = `(function(){
       Connect: connect,
     };
   } catch (e) {}
-)();`;
+})();`;

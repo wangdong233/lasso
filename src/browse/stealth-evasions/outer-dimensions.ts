@@ -21,4 +21,4 @@ export const OUTER_DIMENSIONS_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-)();`;
+})();`;

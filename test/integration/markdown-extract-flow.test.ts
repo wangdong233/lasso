@@ -44,6 +44,7 @@ vi.mock("node:dns/promises", () => ({
 
 // 在 mock 之后才 import SUT
 import { doFetchUrl } from "../../src/tools/fetch-url.js";
+import { mockEvalResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // fixtures
@@ -95,13 +96,15 @@ function makeStubClient(htmlFixture: string): {
         );
       }
       if (name === "evaluate_script") {
-        // markdown 路径：doExtract 注入的 outerHTML 表达式 → 返 JSON {html,url,title}
+        // markdown 路径：doExtract 注入的脚本 return JSON.stringify({html,url,title})；
+        // W1-DEF-1b 真实契约：上游把该字符串再 JSON.stringify 后包 ```json 围栏
+        // （parseEvalResult 双层解码回对象）
         const json = JSON.stringify({
           html: htmlFixture,
           url: "https://example.com/",
           title: "Test Page",
         });
-        return textContent(json);
+        return mockEvalResponse(json);
       }
       return textContent(`stubbed ${name}`);
     }),

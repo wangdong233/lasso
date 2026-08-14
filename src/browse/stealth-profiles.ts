@@ -299,8 +299,11 @@ export const CLOUDFLARE_CHALLENGE_MARKERS = [
 /**
  * 检测脚本：返回 "true" 若任 marker 出现在 title 或 body.innerText。
  * 字符串拼装（避免对每个 marker 单独 evaluate；一次 CDP call 完成检测）。
+ *
+ * W1-DEF-1（v1.8）：函数表达式形式（上游 0.3.0 evaluate_script 契约，上游调用后
+ * 取返回值），不再传 IIFE 语句串——否则上游拿不到 "true"/"false" 返回。
  */
-export const CLOUDFLARE_DETECTION_SCRIPT = `(function(){
+export const CLOUDFLARE_DETECTION_SCRIPT = `() => {
   try {
     var markers = ${JSON.stringify(CLOUDFLARE_CHALLENGE_MARKERS)};
     var t = (document.title || "") + "\\n" + ((document.body && document.body.innerText) || "");
@@ -311,7 +314,7 @@ export const CLOUDFLARE_DETECTION_SCRIPT = `(function(){
   } catch (e) {
     return "false";
   }
-})();`;
+}`;
 
 /**
  * Cloudflare challenge 检测正则（兜底；当 evaluate_script 失败或返回非

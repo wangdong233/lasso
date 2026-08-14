@@ -194,7 +194,9 @@ describe("probeCreepjs —— 成功路径（evaluate 返完整 lies）", () => 
     await probeCreepjs(client);
     const waitCall = calls.find((c) => c.name === "wait_for");
     expect(waitCall).toBeTruthy();
-    expect(waitCall!.args.text).toEqual(["FP ID:"]);
+    // W1-DEF-2（v1.8）：上游 0.3.0 契约——wait_for.text 是 string 不是数组
+    expect(waitCall!.args.text).toBe("FP ID:");
+    expect(Array.isArray(waitCall!.args.text)).toBe(false);
   });
 
   it("evaluate_script 调 CREEPJS_LIES_EXTRACT_SCRIPT（顶级 const ID 不变）", async () => {

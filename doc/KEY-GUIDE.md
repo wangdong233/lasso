@@ -159,6 +159,8 @@ lasso launch-chrome
 
 跑一次即可。命令会自动探测 macOS / Linux / Windows 上的 Chrome 路径并启动，之后对 Claude 说「打开我已登录的 Jira」就会自动连上。
 
+> v1.8 行为变化：① 默认注入 Lasso 独立的 `--user-data-dir`（`~/.cache/lasso/chrome-profile-default`）——Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退；第一次在这个窗口里登录，之后该 profile 的登录态一直复用。也可 `lasso launch-chrome --profile <目录>` 指定已有 profile。② 启动后探活 CDP `/json/version`（3 秒窗口）：Chrome 没起来 / 端口被占会明确报错（`chrome_exited` / `port_in_use` / `cdp_not_ready`），不再「返回 ok 但其实连不上」。
+
 > 桌面端口默认 `9222`，被占用时可用 `LASSO_CDP_PORT=9223` 改端口（见 [高级调优](#e-高级调优可选全不配)）。
 
 ---
@@ -265,7 +267,9 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 
 **免费额度**：100 分钟试用（之后按用量付费）。
 
-### `STAGEHAND_API_KEY` —— AI 友好的页面观察
+### `STAGEHAND_API_KEY` —— AI 友好的页面观察（程序化实验通道）
+
+> ⚠️ **状态说明（重要）**：Stagehand 在 Lasso 中是**程序化实验通道**——配了 key 只会装配内部 channel 与熔断器，**没有对应的 MCP 工具入口**（`tools/list` 里不会出现 stagehand 工具）。其 REST 契约未经验证（wave1 裁决 R-ECO-6；`lasso doctor` #39 `stagehand_rest_contract_probe` 专测此项）。要实际过 Cloudflare 级反爬，请用 [Steel 自托管](#steel_endpoint--自托管云浏览器v16-新推荐免费) 或 browserbase。
 
 **去哪申请**：<https://api.stagehand.dev>
 
@@ -303,6 +307,8 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `ZHIPU_ENDPOINT` | 智谱端点覆盖 | 智谱官方端点 | 自建反代时 |
 
 > 关于 fake-ip 代理网络：如果你用 Surge / Clash 的 TUN 模式（fake-ip），`198.18.0.0/15` 网段已内置放行，无需额外配置 `LASSO_SSRF_ALLOW_RANGES`。
+>
+> 关于本机回环：`127.0.0.1/32` **默认放行——这是设计行为**，供 `browse_logged_in` 连本机 Chrome 的 CDP 调试端口（`127.0.0.1:9222`）；`127.0.0.0/8` 的其余地址（如 `127.0.0.2`）仍默认拒。不是安全漏洞，也无需配置。
 
 ### `LASSO_COOKIE_PASSPHRASE` —— 登录 cookie 加密口令（可选）
 

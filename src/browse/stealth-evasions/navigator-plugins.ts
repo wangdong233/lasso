@@ -82,4 +82,4 @@ export const NAVIGATOR_PLUGINS_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-)();`;
+})();`;

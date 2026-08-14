@@ -33,6 +33,7 @@
  */
 import type { ExpectCondition } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
+import { evalTextValue } from "./upstream-response.js";
 
 // ============================================================
 // 公共类型
@@ -189,8 +190,9 @@ async function snapshotCondition(
     const r = (await client.callTool("evaluate_script", {
       function: expr,
     })) as ContentResult;
-    const text = firstText(r);
-    return { holds: text === "true" };
+    // W1-DEF-1b（v1.8）：上游返回 markdown 围栏包裹（实测契约见 upstream-response.ts）
+    const text = evalTextValue(r) ?? firstText(r);
+    return { holds: text?.trim() === "true" };
   } catch {
     return { holds: false };
   }
@@ -217,7 +219,9 @@ export function buildConditionExpr(cond: ExpectCondition): string {
     );
   }
   const expr = clauses.length > 0 ? clauses.join(" || ") : "false";
-  return `(function(){ return (${expr}).toString(); })()`;
+  // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 evaluate_script 契约），上游调用后
+  // 取 "true"/"false" 返回——不再传 IIFE 语句串。
+  return `() => ((${expr})).toString()`;
 }
 
 // ============================================================

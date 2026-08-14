@@ -42,4 +42,4 @@ export const CHROME_APP_SCRIPT = `(function(){
     app.RunningState = app.RunningState;
     window.chrome.app = app;
   } catch (e) {}
-)();`;
+})();`;

@@ -24,7 +24,7 @@ import { promises as fs, mkdtempSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
-import { StealthEngine } from "../../src/browse/StealthEngine.js";
+import { StealthEngine, toFnExpression } from "../../src/browse/StealthEngine.js";
 import {
   STEALTH_INJECTION_SCRIPT,
   STEALTH_PROFILES,
@@ -34,6 +34,7 @@ import { setStateStoreContext } from "../../src/util/state-store.js";
 import { _resetRunIdForTests, newRunId } from "../../src/util/run-id.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
 import type { SubprocessManager } from "../../src/subprocess/SubprocessManager.js";
+import { mockEvalResponse, mockScreenshotResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // Mock helpers
@@ -55,7 +56,9 @@ function makeStubClient(): {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
       if (name === "navigate_page") return textContent("navigated");
-      if (name === "evaluate_script") return textContent("injected");
+      // W1-DEF-1b 真实契约：evaluate_script 返 ```json 围栏、take_screenshot 返 image block
+      if (name === "evaluate_script") return mockEvalResponse("injected");
+      if (name === "take_screenshot") return mockScreenshotResponse();
       if (name === "list_pages")
         return textContent("headless isolated page\nhttps://example.com/");
       return textContent(`stubbed ${name}`);
@@ -138,27 +141,29 @@ describe("HeadlessChannel — P0 stealth 接入（parse13 §3.4 值级 trace）"
     expect(profileArg).toBe("windows_chrome_120");
   });
 
-  it("injectProfile 的 evaluate 发生在 navigate_page 之前（值级 trace 顺序）", async () => {
+  it("injectProfile 的 evaluate 发生在 navigate_page 之后（W1-DEF-1c 值级 trace 顺序）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const ch = new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
 
     await ch.browse("https://example.com/", "navigate", {});
 
-    // callTool 调用序列：evaluate_script(UA) → evaluate_script(16路) → navigate_page
+    // W1-DEF-1c（v1.8）：注入时机 = navigate 之后——页面 JS 上下文随导航重置，
+    // 导航前注入在新文档全部丢失（wave2 smoke 实证 navigator.webdriver 仍 true）。
+    // callTool 调用序列：navigate_page → evaluate_script(UA) → evaluate_script(16路)
     const evalCalls = stub.calls.filter((c) => c.name === "evaluate_script");
     const navCalls = stub.calls.filter((c) => c.name === "navigate_page");
     // 至少 2 次 evaluate（UA override + 16 路 SCRIPT）+ 1 次 navigate
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
     expect(navCalls.length).toBe(1);
 
-    // 值级 trace：evaluate 全部在 navigate 之前（索引序）
+    // 值级 trace：evaluate 全部在 navigate 之后（索引序）
     const firstEvalIdx = stub.calls.indexOf(evalCalls[0]!);
     const navIdx = stub.calls.indexOf(navCalls[0]!);
-    expect(firstEvalIdx).toBeLessThan(navIdx);
-    // 第二次 evaluate（16 路 SCRIPT）也在 navigate 之前
+    expect(firstEvalIdx).toBeGreaterThan(navIdx);
+    // 第二次 evaluate（16 路 SCRIPT）也在 navigate 之后
     const secondEvalIdx = stub.calls.indexOf(evalCalls[1]!);
-    expect(secondEvalIdx).toBeLessThan(navIdx);
+    expect(secondEvalIdx).toBeGreaterThan(navIdx);
   });
 
   it("snapshot action → beforeNavigate 不调（仅 navigate 入口包 wrapNavigate）", async () => {
@@ -217,7 +222,7 @@ describe("HeadlessChannel — P0 stealth 接入（parse13 §3.4 值级 trace）"
 // producer 契约同步（03 §2.2 项 4）：注入的 script === 顶级 const
 // ============================================================
 describe("HeadlessChannel — producer 契约同步（STEALTH_INJECTION_SCRIPT 一致性）", () => {
-  it("injectProfile 第二次 evaluate 的 script === stealth-profiles 导出的 STEALTH_INJECTION_SCRIPT", async () => {
+  it("injectProfile 第二次 evaluate 的 script === STEALTH_INJECTION_SCRIPT 包成的函数表达式（W1-DEF-1）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const ch = new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
@@ -225,11 +230,15 @@ describe("HeadlessChannel — producer 契约同步（STEALTH_INJECTION_SCRIPT �
     await ch.browse("https://example.com/", "navigate", {});
 
     const evalCalls = stub.calls.filter((c) => c.name === "evaluate_script");
-    // 第二次 evaluate 是 16 路 SCRIPT（第一次是 UA override）
+    // 第二次 evaluate 是 16 路 SCRIPT 包成的函数表达式（0.3.0 契约，第一次是 UA override）
     const scriptCall = evalCalls.find(
-      (c) => c.args.function === STEALTH_INJECTION_SCRIPT,
+      (c) => c.args.function === toFnExpression(STEALTH_INJECTION_SCRIPT),
     );
     expect(scriptCall).toBeTruthy(); // producer 契约：SCRIPT 一字不差传到 evaluate
+    // 真实契约验证：上游 eval 该参数必得函数
+    expect(
+      typeof eval(`(${scriptCall!.args.function})`),
+    ).toBe("function");
   });
 
   it("UA override script 含 profile 的 userAgent 值（profile-specific 注入）", async () => {
@@ -241,10 +250,11 @@ describe("HeadlessChannel — producer 契约同步（STEALTH_INJECTION_SCRIPT �
     await ch.browse("https://example.com/", "navigate", {});
 
     const evalCalls = stub.calls.filter((c) => c.name === "evaluate_script");
-    // 第一次 evaluate 是 UA override —— 含 profile.userAgent 字面量
-    const uaCall = evalCalls[0]!;
+    // W1-DEF-1b（v1.8）：verifyNavigatedPage 的 responseStatus 检测也是 evaluate_script
+    // 且先于注入——按内容查找 UA override 调用（顺序无关断言）
     const ua = STEALTH_PROFILES[profileName].userAgent;
-    expect(uaCall.args.function).toContain(ua);
+    const uaCall = evalCalls.find((c) => (c.args?.function ?? "").includes(ua));
+    expect(uaCall).toBeDefined();
   });
 });
 

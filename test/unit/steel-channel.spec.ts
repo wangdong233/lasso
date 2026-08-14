@@ -38,6 +38,7 @@ import { setStateStoreContext } from "../../src/util/state-store.js";
 import { _resetRunIdForTests, newRunId } from "../../src/util/run-id.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
 import type { SubprocessManager } from "../../src/subprocess/SubprocessManager.js";
+import { mockEvalResponse, mockScreenshotResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // Mock helpers（仿 browserbase-channel.spec.ts 范式）
@@ -56,7 +57,9 @@ function makeStubClient(): {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
       if (name === "navigate_page") return textContent("navigated");
-      if (name === "evaluate_script") return textContent("injected");
+      // W1-DEF-1b 真实契约：evaluate_script 返 ```json 围栏、take_screenshot 返 image block
+      if (name === "evaluate_script") return mockEvalResponse("injected");
+      if (name === "take_screenshot") return mockScreenshotResponse();
       if (name === "list_pages")
         return textContent("steel session page\nhttps://example.com/");
       return textContent(`stubbed ${name}`);

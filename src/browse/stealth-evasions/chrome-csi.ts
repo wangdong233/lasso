@@ -23,4 +23,4 @@ export const CHROME_CSI_SCRIPT = `(function(){
       };
     };
   } catch (e) {}
-)();`;
+})();`;

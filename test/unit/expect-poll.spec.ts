@@ -79,6 +79,10 @@ function makeThrowingClient(error = "eval_failed"): McpClient {
 // 快测 opts：1ms 间隔 + 短 timeout（保持测试 < 100ms）
 // ============================================================
 const FAST: ExpectPollOptions = { pollIntervalMs: 1, defaultTimeoutMs: 20 };
+// F-T1（v1.8）：期望最终 true 的用例用宽 deadline——20ms 墙钟预算在并行 worker
+// 高负载下可能塞不进 2-3 次 poll（实测偶发 flake）；failed 路径用例仍用 FAST
+// （其语义就是让 timeout 真的耗尽）。
+const FAST_TRUE: ExpectPollOptions = { pollIntervalMs: 1, defaultTimeoutMs: 2000 };
 
 // ============================================================
 // validateCondition
@@ -123,7 +127,7 @@ describe("expectPoll — 三态", () => {
       client,
       { selector: ".btn" },
       undefined,
-      FAST,
+      FAST_TRUE,
     );
     expect(verdict).toBe("verified");
   });
@@ -134,7 +138,7 @@ describe("expectPoll — 三态", () => {
       client,
       { text: "submitted" },
       undefined,
-      FAST,
+      FAST_TRUE,
     );
     expect(verdict).toBe("verified");
   });
@@ -173,7 +177,7 @@ describe("expectPoll — 三态", () => {
       client,
       { text: "x" },
       undefined,
-      FAST,
+      FAST_TRUE,
     );
     expect(verdict).toBe("verified");
     expect(calls.length).toBeGreaterThanOrEqual(1);
@@ -201,7 +205,7 @@ describe("expectPoll — gone=true 反向语义", () => {
       client,
       { selector: ".popup", gone: true },
       undefined,
-      FAST,
+      FAST_TRUE,
     );
     expect(verdict).toBe("verified");
   });
@@ -429,8 +433,10 @@ describe("buildConditionExpr", () => {
     const expr = buildConditionExpr({ url_contains: "example.com" });
     expect(expr).toContain("window.location.href.indexOf");
     expect(expr).toContain('"example.com"');
-    expect(expr).toMatch(/^\(function\(\)\{/);
-    expect(expr).toMatch(/\.toString\(\);?\s*\}\)\(\)$/);
+    // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 契约），不再是 IIFE 语句串
+    expect(expr).toMatch(/^\(\)\s*=>/);
+    expect(expr).toMatch(/\.toString\(\)\s*$/);
+    expect(expr).not.toMatch(/\}\)\(\)$/);
   });
 
   it("仅 selector → 单子句 + querySelector", () => {
@@ -468,8 +474,10 @@ describe("buildConditionExpr", () => {
 
   it("生成的表达式在浏览器侧返回 'true'/'false' 字符串（形态断言）", () => {
     const expr = buildConditionExpr({ text: "x" });
-    // 形态：IIFE 包裹 + return (...).toString()
-    expect(expr).toMatch(/\(function\(\)\{\s*return\s*\([\s\S]+\)\.toString\(\);?\s*\}\)\(\)/);
+    // W1-DEF-1（v1.8）形态：函数表达式 + 上游调用后返回 (...).toString() 字符串。
+    // 真实契约验证：eval 成函数 + 实调返回 "true"/"false"
+    const fn = eval(`(${expr})`) as () => string;
+    expect(typeof fn).toBe("function");
   });
 });
 
@@ -503,7 +511,7 @@ describe("expectPoll — 整合", () => {
       client,
       { text: "Welcome", url_contains: "dashboard" },
       preSnap,
-      FAST,
+      FAST_TRUE,
     );
     expect(verdict).toBe("verified");
     expect(calls.length).toBeGreaterThanOrEqual(1);

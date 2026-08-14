@@ -35,11 +35,16 @@ import {
 import type { ChildProcess } from "node:child_process";
 
 // ============================================================
-// helper：mock probeExists / spawnFn
+// helper：mock probeExists / spawnFn / fetchFn
 // ============================================================
-/** 创建 mock spawnFn：返伪 ChildProcess，记录调用 args 便于断言。 */
+/**
+ * 创建 mock spawnFn：返伪 ChildProcess，记录调用 args 便于断言。
+ * W1-DEF-7 后 launchChrome 会调 child.on("exit") + child.unref()，
+ * 伪 ChildProcess 需带 on（可注入立即触发 exit 模拟子进程早退）。
+ */
 function makeMockSpawn(
   pid: number = 12345,
+  exitMode: "alive" | "immediate-exit" = "alive",
 ): {
   spawnFn: (
     cmd: string,
@@ -54,11 +59,19 @@ function makeMockSpawn(
     args: string[],
   ): ChildProcess => {
     calls.push({ cmd, args });
-    // 返最小伪 ChildProcess（launchChrome 只用 .pid + .unref()）
-    return {
+    // 返最小伪 ChildProcess（launchChrome 用 .pid + .on("exit") + .unref()）
+    const fake = {
       pid,
+      exitCode: null as number | null,
       unref: () => {},
-    } as unknown as ChildProcess;
+      on: (event: string, fn: () => void) => {
+        if (event === "exit" && exitMode === "immediate-exit") {
+          // 模拟 spawn 后立即退出（默认 profile 单例转发场景）
+          setImmediate(fn);
+        }
+      },
+    };
+    return fake as unknown as ChildProcess;
   };
   return { spawnFn, calls };
 }
@@ -66,6 +79,42 @@ function makeMockSpawn(
 /** 创建 mock probeExists：按给定路径集合判定 true/false。 */
 function makeMockProbe(existingPaths: Set<string>) {
   return async (p: string): Promise<boolean> => existingPaths.has(p);
+}
+
+/**
+ * 创建 mock 探活 fetch（W1-DEF-7 契约）：
+ *  - 第 1 次调用 = 端口占用预检（spawn 前）→ preCheckOk
+ *  - 后续调用 = spawn 后探活轮询 → probeOk
+ * 记录全部 URL 供断言。
+ */
+function makeMockFetch(
+  behavior: { preCheckOk?: boolean; probeOk?: boolean } = {},
+): {
+  fetchFn: (url: string) => Promise<{ ok: boolean }>;
+  urls: string[];
+} {
+  const urls: string[] = [];
+  let callCount = 0;
+  const fetchFn = async (url: string): Promise<{ ok: boolean }> => {
+    callCount++;
+    urls.push(url);
+    const isFirst = callCount === 1;
+    const ok = isFirst ? (behavior.preCheckOk ?? false) : (behavior.probeOk ?? true);
+    return { ok };
+  };
+  return { fetchFn, urls };
+}
+
+/** 成功路径通用注入（W1-DEF-7 后探活必须 mock；预检空闲 + 首轮探活通过）。 */
+const FAST_PROBE = {
+  probeIntervalMs: 1,
+  defaultProfileDir: "/tmp/lasso-chrome-profile-default-test",
+} as const;
+
+/** makeMockFetch 的 spread 包装（只透出 fetchFn，不带 urls 数组）。 */
+function makeMockFetchSafe(): { fetchFn: (url: string) => Promise<{ ok: boolean }> } {
+  const { fetchFn } = makeMockFetch();
+  return { fetchFn };
 }
 
 // ============================================================
@@ -152,14 +201,16 @@ describe("chromeCandidatesForPlatform —— 三平台候选路径表", () => {
 // ============================================================
 // launchChrome —— 顺序 probe → 找到 → spawn
 // ============================================================
-describe("launchChrome —— 顺序 probe → 找到 → spawn", () => {
-  it("macOS：第一候选存在 → ok=true + binaryPath=第一候选 + spawn args 含 --remote-debugging-port", async () => {
+describe("launchChrome —— 顺序 probe → 找到 → spawn → CDP 探活（W1-DEF-7 契约）", () => {
+  it("macOS：第一候选存在 → 探活通过 → ok=true + binaryPath=第一候选 + spawn args 含 --remote-debugging-port", async () => {
     const mockSpawn = makeMockSpawn(99999);
     const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
     const result = await launchChrome({
       platform: "mac",
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(result.ok).toBe(true);
     expect(result.binaryPath).toBe(MACOS_CHROME_CANDIDATES[0].path);
@@ -175,7 +226,7 @@ describe("launchChrome —— 顺序 probe → 找到 → spawn", () => {
     expect(mockSpawn.calls[0].args.includes("--no-default-browser-check")).toBe(true);
   });
 
-  it("Linux：第一候选不存在，第二候选存在 → ok=true + binaryPath=第二候选", async () => {
+  it("Linux：第一候选不存在，第二候选存在 → 探活通过 → ok=true + binaryPath=第二候选", async () => {
     const mockSpawn = makeMockSpawn();
     const second = LINUX_CHROME_CANDIDATES[1].path; // /usr/bin/google-chrome-stable
     const existing = new Set([second]);
@@ -183,40 +234,67 @@ describe("launchChrome —— 顺序 probe → 找到 → spawn", () => {
       platform: "linux",
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(result.ok).toBe(true);
     expect(result.binaryPath).toBe(second);
   });
 
-  it("--port 改端口 → spawn args + result.port 同步", async () => {
+  it("--port 改端口 → spawn args + result.port 同步 + 探活 URL 用新端口", async () => {
     const mockSpawn = makeMockSpawn();
     const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const fetch = makeMockFetch();
     const result = await launchChrome({
       platform: "mac",
       port: 9333,
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
     });
     expect(result.port).toBe(9333);
     expect(
       mockSpawn.calls[0].args.includes("--remote-debugging-port=9333"),
     ).toBe(true);
+    expect(fetch.urls[0]).toBe("http://127.0.0.1:9333/json/version");
   });
 
-  it("--profileDir → spawn args 含 --user-data-dir=", async () => {
+  it("--profileDir → spawn args 含 --user-data-dir=（显式优先于默认）", async () => {
     const mockSpawn = makeMockSpawn();
     const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
-    await launchChrome({
+    const result = await launchChrome({
       platform: "mac",
       profileDir: "/tmp/lasso-profile-test",
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(
       mockSpawn.calls[0].args.includes(
         "--user-data-dir=/tmp/lasso-profile-test",
       ),
     ).toBe(true);
+    expect(result.profileDir).toBe("/tmp/lasso-profile-test");
+  });
+
+  it("W1-DEF-7：无 profileDir → 默认注入隔离 --user-data-dir（defaultChromeProfileDir）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    expect(
+      mockSpawn.calls[0].args.includes(
+        "--user-data-dir=/tmp/lasso-chrome-profile-default-test",
+      ),
+    ).toBe(true);
+    expect(result.profileDir).toBe("/tmp/lasso-chrome-profile-default-test");
   });
 
   it("--extraArgs → spawn args 附加用户参数", async () => {
@@ -227,12 +305,14 @@ describe("launchChrome —— 顺序 probe → 找到 → spawn", () => {
       extraArgs: ["--incognito", "--start-maximized"],
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(mockSpawn.calls[0].args.includes("--incognito")).toBe(true);
     expect(mockSpawn.calls[0].args.includes("--start-maximized")).toBe(true);
   });
 
-  it("Windows：Program Files 默认候选存在 → ok=true + path 含 Program Files", async () => {
+  it("Windows：Program Files 默认候选存在 → 探活通过 → ok=true + path 含 Program Files", async () => {
     const mockSpawn = makeMockSpawn();
     const cs = chromeCandidatesForPlatform({
       platform: "win",
@@ -248,6 +328,8 @@ describe("launchChrome —— 顺序 probe → 找到 → spawn", () => {
       localAppData: "C:\\Users\\Test\\AppData\\Local",
       probeExists: makeMockProbe(existing),
       spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(result.ok).toBe(true);
     expect(result.binaryPath).toContain("Program Files");
@@ -289,10 +371,96 @@ describe("launchChrome —— 失败路径（tri-state 诚实）", () => {
       platform: "mac",
       probeExists: makeMockProbe(existing),
       spawnFn: throwingSpawn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
     });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("ENOENT");
     expect(result.binaryPath).toBe(MACOS_CHROME_CANDIDATES[0].path);
+  });
+});
+
+// ============================================================
+// launchChrome —— W1-DEF-7（v1.8 Phase B）：CDP 探活三分支
+// ============================================================
+describe("launchChrome —— W1-DEF-7 CDP 探活（探活成功 / 失败 / 端口占用 / 子进程早退）", () => {
+  const existing = () => new Set([MACOS_CHROME_CANDIDATES[0].path]);
+
+  it("探活成功：预检空闲 + 第 2 次探活通过 → ok=true", async () => {
+    const mockSpawn = makeMockSpawn(4321);
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: true });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.pid).toBe(4321);
+    expect(fetch.urls.length).toBe(2); // 1 次预检 + 1 次探活即通
+  });
+
+  it("探活失败：10 次全不通且子进程未退 → ok=false + error=cdp_not_ready", async () => {
+    const mockSpawn = makeMockSpawn();
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("cdp_not_ready");
+    // 1 次预检 + 10 次探活（CDP_PROBE_ATTEMPTS）
+    expect(fetch.urls.length).toBe(11);
+  });
+
+  it("端口占用：预检即有响应 → ok=false + error=port_in_use 且不 spawn", async () => {
+    const mockSpawn = makeMockSpawn();
+    const fetch = makeMockFetch({ preCheckOk: true });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("port_in_use");
+    expect(mockSpawn.calls.length).toBe(0); // 占口即拒，不 spawn 第二个 Chrome
+    expect(fetch.urls.length).toBe(1); // 只发预检
+  });
+
+  it("子进程早退：spawn 后立即 exit → ok=false + error=chrome_exited", async () => {
+    const mockSpawn = makeMockSpawn(5678, "immediate-exit");
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("chrome_exited");
+    expect(mockSpawn.calls.length).toBe(1); // 确实尝试 spawn 了
+  });
+
+  it("探活 URL 只绑 127.0.0.1（不误触代理 / IPv6）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: true });
+    await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    for (const u of fetch.urls) {
+      expect(u).toContain("http://127.0.0.1:9222/json/version");
+    }
   });
 });
 

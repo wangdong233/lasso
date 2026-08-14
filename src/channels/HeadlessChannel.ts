@@ -81,7 +81,10 @@ export class HeadlessChannel extends BrowseChannel {
    * StealthEngine.detectCloudflareChallenge 探知页面状态后再决定是否 escalateManualSwitch。
    * （仿 BrowserbaseChannel.ts:211-221 同范式，parse5 §3.3.1 铁律 4 best-effort 语义）
    */
-  protected override async beforeNavigate(client: McpClient): Promise<void> {
+  // W1-DEF-1c（v1.8）：从 beforeNavigate 迁到 afterNavigate——导航前注入会随
+  // 文档重置全部丢失（wave2 smoke 实证 navigator.webdriver 仍 true），改为
+  // navigate 完成后注入当前文档（stealth 语义 = 覆盖本次导航目标页）。
+  protected override async afterNavigate(client: McpClient): Promise<void> {
     try {
       await this.stealth.injectProfile(client, this.profileName);
     } catch (e) {

@@ -68,4 +68,4 @@ export const UA_CLIENT_HINTS_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-)();`;
+})();`;

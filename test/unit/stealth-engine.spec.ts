@@ -17,12 +17,16 @@
  *  - 注入脚本是顶级 const 数据（stealth-profiles.ts），本类只 dispatch
  *  - StealthEngine 不读 process.env / 不 import config（INV-30 衍生）
  */
-import { describe, it, expect, vi } from "vitest";
-import { StealthEngine } from "../../src/browse/StealthEngine.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  StealthEngine,
+  toFnExpression,
+} from "../../src/browse/StealthEngine.js";
 import {
   STEALTH_INJECTION_SCRIPT,
   STEALTH_PROFILES,
 } from "../../src/browse/stealth-profiles.js";
+import { logger } from "../../src/util/logger.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
 
 // ============================================================
@@ -90,8 +94,14 @@ describe("StealthEngine.injectProfile — 注入 webdriver 抹除脚本", () => 
     const evalCalls = calls.filter((c) => c.name === "evaluate_script");
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
     // 用 find 而非 index（顺序不依赖；v1.5 UA override 在 SCRIPT 前）
-    const scriptCall = evalCalls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    // W1-DEF-1（v1.8）：SCRIPT 是 13 段 IIFE 语句串——上游 0.3.0 契约下包成单个函数表达式
+    const scriptCall = evalCalls.find(
+      (c) => c.args.function === toFnExpression(STEALTH_INJECTION_SCRIPT),
+    );
     expect(scriptCall).toBeTruthy();
+    // 真实契约验证：传给上游的必须是可 eval 的函数表达式
+    const fn = eval(`(${scriptCall!.args.function})`) as () => unknown;
+    expect(typeof fn).toBe("function");
   });
 
   it("注入脚本含 navigator.webdriver override（payload 来自 stealth-profiles）", async () => {
@@ -100,7 +110,9 @@ describe("StealthEngine.injectProfile — 注入 webdriver 抹除脚本", () => 
     await engine.injectProfile(client, "mac_safari_17");
     // v1.5：UA override 先执行（第一次 evaluate），STEALTH_INJECTION_SCRIPT 第二次；
     // webdriver hook 在 STEALTH_INJECTION_SCRIPT 内 → 找 SCRIPT 那次 call
-    const scriptCall = calls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    const scriptCall = calls.find(
+      (c) => c.args.function === toFnExpression(STEALTH_INJECTION_SCRIPT),
+    );
     expect(scriptCall).toBeTruthy();
     expect(String(scriptCall!.args.function)).toMatch(/navigator.*webdriver/s);
   });
@@ -144,7 +156,9 @@ describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () =
     const engine = new StealthEngine();
     const { client, calls } = makeMockClient();
     await engine.injectProfile(client, "windows_chrome_120");
-    const scriptCall = calls.find((c) => c.args.function === STEALTH_INJECTION_SCRIPT);
+    const scriptCall = calls.find(
+      (c) => c.args.function === toFnExpression(STEALTH_INJECTION_SCRIPT),
+    );
     expect(scriptCall).toBeTruthy();
     const script = String(scriptCall!.args.function);
     // CORE 3 路
@@ -189,7 +203,9 @@ describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () =
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
     // evalCalls[0] = UA override（含 profile UA），evalCalls[1] = STEALTH_INJECTION_SCRIPT
     expect(String(evalCalls[0]!.args.function)).toContain("Chrome/130");
-    expect(evalCalls[1]!.args.function).toBe(STEALTH_INJECTION_SCRIPT);
+    expect(evalCalls[1]!.args.function).toBe(
+      toFnExpression(STEALTH_INJECTION_SCRIPT),
+    );
   });
 });
 
@@ -327,5 +343,64 @@ describe("StealthEngine.escalateManualSwitch — Argus 范式（不自动 captch
     // 也不应是 unknown（caller 必须看到明确 didnt 才能停）
     expect(v1.outcome).not.toBe("unknown");
     expect(v2.outcome).not.toBe("unknown");
+  });
+});
+
+// ============================================================
+// W1-DEF-1（v1.8）：上游 isError 校验——禁 stealth_injected 误报
+// ============================================================
+describe("StealthEngine.injectProfile — W1-DEF-1 上游 isError 校验（禁误报）", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("上游返 isError=true → 不记 stealth_injected，记 stealth_inject_failed", async () => {
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const engine = new StealthEngine();
+    // 模拟上游 0.3.0 对非法脚本返 isError（callTool 不 reject，SDK 返 { content, isError }）
+    const { client } = makeMockClient({
+      evalHandler: () =>
+        ({ content: [{ type: "text", text: "fn is not a function" }], isError: true }) as never,
+    });
+    await engine.injectProfile(client, "windows_chrome_120");
+    expect(infoSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ evt: "stealth_injected" }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ evt: "stealth_inject_failed" }),
+    );
+  });
+
+  it("上游 callTool reject → 不记 stealth_injected，记 stealth_inject_failed", async () => {
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const engine = new StealthEngine();
+    const { client } = makeMockClient({ throwOnCall: true });
+    await engine.injectProfile(client, "mac_safari_17");
+    expect(infoSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ evt: "stealth_injected" }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ evt: "stealth_inject_failed" }),
+    );
+  });
+
+  it("上游正常返回（非 isError）→ 记 stealth_injected（原行为保留）", async () => {
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const engine = new StealthEngine();
+    const { client } = makeMockClient();
+    await engine.injectProfile(client, "linux_firefox_121");
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ evt: "stealth_injected" }),
+    );
+  });
+
+  it("STEALTH_INJECTION_SCRIPT 包成的函数表达式可 eval 且实调不抛（真实契约）", () => {
+    const wrapped = toFnExpression(STEALTH_INJECTION_SCRIPT);
+    const fn = eval(`(${wrapped})`) as () => unknown;
+    expect(typeof fn).toBe("function");
+    // 在 Node 里执行：document/navigator 未定义——各段 IIFE 自包 try/catch，不抛
+    expect(() => fn()).not.toThrow();
   });
 });

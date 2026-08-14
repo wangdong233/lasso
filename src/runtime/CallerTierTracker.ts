@@ -28,6 +28,47 @@
  */
 import { logger } from "../util/logger.js";
 import type { CallerBudget, CallerSnapshot } from "./runtime-types.js";
+import type { InteractResult } from "../types.js";
+
+// ============================================================
+// v1.8 Phase E（W1-DEF-10）：handler 入口接线辅助
+// ============================================================
+/** CC 不传 _meta.callerId 时的 fallback caller（parse7 §3.3）。 */
+export const ANONYMOUS_CALLER_ID = "anonymous";
+
+/**
+ * 从 MCP request params._meta 提取 callerId（string 且非空；否则 "anonymous"）。
+ *
+ * W1-DEF-10：search.ts / browse.ts handler 入口在调 tryAcquire 前用它解析 caller。
+ * 宽容解析（unknown 入参）——extra._meta 类型是 RequestMeta（Record<string, unknown>），
+ * 本函数不 import SDK 类型（守 INV-35：runtime/ 不耦合协议层）。
+ */
+export function callerIdFromMeta(meta: unknown): string {
+  if (meta && typeof meta === "object") {
+    const v = (meta as Record<string, unknown>).callerId;
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return ANONYMOUS_CALLER_ID;
+}
+
+/**
+ * 超额拒绝的结构化返回（tri-state didnt；parse7 §3.3「超额 → 透明返回 CC」）。
+ * search / browse handler 在 tryAcquire=false 时用它构造 InteractResult。
+ */
+export function callerCapExceededResult(
+  callerId: string,
+  used: number,
+  cap: number,
+): InteractResult<never> {
+  return {
+    outcome: "didnt",
+    data: null,
+    served_by: "lasso.caller_tier",
+    fallback_used: false,
+    retrieval_method: "caller_cap_exceeded",
+    error: `caller_cap_exceeded:${callerId} used=${used} cap=${cap} (60s sliding window)`,
+  };
+}
 
 // ============================================================
 // 模块顶级 const（INV-38 task v0.6 红线）
