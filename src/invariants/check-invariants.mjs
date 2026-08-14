@@ -3736,6 +3736,21 @@ const assertions = [
       if (!/no_image_block_from_upstream/.test(bc.text)) return false;
       if (!/not_a_valid_png/.test(bc.text)) return false; // PNG magic 校验（47B 垃圾文件教训）
 
+      // ----- (n) v1.8.1 wave2 修复（W2-DEF-N1/N2/W2-DEF-1）-----
+      // N1：URL 驱动采集 action 必先导航（network 恒 0 entries 教训）
+      if (!/NAV_FIRST_ACTIONS/.test(bc.text)) return false;
+      if (!/"network",\s*"screenshot",\s*"pdf"/.test(bc.text)) return false;
+      // N2：lifecycle 登记永不清 + 树杀（pgrep -P 递归；SIGKILL 单 pid 杀不死 shim 下层）
+      const sub = byPath(/^subprocess\/SubprocessManager\.ts$/);
+      if (!sub) return false;
+      const subCode = stripComments(sub.text);
+      if (!/lifecyclePids/.test(subCode)) return false;
+      if (!/_killTreeSync/.test(subCode)) return false;
+      if (!/pgrep/.test(subCode)) return false;
+      // W2-DEF-1：build 复制 creepjs-baseline.json 进 dist（clean build 门禁可达）
+      const pkg = readFileSync(join(SRC_ROOT, "..", "package.json"), "utf8");
+      if (!/creepjs-baseline\.json/.test(pkg)) return false;
+
       return true;
     },
   },

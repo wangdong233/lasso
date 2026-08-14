@@ -277,6 +277,14 @@ export abstract class BrowseChannel extends UiChannel {
 
     try {
       const c = await this.getMcpClient();
+      // W2-DEF-N1（v1.8.1）：URL 驱动的采集类 action 先导航到目标页——
+      // 此前 doNetwork/doScreenshot/doPdf 直接在当前页（首会话 = about:blank）执行，
+      // network 恒 0 entries（wave2 实证）。navigate 失败（404/DNS/...）由下方
+      // catch 统一 classify；wrapNavigate 的 afterNavigate 顺带注入 stealth。
+      if (NAV_FIRST_ACTIONS.has(action)) {
+        const nav = this.actionDispatch.get("navigate");
+        if (nav) await nav(c, url, options);
+      }
       const partial = await handler(c, url, options);
 
       // 写盘 + 短指针（v0.1 简化版；v0.3 升 StateStore LRU + stateId 反查）
@@ -979,6 +987,11 @@ function truncatePreview(s: string): string {
  *  - timeout / 429 / 5xx / 网络错 → unknown
  * action 名拼错不在这里出现（browse() 提前 didnt 返回）。
  */
+// W2-DEF-N1（v1.8.1）：这些 URL 驱动的采集 action 要求目标页已加载——
+// browseSingle 先 navigate 再 dispatch（工具注释自 v0.5 起就承诺「URL → navigate + X」，
+// v1.8.1 补上真实导航）。snapshot/extract/wait/click 等保持原语义（作用于当前页）。
+const NAV_FIRST_ACTIONS = new Set(["network", "screenshot", "pdf"]);
+
 function classifyBrowseError(msg: string, _action: string): Outcome {
   const m = msg.toLowerCase();
   if (m.includes("needs_manual_2fa")) return "didnt";

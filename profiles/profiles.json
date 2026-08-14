@@ -1,0 +1,11 @@
+{
+  "current": "default",
+  "profiles": [
+    {
+      "name": "default",
+      "userDataDir": "profiles/default/user-data",
+      "createdAt": 1786739055510,
+      "lastUsedAt": 0
+    }
+  ]
+}

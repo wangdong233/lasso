@@ -1,6 +1,6 @@
 {
   "name": "lasso-mcp",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Claude Code 的全交互对外抓手 MCP —— 搜/抓/登录态抓/控桌面，四通道+多引擎 fallback+AES cookie+markdown 抽取。All-in-one interaction MCP for Claude Code.",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
     "lasso-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc && chmod +x dist/index.js && mkdir -p dist/doctor/fixtures && cp src/doctor/fixtures/creepjs-baseline.json dist/doctor/fixtures/",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "test": "vitest run",

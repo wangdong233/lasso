@@ -1,0 +1,10 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+const client = new Client({ name: "netprobe", version: "1.0.0" });
+const transport = new StdioClientTransport({ command: "npx", args: ["-y", "chrome-devtools-mcp@0.3.0", "--headless", "--isolated"], cwd: process.cwd() });
+await client.connect(transport);
+const nav = await client.callTool({ name: "navigate_page", arguments: { url: "https://www.selenium.dev" } }, undefined, { timeout: 60000 });
+console.log("NAV:", JSON.stringify(nav.content?.[0]?.text ?? nav).slice(0, 150));
+const r = await client.callTool({ name: "evaluate_script", arguments: { function: "() => JSON.stringify({n: performance.getEntriesByType('resource').length, hosts: [...new Set(performance.getEntriesByType('resource').map(e=>new URL(e.name).host))].slice(0,5)})" } }, undefined, { timeout: 60000 });
+console.log("EVAL RAW:", JSON.stringify(r.content?.map(b=>({type:b.type,text:(b.text||'').slice(0,400),data:(b.data||'').slice(0,50)}))), null, 1);
+await transport.close();

@@ -194,7 +194,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.8.0";
+const LASSO_SERVER_VERSION = "1.8.1";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -1136,7 +1136,11 @@ async function runMcpServer(): Promise<void> {
       }
     }
     try {
-      await subproc.shutdown();
+      // W2-DEF-N2（v1.8.1）：**不再 await subproc.shutdown()**——其内部 client.close()
+      // 实测会悬挂（残留 server 进程卡在此处永不到达 process.exit，exit 钩子不触发，
+      // 整棵 shim→node→Chrome 树泄漏）。SIGTERM 路径直接同步树杀（SIGKILL 递归
+      // pgrep -P）+ 立即 exit；优雅 close 留给 exit 钩子外无路径依赖。
+      subproc.killAllSync();
     } catch (e) {
       logger.warn({ evt: "shutdown_error", error: String(e) });
     }

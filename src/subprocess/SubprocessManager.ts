@@ -23,7 +23,7 @@
  */
 import { McpClient, type StdioSpawnParams } from "./McpClient.js";
 import { Agent } from "undici";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
 
 // ============================================================
@@ -99,6 +99,12 @@ interface RustProc {
 export class SubprocessManager {
   private procs = new Map<string, ManagedProc>();
   private specs = new Map<string, SpawnSpec>();
+  /**
+   * W2-DEF-N2（v1.8.1）：历史 spawn 过的全部 MCP 子进程 pid（含已优雅关闭的）。
+   * 永不删除——exit 钩子 killAllSync 以此为真源做树杀，修复「优雅 _kill 清 map
+   * 后 exit 钩子遍历空 map、SIGKILL 永不发出」的接线缺口（wave2 实证净残留 2 进程/次）。
+   */
+  private lifecyclePids = new Set<number>();
   /**
    * v0.3.5 新增（parse4 §3.5.2）：Rust helper 子进程追踪。
    * 与 MCP 的 procs/specs 平行，互不污染（INV-7：MCP 路径一行不动）。
@@ -317,6 +323,8 @@ export class SubprocessManager {
    *  - INV-7 仍守：纯 lifecycle，不读协议帧
    */
   killAllSync(): void {
+    // W2-DEF-N2（v1.8.1）：以 lifecyclePids（永不清）为真源——优雅 _kill 清过 map
+    // 的进程也能在此被树杀。procs/rustProcs 里仍未 closed 的照旧收集。
     const pids: Array<{ name: string; pid: number }> = [];
     for (const [name, m] of this.procs) {
       if (m.closed) continue;
@@ -329,18 +337,47 @@ export class SubprocessManager {
       m.closed = true;
       if (m.proc.pid !== undefined) pids.push({ name, pid: m.proc.pid });
     }
+    for (const pid of this.lifecyclePids) pids.push({ name: "lifecycle", pid });
+    const seen = new Set<number>();
     for (const { name, pid } of pids) {
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      this._killTreeSync(name, pid);
+    }
+  }
+
+  /**
+   * W2-DEF-N2（v1.8.1）：对 pid 及其全部后代递归 SIGKILL（best-effort）。
+   * 单 pid SIGKILL 杀不死 npx shim 下层的 node/Chrome（ppid=1 孤儿的来源）——
+   * macOS 无 /proc，用 pgrep -P 逐层枚举子进程。INV-7 语义不变：纯 lifecycle。
+   */
+  private _killTreeSync(name: string, pid: number): void {
+    const queue = [pid];
+    const victims: number[] = [];
+    let guard = 0;
+    while (queue.length > 0 && guard++ < 64) {
+      const p = queue.shift()!;
+      victims.push(p);
       try {
-        process.kill(pid, "SIGKILL");
-        logger.info({ evt: "subproc_exit_kill", name, pid, signal: "SIGKILL" });
+        const r = spawnSync("pgrep", ["-P", String(p)], {
+          encoding: "utf8",
+          timeout: 1000,
+        });
+        if (r.stdout) {
+          for (const line of r.stdout.split("\n")) {
+            if (/^\d+$/.test(line.trim())) queue.push(Number(line.trim()));
+          }
+        }
+      } catch {
+        // pgrep 不可用——退化为只杀根 pid
+      }
+    }
+    for (const v of victims) {
+      try {
+        process.kill(v, "SIGKILL");
+        logger.info({ evt: "subproc_exit_kill", name, pid: v, signal: "SIGKILL" });
       } catch (e) {
         // 已死（ESRCH）或权限不足（EPERM）——best-effort，不抛
-        logger.warn({
-          evt: "subproc_exit_kill_error",
-          name,
-          pid,
-          error: String(e),
-        });
       }
     }
   }
@@ -454,6 +491,9 @@ export class SubprocessManager {
           restartCount: attempt,
           closed: false,
         });
+        // W2-DEF-N2（v1.8.1）：lifecycle 登记永不清——优雅 _kill 清 map 后
+        // exit 钩子仍能按 pid 树杀残留（npx shim 下层 node/Chrome 孤儿）。
+        if (client.pid !== null) this.lifecyclePids.add(client.pid);
         logger.info({
           evt: "subproc_spawned",
           name,
