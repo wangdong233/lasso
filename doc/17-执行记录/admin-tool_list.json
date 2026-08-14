@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"ok\": true,\n  \"action\": \"tool_list\",\n  \"channels\": {\n    \"search\": [\n      \"search\"\n    ],\n    \"browse_headless\": [\n      \"browse_headless\"\n    ],\n    \"browse_logged_in\": [\n      \"browse_logged_in\"\n    ],\n    \"desktop\": [\n      \"desktop\"\n    ],\n    \"fetch\": [\n      \"fetch_url\"\n    ],\n    \"screenshot\": [\n      \"screenshot\"\n    ],\n    \"pdf\": [\n      \"pdf\"\n    ],\n    \"network\": [\n      \"network\"\n    ],\n    \"wayback\": [\n      \"wayback_lookup\"\n    ],\n    \"doctor\": [\n      \"doctor\"\n    ],\n    \"forest\": [\n      \"interact_roots\",\n      \"interact_observe\",\n      \"interact_act\"\n    ],\n    \"admin\": [\n      \"admin\"\n    ]\n  },\n  \"total_tools\": 14,\n  \"timestamp\": 1786730540782\n}"
+    }
+  ]
+}

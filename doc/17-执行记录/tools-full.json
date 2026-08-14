@@ -1,0 +1,1111 @@
+Now using node v24.12.0 (npm v11.6.2)
+[
+  {
+    "name": "search",
+    "description": "Default structured web search via Zhipu web-search-prime (clean JSON, fast, cheap).\n\nAUTOMATIC FALLBACK: on rate-limit / timeout / 5xx / empty-result, transparently\nfalls back to browse_headless real-search (baidu SERP scrape). The returned\n`outcome` + `fallback_used` + `served_by` fields tell you which path served you.\n\nUse for:\n  - keyword searches on public content\n  - fresh facts (news, docs, release notes)\n  - quick 'does X exist / what is Y' lookups\n\n[Prefer browse_headless for]:    scraping a specific known URL you already have.\n[Prefer browse_logged_in for]:  sites showing different content to logged-in users\n                                 (GitHub private repos, Jira, internal tools).\n[Prefer desktop for]:           native macOS apps (not browser pages).\n[Prefer wayback_lookup for]:    rescuing a dead search-result URL (404/timeout/5xx)\n                                 — does NOT auto-probe; call it explicitly.\n\nArgs:  query (str, required)  — the search query\n       limit (int, 1-50, default 10)\n       engine (str, default 'auto')  — 'auto' | 'zhipu' | 'brave' | 'fallback_chain'\n       region (str, default 'cn')     — 'cn' or 'us'\n       no_cache (bool, default false)\n\nENGINE CHOICE (v0.9):\n  - 'auto'           DEFAULT. Multi-source fanout (zhipu+brave concurrent)\n                     then browse_headless SERP scrape. Byte-identical v0.8.\n                     Use when you want maximum coverage and speed (default).\n  - 'fallback_chain' OPT-IN. Three-tier serial fallback: zhipu → brave → bing →\n                     browse_headless. Still reuses the single fallback engine\n                     (FallbackDecider; INV-55). Use for high-reliability scenarios\n                     ('search ≈ never fails') where you want maximum source\n                     redundancy at the cost of serial latency. When ALL sources\n                     trip and a RecordingStore is wired, returns the last recorded\n                     fixture for the same query (served_by='recording_replay');\n                     if no fixture, returns outcome=didnt (honest, no fabrication).\n                     Requires BING_API_KEYS env for the bing tier; without it the\n                     bing tier is silently skipped (behavior = v0.8 fallback chain).\n  - 'zhipu'          Single-source (Chinese主力). Quick when you know zhipu suffices.\n  - 'brave'          Single-source (English主力).\n\nReturns: InteractResult<SearchResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 10
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "zhipu",
+            "brave",
+            "auto",
+            "fallback_chain"
+          ],
+          "default": "auto"
+        },
+        "region": {
+          "type": "string",
+          "default": "cn"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        },
+        "free_only": {
+          "type": "string",
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ]
+        },
+        "attributed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "browse_headless",
+    "description": "Clean, isolated headless Chromium via chrome-devtools-mcp --headless --isolated.\nNo login state. No cookie persistence. Page state is written to disk\n(~/.cache/lasso/<run_id>/); only a short state_id pointer + ≤1k-token preview\nare returned to save your context budget.\n\nActions (parse1 §3.5 dispatch Map):\n  navigate   — go to url\n  snapshot   — a11y-tree text snapshot (default)\n  screenshot — PNG to disk; preview holds the path\n  extract    — full-page text extraction\n  click      — click an a11y uid (opts.selectors.click = uid)\n  fill       — fill_form (opts.selectors = { uid: value, ... })\n  wait       — wait_for text (opts.expect.text)\n  evaluate   — eval JS (opts.js) — documented risk, use sparingly\n\nEXTRACT MODE (v1.1) — only the `extract` action reads options.extract_mode:\n  omit / 'raw'           DEFAULT. a11y text tree via take_snapshot (v1.0 byte-identical).\n                         Use when you want the page's element/structure semantics preserved.\n  'markdown'             Renders HTML → defuddle strips nav/ads/boilerplate → turndown to\n                         clean markdown. Use when feeding content to an LLM (saves 30-70% tokens).\n  'markdown_cited'       markdown + ⟨N⟩ citation footnotes + deduped References section.\n                         Use for RAG / context-budget-sensitive cites.\n\nUse for:\n  - public pages / JS-heavy SPAs / SERP fallback / screenshots\n  - extracting text content from a known URL\n\n[Prefer browse_logged_in for]: sites requiring auth — headless cannot log in.\n[Prefer search for]:          keyword discovery when you don't have a URL.\n\nSECURITY: URL is SSRF-checked. Defaults deny private IPs; an allowlist lets\n198.18.0.0/15 (fake-ip TUN) and 127.0.0.1/32 (CDP :9222) through. Extend via\nenv LASSO_SSRF_ALLOW_RANGES='cidr1,cidr2'.\n\nArgs:  url (str, required)   — http(s) URL (userinfo @ forbidden)\n       action (str, default 'snapshot')\n       options (object, optional) — { selectors, js, expect, screenshot, ... }\n\nReturns: InteractResult<BrowseResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "action": {
+          "type": "string",
+          "default": "snapshot"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "selectors": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "js": {
+              "type": "string"
+            },
+            "wait_until": {
+              "type": "string",
+              "enum": [
+                "load",
+                "domcontentloaded",
+                "networkidle"
+              ]
+            },
+            "screenshot": {
+              "type": "object",
+              "properties": {
+                "full": {
+                  "type": "boolean"
+                },
+                "element": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "no_cache": {
+              "type": "boolean"
+            },
+            "extract_mode": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "markdown",
+                "markdown_cited"
+              ]
+            },
+            "expect": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "selector": {
+                  "type": "string"
+                },
+                "url_contains": {
+                  "type": "string"
+                },
+                "gone": {
+                  "type": "boolean"
+                },
+                "timeout_ms": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "browse_logged_in",
+    "description": "Reuses your already-logged-in local Chrome via CDP port 9222\n(chrome-devtools-mcp --browser-url=http://localhost:9222).\n\nREQUIREMENTS:\n  1. Chrome started with --remote-debugging-port=9222\n  2. You have completed login (including any 2FA) in that Chrome\n\nDOES NOT:\n  - auto-login (no credential entry)\n  - solve 2FA / CAPTCHA / magic-link confirmation\n  - export or persist cookies\nIf a login or 2FA page is detected, returns outcome=didnt +\nerror='NEEDS_MANUAL_2FA' — you must complete login in Chrome yourself.\n\nSame action set + options as browse_headless (navigate / snapshot / click / ...).\n\nUse for:\n  - authenticated sites (GitHub private, Jira, Notion, internal tools)\n  - pages that gate content behind a login wall\n\n[Prefer browse_headless for]: public pages — headless is faster + cleaner.\n[Prefer search for]:         keyword discovery when you don't have a URL.\n\nSECURITY: same SSRF guard as browse_headless. 127.0.0.1:9222 is in the\ndefault allowlist so the CDP connect itself is permitted.\n\nArgs:  url (str, required)   — http(s) URL\n       action (str, default 'snapshot')\n       options (object, optional)\n\nReturns: InteractResult<BrowseResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "action": {
+          "type": "string",
+          "default": "snapshot"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "selectors": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "js": {
+              "type": "string"
+            },
+            "wait_until": {
+              "type": "string",
+              "enum": [
+                "load",
+                "domcontentloaded",
+                "networkidle"
+              ]
+            },
+            "screenshot": {
+              "type": "object",
+              "properties": {
+                "full": {
+                  "type": "boolean"
+                },
+                "element": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "no_cache": {
+              "type": "boolean"
+            },
+            "extract_mode": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "markdown",
+                "markdown_cited"
+              ]
+            },
+            "expect": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "selector": {
+                  "type": "string"
+                },
+                "url_contains": {
+                  "type": "string"
+                },
+                "gone": {
+                  "type": "boolean"
+                },
+                "timeout_ms": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "desktop",
+    "description": "Control macOS native apps (Finder/Mail/Safari/Notes/System Settings/Xcode) via\nAXAPI semantics. Uses a Rust helper subprocess (stdin/stdout JSON-lines);\nprefers the AX tree over screenshots for speed + structure.\n\nActions (action-enum collapsed, 13 #1):\n  snapshot   — AX tree → OutlineNode (default; ≤30ms for maxDepth=3)\n              options.interactive_only=true (v1.2): prune to interactive elements + ancestors (省 token);\n              default off = full tree (byte-identical v1.1).\n  find       — query cached snapshot by text/role/ref (no re-walk)\n  act        — click/type/press/scroll/hotkey with optional expect postcondition\n  wait       — poll for window/element/appFrontmost (tri-state)\n  screenshot — fallback for pictureOnly nodes (canvas/Metal)\n  doctor     — TCC / AX read-rate / signature / Rust helper health\n\nUse for: native macOS app control (NOT browser pages).\n[Prefer browse_headless for]:   public web pages (DOM-based, faster, no TCC).\n[Prefer browse_logged_in for]:  logged-in web sites (cookies preserved).\n[Prefer search for]:            keyword discovery when you don't have an app.\n\nREQUIREMENTS:\n  1. Rust helper signed with Developer ID (./rust-helper/build/sign.sh)\n  2. System Settings → Privacy → Accessibility granted to helper\n  3. (for screenshot) Screen Recording granted\n\nDOES NOT:\n  - read macOS Keychain credentials (F3.10.11)\n  - solve native auth prompts (boundary)\n  - run on Windows/Linux (v0.9.5+)\n  - fallback to browse_* when desktop fails (INV-23: no cross-surface)\n\nArgs:  action (str, default 'snapshot')\n       options (object, optional) — { app, state_id, max_depth, actions, expect,\n                                       where, screenshot_region, timeout_ms, ... }\n\nReturns: InteractResult<OutlineSnapshot | DesktopResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "snapshot",
+            "find",
+            "act",
+            "wait",
+            "screenshot",
+            "doctor"
+          ],
+          "default": "snapshot"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "state_id": {
+              "type": "string"
+            },
+            "max_depth": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "default": 8
+            },
+            "interactive_only": {
+              "type": "boolean"
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "click"
+                      },
+                      "ref": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "type"
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "press"
+                      },
+                      "key": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "key"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "scroll"
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "dx": {
+                        "type": "number"
+                      },
+                      "dy": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref",
+                      "dx",
+                      "dy"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "hotkey"
+                      },
+                      "keys": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "keys"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "expect": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "gone": {
+                  "type": "boolean"
+                },
+                "timeout_ms": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 5000
+                }
+              },
+              "additionalProperties": false
+            },
+            "where": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "screenshot_region": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "h": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h"
+              ],
+              "additionalProperties": false
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "default": 30000
+            },
+            "picture_only": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "fetch_url",
+    "description": "Direct HTTP fetch — raw bytes only, no JS rendering, no browser. Uses the\nshared undici keep-alive pool (SubprocessManager.acquireHttpClient) and the\nsame SSRF guard as browse_headless.\n\nUse for:\n  - raw HTML source (unlike browse_headless which gives rendered DOM)\n  - JSON REST API responses (returns JSON verbatim)\n  - plain text / CSV / XML / static assets\n  - latency- or token-sensitive fetches (4x faster + 4x cheaper than browse)\n\n[Prefer browse_headless for]:   JS-heavy SPAs (fetch won't run scripts).\n[Prefer browse_headless for]:   structured a11y snapshot (Playwright-style).\n[Prefer browse_headless for]:   anti-bot sites (Cloudflare blocks raw fetch).\n[Prefer browse_logged_in for]:  authenticated endpoints (fetch_url sends no cookies).\n[Prefer screenshot for]:        a rendered image of the page.\n[Prefer pdf for]:               a paginated PDF of the page.\n[Prefer network for]:           the page's resource load trace.\n\nDOES NOT:\n  - follow redirects (3xx → outcome=didnt + data.location; re-call fetch_url\n    on the new URL yourself — keeps SSRF caller-explicit per hop)\n  - execute JavaScript or render pages\n  - send cookies / Authorization (set options.headers explicitly if needed)\n  - retry on failure (caller-tier decision, not engine decision)\n  - fall back to browse_headless (INV-23 honored: fetch vs browse never fall back)\n\nBODY ROUTING by Content-Type (parse6 §3.5):\n  text/html, application/xhtml+xml         → body_kind=html (raw text)\n  application/json, */+json                → body_kind=json (raw text)\n  text/plain, text/css, text/csv, text/xml → body_kind=text (raw text)\n  image/*, video/*, application/pdf, etc.  → body_kind=binary:<subtype>\n                                            (base64-encoded text)\n\nEXTRACT MODE (v1.1) — options.extract_mode transforms HTML bodies post-fetch:\n  omit / 'raw'           DEFAULT. Raw HTML bytes verbatim (v1.0 byte-identical).\n                         Non-HTML routes (json/text/binary) IGNORE this field.\n  'markdown'             HTML only: defuddle strips nav/ads → turndown to clean markdown.\n                         body_kind becomes 'markdown:<engine>'. Saves tokens for LLM input.\n  'markdown_cited'       markdown + ⟨N⟩ citation footnotes + References section (RAG).\n\nSECURITY: URL is SSRF-checked. Private IPs (10.x / 127.x / 169.254.169.254\nmetadata / 192.168.x) blocked; default allowlist passes 198.18.0.0/15 (fake-ip\nTUN) + 127.0.0.1/32 (CDP). Extend via LASSO_SSRF_ALLOW_RANGES='cidr1,cidr2'.\nredirect:'manual' ensures redirects cannot be used to bypass SSRF.\n\nBOUND: response > 48 KiB auto-spills to /tmp/lasso-output/@oN.txt (mode 0o600)\nand the response carries a 16 KiB preview + ref — read_text({ref:@oN, offset}).\n\nArgs:  url (str, required)               — http(s) URL (userinfo @ forbidden)\n       options.method (str, default 'GET')  — 'GET' | 'HEAD' (POST/PUT not in v0.5)\n       options.headers (object, optional)   — custom request headers\n       options.timeout_ms (int, default 30000, max 60000)\n       options.max_bytes (int, default 2097152, max 16777216)  — 2 MiB default, 16 MiB cap\n       options.no_cache (bool, default false)  — adds Cache-Control: no-cache\n       options.extract_mode (str, optional)  — 'raw' | 'markdown' | 'markdown_cited' (HTML only; v1.1)\n\nReturns: InteractResult<FetchUrlResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "HEAD"
+              ],
+              "default": "GET"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 60000,
+              "default": 30000
+            },
+            "max_bytes": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 16777216,
+              "default": 2097152
+            },
+            "no_cache": {
+              "type": "boolean",
+              "default": false
+            },
+            "extract_mode": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "markdown",
+                "markdown_cited"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "screenshot",
+    "description": "Capture a PNG screenshot of a URL via chrome-devtools-mcp --headless.\nNavigates to the URL, takes a full-page or viewport screenshot, saves PNG\nto disk, and returns the file path (not base64) to keep your context budget\nsmall — read the file with read_text or open it directly.\n\nUse for:\n  - visual verification (does the page look right?)\n  - charts / maps / canvas content that text snapshots can't capture\n  - recording a page state at a point in time (debugging)\n  - feeding a screenshot to a downstream VLM (vision-language model)\n\n[Prefer browse_headless for]:   text content / a11y tree (much smaller, faster).\n[Prefer fetch_url for]:         raw HTML / JSON bytes (10x cheaper than screenshot).\n[Prefer pdf for]:               a paginated, printable document of the page.\n[Prefer browse_logged_in for]:  pages that require authentication.\n[Prefer desktop for]:           native macOS apps (not browser pages).\n\nDOES NOT:\n  - accept pageRef @pN in v0.5 (only URL; pageRef arrives in v0.6 forest merge)\n  - honor options.region / options.viewport / options.format in v0.5 (accepted\n    for forward-compat but chrome-devtools-mcp take_screenshot is wired to\n    format=png + fullPage only; region / mobile-emulation viewport推 v0.6+)\n  - return base64 PNG (only the file path; use read_text or shell to view)\n  - fall back across surfaces (INV-23 honored)\n\nArgs:  url (str, required)             — http(s) URL (userinfo @ forbidden)\n       options.full_page (bool, default false)  — true captures entire scroll height\n       options.format (str, default 'png')       — 'png' | 'jpeg' (v0.5: png only)\n       options.viewport (object, optional)       — {width, height} (v0.5: accepted, not mapped)\n       options.region (object, optional)         — {x, y, width, height} (v0.5: accepted, not mapped)\n       options.wait_until (str, default 'load')  — 'load' | 'domcontentloaded' | 'networkidle'\n       options.timeout_ms (int, default 30000)\n\nReturns: InteractResult<ScreenshotResult> as JSON text.\n        data.path is the PNG absolute path (e.g. /tmp/lasso-screenshot-<uuid>.png).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "full_page": {
+              "type": "boolean",
+              "default": false
+            },
+            "viewport": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 320,
+                  "maximum": 4096,
+                  "default": 1280
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 240,
+                  "maximum": 4096,
+                  "default": 800
+                }
+              },
+              "additionalProperties": false
+            },
+            "region": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "additionalProperties": false
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "png",
+                "jpeg"
+              ],
+              "default": "png"
+            },
+            "quality": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "wait_until": {
+              "type": "string",
+              "enum": [
+                "load",
+                "domcontentloaded",
+                "networkidle"
+              ],
+              "default": "load"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "default": 30000
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "pdf",
+    "description": "Generate a PDF of a URL via chrome-devtools-mcp's `pdf` tool (CDP\nPage.printToPDF). Returns the PDF as base64 text, auto-spilling to\n/tmp/lasso-output/@oN.pdf (mode 0o600) when it exceeds 48 KiB; read the\nspill file with read_text({ref:@oN, offset}) and base64-decode locally.\n\nUse for:\n  - archiving a page as a printable document\n  - generating reports / invoices from web pages\n  - capturing a multi-page snapshot (PDF pagination handles long content)\n\n[Prefer browse_headless for]:  text content / a11y tree (PDF is overkill).\n[Prefer screenshot for]:       a single image (PDF is heavier + paginated).\n[Prefer fetch_url for]:        raw HTML / JSON bytes (10x cheaper than PDF).\n\nGO/NO-GO F1 (parse6 §4.4 + §7.1): chrome-devtools-mcp@LOCKED may not expose\nthe `pdf` tool. If unsupported, returns outcome=didnt +\nretrieval_method='upstream_unsupported:pdf' + data.next_step (never crashes).\nFallback: run Chrome locally with `--headless --print-to-pdf=url out.pdf`,\nor use browse_headless screenshot + a vision model. doctor CLI probes this\nas cdp_mcp_pdf_tool_available.\n\nDOES NOT:\n  - accept pageRef @pN in v0.5 (only URL; pageRef arrives in v0.6 forest merge)\n  - add watermarks / encrypt / fill forms (永远 NO-GO, parse6 §1.2)\n  - merge multiple URLs into one PDF (v0.6+ if needed)\n  - write binary PDF to disk (spill file contains base64 text; CC decodes)\n  - fall back across surfaces (INV-23 honored)\n\nSECURITY: URL is SSRF-checked (same guard as browse_headless).\n\nBOUND: PDF > 48 KiB auto-spills to /tmp/lasso-output/@oN.pdf (mode 0o600).\nSpill file content is base64 text (≈ 33% larger than binary PDF); read with\nread_text({ref:@oN, offset}) and base64-decode locally to recover binary.\n\nArgs:  url (str, required)             — http(s) URL (userinfo @ forbidden)\n       options.format (str, default 'A4')        — 'A4' | 'Letter' | 'Legal' | 'Tabloid'\n       options.landscape (bool, default false)\n       options.print_background (bool, default true)  — include CSS backgrounds\n       options.margin_top/bottom/left/right (float, inches, optional, 0-5)\n       options.wait_until (str, default 'load')\n       options.timeout_ms (int, default 30000)\n\nReturns: InteractResult<PdfResult> as JSON text.\n        data.envelope carries preview (first 16 KiB of base64) + ref when spilled.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": [
+                "A4",
+                "Letter",
+                "Legal",
+                "Tabloid"
+              ],
+              "default": "A4"
+            },
+            "landscape": {
+              "type": "boolean",
+              "default": false
+            },
+            "print_background": {
+              "type": "boolean",
+              "default": true
+            },
+            "margin_top": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "margin_bottom": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "margin_left": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "margin_right": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "wait_until": {
+              "type": "string",
+              "enum": [
+                "load",
+                "domcontentloaded",
+                "networkidle"
+              ],
+              "default": "load"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "default": 30000
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "network",
+    "description": "Capture the network resource list of a URL via JS-level PerformanceObserver\ninjection (navigates first, then injects an observer for options.timeout_ms ms,\nthen resolves the resource entries). Returns a JSON list of resources + a\nthird-party count, auto-spilling to /tmp/lasso-output/@oN (mode 0o600) when it\nexceeds 48 KiB; read the spill file with read_text({ref:@oN, offset}).\n\nUse for:\n  - auditing third-party trackers / analytics / ad networks on a page\n  - debugging slow page loads (TTFB / duration per resource)\n  - seeing what XHR/fetch the page makes (filter: 'xhr' or 'fetch')\n  - estimating page weight (sum of transferSize across resources)\n\n[Prefer browse_headless for]:  full DOM + a11y tree (network is one slice).\n[Prefer fetch_url for]:        raw HTML/JSON bytes of the main document only.\n[Prefer screenshot for]:       a visual snapshot (not a network list).\n[Prefer pdf for]:              a printable archive (not a network list).\n\nGO/NO-GO F2 (parse6 §4.4 + §7.1): PerformanceObserver is a JS-level API, so it\ncaptures only resources the browser fetched after JS started. Under SSRF-\nallowlisted fake-ip / TUN proxies (Surge, Clash) the proxy may rewrite DNS or\ntiming, so some entries can be missed or have skewed metrics. When this is\ndetected the response includes data.next_step recommending CDP Network-level\ncapture (planned for v0.7 F3.7.x).\n\nDOES NOT:\n  - capture CDP Network-level requests (JS-level only; v0.7+ for full HAR)\n  - capture WebSocket frames (v1.0+)\n  - capture response bodies in v0.5 (options.include_bodies accepted for\n    forward-compat but not wired; POST v0.6)\n  - mock / intercept / replay requests (永远 NO-GO; v1.0+)\n  - export a HAR file (v0.7 F3.7.x)\n  - accept pageRef @pN in v0.5 (only URL; pageRef arrives in v0.6 forest merge)\n  - fall back across surfaces (INV-23 honored)\n\nHINT: performance entries may be incomplete under proxy/TUN — if the count\nlooks low for a heavy page, retry with options.timeout_ms=10000 or use the\ndata.next_step hint.\n\nArgs:  url (str, required)             — http(s) URL (userinfo @ forbidden)\n       options.filter (str, default 'all') — 'xhr' | 'fetch' | 'img' | '3rd-party' | 'all'\n       options.include_bodies (bool, default false) — v0.5: accepted, not wired (v0.6)\n       options.timeout_ms (int, default 3000) — PerformanceObserver采集窗口 (max 30000)\n       options.wait_until (str, default 'load') — 'load' | 'domcontentloaded' | 'networkidle'\n\nReturns: InteractResult<NetworkResult> as JSON text.\n        data.envelope carries preview (first 16 KiB of resource list JSON) + ref when spilled.\n        data.resource_count + data.third_party_count are always present on outcome=worked.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "enum": [
+                "xhr",
+                "fetch",
+                "img",
+                "3rd-party",
+                "all"
+              ],
+              "default": "all"
+            },
+            "include_bodies": {
+              "type": "boolean",
+              "default": false
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 30000,
+              "default": 3000
+            },
+            "wait_until": {
+              "type": "string",
+              "enum": [
+                "load",
+                "domcontentloaded",
+                "networkidle"
+              ],
+              "default": "load"
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "wayback_lookup",
+    "description": "Wayback Machine dead-link rescue — STANDALONE tool; does NOT auto-probe search results.\n\nUse when a URL from search/browse/fetch_url returns 404, timeout, or 5xx:\n  fetches the most recent archived snapshot metadata from archive.org.\n  When archived=true, the returned snapshot_url can then be fetched via fetch_url\n  to retrieve the archived page content.\n\nDOES NOT:\n  - auto-probe search result URLs (call this explicitly when a link is dead)\n  - return archived page content directly (only metadata; use fetch_url on snapshot_url)\n  - bypass paywalls or login walls\n\n[Prefer search for]:        discovering URLs by keyword (this tool needs a URL).\n[Prefer fetch_url for]:     fetching a live URL you already trust.\n[Prefer browse_headless]:   when you need JS rendering of a live page.\n\nSECURITY: input URL is SSRF-guarded twice (input check + archive.org egress);\nprivate IPs are rejected so archive.org cannot become an SSRF probing proxy.\n\nArgs:  url (str, required)  — http(s) URL that is dead/inaccessible\n\nReturns: InteractResult<WaybackLookupResult> as JSON text. archived=true means\n         a snapshot exists; archived=false means archive.org has no copy.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "doctor",
+    "description": "Returns a structured JSON readiness report — same shape as `lasso doctor` CLI.\n\nChecks (≥10):\n  node_version / zhipu_api_key / zhipu_endpoint_reachable /\n  cdp_mcp_installable / chrome_binary / cdp_9222_logged_in /\n  cache_writable / ssrf_config / serp_selectors / invariants.\n\nEach check: { name, status: 'pass'|'fail'|'warn', detail, next_step? }.\nTop level: { ready: bool, blockers: string[], checks: [...] }.\n\nUse for:\n  - first-time setup verification\n  - debugging 'why is Lasso returning unknown for everything'\n  - health probe before a long agent run\n\nNo args. Returns the report as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "interact_roots",
+    "description": "List all controllable UI roots as a unified @pN + @wN list, then dispatch\nobserve/act on the chosen root via interact_observe / interact_act.\n\nRoots returned:\n  @pN  — browse page (from browse_headless + browse_logged_in CDP pages)\n  @wN  — desktop window (from macOS AX application main windows)\n\nEach root: { rootRef, kind, title, subtitle?, source }.\n  - browser_page.subtitle is the URL (interact_act dispatches navigate via it)\n  - window.title is \"{app}: {window title}\"\n\nUse interact_roots when you DON'T know which surface owns the target:\n  - user said 'the open Safari window' / 'my inbox' → list @wN + @pN to find it\n  - post-search: many tabs / windows opened, need to pick the right one\n\n[Prefer browse_headless for]:      public URL you already know (skip interact_roots).\n[Prefer browse_logged_in for]:     authenticated URL you already know.\n[Prefer desktop for]:              a specific native app name you already know.\n\nIdentity reuse: calling interact_roots again returns the SAME @pN / @wN for\nthe same URL/window (stable within session); no ref churn.\n\nArgs:  kind (str, optional) — 'browser_page' | 'window' filter; omit for both\n\nReturns: { roots: RootInfo[], count: int } as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "browser_page",
+            "window"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "interact_observe",
+    "description": "Read-only observe on a root returned by interact_roots.\n\nRoutes by rootRef prefix:\n  @pN → BrowseChannel.browse(url, action, options)\n        actions: snapshot | find (extract=snapshot alias; navigate/screenshot\n        are act-shape — use interact_act for those)\n  @wN → DesktopChannel.observe(action, options)\n        actions: snapshot | find\n\nUse interact_observe when you want a unified snapshot/find API across browse\nand desktop — model picks rootRef once, then observe without re-routing.\n\n[Prefer browse_headless directly for]: known public URL snapshot (1 less hop).\n[Prefer desktop directly for]:          known app name snapshot.\n\nArgs:  root_ref (str, required)  — @pN or @wN from interact_roots\n       action (str, default 'snapshot')  — 'snapshot' | 'find'\n       options (object, optional) — { selectors?, js?, where?, max_depth?, ... }\n\nReturns: InteractResult<BrowseResult | OutlineSnapshot | {matches,count}> JSON.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "root_ref": {
+          "type": "string",
+          "pattern": "^@[pw]\\d+$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "snapshot",
+            "find"
+          ]
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        }
+      },
+      "required": [
+        "root_ref",
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "interact_act",
+    "description": "Side-effecting action on a root returned by interact_roots.\n\nRoutes by rootRef prefix:\n  @pN → BrowseChannel.browse(url, action, options)\n        actions: navigate | snapshot | screenshot | extract | click | fill |\n                 wait | evaluate (default 'act' = passthrough to desktop)\n  @wN → DesktopChannel.act / .wait (action='act' or 'wait')\n        pass options.actions = [{kind:'click'|'type'|'press'|'scroll'|'hotkey', ...}]\n        + optional options.expect for postcondition tri-state\n\nStale / unknown rootRef → outcome='didnt' + retrieval_method='stale_root_ref'\n(call interact_roots again to refresh the registry).\n\nCross-surface safety: dispatcher NEVER falls back browse → desktop or vice\nversa (INV-23 honored at the channel layer; forest dispatcher just routes).\n\n[Prefer browse_headless directly for]: known public URL click/fill.\n[Prefer desktop directly for]:          known app name click/type.\n\nArgs:  root_ref (str, required)  — @pN or @wN from interact_roots\n       action (str, default 'act')  — browse vocab | 'act' | 'wait'\n       options (object, optional) — { selectors?, actions?, expect?, ... }\n\nReturns: InteractResult<BrowseResult | DesktopResult> as JSON text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "root_ref": {
+          "type": "string",
+          "pattern": "^@[pw]\\d+$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "navigate",
+            "snapshot",
+            "screenshot",
+            "extract",
+            "click",
+            "fill",
+            "wait",
+            "evaluate",
+            "act"
+          ],
+          "default": "act"
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        }
+      },
+      "required": [
+        "root_ref"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "admin",
+    "description": "Admin operations for runtime capability management (v0.6).\nSingle tool with action-enum folding 9 actions. DO NOT call unless the user\nexplicitly asks to change the running MCP server's capability set.\n\nActions (capability_* / tool_list / provider_* / caller_cap_*):\n  - capability_list      : list all channel/provider names + enabled state\n  - capability_disable   : {name} temporarily disable (tool list refresh + subproc stop)\n  - capability_enable    : {name} re-enable\n  - tool_list            : list all registered tools + owning channel\n  - provider_add         : {config} hot-plug a new ProviderConfig (keys from env, not body)\n  - provider_remove      : {name} hot-unplug (channel tools unregistered)\n  - provider_set_tos     : {name, tos_ack} mark ToS state (pending|acknowledged|violated)\n  - caller_cap_set       : {callerId, cap} per-caller 60s cap override (0 = block)\n  - caller_cap_list      : list all caller budgets + current usage\n\nUSE ONLY WHEN the user explicitly says one of:\n  - \"disable/enable the <channel> channel\" (e.g. browse_headless / desktop)\n  - \"add/remove a provider\" (e.g. a new Brave key pool)\n  - \"rate-limit caller X\" or \"what's caller X's usage\"\n  - \"what's the runtime state\" (capability_list + caller_cap_list)\n\nDO NOT USE FOR:\n  - searching / browsing / desktop automation (use the dedicated tools)\n  - normal fallback / retry (handled internally by FallbackDecider)\n  - persistent config edits (use $LASSO_PROVIDERS_FILE + SIGHUP for that)\n\nSECURITY:\n  - Every mutation writes an audit log line with callerId + reason + timestamp.\n  - capability_disable / provider_remove REQUIRE the `reason` field (forced thinking).\n  - provider_add reads API keys from process.env.<NAME>_API_KEYS, NOT from request body\n    (anti-gaming: keys never flow through the LLM tool-call surface).\n\nArgs:  action (enum, required) — one of the 9 actions above\n       name (str, optional)    — channel/provider name (required for *_disable/_enable/_remove)\n       config (object, opt.)   — ProviderConfig for provider_add (keys field IGNORED, read from env)\n       tos_ack (enum, opt.)    — 'pending' | 'acknowledged' | 'violated' for provider_set_tos\n       callerId (str, opt.)    — caller identifier for caller_cap_set\n       cap (int, opt.)         — non-negative per-caller cap for caller_cap_set (0 = block)\n       reason (str, opt.)      — REQUIRED for capability_disable / provider_remove (audit)\n\nReturns: structured JSON per action (capability_list → CapabilityState[], etc.).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "capability_list",
+            "capability_disable",
+            "capability_enable",
+            "tool_list",
+            "provider_add",
+            "provider_remove",
+            "provider_set_tos",
+            "caller_cap_set",
+            "caller_cap_list",
+            "metrics_snapshot",
+            "breaker_status",
+            "serp_health",
+            "profile_list",
+            "profile_switch",
+            "cookie_restore"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "api_key",
+                "broker",
+                "self_hosted"
+              ]
+            },
+            "endpoint_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "free_quota_per_month": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "quota_model": {
+              "type": "string",
+              "enum": [
+                "monthly",
+                "rpm",
+                "token",
+                "request"
+              ]
+            },
+            "fallback_order": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "policy_risk": {
+              "type": "string",
+              "enum": [
+                "safe",
+                "acquired",
+                "watched"
+              ]
+            },
+            "tos_url": {
+              "type": "string"
+            },
+            "tos_ack": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "additionalProperties": true
+        },
+        "tos_ack": {
+          "type": "boolean"
+        },
+        "callerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9_-]+$"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "export",
+            "import"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

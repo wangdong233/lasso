@@ -1,0 +1,184 @@
+Now using node v24.12.0 (npm v11.6.2)
+{
+  "ready": false,
+  "timestamp": "2026-08-14T18:02:10.019Z",
+  "lasso_version": "1.7.0",
+  "checks": [
+    {
+      "name": "node_version",
+      "status": "pass",
+      "detail": "Node 24.12.0"
+    },
+    {
+      "name": "zhipu_api_key",
+      "status": "fail",
+      "detail": "ZHIPU_API_KEY 未设置",
+      "next_step": "export ZHIPU_API_KEY=<your-key>"
+    },
+    {
+      "name": "zhipu_endpoint_reachable",
+      "status": "pass",
+      "detail": "HTTP 200 OK"
+    },
+    {
+      "name": "cdp_mcp_installable",
+      "status": "pass",
+      "detail": "chrome-devtools-mcp@0.3.0 -> 0.3.0"
+    },
+    {
+      "name": "chrome_binary",
+      "status": "pass",
+      "detail": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    },
+    {
+      "name": "cdp_9222_logged_in",
+      "status": "fail",
+      "detail": "CDP /json/version returned HTTP 404",
+      "next_step": "重启 Chrome with --remote-debugging-port=9222"
+    },
+    {
+      "name": "cache_writable",
+      "status": "pass",
+      "detail": "/Users/wangdong/.cache/lasso"
+    },
+    {
+      "name": "ssrf_config",
+      "status": "pass",
+      "detail": "allow=0 deny=0 (DEFAULT_ALLOW_RANGES 内置 2 条)"
+    },
+    {
+      "name": "serp_selectors",
+      "status": "pass",
+      "detail": "BAIDU=2 GOOGLE=2"
+    },
+    {
+      "name": "invariants",
+      "status": "pass",
+      "detail": "All 75 invariants passed."
+    },
+    {
+      "name": "brave_keys",
+      "status": "warn",
+      "detail": "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 多源扇出退化为单源 zhipu）",
+      "next_step": "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ 获取免费 2000/月"
+    },
+    {
+      "name": "provider_registry_loadable",
+      "status": "pass",
+      "detail": "4 providers loaded: zhipu, browse_headless, browse_logged_in, brave"
+    },
+    {
+      "name": "quota_ledger_initialized",
+      "status": "pass",
+      "detail": "0 QuotaLedger 已装配（已配 Key 的 search provider）"
+    },
+    {
+      "name": "search_cache_dir_writable",
+      "status": "pass",
+      "detail": "/Users/wangdong/.cache/lasso/search-cache"
+    },
+    {
+      "name": "cloud_browser_manual_switch",
+      "status": "pass",
+      "detail": "LASSO_ALLOW_CLOUD_BROWSER=false（默认；cloud 浏览器通道未启用，PolicyGate 将阻断 browse_cloud_*）"
+    },
+    {
+      "name": "forest_root_registry_health",
+      "status": "pass",
+      "detail": "RootRegistry 可装配；size=0；maxRoots 默认 256"
+    },
+    {
+      "name": "forest_dispatcher_ready",
+      "status": "pass",
+      "detail": "InteractDispatcher 可装配；channels Map 形状正确（当前 0 channel 注入；runtime 由 index.ts 装配）"
+    },
+    {
+      "name": "forest_ref_counter_strategy",
+      "status": "pass",
+      "detail": "共享单计数器：@p0/@w1/@p2 交替递增；identity 复用 OK；nextRootRefIndex=3"
+    },
+    {
+      "name": "stealth_profile_self_check",
+      "status": "pass",
+      "detail": "STEALTH_PROFILES 3 条 [windows_chrome_120, mac_safari_17, linux_firefox_121]；injection 17085B；cloudflare markers 5 项"
+    },
+    {
+      "name": "cdp_mcp_pdf_tool_available",
+      "status": "pass",
+      "detail": "cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.pdf = \"pdf\"；动态探测未实装（v0.5 M0.5b 静态层 only；动态 spawn chrome-devtools-mcp + tools/list 推 v0.5.1）",
+      "next_step": "运行时若 pdf tool 返 upstream_unsupported:pdf，改用 browse_headless screenshot + VLM，或本地 Chrome --headless --print-to-pdf"
+    },
+    {
+      "name": "cdp_mcp_network_observer_available",
+      "status": "pass",
+      "detail": "cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log = \"network_log\"；doNetwork 走 evaluate_script 注入 PerformanceObserver（JS-level；F2 已知限制：fake-ip TUN 抓不全）",
+      "next_step": "运行时若 network tool 返 upstream_unsupported:network 或 entries < 5，retry options.timeout_ms=10000，或等待 v0.7 F3.7.x 完整 CDP Network-level perf trace"
+    },
+    {
+      "name": "profile_registry_loadable",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "profile_user_data_dir_exists",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "cookie_store_stat_only",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "platform_backend_active",
+      "status": "pass",
+      "detail": "platform=darwin; backend=mac; AxBackendFactory 单一真源已落地（INV-60）"
+    },
+    {
+      "name": "recording_baseline_count",
+      "status": "pass",
+      "detail": "6 条 fixture（baidu=2 bing=2 google=2；建议补到 ≥10 条覆盖更多 selector 改版场景）",
+      "next_step": "当前 6/10 条；可调 LASSO_RECORD_SEARCH=true 加录（INV-62：禁录 logged_in cookie 场景）"
+    },
+    {
+      "name": "markdown_extractor_engine",
+      "status": "pass",
+      "detail": "defuddle@0.19.1 + turndown@7.2.4（MIT；extract_mode=markdown/markdown_cited 可用）"
+    },
+    {
+      "name": "markdown_smoke",
+      "status": "pass",
+      "detail": "smoke ok（engine=defuddle+turndown, 600ms）；preview=\"## Hello\n\nWorld [link](https://example.com/)...\""
+    },
+    {
+      "name": "config_file",
+      "status": "warn",
+      "detail": "config 文件不存在：/Users/wangdong/.lasso/config.json（零配置启动可用；browse/fetch/desktop 不需 key，仅 search 需）",
+      "next_step": "（可选）跑 `lasso-mcp config init` 创建配置文件模板，填入你的 key（env 仍可覆盖文件）"
+    },
+    {
+      "name": "machine_search_mcp",
+      "status": "pass",
+      "detail": "已检测到机器 web-search-prime MCP（host=open.bigmodel.cn；Authorization 已配置；将作 fallback_chain 首选 search.machine_mcp）"
+    },
+    {
+      "name": "steel_endpoint_reachable",
+      "status": "pass",
+      "detail": "LASSO_ALLOW_CLOUD_BROWSER=false（默认；Steel 通道未启用；PolicyGate 将阻断 browse_cloud_steel）"
+    },
+    {
+      "name": "stealth_creepjs_regression",
+      "status": "warn",
+      "detail": "skipped (stealthCheck=false；opt-in via --stealth-check 开启 creepjs 回归门禁)"
+    },
+    {
+      "name": "stagehand_rest_contract_probe",
+      "status": "warn",
+      "detail": "api.stagehand.dev/verify 探测失败：TypeError: fetch failed（按 R-ECO-6 不存在处理；StagehandChannel observe 调用预期失败）"
+    }
+  ],
+  "blockers": [
+    "zhipu_api_key",
+    "cdp_9222_logged_in"
+  ]
+}
