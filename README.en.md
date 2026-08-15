@@ -269,6 +269,8 @@ Key names match what's written in the table above — just fill them in. Save th
 lasso launch-chrome
 ```
 
+Since v1.10 this Chrome launches **silently by default**: zero window, no focus stealing, always muted — it works in the background while you keep typing in the foreground (the only visible trace is one extra Chrome icon in the Dock / taskbar). Want to watch it work? Use `lasso launch-chrome --mode visible`. While the Lasso server is running, this Chrome also **closes itself ~60s after its last use** ("done-when-used-up", tunable via `LASSO_LAUNCH_IDLE_MS`; set `300000` to restore the 5-minute behavior, `0` to disable). You can always close it manually with `lasso chrome-stop` — it only kills Chromes Lasso itself launched (pid ownership verified), never yours.
+
 After that, say "open my logged-in Jira" to Claude and it'll connect automatically.
 
 > 🔴 **Red line**: 2FA / SMS codes / CAPTCHA / magic links — Lasso never solves these for you. You must manually pass them once in your local Chrome.

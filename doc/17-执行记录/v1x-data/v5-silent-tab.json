@@ -1,0 +1,72 @@
+{
+  "baseFront": "Code",
+  "steps": [
+    {
+      "step": "createBackgroundTarget(example.com)",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 1211,
+      "result": "949237CD08B0B5205038B1F0A4B9F579"
+    },
+    {
+      "step": "Page.navigate(example.org)",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 1098,
+      "result": {
+        "frameId": "949237CD08B0B5205038B1F0A4B9F579",
+        "loaderId": "3FEF99FBB8C27C77663CCEB2CB1EA873",
+        "isDownload": false
+      }
+    },
+    {
+      "step": "Runtime.evaluate(click a[href])",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 1007,
+      "result": "clicked"
+    },
+    {
+      "step": "Runtime.evaluate(fill-like: input value set)",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 1000,
+      "result": "silent-fill"
+    },
+    {
+      "step": "Runtime.evaluate(title read)",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 966,
+      "result": "Example Domains"
+    },
+    {
+      "step": "Target.closeTarget",
+      "frontBefore": "Code",
+      "frontAfter": "Code",
+      "focusStolen": false,
+      "winBefore": 0,
+      "winAfter": 0,
+      "ms": 996,
+      "result": {
+        "success": true
+      }
+    }
+  ],
+  "allStepsFocusClean": true
+}

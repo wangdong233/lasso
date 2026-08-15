@@ -57,6 +57,19 @@ export interface LassoConfig {
    * 到期由 zombie reaper（60s 周期）树杀整棵 shim→node→Chromium 树。
    */
   headlessIdleMs: number;
+  /**
+   * v1.10（parse18 §2.4 机制一）：launch-chrome 起的台账 Chrome「用完即关」
+   * idle 阈值（ms）。env LASSO_LAUNCH_IDLE_MS（默认 60_000；0 = 禁用 reaper）。
+   * 到期由 chrome-idle-reaper（15s 周期）经 chrome-stop 验证归属后回收。
+   * **与 headlessIdleMs 分工勿混**：LAUNCH=台账 detached Chrome；
+   * HEADLESS=MCP spec 子进程树（白盒 §6.1）。
+   */
+  launchIdleMs: number;
+  /**
+   * v1.10（parse18 §3 机制二）：launch-chrome 启动档。
+   * env LASSO_LAUNCH_MODE（默认 "hidden" = 0 窗口零打扰；"visible" = v1.9 可见行为）。
+   */
+  launchMode: "hidden" | "visible";
 }
 
 export interface LoadConfigOptions {
@@ -85,6 +98,40 @@ function parseHeadlessIdleMs(raw: string | undefined): number {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 0) return DEFAULT_HEADLESS_IDLE_MS;
   return n;
+}
+
+/**
+ * v1.10（parse18 §2.2 裁决）：LASSO_LAUNCH_IDLE_MS 默认 60s（用户需求①「用完即关，
+ * 不等 5 分钟」）。四条依据：调用间隔统计（会话内秒级）；重开成本不对称（30s 会频繁
+ * 触发 11s 重冷启）；比 5min 短是显式要求；15s 周期 → 关窗最坏延迟 ≤75s。
+ * 配 300000 即回退「5min 才关」语义（5min 保留给用户，parse18 §2.4）。
+ */
+export const DEFAULT_LAUNCH_IDLE_MS = 60_000;
+
+/**
+ * 解析 LASSO_LAUNCH_IDLE_MS：parseInt；负数 / NaN / 未设 → 回退默认；
+ * 0 → 禁用（index.ts 不启动 chrome-idle-reaper——台账 Chrome 常驻到 chrome-stop）。
+ * 不设上限 clamp（用户配 300000 回退 5min 语义 / 1000 逼近瞬时，文档给两极端配法）。
+ */
+function parseLaunchIdleMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_LAUNCH_IDLE_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return DEFAULT_LAUNCH_IDLE_MS;
+  return n;
+}
+
+/** v1.10（parse18 §3.1）：launch 档默认 hidden（保守默认 = 用户要的不打扰）。 */
+export const DEFAULT_LAUNCH_MODE: "hidden" | "visible" = "hidden";
+
+/**
+ * 解析 LASSO_LAUNCH_MODE：仅接受 "hidden" | "visible"；非法 / 未设 → "hidden"
+ * （保守默认；E7 实验唯一启动级零打扰 flag 链）。不设第三档 headless（parse18 §1.2
+ * 范围红线：headless 抓取由 browse_headless 通道承担）。
+ */
+function parseLaunchMode(raw: string | undefined): "hidden" | "visible" {
+  if (raw === "visible") return "visible";
+  if (raw === "hidden") return "hidden";
+  return DEFAULT_LAUNCH_MODE;
 }
 
 // ============================================================
@@ -195,6 +242,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   LASSO_CALLER_CAP_DEFAULT: 100,
   LASSO_PROVIDERS_FILE: "",
   LASSO_HEADLESS_IDLE_MS: 300000,
+  // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
+  LASSO_LAUNCH_MODE: "hidden",
+  LASSO_LAUNCH_IDLE_MS: 60000,
 };
 
 /**
@@ -305,6 +355,9 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
 
   // v1.9（parse17 机制一）：headless idle 回收阈值（0 = 禁用）
   const headlessIdleMs = parseHeadlessIdleMs(env.LASSO_HEADLESS_IDLE_MS);
+  // v1.10（parse18 机制一/二）：台账 Chrome 用完即关阈值 + 启动档（0 = 禁用 reaper）
+  const launchIdleMs = parseLaunchIdleMs(env.LASSO_LAUNCH_IDLE_MS);
+  const launchMode = parseLaunchMode(env.LASSO_LAUNCH_MODE);
 
   return {
     runId: opts.runId,
@@ -317,5 +370,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     searchCacheDir: path.join(cacheDir, "search-cache"),
     searchFreeOnly,
     headlessIdleMs,
+    launchIdleMs,
+    launchMode,
   };
 }

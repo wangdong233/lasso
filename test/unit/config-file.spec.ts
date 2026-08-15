@@ -269,6 +269,52 @@ describe("loadConfig — file→env 合并", () => {
     expect(cfg.zhipuApiKey).toBeUndefined();
     expect(cfg.cdpPort).toBe(9222); // 默认
   });
+
+  // ----- v1.10（parse18 §2.4）：LASSO_LAUNCH_MODE / LASSO_LAUNCH_IDLE_MS 两新键 -----
+
+  it("23. LASSO_LAUNCH_MODE 非法值（minimized）→ 回退 hidden；LASSO_LAUNCH_IDLE_MS=0 → 0（禁用语义）", () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({ LASSO_LAUNCH_MODE: "minimized", LASSO_LAUNCH_IDLE_MS: 0 }),
+    );
+    const cfg = loadConfig({
+      runId: "test-run",
+      env: { LASSO_CONFIG_PATH: configFile },
+    });
+    expect(cfg.launchMode).toBe("hidden"); // 非法回退保守默认（用户要的不打扰）
+    expect(cfg.launchIdleMs).toBe(0); // 0 = 禁用（非回退默认——opt-out 语义）
+  });
+
+  it("24. config.json 文件层两键 number/string 形态均正确解析（loadConfigFileEnv 规范化）", () => {
+    // number 形态（config init 模板默认）
+    writeFileSync(
+      configFile,
+      JSON.stringify({ LASSO_LAUNCH_MODE: "hidden", LASSO_LAUNCH_IDLE_MS: 60000 }),
+    );
+    let cfg = loadConfig({ runId: "test-run", env: { LASSO_CONFIG_PATH: configFile } });
+    expect(cfg.launchMode).toBe("hidden");
+    expect(cfg.launchIdleMs).toBe(60_000);
+    // 未设 → 默认层（hidden / 60s，parse18 §2.2 裁决）
+    writeFileSync(configFile, JSON.stringify({}));
+    cfg = loadConfig({ runId: "test-run", env: { LASSO_CONFIG_PATH: configFile } });
+    expect(cfg.launchMode).toBe("hidden");
+    expect(cfg.launchIdleMs).toBe(60_000);
+    // env 覆盖 file（向后兼容；5min 保留语义：配 300000 即回退）
+    writeFileSync(configFile, JSON.stringify({ LASSO_LAUNCH_IDLE_MS: 60000 }));
+    cfg = loadConfig({
+      runId: "test-run",
+      env: {
+        LASSO_CONFIG_PATH: configFile,
+        LASSO_LAUNCH_IDLE_MS: "300000",
+        LASSO_LAUNCH_MODE: "visible",
+      },
+    });
+    expect(cfg.launchIdleMs).toBe(300_000);
+    expect(cfg.launchMode).toBe("visible");
+    // CONFIG_TEMPLATE 含两新键（parse18 §3.4 config 模板补全）
+    expect(CONFIG_TEMPLATE.LASSO_LAUNCH_MODE).toBe("hidden");
+    expect(CONFIG_TEMPLATE.LASSO_LAUNCH_IDLE_MS).toBe(60000);
+  });
 });
 
 // ============================================================

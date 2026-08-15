@@ -37,6 +37,17 @@ export interface LaunchedChromeRecord {
   launchedAt: number;
   /** "ready" = CDP 探活通过；"cdp_not_ready" = 慢启动窗口内未通（真实存在，wave2 pid 74620）。 */
   status: "ready" | "cdp_not_ready";
+  /**
+   * v1.10（parse18 §2.5）：spawn 档冗余记录（诊断 / audit 用；reaper 预建判定读）。
+   * 可选 = 前向兼容（v1.9 台账无此字段仍可读）。
+   */
+  launchMode?: "hidden" | "visible";
+  /**
+   * v1.10（parse18 §2.5）：per-launch idle 覆盖（CLI --idle-ms 传入）。
+   * undefined = 用全局默认（config.launchIdleMs）；显式 0 = 该记录禁用回收。
+   * 用途：某次 launch 明确是「长会话抓取」时单独放行，不污染全局默认。
+   */
+  idleMs?: number;
 }
 
 /** 台账路径（env LASSO_LAUNCHED_CHROMES_PATH 可覆盖；测试隔离用）。 */
@@ -91,6 +102,13 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
       profileDir: r.profileDir,
       launchedAt: r.launchedAt,
       status: r.status === "cdp_not_ready" ? "cdp_not_ready" : "ready",
+      // v1.10（parse18 §2.5）：两可选字段 typeof 守卫解析（前向兼容；
+      // 非法形态降级 undefined = 走全局默认档）
+      launchMode:
+        typeof r.launchMode === "string" && (r.launchMode === "hidden" || r.launchMode === "visible")
+          ? r.launchMode
+          : undefined,
+      idleMs: typeof r.idleMs === "number" && Number.isFinite(r.idleMs) ? r.idleMs : undefined,
     });
   }
   return out;

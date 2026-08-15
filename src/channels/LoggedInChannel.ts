@@ -36,6 +36,8 @@ import type { CookieStore } from "../logged-in/CookieStore.js";
 import { CdpClient, type CdpCookie } from "../logged-in/CdpClient.js";
 import { TabRegistry } from "../logged-in/TabRegistry.js";
 import { TabSession, type TabRestoreResult } from "../logged-in/TabSession.js";
+// v1.10（parse18 §4.3 机制三）：台账读取（判定本 port 绑定的 Chrome 是否 hidden 档）
+import { readLedgerSync } from "../launcher/chrome-ledger.js";
 
 /** 2FA / 登录表单关键词集（粗筛，v0.3 升级 selector-based 探测）。 */
 const TWOFA_KEYWORDS = [
@@ -83,6 +85,13 @@ export class LoggedInChannel extends BrowseChannel {
    */
   private readonly cookieStoreFactory: (profileName: string) => CookieStore;
 
+  /**
+   * v1.10（parse18 §2.6 机制一）：browse 活动回调（index.ts 注入 reaper touch）。
+   * 每次 getMcpClient 成功路径调用——活动源与 browse 频度天然同步；
+   * 台账 Chrome 的 idle 回收因此不误杀 in-flight 会话。
+   */
+  private readonly onChromeUse?: () => void;
+
   constructor(
     private readonly subproc: SubprocessManager,
     private readonly cdpPort: number = 9222,
@@ -95,11 +104,14 @@ export class LoggedInChannel extends BrowseChannel {
     cookieStoreFactory: (profileName: string) => CookieStore,
     /** v0.8：tab LRU cap（生产默认 10；测试可传更小值）。 */
     tabCap?: number,
+    /** v1.10（parse18 §2.6）：browse 活动回调（chrome-idle-reaper touch 注入点）。 */
+    onChromeUse?: () => void,
   ) {
     super();
     this.cookieStoreFactory = cookieStoreFactory;
     this.tabs = new TabRegistry(tabCap);
     this.tabSession = new TabSession(cdpPort);
+    this.onChromeUse = onChromeUse;
   }
 
   /**
@@ -146,6 +158,13 @@ export class LoggedInChannel extends BrowseChannel {
     // v0.8：按当前 profile 注册/切 spec（parse9 §3.2）
     await this.ensureProfileSpec();
     const c = await this.subproc.ensureRunning(this.lastSpecName!);
+    // v1.10（parse18 §2.6 机制一）：browse 活动打点（reaper touch；先于快照/预建——
+    // touch 是回收判定输入，必须最先落）。
+    this.onChromeUse?.();
+    // v1.10（parse18 §4.3 机制三）：hidden 台账 Chrome 零 page target 时预建一个
+    // background tab（绕开 chrome-devtools-mcp 0.3.0 new_page 的默认激活路径；
+    // 失败 warn 降级——MCP 走自建页并如实承担激活，parse18 §4.2）。
+    await this.precreateBackgroundTabIfHidden();
     // v1.9（parse17 §4.3 机制三）：首附着快照用户 tab 基线（后续调用 no-op；
     // 失败 warn 放弃不阻断 browse——下次 getMcpClient 重试）。
     try {
@@ -172,6 +191,53 @@ export class LoggedInChannel extends BrowseChannel {
    */
   protected override touchKeepalive(): void {
     if (this.lastSpecName) this.subproc.touch(this.lastSpecName);
+  }
+
+  /**
+   * v1.10（parse18 §4.3 机制三）：hidden 台账 Chrome 预建首 background tab。
+   *
+   * 背景：`--no-startup-window` 起的 Chrome **没有任何 page target**（E7：/json/list
+   * 只有扩展 background_page/service_worker）——chrome-devtools-mcp connect 后无页
+   * 可操作，其自建页路径（context.newPage → Target.createTarget 默认档）**会激活
+   * Chrome**（V4b/V8-I）。本方法在零 page 时经 CdpClient.createBackgroundTarget
+   * （WS `Target.createTarget {background:true}`，锁定的 0.3.0 上游没有此参数）
+   * 预建一个 about:blank tab——tab 级零打扰唯一钥匙（E7 两次复测）。
+   *
+   * 判定门：只对本 channel 绑定端口（cdpPort）且台账 launchMode==="hidden" 的
+   * Chrome 生效——复用用户可见 Chrome（无台账记录）零行为变化。
+   * 失败（CDP 不可达 / createTarget reject）→ warn 放弃（永不阻断 browse）。
+   * 永不 throw（红线，与 restoreTabs 同纪律）。
+   */
+  private async precreateBackgroundTabIfHidden(): Promise<void> {
+    try {
+      // 1. 台账判定：本 port 绑定的 Chrome 是否 lasso 起的 hidden 档
+      const rec = readLedgerSync().find((r) => r.port === this.cdpPort);
+      if (!rec || rec.launchMode !== "hidden") return;
+      // 2. 零 page target 判定（复用 TabSession /json/list 探针）
+      const pages = await this.tabSession.listPageTargets();
+      if (pages === null || pages.length > 0) return;
+      // 3. 预建 background tab（失败返 null 走降级）
+      const cdp = new CdpClient(this.cdpPort);
+      try {
+        const targetId = await cdp.createBackgroundTarget("about:blank");
+        if (targetId) {
+          logger.info({
+            evt: "chrome_bg_tab_precreated",
+            port: this.cdpPort,
+            targetId,
+          });
+        }
+      } finally {
+        await cdp.close();
+      }
+    } catch (e) {
+      // CDP 不可达等任何异常 → warn 放弃（下次 getMcpClient 重试）
+      logger.warn({
+        evt: "chrome_bg_tab_precreate_failed",
+        error: String(e),
+        cdp_port: this.cdpPort,
+      });
+    }
   }
 
   /**

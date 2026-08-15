@@ -1,0 +1,19 @@
+{
+  "before": {
+    "count": 0,
+    "rssKb": 0,
+    "cpuSeconds": 0
+  },
+  "duringOperationPeak": {
+    "count": 8,
+    "rssKb": 523056,
+    "cpuSeconds": 2.65
+  },
+  "after": {
+    "count": 0,
+    "rssKb": 0,
+    "cpuSeconds": 0
+  },
+  "released": true,
+  "targetCreated": true
+}

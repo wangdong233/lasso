@@ -1,0 +1,44 @@
+{
+  "launched9227": {
+    "pid": 61708,
+    "ledgerIdleMs": 60000
+  },
+  "samples": [
+    {
+      "t": 0,
+      "ledger9227": [
+        {
+          "port": 9227,
+          "pid": 61708,
+          "profileDir": "/tmp/lasso-v110-profile-9227",
+          "launchedAt": 1786795267451,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 60000
+        }
+      ],
+      "p9227": "4"
+    },
+    {
+      "t": 20,
+      "ledger9227": [
+        {
+          "port": 9227,
+          "pid": 61708,
+          "profileDir": "/tmp/lasso-v110-profile-9227",
+          "launchedAt": 1786795267451,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 60000
+        }
+      ],
+      "p9227": "3"
+    }
+  ],
+  "a5_perRecordOverride_survived20s": true,
+  "explicitChromeStop": {
+    "stopStdout": "{\n  \"stopped\": []\n}\n",
+    "ledger9227": [],
+    "p9227": "0"
+  }
+}

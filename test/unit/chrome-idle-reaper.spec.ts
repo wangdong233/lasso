@@ -1,0 +1,200 @@
+/**
+ * chrome-idle-reaper.spec.ts（v1.10 parse18 §7.1 机制一 1-9）
+ *
+ * 守护台账 Chrome idle 用完即关 reaper：
+ *  1. 60s idle + 15s 周期：launchedAt 75s 前 → stopFn 以 {port} 被调
+ *  2. launchedAt 30s 前 → 不调
+ *  3. touch(port) 后重算（touch 重置 lastUse → 不杀）
+ *  4. rec.idleMs per-record 覆盖全局默认（3600000 → 不杀）
+ *  5. idleMs=0（record 级）→ 跳过；defaultIdleMs=0 → 返 null（不启 timer）
+ *  6. stopFn reject → warn 继续处理下一条（reaper 不死）
+ *  7. stop() 清 interval（幂等；stop 后 tick 不再发生）
+ *  8. 两条记录只杀超时那条（port 精确性）
+ *  9. 源码 grep 断言：chrome-idle-reaper.ts 无 killTreeSync / process.kill 直接
+ *     调用（INV-78c 的测试面镜像；杀必须经 chrome-stop 验证路径）
+ *
+ * 全注入（readLedgerFn / nowFn / stopFn / logFn + fake timers）——不触真实台账
+ * / 不真杀进程 / 不等真实 15s。
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import {
+  startChromeIdleReaper,
+  CHROME_IDLE_REAPER_INTERVAL_MS,
+} from "../../src/launcher/chrome-idle-reaper.js";
+import type { LaunchedChromeRecord } from "../../src/launcher/chrome-ledger.js";
+
+// ============================================================
+// helpers
+// ============================================================
+function makeRec(overrides: Partial<LaunchedChromeRecord> = {}): LaunchedChromeRecord {
+  return {
+    port: 9222,
+    pid: 111,
+    profileDir: "/tmp/lasso-profile-test",
+    launchedAt: 0,
+    status: "ready",
+    ...overrides,
+  };
+}
+
+/** 测试装配：可控时钟 + 可控台账 + 记录型 stopFn/logFn。 */
+function makeReaper(
+  ledger: LaunchedChromeRecord[],
+  opts: { defaultIdleMs?: number; now?: number } = {},
+) {
+  let now = opts.now ?? 1_000_000;
+  const stopCalls: Array<{ port: number }> = [];
+  const warnLogs: Array<Record<string, unknown>> = [];
+  const reaper = startChromeIdleReaper({
+    defaultIdleMs: opts.defaultIdleMs ?? 60_000,
+    readLedgerFn: () => ledger,
+    nowFn: () => now,
+    stopFn: async (o) => {
+      stopCalls.push({ port: o.port });
+    },
+    logFn: (p) => {
+      warnLogs.push(p);
+    },
+    intervalMs: CHROME_IDLE_REAPER_INTERVAL_MS,
+  });
+  return {
+    reaper,
+    stopCalls,
+    warnLogs,
+    get now() {
+      return now;
+    },
+    set now(v: number) {
+      now = v;
+    },
+  };
+}
+
+// ============================================================
+// tests
+// ============================================================
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("chrome-idle-reaper —— 台账 Chrome idle 用完即关（parse18 §2）", () => {
+  it("1. 60s idle：launchedAt 75s 前 → 首个 15s tick 即 stopFn({port})", async () => {
+    const t = makeReaper([makeRec({ launchedAt: 0 })], { now: 75_000 });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([{ port: 9222 }]);
+    t.reaper?.stop();
+  });
+
+  it("2. launchedAt 30s 前 → 未到 60s 阈值不杀；75s 时杀", async () => {
+    const t = makeReaper([makeRec({ launchedAt: 0 })], { now: 30_000 });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([]);
+    t.now = 75_000;
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([{ port: 9222 }]);
+    t.reaper?.stop();
+  });
+
+  it("3. touch(port) 重置 lastUse → 不杀（browse 活动源）", async () => {
+    const t = makeReaper([makeRec({ launchedAt: 0 })], { now: 50_000 });
+    t.reaper!.touch(9222); // now=50s 打点
+    t.now = 100_000; // 距 touch 仅 50s < 60s
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([]);
+    t.reaper?.stop();
+  });
+
+  it("4. rec.idleMs=3600000 per-record 覆盖全局默认 → 不杀（长会话放行）", async () => {
+    const t = makeReaper(
+      [makeRec({ launchedAt: 0, idleMs: 3_600_000 })],
+      { now: 75_000 },
+    );
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([]);
+    t.reaper?.stop();
+  });
+
+  it("5. rec.idleMs=0 → record 级禁用跳过；defaultIdleMs=0 → 返 null（不启 timer）", async () => {
+    const t = makeReaper([makeRec({ launchedAt: 0, idleMs: 0 })], { now: 75_000 });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([]);
+    t.reaper?.stop();
+
+    const disabled = startChromeIdleReaper({
+      defaultIdleMs: 0,
+      readLedgerFn: () => [makeRec({ launchedAt: 0 })],
+      stopFn: async () => {
+        throw new Error("should_not_start");
+      },
+    });
+    expect(disabled).toBeNull();
+  });
+
+  it("6. stopFn reject → warn 继续（reaper 不死；台账仍在则下轮重试）", async () => {
+    const ledger = [makeRec({ port: 9222, launchedAt: 0 }), makeRec({ port: 9333, pid: 222, launchedAt: 0 })];
+    let throwOnce = true;
+    let now = 75_000;
+    const stopCalls: number[] = [];
+    const logs: Array<Record<string, unknown>> = [];
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => ledger,
+      nowFn: () => now,
+      stopFn: async (o) => {
+        stopCalls.push(o.port);
+        if (throwOnce) {
+          throwOnce = false;
+          throw new Error("stop_boom");
+        }
+      },
+      logFn: (p) => logs.push(p),
+    });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    // 两条都被尝试（第一条抛错不影响第二条）
+    expect(stopCalls.sort()).toEqual([9222, 9333]);
+    expect(logs.some((p) => p.evt === "chrome_idle_reap_error")).toBe(true);
+    reaper!.stop();
+  });
+
+  it("7. stop() 清 interval（幂等；stop 后时间推进不再杀）", async () => {
+    const t = makeReaper([makeRec({ launchedAt: 0 })], { now: 10_000 });
+    t.reaper!.stop();
+    t.reaper!.stop(); // 幂等不抛
+    t.now = 1_000_000;
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS * 3);
+    expect(t.stopCalls).toEqual([]);
+  });
+
+  it("8. 两条记录只杀超时那条（port 精确性）", async () => {
+    const t = makeReaper(
+      [
+        makeRec({ port: 9222, pid: 111, launchedAt: 0 }),
+        makeRec({ port: 9333, pid: 222, launchedAt: 50_000 }),
+      ],
+      { now: 75_000 },
+    );
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(t.stopCalls).toEqual([{ port: 9222 }]);
+    t.reaper?.stop();
+  });
+
+  it("9. 源码断言：无 killTreeSync / process.kill 直接调用（INV-78c 测试面镜像）", () => {
+    const src = readFileSync(
+      fileURLToPath(new URL("../../src/launcher/chrome-idle-reaper.ts", import.meta.url)),
+      "utf8",
+    );
+    // 剥注释（块 + 行）后扫真实代码
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code).not.toContain("killTreeSync");
+    expect(code).not.toContain("process.kill");
+    // kill 出口必须经 chrome-stop（import 契约）
+    expect(code).toContain("stopLaunchedChromes");
+  });
+});

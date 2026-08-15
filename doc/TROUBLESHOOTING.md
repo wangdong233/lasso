@@ -234,3 +234,49 @@ rm -rf ~/.cache/lasso
 - [SELECTOR-MAINTENANCE.md](./SELECTOR-MAINTENANCE.md) — selector 债维护手册
 - [doc/08 功能架构](../../doc/08-media-interact-功能架构.md) — 权威架构基线
 - [doc/09 实施排期](../../doc/09-media-interact-实施排期.md) — v0.1 → v1.0 路径
+
+## 8. 浏览器静默 / 后台节流（v1.10）
+
+### 8.1 让「你自己开的 Chrome」获得反节流能力（browse_logged_in 复用 9222 时）
+
+Lasso 自己 `launch-chrome` 起的 Chrome **恒带**反节流三件套 + 静音（后台 tab 的 rAF 不被钳到 1 帧/秒、定时器不合并、永不发声）。但**你自己手动启动**、只加 `--remote-debugging-port=9222` 的 Chrome 拿不到这些 flag——`browse_logged_in` 连接（`--browser-url`）是零注入的：谁的 Chrome 听谁的，Lasso 不改写你的进程参数（也不该）。
+
+如果你长时间把这台 Chrome 挂在后台给 Lasso 用，且页面自身的 JS（懒加载、前端轮询）明显变慢，重启 Chrome 时自行附加三件套：
+
+```bash
+# macOS
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.cache/lasso/chrome-profile-default" \
+  --disable-backgrounding-occluded-windows \
+  --disable-background-timer-throttling \
+  --disable-renderer-backgrounding \
+  --mute-audio
+```
+
+说明：
+
+- Lasso 自身的轮询（导航等待等）走 CDP `Runtime.evaluate`，由 DevTools 会话直接调度，**不受**后台节流影响；受影响的是页面自己的 JS。
+- 即使带齐三件套，hidden >10s 的链式定时器仍有 intensive throttling（M109+ 每分钟 1 次的 Chromium 内建行为，flag 关不掉）——Lasso 的 60s「用完即关」把 Chrome 生命周期压在这个机制的主要伤害区之前，是天然缓解。
+- 后台 tab 的 `document.visibilityState === "hidden"` 对反爬脚本可见，这是浏览器上报值，页面 JS 域改不了。要最低指纹用 `browse_headless`，要静默 + 登录态用 lasso 自己 launch 的 hidden 档。
+
+### 8.2 Windows hidden 档说明（#W-pending）
+
+Windows 上 hidden 档 = `--start-minimized` + `--no-startup-window` 双发。`--no-startup-window` 在 Windows 上同样有效；`--start-minimized` 对部分 Chrome 版本会被忽略（Puppeteer#852 先例），故两者同发兜底。flag 组合已由 CI 单测断言（shape 可证），真机行为留待 Windows 用户反馈（沿用 #W7 pending 范式，不伪造「已验证」）。
+
+如果两个 flag 都被你的 Chrome 版本忽略（窗口照常弹出），可选的两段式 Win32 方案（本版未实现，供自行处置）：用 PowerShell 对该 pid 的窗口调 `ShowWindowAsync(hWnd, SW_SHOWMINNOACTIVE)`（最小化且不激活）+ `SetWindowPos(HWND_BOTTOM)`（沉底）：
+
+```powershell
+# 概念示意（需按 pid 找主窗口句柄；SW_SHOWMINNOACTIVE = 7）
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
+}
+"@
+# [Win32]::ShowWindowAsync($hWnd, 7); [Win32]::SetWindowPos($hWnd, [IntPtr]1, 0,0,0,0, 0x13)
+```
+
+macOS 不需要以上任何处置：lasso 用 PID 定向的 System Events hide 作保险丝（需要辅助功能授权；无授权自动降级为 warn，不影响功能，`doctor` 可查）。

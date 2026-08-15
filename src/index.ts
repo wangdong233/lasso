@@ -145,6 +145,8 @@ import {
   stopLaunchedChromes,
   stopLaunchedChromesSync,
 } from "./launcher/chrome-stop.js";
+// v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper（15s 周期；kill 100% 经 chrome-stop）
+import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-idle-reaper.js";
 import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -199,7 +201,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.9.0";
+const LASSO_SERVER_VERSION = "1.10.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -420,12 +422,36 @@ async function runMcpServer(): Promise<void> {
   // 「browse_headless 零 stealth 注入」P0 业务缺口。stealth 实例在 headless 装配前建。
   const headlessStealth = new StealthEngine();
   const headless = new HeadlessChannel(subproc, headlessStealth, "windows_chrome_120");
+  // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper——「用完即关」调度器。
+  // 与 zombie reaper 分工：zombie 管 procs（MCP 树，HEADLESS_IDLE_MS）；本 reaper
+  // 管 ledger（detached Chrome，LAUNCH_IDLE_MS 默认 60s）；致死原语 100% 复用
+  // chrome-stop（探活→ps 归属验证→SIGTERM→树杀→删账；零新 kill 路径）。
+  // 0 = 禁用（chrome_idle_reaper_disabled；台账 Chrome 常驻到 chrome-stop / 停机）。
+  let chromeReaper: ChromeIdleReaper | null = null;
+  if (config.launchIdleMs > 0) {
+    chromeReaper = startChromeIdleReaper({
+      defaultIdleMs: config.launchIdleMs,
+      touchPorts: new Set([config.cdpPort]),
+      logFn: (p) => logger.info(p),
+    });
+  } else {
+    logger.info({
+      evt: "chrome_idle_reaper_disabled",
+      idle_ms: 0,
+      note: "LASSO_LAUNCH_IDLE_MS=0 — launched Chrome stays resident until chrome-stop / server exit",
+    });
+  }
+
   // v0.8（parse9 §3.2）：LoggedInChannel 注入 ProfileRegistry + CookieStore 工厂
+  // v1.10（parse18 §2.6）：onChromeUse 回调——每次 browse 经 getMcpClient 打点
+  // reaper touch(cdpPort)（活动源与 browse 频度天然同步；闭包 over chromeReaper）。
   const logged_in = new LoggedInChannel(
     subproc,
     config.cdpPort,
     profileRegistry,
     cookieStoreFactory,
+    undefined,
+    () => chromeReaper?.touch(config.cdpPort),
   );
   // v1.9（parse17 §4.4 机制三）：idle 回收 logged_in spec 前 hook —— 机制一回收
   // logged_in 的 mcp 子进程前先恢复用户 tab 列表（「浏览器用完收尾」完整语义）。
@@ -1158,6 +1184,9 @@ async function runMcpServer(): Promise<void> {
     if (shuttingDown) return; // 防双信号竞态
     shuttingDown = true;
     logger.info({ evt: "lasso_shutdown", sig, run_id: runId });
+    // v1.10（parse18 §2.6）：停 chrome-idle-reaper timer（best-effort；幂等；
+    // Chrome 收尾由下方既有 stopLaunchedChromes({all:true}) 覆盖）
+    chromeReaper?.stop();
     // v0.7：停 ResourceMonitor timer（避免 timer 残留；INV-7 衍生 lifecycle 纯净性）
     resourceMonitor.stop();
     // v1.8 Phase B（D5）：停机路径 best-effort 释放 Steel session
@@ -1230,7 +1259,9 @@ const CLI_USAGE = [
   "  lasso-mcp doctor [--stealth-check]           Run environment/health checks, print JSON report",
   "  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json",
   "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
+  "                                               [--mode hidden|visible] [--idle-ms N]",
   "                                               Launch a debug-enabled Chrome for logged_in channel",
+  "                                               (default hidden: zero window, no focus steal;",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
   "                                               on-disk ledger (pid ownership verified via cmdline)",
   "  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression",
@@ -1293,8 +1324,14 @@ async function main(): Promise<void> {
   }
   // v1.0 Phase D（parse11 §3.3 + §7.2）：`lasso launch-chrome [--port N] [--profile <dir>]`
   // 跨平台 Chrome launcher 子命令。runLaunchChromeCli 默认读 process.argv.slice(3)。
+  // v1.10（parse18 §2.6）：先 loadConfig 把 config.json 文件层默认（launchMode/
+  // launchIdleMs）传给 CLI——~/.lasso/config.json 对 CLI 也生效；argv flag 最高优先。
   if (process.argv[2] === "launch-chrome") {
-    await runLaunchChromeCli();
+    const cliCfg = loadConfig({ runId: "launch-chrome-cli" });
+    await runLaunchChromeCli(process.argv.slice(3), {
+      launchMode: cliCfg.launchMode,
+      idleMs: cliCfg.launchIdleMs,
+    });
     return;
   }
   // v1.9（parse17 §3.6 机制二）：`lasso chrome-stop [--port N|--all]` —— 按磁盘台账

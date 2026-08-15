@@ -481,6 +481,202 @@ describe("launchChrome —— W1-DEF-7 CDP 探活（探活成功 / 失败 / 端�
 });
 
 // ============================================================
+// v1.10（parse18 §3.2 机制二）：launchMode 分档 + 反节流三件套 + fallback 链
+// ============================================================
+describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () => {
+  const existing = () => new Set([MACOS_CHROME_CANDIDATES[0].path]);
+
+  it("10. hidden + mac：args 含 --no-startup-window + 三件套 + --mute-audio", async () => {
+    const mockSpawn = makeMockSpawn(777);
+    const result = await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    expect(result.ok).toBe(true);
+    const args = mockSpawn.calls[0].args;
+    expect(args).toContain("--no-startup-window");
+    expect(args).toContain("--disable-backgrounding-occluded-windows");
+    expect(args).toContain("--disable-background-timer-throttling");
+    expect(args).toContain("--disable-renderer-backgrounding");
+    expect(args).toContain("--mute-audio");
+  });
+
+  it("11. visible：args 不含 --no-startup-window（v1.9 形态）但含三件套 + mute（恒加）", async () => {
+    const mockSpawn = makeMockSpawn();
+    await launchChrome({
+      platform: "mac",
+      launchMode: "visible",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const args = mockSpawn.calls[0].args;
+    expect(args).not.toContain("--no-startup-window");
+    expect(args).not.toContain("--start-minimized");
+    expect(args).toContain("--disable-backgrounding-occluded-windows");
+    expect(args).toContain("--disable-background-timer-throttling");
+    expect(args).toContain("--disable-renderer-backgrounding");
+    expect(args).toContain("--mute-audio");
+  });
+
+  it("12. hidden + win：args 含 --start-minimized 且含 --no-startup-window（双发兜底）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const cs = chromeCandidatesForPlatform({
+      platform: "win",
+      programFiles: "C:\\Program Files",
+      programFilesX86: "C:\\Program Files (x86)",
+      localAppData: "C:\\Users\\Test\\AppData\\Local",
+    });
+    await launchChrome({
+      platform: "win",
+      launchMode: "hidden",
+      programFiles: "C:\\Program Files",
+      programFilesX86: "C:\\Program Files (x86)",
+      localAppData: "C:\\Users\\Test\\AppData\\Local",
+      probeExists: makeMockProbe(new Set([cs[0].path])),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const args = mockSpawn.calls[0].args;
+    expect(args).toContain("--start-minimized");
+    expect(args).toContain("--no-startup-window");
+  });
+
+  it("13. extraArgs 与默认 flag 重复 → 去重（同 flag 不双发）", async () => {
+    const mockSpawn = makeMockSpawn();
+    await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      extraArgs: ["--mute-audio", "--no-startup-window", "--incognito"],
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const args = mockSpawn.calls[0].args;
+    expect(args.filter((a) => a === "--mute-audio")).toHaveLength(1);
+    expect(args.filter((a) => a === "--no-startup-window")).toHaveLength(1);
+    expect(args).toContain("--incognito");
+  });
+
+  it("14. fallback 链：hidden spawn 即退 → 第二次 spawn args 含 --window-position=-32000,-32000 且无 --no-startup-window", async () => {
+    const mockSpawn = makeMockSpawn(8888, "immediate-exit");
+    // 探活只在 fallback（第 2 次 spawn）后放行——primary 必须先走完「即退」路径
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const origFn = fetch.fetchFn;
+    const fetchFn = async (url: string): Promise<{ ok: boolean }> => {
+      if (mockSpawn.calls.length >= 2) return { ok: true };
+      return origFn(url);
+    };
+    const result = await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn,
+    });
+    // 第一次 immediate-exit；fallback 第二次 alive + 探活通过 → ok
+    expect(mockSpawn.calls.length).toBe(2);
+    expect(mockSpawn.calls[1].args).toContain("--window-position=-32000,-32000");
+    expect(mockSpawn.calls[1].args).not.toContain("--no-startup-window");
+    expect(result.ok).toBe(true);
+  });
+
+  it("15. fallback 也 exited → 返 chrome_exited（不第三次重试）", async () => {
+    const mockSpawn = makeMockSpawn(8888, "immediate-exit");
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("chrome_exited");
+    expect(mockSpawn.calls.length).toBe(2); // 恰好两次（primary + fallback）
+  });
+
+  it("16. recordLaunch 落账含 launchMode/idleMs（透传 opts；读台账验证）", async () => {
+    const mockSpawn = makeMockSpawn(13579);
+    await launchChrome({
+      platform: "mac",
+      port: 9555,
+      launchMode: "hidden",
+      idleMs: 3_600_000,
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const { readLedgerSync } = await import("../../src/launcher/chrome-ledger.js");
+    const rec = readLedgerSync().find((r) => r.port === 9555);
+    expect(rec).toBeDefined();
+    expect(rec!.launchMode).toBe("hidden");
+    expect(rec!.idleMs).toBe(3_600_000);
+  });
+
+  it("17. parseLaunchChromeArgs：--mode hidden / --idle-ms 5000 解析进 opts", () => {
+    const opts = parseLaunchChromeArgs(["--mode", "hidden", "--idle-ms", "5000"]);
+    expect(opts.launchMode).toBe("hidden");
+    expect(opts.idleMs).toBe(5000);
+    // 非法值忽略（走 config / 内置默认）
+    const bad = parseLaunchChromeArgs(["--mode", "minimized", "--idle-ms", "-5"]);
+    expect(bad.launchMode).toBeUndefined();
+    expect(bad.idleMs).toBeUndefined();
+    expect(parseLaunchChromeArgs(["--mode", "visible"]).launchMode).toBe("visible");
+  });
+
+  it("v1.10：hidden 档成功路径触发隐藏保险丝（fuseDelayMs=1 注入提速；非 mac hideFn no-op 由 chrome-hide.spec 覆盖）", async () => {
+    const mockSpawn = makeMockSpawn(24680);
+    const hideCalls: Array<number | undefined> = [];
+    await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: (pid) => {
+        hideCalls.push(pid);
+        return { ok: true };
+      },
+      fuseDelayMs: 1,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(hideCalls).toEqual([24680]);
+  });
+
+  it("v1.10：visible 档不触发保险丝（零调用）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const hideCalls: Array<number | undefined> = [];
+    await launchChrome({
+      platform: "mac",
+      launchMode: "visible",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: (pid) => {
+        hideCalls.push(pid);
+        return { ok: true };
+      },
+      fuseDelayMs: 1,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(hideCalls).toEqual([]);
+  });
+});
+
+// ============================================================
 // parseLaunchChromeArgs —— argv 解析
 // ============================================================
 describe("parseLaunchChromeArgs —— argv 解析", () => {

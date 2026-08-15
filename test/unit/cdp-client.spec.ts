@@ -324,3 +324,53 @@ describe("CdpClient — error 帧 + close", () => {
     expect(hoisted.MockWebSocket.last!.closed).toBe(true);
   });
 });
+
+// ============================================================
+// v1.10（parse18 §4.2 机制三）：createBackgroundTarget
+// ============================================================
+describe("CdpClient — createBackgroundTarget（Target.createTarget {background:true}）", () => {
+  it("21. 发送 Target.createTarget 且 params 含 background: true，返回 targetId", async () => {
+    hoisted.MockWebSocket.setResponse((msg) => {
+      if (msg.method === "Target.createTarget") {
+        return { targetId: "target-bg-001" };
+      }
+      return {};
+    });
+    const cdp = new CdpClient(9222);
+    const targetId = await cdp.createBackgroundTarget("about:blank");
+    expect(targetId).toBe("target-bg-001");
+    expect(hoisted.MockWebSocket.last!.sent[0]).toMatchObject({
+      method: "Target.createTarget",
+      params: { url: "about:blank", background: true },
+    });
+    await cdp.close();
+  });
+
+  it("22. send reject（error 帧）→ 返 null 不抛（调用方降级：MCP 走自建页并如实承担激活）", async () => {
+    hoisted.MockWebSocket.setResponse((msg) => {
+      if (msg.method === "Target.createTarget") {
+        setTimeout(() => {
+          hoisted.MockWebSocket.last!._emit("message", {
+            data: JSON.stringify({
+              id: msg.id,
+              error: { code: -32000, message: "create failed" },
+            }),
+          });
+        }, 0);
+        return undefined;
+      }
+      return {};
+    });
+    const cdp = new CdpClient(9222);
+    const targetId = await cdp.createBackgroundTarget("about:blank");
+    expect(targetId).toBeNull();
+    await cdp.close();
+  });
+
+  it("result.targetId 缺失 → 返 null（健壮）", async () => {
+    hoisted.MockWebSocket.setResponse(() => ({}));
+    const cdp = new CdpClient(9222);
+    expect(await cdp.createBackgroundTarget("about:blank")).toBeNull();
+    await cdp.close();
+  });
+});

@@ -189,6 +189,15 @@ export class TabSession {
     return this.snapshot !== null;
   }
 
+  /**
+   * v1.10（parse18 §4.3 机制三）：当前 page target 列表（公开只读探针）。
+   * LoggedInChannel 预建 background tab 前判定「零 page target」用；
+   * 失败返 null（与 restore 守卫 1 同语义）。
+   */
+  async listPageTargets(): Promise<TabSnapshotEntry[] | null> {
+    return this.listPages();
+  }
+
   /** 读 /json/list → filter type==="page"；失败返 null（调用方决定放弃/重试）。 */
   private async listPages(): Promise<TabSnapshotEntry[] | null> {
     let r: FetchLikeResponse;

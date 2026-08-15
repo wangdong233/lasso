@@ -167,6 +167,37 @@ export class CdpClient {
     return true;
   }
 
+  /**
+   * v1.10（parse18 §4.2 机制三）：WS `Target.createTarget {background:true}` ——
+   * tab 级静默唯一钥匙（E7 实证：background:false/默认 与 PUT /json/new 都会
+   * unhide+抢焦点；background:true 两次复测零抢焦）。
+   *
+   * 锁定的 chrome-devtools-mcp@0.3.0 无此参数（上游 v0.14.0 才有 new_page
+   * background），必须 lasso 自建——LoggedInChannel 预建首 tab 用（hidden 档
+   * `--no-startup-window` 起的 Chrome 零 page target，MCP 自建页路径会激活
+   * Chrome，V4b/V8-I）。
+   *
+   * @returns targetId；失败 → null + warn（调用方降级：不建 tab，让 MCP 走
+   *          自己的路径并如实承担激活——parse18 §4.2 诚实降级）。
+   */
+  async createBackgroundTarget(url: string): Promise<string | null> {
+    try {
+      await this.connect();
+      const r = (await this.send("Target.createTarget", {
+        url,
+        background: true,
+      })) as { targetId?: string };
+      return r.targetId ?? null;
+    } catch (e) {
+      logger.warn({
+        evt: "cdp_create_background_target_failed",
+        error: String(e),
+        port: this.cdpPort,
+      });
+      return null;
+    }
+  }
+
   async close(): Promise<void> {
     if (this.ws) {
       try {

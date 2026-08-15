@@ -42,7 +42,9 @@ import {
   chromeCandidatesForPlatform,
   type ChromePathCandidate,
 } from "./chrome-paths.js";
-import { recordLaunch } from "./chrome-ledger.js";
+import { recordLaunch, type LedgerLogFn } from "./chrome-ledger.js";
+// v1.10（parse18 §3.3 机制二）：macOS 隐藏保险丝（PID 定向；非 mac no-op）
+import { hideChromeByPid } from "./chrome-hide.js";
 
 // ============================================================
 // 类型
@@ -84,6 +86,21 @@ export interface LaunchChromeOptions {
    * 生产默认 ~/.cache/lasso/chrome-profile-default（W1-DEF-7）。
    */
   defaultProfileDir?: string;
+  /**
+   * v1.10（parse18 §3.2 机制二）：启动档。模块默认保守 "visible"（v1.9 形态）；
+   * "hidden" 由 CLI/config 层传入（config 默认层 LASSO_LAUNCH_MODE=hidden）。
+   * hidden = `--no-startup-window`（mac/linux，E7 实证零打扰）+
+   *          win 追加 `--start-minimized`；visible = v1.9 现状 + 恒加三件套。
+   */
+  launchMode?: "hidden" | "visible";
+  /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
+  idleMs?: number;
+  /** 测试注入：mock 隐藏保险丝（生产走 chrome-hide.ts hideChromeByPid）。 */
+  hideFn?: (pid: number | undefined) => { ok: boolean; reason?: string };
+  /** 保险丝延迟（默认 1.5s；测试传 1ms 提速）。 */
+  fuseDelayMs?: number;
+  /** 结构化日志注入（默认 stderr 单行 JSON；index.ts 侧可用 logger 包）。 */
+  logFn?: LedgerLogFn;
 }
 
 /**
@@ -130,6 +147,32 @@ export function defaultChromeProfileDir(): string {
 /** CDP /json/version 探活 URL（只绑 127.0.0.1，与 --remote-debugging-port 一致）。 */
 function cdpVersionUrl(port: number): string {
   return `http://127.0.0.1:${port}/json/version`;
+}
+
+// ============================================================
+// v1.10（parse18 §3.2 机制二）：hidden 档 flag 集 + 反节流三件套
+// ============================================================
+/**
+ * 反节流三件套 + 静音（**两档恒加**，parse18 §3.2）：对齐 puppeteer-core
+ * defaultArgs 产业标准（ChromeLauncher.js:150/151/163）——后台/遮挡窗口的 rAF 与
+ * 定时器不被钳档（V7 实测 200ms interval 被钳 1s；E-量化 ~35-40% 合并开销）；
+ * agent 浏览器永不发声（visible 档也静音，文档明示）。flag 字面量直接写在
+ * args 构造处（INV-78a grep 圈定 hidden 分支控制流）。
+ */
+/** fallback 离屏档（E5：窗口出屏但接受 <1s 焦点闪现；对未文档化开关漂移的保险）。 */
+export const OFFSCREEN_POSITION_FLAG = "--window-position=-32000,-32000";
+
+/** macOS 隐藏保险丝延迟（spawn 稳定后补一次 PID 定向 hide）。 */
+export const HIDE_FUSE_DELAY_MS = 1_500;
+
+/** exact-string 去重（用户 extraArgs 与默认 flag 同串不双发；parse18 §3.2）。 */
+function dedupeArgs(args: string[]): string[] {
+  return [...new Set(args)];
+}
+
+/** launcher 侧结构化日志兜底（同 chrome-ledger defaultLog 形态；INV-64 不引 logger）。 */
+function defaultLaunchLog(payload: Record<string, unknown>): void {
+  process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...payload })}\n`);
 }
 
 /**
@@ -241,16 +284,33 @@ export async function launchChrome(
     // 连不上 = 端口空闲，继续
   }
 
-  // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile）
+  // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile；
+  //    v1.10 parse18 §3.2：launchMode 分档 + 反节流三件套/mute 两档恒加 + 去重）
+  const mode = opts.launchMode ?? "visible"; // 模块默认保守 visible；hidden 由 CLI/config 层传
+  const plat = opts.platform ?? process.platform;
+  const log = opts.logFn ?? defaultLaunchLog;
+  const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPid(pid));
   const args: string[] = [
     `--remote-debugging-port=${port}`,
     `--no-first-run`,
     `--no-default-browser-check`,
     `--user-data-dir=${profileDir}`,
+    // 反节流三件套 + 静音：两档恒加（visible 档无窗口之争但后台 tab 同样受益）
+    "--disable-backgrounding-occluded-windows",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--mute-audio",
   ];
+  if (mode === "hidden") {
+    // 平台分档（platform 注入已有，测试可 mock win）
+    if (plat === "win") args.push("--start-minimized");
+    // win 同加 --no-startup-window：--start-minimized 对部分 Chrome 版本被忽略
+    args.push("--no-startup-window");
+  }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
   }
+  const finalArgs = dedupeArgs(args);
   // 隔离 profile 目录 best-effort 创建（不存在时 Chrome 会自建，失败不阻断）
   try {
     await fs.mkdir(profileDir, { recursive: true });
@@ -258,69 +318,154 @@ export async function launchChrome(
     /* best-effort */
   }
 
-  // 5. spawn
+  // 5. 单次 spawn + CDP 探活 attempt（v1.10 抽出为本地闭包以支撑 hidden 档 fallback 链）
   const spawnFn = opts.spawnFn ?? defaultSpawn;
-  let child: ChildProcess;
-  try {
-    child = spawnFn(found.path, args, {
-      detached: true,
-      stdio: "ignore",
+  type AttemptOutcome = "ok" | "exited" | "not_ready" | "spawn_error";
+  const attempt = async (
+    spawnArgs: string[],
+  ): Promise<{ outcome: AttemptOutcome; pid?: number; error?: string }> => {
+    let child: ChildProcess;
+    try {
+      child = spawnFn(found.path, spawnArgs, {
+        detached: true,
+        stdio: "ignore",
+      });
+    } catch (e) {
+      return { outcome: "spawn_error", error: String(e) };
+    }
+    // W1-DEF-7：子进程早退检测（默认 profile 单例 / 二进制损坏时 spawn 后立即退出）
+    let exited = false;
+    child.on("exit", () => {
+      exited = true;
     });
-  } catch (e) {
+    child.unref();
+    const pid = child.pid ?? undefined;
+    // 6. CDP 探活轮询（W1-DEF-7）：3s 窗口内 10 次 /json/version，通才 ok
+    for (let attemptNo = 0; attemptNo < CDP_PROBE_ATTEMPTS; attemptNo++) {
+      if (exited) break;
+      try {
+        const r = await fetchFn(cdpVersionUrl(port));
+        if (r.ok) return { outcome: "ok", pid };
+      } catch {
+        /* 未就绪，继续轮询 */
+      }
+      await new Promise((r) => setTimeout(r, probeIntervalMs));
+    }
+    return { outcome: exited ? "exited" : "not_ready", pid };
+  };
+
+  // macOS 隐藏保险丝（parse18 §3.3）：hidden 档 spawn 成功后补一次 PID 定向
+  // hide（chrome-hide 内部非 mac no-op / TCC 缺失降级不 fail）。
+  // F1（v1.10.0 收尾修复，真机验证 03 发现）：原 1.5s 延迟 timer 在 CLI 路径被
+  // process.exit 击败（fuse 永不触发）——hideFn 是 spawnSync 同步调用，改为
+  // **立即执行**（osascript 对刚 spawn 的 pid 即有效）；fuseDelayMs 保留参数
+  // 兼容但不再延迟。
+  const scheduleHideFuse = (pid: number | undefined): void => {
+    if (mode !== "hidden") return;
+    const r = hideFn(pid);
+    log({
+      evt: r.ok ? "chrome_hide_fuse_ok" : "chrome_hide_fuse_denied",
+      pid,
+      ...(r.reason ? { reason: r.reason } : {}),
+    });
+  };
+
+  const okResult = (pid: number | undefined): LaunchChromeResult => ({
+    ok: true,
+    binaryPath: found.path,
+    pid,
+    port,
+    profileDir,
+  });
+
+  // 7. primary attempt
+  const primary = await attempt(finalArgs);
+  if (primary.outcome === "spawn_error") {
     return {
       ok: false,
       binaryPath: found.path,
       port,
       profileDir,
       candidateSources,
-      error: String(e),
+      error: primary.error,
     };
   }
-  // W1-DEF-7：子进程早退检测（默认 profile 单例 / 二进制损坏时 spawn 后立即退出）
-  let exited = false;
-  child.on("exit", () => {
-    exited = true;
-  });
-  child.unref();
-  const pid = child.pid ?? undefined;
-
-  // 6. CDP 探活轮询（W1-DEF-7）：3s 窗口内 10 次 /json/version，通才 ok:true
-  for (let attempt = 0; attempt < CDP_PROBE_ATTEMPTS; attempt++) {
-    if (exited) break;
-    try {
-      const r = await fetchFn(cdpVersionUrl(port));
-      if (r.ok) {
-        // v1.9（parse17 §3.3 机制二）：ok=true 返回前落盘台账（chrome-stop /
-        // server 停机按记录收尾）。pid undefined（spawn 竞态）跳过；写失败
-        // best-effort（recordLaunch 内部 catch，不让 launch 失败）。
-        if (pid !== undefined) {
-          await recordLaunch({
-            port,
-            pid,
-            profileDir,
-            launchedAt: Date.now(),
-            status: "ready",
-          });
-        }
-        return {
-          ok: true,
-          binaryPath: found.path,
-          pid,
-          port,
-          profileDir,
-        };
-      }
-    } catch {
-      /* 未就绪，继续轮询 */
+  if (primary.outcome === "ok") {
+    // v1.9（parse17 §3.3 机制二）：ok=true 返回前落盘台账（chrome-stop /
+    // server 停机 / v1.10 idle reaper 按记录收尾）。pid undefined（spawn 竞态）
+    // 跳过；写失败 best-effort（recordLaunch 内部 catch）。
+    if (primary.pid !== undefined) {
+      await recordLaunch({
+        port,
+        pid: primary.pid,
+        profileDir,
+        launchedAt: Date.now(),
+        status: "ready",
+        launchMode: mode,
+        idleMs: opts.idleMs,
+      });
     }
-    await new Promise((r) => setTimeout(r, probeIntervalMs));
+    scheduleHideFuse(primary.pid);
+    return okResult(primary.pid);
+  }
+
+  // 8. fallback 链（parse18 §3.2）：hidden 档 primary 启动即退（未来 Chrome 移除
+  //    未文档化 --no-startup-window 的形态）→ 离屏 --window-position 重试一次；
+  //    再失败按现状返 chrome_exited（不第三次重试）。
+  if (primary.outcome === "exited" && mode === "hidden") {
+    log({
+      evt: "launch_mode_fallback",
+      from: "--no-startup-window",
+      to: OFFSCREEN_POSITION_FLAG,
+      port,
+    });
+    const second = await attempt(
+      finalArgs.map((a) => (a === "--no-startup-window" ? OFFSCREEN_POSITION_FLAG : a)),
+    );
+    if (second.outcome === "ok") {
+      if (second.pid !== undefined) {
+        await recordLaunch({
+          port,
+          pid: second.pid,
+          profileDir,
+          launchedAt: Date.now(),
+          status: "ready",
+          launchMode: mode,
+          idleMs: opts.idleMs,
+        });
+      }
+      scheduleHideFuse(second.pid);
+      return okResult(second.pid);
+    }
+    if (second.outcome === "spawn_error") {
+      return {
+        ok: false,
+        binaryPath: found.path,
+        port,
+        profileDir,
+        candidateSources,
+        error: second.error,
+      };
+    }
+    return {
+      ok: false,
+      binaryPath: found.path,
+      pid: second.pid,
+      port,
+      profileDir,
+      candidateSources,
+      error: "chrome_exited",
+    };
   }
 
   // 探活失败：诚实返 ok:false + 原因（chrome_exited / cdp_not_ready）。
   // 注意：cdp_not_ready 时 Chrome 可能仍在慢启动——launch 时刻仍不代 kill（会误杀
   // 慢启动 Chrome，wave2 U-04-1 实证 pid 74620）；但 v1.9 起登记台账，后续
-  // chrome-stop / 停机收尾可按记录（cmdline 验证归属后）关闭——这是对「不代 kill」
-  // 承诺的精确化而非推翻：不在 launch 时刻杀，在收尾时刻杀（归属可验证）。
+  // chrome-stop / 停机收尾 / v1.10 idle reaper 可按记录（cmdline 验证归属后）
+  // 关闭——这是对「不代 kill」承诺的精确化而非推翻：不在 launch 时刻杀，在收尾
+  // 时刻杀（归属可验证）。
+  const exited = primary.outcome === "exited";
+  const pid = primary.pid;
   if (!exited && pid !== undefined) {
     await recordLaunch({
       port,
@@ -328,6 +473,8 @@ export async function launchChrome(
       profileDir,
       launchedAt: Date.now(),
       status: "cdp_not_ready",
+      launchMode: mode,
+      idleMs: opts.idleMs,
     });
   }
   return {
@@ -348,10 +495,16 @@ export async function launchChrome(
  * CLI argv 解析 + 调 launchChrome + 打印 JSON 结果。
  *
  * 用法：
- *   lasso launch-chrome                          # 默认 :9222
+ *   lasso launch-chrome                          # 默认 :9222（mode 走 config 层默认 hidden）
  *   lasso launch-chrome --port 9223              # 改端口
  *   lasso launch-chrome --profile /tmp/lasso-chrome-profile  # 隔离 profile
+ *   lasso launch-chrome --mode hidden            # 0 窗口零打扰档（默认）
+ *   lasso launch-chrome --mode visible           # v1.9 可见行为
+ *   lasso launch-chrome --idle-ms 3600000        # 本次 launch 的 idle 覆盖（1h）
  *   lasso launch-chrome --incognito              # 加 --incognito 参数
+ *
+ * 优先级：argv > config.json（index.ts CLI 入口先 loadConfig 再经 defaults 传入；
+ * launcher 不 import config 模块保 INV-64）> 内置默认（visible——保守）。
  *
  * exit code：
  *  - 0  → ok=true（Chrome 已 spawn）
@@ -361,26 +514,48 @@ export async function launchChrome(
  * v1.9（parse17 机制二）：spawn 已登记磁盘台账 launched-chromes.json——
  * `lasso-mcp chrome-stop [--port N|--all]` 与 server 停机路径按台账收尾
  * （只杀 cmdline 验证 `--user-data-dir` 归属的 pid）。
+ * v1.10（parse18 §5.1 诚实边界）：CLI 短命进程无 idle reaper——「用完即关」
+ * 调度器只活在 server 进程；CLI 起的 Chrome 关闭出口是 chrome-stop / 手动。
  *
  * INV-64 衍生：本函数只解析 argv + 调 launchChrome；不引新 dep。
  */
 export async function runLaunchChromeCli(
   argv: string[] = process.argv.slice(3),
+  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number },
 ): Promise<void> {
-  const opts = parseLaunchChromeArgs(argv);
+  const opts = mergeLaunchDefaults(parseLaunchChromeArgs(argv), defaults);
   const result = await launchChrome(opts);
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   process.exit(result.ok ? 0 : 1);
 }
 
 /**
- * argv → LaunchChromeOptions 解析（parse11 §3.3）。
+ * argv > config.json 文件层 > 内置默认 的合并（parse18 §8.3 跨边界同步对 2）。
+ *
+ * 单独导出纯函数便于单测（不 spawn）——index.ts CLI 入口先 loadConfig 解析
+ * config.json 再以 defaults 传入；launcher 不 import config 模块保 INV-64。
+ */
+export function mergeLaunchDefaults(
+  opts: LaunchChromeOptions,
+  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number },
+): LaunchChromeOptions {
+  if (!opts.launchMode && defaults?.launchMode) opts.launchMode = defaults.launchMode;
+  if (opts.idleMs === undefined && defaults?.idleMs !== undefined) {
+    opts.idleMs = defaults.idleMs;
+  }
+  return opts;
+}
+
+/**
+ * argv → LaunchChromeOptions 解析（parse11 §3.3 + parse18 §3.2 v1.10）。
  *
  * 单独导出便于单测直接调用（不每次 spawn child_process）。
  *
  * 支持的 flag：
  *  - --port <N>          ：CDP 端口（默认 9222）
  *  - --profile <dir>     ：user-data-dir
+ *  - --mode <hidden|visible>：启动档（v1.10；非法值忽略走 config/内置默认）
+ *  - --idle-ms <N>       ：per-launch idle 覆盖（v1.10；负数忽略）
  *  - --incognito         ：等价 --extra-args=--incognito 的快捷 flag
  *  - --extra-args <args> ：附加 Chrome 命令行参数（逗号分隔，如 "--incognito,--start-maximized"）
  *  - --help / -h         ：打印用法（解析忽略，由 caller 处理）
@@ -400,6 +575,15 @@ export function parseLaunchChromeArgs(
       i++;
     } else if (a === "--profile") {
       opts.profileDir = argv[i + 1];
+      i++;
+    } else if (a === "--mode") {
+      const v = argv[i + 1];
+      if (v === "hidden" || v === "visible") opts.launchMode = v;
+      i++;
+    } else if (a === "--idle-ms") {
+      const v = argv[i + 1];
+      const n = v ? parseInt(v, 10) : NaN;
+      if (!Number.isNaN(n) && n >= 0) opts.idleMs = n;
       i++;
     } else if (a === "--incognito") {
       extra.push("--incognito");

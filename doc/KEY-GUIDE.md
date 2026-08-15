@@ -165,6 +165,8 @@ lasso launch-chrome
 
 > v1.9 生命周期收尾：`launch-chrome` 起的 Chrome 会登记到 `~/.cache/lasso/launched-chromes.json` 台账，任务结束后用 `lasso chrome-stop`（或 `lasso chrome-stop --port 9222` 关指定一个）按台账关闭——只杀验证过命令行归属的 pid，不会误伤你手动开的 Chrome。`browse_logged_in` 用完后，对 Claude 说 `admin {action:"tab_restore", reason:"任务完成"}` 可关掉 Lasso 新开的 tab、恢复你原来的 tab 列表（server 退出时也会自动做）。无头浏览器默认 5 分钟没人用就自动回收（见 `LASSO_HEADLESS_IDLE_MS`）。
 
+> v1.10 默认静默 + 用完即关：① `launch-chrome` 默认 **hidden 档**——零窗口启动、不抢键盘/窗口焦点、恒静音（macOS 用 `--no-startup-window`，Windows 追加 `--start-minimized`）；唯一可感知残留是 Dock / 任务栏多一个 Chrome 图标。想要可见窗口（v1.9 行为）用 `lasso launch-chrome --mode visible`，或在 `~/.lasso/config.json` 配 `"LASSO_LAUNCH_MODE": "visible"`。② **用完即关**：server 运行期间，这个 Chrome 最后一次被使用后约 60 秒内自动关闭（60s idle 判定 + 15s 检查周期，上界 ~75s），不用等 `chrome-stop`。阈值用 `LASSO_LAUNCH_IDLE_MS` 调：要回退 5 分钟配 `300000`；要更激进配 `1000`（代价是间隔稍长的连续操作会触发 ~11 秒重冷启动）；配 `0` 完全禁用（常驻到 `chrome-stop`）。单次 launch 想单独放行用 `lasso launch-chrome --idle-ms 3600000`。③ 诚实边界：`launch-chrome` 单独 CLI 起的 Chrome 没有 idle 回收（回收器只活在 server 进程），关闭出口仍是 `chrome-stop`；`browse_logged_in` 连**你自己开的可见 Chrome** 时是「低打扰，非零打扰」（macOS 上游 CDP 平台级限制，个别操作可能抢一次焦点）——要纯静默就用 lasso 自己 launch 的 hidden 档或 `browse_headless`；`desktop` 通道是模拟真人键鼠，**设计上就会占用你的物理键鼠**，不存在静默形态。
+
 ---
 
 ## C. 桌面控制（系统授权，无 key）
@@ -307,6 +309,8 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
 | `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
+| `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
+| `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 禁用（常驻到 `chrome-stop`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `ZHIPU_ENDPOINT` | 智谱端点覆盖 | 智谱官方端点 | 自建反代时 |
 
 > 关于 fake-ip 代理网络：如果你用 Surge / Clash 的 TUN 模式（fake-ip），`198.18.0.0/15` 网段已内置放行，无需额外配置 `LASSO_SSRF_ALLOW_RANGES`。

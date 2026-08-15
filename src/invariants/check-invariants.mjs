@@ -3880,6 +3880,135 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // v1.10（parse18 §6）INV-78 —— 浏览器静默启动与 idle 回收安全
+  // ============================================================
+  // 守（三机制机械化，6 组断言）：
+  //  INV-78  v1.10 浏览器静默启动与 idle 回收安全：
+  //    (a) launch-chrome hidden 档 flag 集不漂移（--no-startup-window / --start-minimized /
+  //        反节流三件套 / --mute-audio；三件套+mute 恒加于 hidden 分支之外）
+  //    (b) config 配置面 + 默认值不回退（CONFIG_TEMPLATE 两新键 + parse 函数回退默认 +
+  //        index.ts reaper 接线）
+  //    (c) chrome-idle-reaper 零第二 kill 原语（杀必须经 chrome-stop 验证路径）+ 0=禁用门控
+  //    (d) 激活路径禁令（"select_page" / bringToFront / /json/new 零命中）+
+  //        CdpClient background:true 建塔
+  //    (e) chrome-hide 永不按进程名裸 hide（PID 定向 unix id；E8 事故红线）+ 非 mac no-op
+  //    (f) 台账 schema 前向兼容（launchMode/idleMs 可选字段 + typeof 守卫解析）
+  {
+    id: "INV-78-browser-silent-launch-and-idle-reap-safety",
+    desc:
+      "v1.10：浏览器静默启动与 idle 回收安全（parse18 三机制）——" +
+      "（a）hidden 档 flag 集不漂移（no-startup-window/start-minimized/反节流三件套/mute-audio）；" +
+      "（b）config 配置面 LASSO_LAUNCH_MODE/LASSO_LAUNCH_IDLE_MS + 默认值不回退 + index.ts reaper 接线；" +
+      "（c）chrome-idle-reaper 零第二 kill 原语（杀经 chrome-stop）+ 0=禁用；" +
+      "（d）激活路径禁令（select_page/bringToFront/PUT /json/new 零命中）+ background:true 建塔；" +
+      "（e）chrome-hide PID 定向（unix id）永不按名裸 hide + 非 mac no-op；" +
+      "（f）台账 schema launchMode/idleMs 前向兼容",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const indexCode = stripComments(byPath(/^index\.ts$/)?.text ?? "");
+      const launchSrc = byPath(/^launcher\/launch-chrome\.ts$/)?.text ?? "";
+      const launchChromeCode = stripComments(launchSrc);
+      const configCode = stripComments(byPath(/^config\/config\.ts$/)?.text ?? "");
+      const reaperSrc = byPath(/^launcher\/chrome-idle-reaper\.ts$/)?.text ?? "";
+      const reaperCode = stripComments(reaperSrc);
+      const hideCode = stripComments(byPath(/^launcher\/chrome-hide\.ts$/)?.text ?? "");
+      const ledgerSrc = byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "";
+      const cdpClientCode = stripComments(
+        byPath(/^logged-in\/CdpClient\.ts$/)?.text ?? "",
+      );
+
+      // ----- (a) hidden 档 flag 集不漂移 -----
+      for (const flag of [
+        "--no-startup-window",
+        "--start-minimized",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--mute-audio",
+      ]) {
+        if (!launchChromeCode.includes(flag)) return false;
+      }
+      // hidden 分支体内含 --no-startup-window（win 追加 --start-minimized 在同分支）
+      const hiddenBranch = launchChromeCode.match(
+        /if \(mode === "hidden"\) \{[\s\S]*?\n  \}/,
+      );
+      if (!hiddenBranch) return false;
+      if (!hiddenBranch[0].includes("--no-startup-window")) return false;
+      if (!hiddenBranch[0].includes("--start-minimized")) return false;
+      // 反节流三件套 + mute 恒加：出现在 hidden 分支之前（两档都加）
+      if (!(launchChromeCode.indexOf("--mute-audio") < launchChromeCode.indexOf('if (mode === "hidden")'))) {
+        return false;
+      }
+
+      // ----- (b) config 配置面 + 默认值不回退 + 接线 -----
+      if (!/LASSO_LAUNCH_MODE/.test(configCode)) return false;
+      if (!/LASSO_LAUNCH_IDLE_MS/.test(configCode)) return false;
+      if (!/LASSO_LAUNCH_MODE:\s*"hidden"/.test(configCode)) return false;
+      if (!/LASSO_LAUNCH_IDLE_MS:\s*60000/.test(configCode)) return false;
+      if (!/parseLaunchMode/.test(configCode)) return false;
+      if (!/parseLaunchIdleMs/.test(configCode)) return false;
+      if (!/60_000/.test(configCode)) return false;
+      if (!/launchIdleMs/.test(configCode)) return false;
+      if (!/launchMode/.test(configCode)) return false;
+      if (!/startChromeIdleReaper/.test(indexCode)) return false;
+      if (!/launchIdleMs/.test(indexCode)) return false;
+
+      // ----- (c) chrome-idle-reaper 零第二 kill 原语 + 0=禁用门控 -----
+      if (!reaperSrc) return false; // 文件必须存在
+      if (!/chrome-stop\.js/.test(reaperCode)) return false;
+      if (!/stopLaunchedChromes/.test(reaperCode)) return false;
+      if (!/chrome-ledger\.js/.test(reaperCode)) return false;
+      if (!/readLedgerSync/.test(reaperCode)) return false;
+      if (/killTreeSync|process\.kill/.test(reaperCode)) return false; // 杀必须经 chrome-stop
+      if (!/config\.launchIdleMs > 0/.test(indexCode)) return false; // 0=禁用门控
+
+      // ----- (d) 激活路径禁令 + background 建塔 -----
+      const activationScope = SRC.filter((s) => {
+        const f = s.f.replace(/\\/g, "/");
+        return (
+          /^channels\/BrowseChannel\.ts$/.test(f) ||
+          /^channels\/LoggedInChannel\.ts$/.test(f) ||
+          /^browse\/cdp-actions\.ts$/.test(f) ||
+          /^logged-in\//.test(f)
+        );
+      });
+      for (const f of activationScope) {
+        const code = stripComments(f.text);
+        if (/"select_page"/.test(code)) return false; // 带引号工具名形态（select_page 激活）
+        if (/bringToFront/.test(code)) return false;
+        if (/\/json\/new/.test(code)) return false; // HTTP 开 tab 激活路径
+      }
+      if (!/Target\.createTarget/.test(cdpClientCode)) return false;
+      const bgBody = cdpClientCode.match(
+        /async createBackgroundTarget\([\s\S]*?\n  \}/,
+      );
+      if (!bgBody) return false;
+      if (!/background:\s*true/.test(bgBody[0])) return false;
+
+      // ----- (e) chrome-hide PID 定向红线 + 非 mac no-op -----
+      if (!hideCode) return false;
+      if (!/unix id/.test(hideCode)) return false;
+      if (/set visible of process "Google Chrome" to false/.test(hideCode)) return false; // 按名裸 hide（E8 事故）
+      if (!/darwin/.test(hideCode)) return false; // 非 mac no-op 判定存在
+
+      // ----- (f) 台账 schema 前向兼容 -----
+      const recBlock = ledgerSrc.match(
+        /export interface LaunchedChromeRecord \{[\s\S]*?\n\}/,
+      );
+      if (!recBlock) return false;
+      if (!/launchMode\??:/.test(recBlock[0])) return false;
+      if (!/idleMs\??:/.test(recBlock[0])) return false;
+      const readBody = ledgerSrc.match(
+        /export function readLedgerSync\(\)[\s\S]*?\n\}/,
+      );
+      if (!readBody) return false;
+      if (!/typeof r\.launchMode === "string"/.test(readBody[0])) return false;
+      if (!/typeof r\.idleMs === "number"/.test(readBody[0])) return false;
+
+      return true;
+    },
+  },
 ];
 
 let failed = 0;

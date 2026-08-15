@@ -1,0 +1,79 @@
+{
+  "launched9226": {
+    "pid": 61260,
+    "idleMsArg": 2000
+  },
+  "samples": [
+    {
+      "t": 0,
+      "ledger": [
+        {
+          "port": 9225,
+          "pid": 59596,
+          "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default",
+          "launchedAt": 1786795035030,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 60000
+        },
+        {
+          "port": 9226,
+          "pid": 61260,
+          "profileDir": "/tmp/lasso-v110-profile-9226",
+          "launchedAt": 1786795211697,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 2000
+        }
+      ],
+      "p9225": "5",
+      "p9226": "4"
+    },
+    {
+      "t": 10,
+      "ledger": [
+        {
+          "port": 9225,
+          "pid": 59596,
+          "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default",
+          "launchedAt": 1786795035030,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 60000
+        },
+        {
+          "port": 9226,
+          "pid": 61260,
+          "profileDir": "/tmp/lasso-v110-profile-9226",
+          "launchedAt": 1786795211697,
+          "status": "ready",
+          "launchMode": "hidden",
+          "idleMs": 2000
+        }
+      ],
+      "p9225": "5",
+      "p9226": "5"
+    },
+    {
+      "t": 20,
+      "ledger": [],
+      "p9225": "0",
+      "p9226": "0"
+    },
+    {
+      "t": 35,
+      "ledger": [],
+      "p9225": "0",
+      "p9226": "0"
+    }
+  ],
+  "a3_reaped_9226": true,
+  "a5_survived_9225": false,
+  "reapLatency": "<=20s",
+  "stderrEvents": [
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T12:00:27.788Z\",\"evt\":\"chrome_stop_result\",\"port\":9225,\"pid\":59596,\"action\":\"killed\",\"tree_kill\":false}",
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T12:00:27.790Z\",\"evt\":\"chrome_idle_reaped\",\"port\":9225,\"pid\":59596,\"idle_ms\":60000,\"idle_for_ms\":192347}",
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T12:00:28.200Z\",\"evt\":\"chrome_stop_result\",\"port\":9226,\"pid\":61260,\"action\":\"killed\",\"tree_kill\":false}",
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T12:00:28.202Z\",\"evt\":\"chrome_idle_reaped\",\"port\":9226,\"pid\":61260,\"idle_ms\":2000,\"idle_for_ms\":15680}"
+  ]
+}
