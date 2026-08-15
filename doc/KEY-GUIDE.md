@@ -163,6 +163,8 @@ lasso launch-chrome
 
 > 桌面端口默认 `9222`，被占用时可用 `LASSO_CDP_PORT=9223` 改端口（见 [高级调优](#e-高级调优可选全不配)）。
 
+> v1.9 生命周期收尾：`launch-chrome` 起的 Chrome 会登记到 `~/.cache/lasso/launched-chromes.json` 台账，任务结束后用 `lasso chrome-stop`（或 `lasso chrome-stop --port 9222` 关指定一个）按台账关闭——只杀验证过命令行归属的 pid，不会误伤你手动开的 Chrome。`browse_logged_in` 用完后，对 Claude 说 `admin {action:"tab_restore", reason:"任务完成"}` 可关掉 Lasso 新开的 tab、恢复你原来的 tab 列表（server 退出时也会自动做）。无头浏览器默认 5 分钟没人用就自动回收（见 `LASSO_HEADLESS_IDLE_MS`）。
+
 ---
 
 ## C. 桌面控制（系统授权，无 key）
@@ -304,6 +306,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
+| `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
 | `ZHIPU_ENDPOINT` | 智谱端点覆盖 | 智谱官方端点 | 自建反代时 |
 
 > 关于 fake-ip 代理网络：如果你用 Surge / Clash 的 TUN 模式（fake-ip），`198.18.0.0/15` 网段已内置放行，无需额外配置 `LASSO_SSRF_ALLOW_RANGES`。

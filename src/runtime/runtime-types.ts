@@ -183,4 +183,7 @@ export type AdminAction =
   | "profile_switch"
   | "cookie_restore"
   // v1.8 Phase D（D7）：breaker_reset —— 短/长熔断手工唤醒（mutation 必传 reason）
-  | "breaker_reset";
+  | "breaker_reset"
+  // v1.9（parse17 §4.4 机制三）：tab_restore —— 恢复用户原 tab 列表（mutation 必传
+  // reason，同 capability_disable 惯例；只关快照后新增的 tab，红线不碰用户原有 tab）
+  | "tab_restore";

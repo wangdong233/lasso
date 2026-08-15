@@ -35,6 +35,7 @@ import type { IProfileRegistry } from "../logged-in/ProfileRegistry.js";
 import type { CookieStore } from "../logged-in/CookieStore.js";
 import { CdpClient, type CdpCookie } from "../logged-in/CdpClient.js";
 import { TabRegistry } from "../logged-in/TabRegistry.js";
+import { TabSession, type TabRestoreResult } from "../logged-in/TabSession.js";
 
 /** 2FA / 登录表单关键词集（粗筛，v0.3 升级 selector-based 探测）。 */
 const TWOFA_KEYWORDS = [
@@ -64,6 +65,17 @@ export class LoggedInChannel extends BrowseChannel {
   private readonly tabs: TabRegistry;
 
   /**
+   * v1.9（parse17 §4.3 机制三）：TabSession（首附着 tab 快照 + diff 恢复）。
+   *
+   * 与 TabRegistry 的分工：LRU 是运行中防爆语义，TabSession 是会话收尾语义
+   * （「恢复用户原 tab 列表」）。键于 cdpPort 而非 profile——同一用户 Chrome 的
+   * tab 基线跨 profile 有效（forgetSpec 只杀 mcp 子进程，不动用户 Chrome）。
+   * 触发口：admin action tab_restore（显式）/ server 停机 / idle 回收 logged_in
+   * spec 时（SubprocessManager reap hook，index.ts 装配段接线）。
+   */
+  private readonly tabSession: TabSession;
+
+  /**
    * v0.8：CookieStore 工厂（按 profile 名新建实例；多 profile 隔离用）。
    *
    * 守 INV-52：自动 browse 路径 getMcpClient **不调** store.export / store.import；仅
@@ -87,6 +99,7 @@ export class LoggedInChannel extends BrowseChannel {
     super();
     this.cookieStoreFactory = cookieStoreFactory;
     this.tabs = new TabRegistry(tabCap);
+    this.tabSession = new TabSession(cdpPort);
   }
 
   /**
@@ -133,6 +146,13 @@ export class LoggedInChannel extends BrowseChannel {
     // v0.8：按当前 profile 注册/切 spec（parse9 §3.2）
     await this.ensureProfileSpec();
     const c = await this.subproc.ensureRunning(this.lastSpecName!);
+    // v1.9（parse17 §4.3 机制三）：首附着快照用户 tab 基线（后续调用 no-op；
+    // 失败 warn 放弃不阻断 browse——下次 getMcpClient 重试）。
+    try {
+      await this.tabSession.takeSnapshotIfAbsent();
+    } catch (e) {
+      logger.warn({ evt: "tab_snapshot_error", error: String(e) });
+    }
     // 首次拿到 client 后探一次 2FA（不阻塞太久；失败不影响 browse，只影响 status）。
     await this._detect2FA(c);
     // v0.8：tab LRU reconcile（parse9 §3.3 + INV-50）。
@@ -144,6 +164,14 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({ evt: "logged_in_tab_reconcile_failed", error: String(e) });
     }
     return c;
+  }
+
+  /**
+   * v1.9（parse17 §2.2 (d) 机制一）：action/step dispatch 后刷新 lastUsedAt，
+   * 防 idle watchdog（默认 5min）误杀 in-flight 长 browse。spec 名取当前 profile。
+   */
+  protected override touchKeepalive(): void {
+    if (this.lastSpecName) this.subproc.touch(this.lastSpecName);
   }
 
   /**
@@ -193,6 +221,17 @@ export class LoggedInChannel extends BrowseChannel {
       return { ...s, note: "NEEDS_MANUAL_2FA" };
     }
     return s;
+  }
+
+  /**
+   * v1.9（parse17 §4.3 机制三）：恢复原 tab 列表（薄委托 TabSession.restore）。
+   *
+   * INV-52 合规：本方法与 cookie action 同为 admin opt-in 入口；TabSession 只读
+   * /json/list + 关闭 diff tab，**不触碰任何 cookie 路径**（自动路径永不调
+   * cookie export/import 不受影响）。永不 throw。
+   */
+  async restoreTabs(): Promise<TabRestoreResult> {
+    return this.tabSession.restore();
   }
 
   // ============================================================

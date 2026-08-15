@@ -90,6 +90,17 @@ export abstract class BrowseChannel extends UiChannel {
   /** 子类提供 McpClient（headless 子进程 / logged_in 子进程 各自拿）。 */
   protected abstract getMcpClient(): Promise<McpClient>;
 
+  /**
+   * v1.9（parse17 §2.2 (d) 机制一）：action/step dispatch 后的保活 touch。
+   *
+   * 默认 no-op（cloud 通道无本地子进程）；HeadlessChannel / LoggedInChannel
+   * override 成 subproc.touch(specName)——长 browse（多步导航 + ExpectPoll 轮询）
+   * 进行中持续刷新 lastUsedAt，防 idle watchdog（默认 5min）误杀 in-flight 浏览器。
+   */
+  protected touchKeepalive(): void {
+    // 默认 no-op
+  }
+
   // ============================================================
   // INV-6: dispatch 走 Map
   // ============================================================
@@ -277,6 +288,7 @@ export abstract class BrowseChannel extends UiChannel {
 
     try {
       const c = await this.getMcpClient();
+      this.touchKeepalive(); // v1.9：action dispatch 后保活（防 idle watchdog 误杀）
       // W2-DEF-N1（v1.8.1）：URL 驱动的采集类 action 先导航到目标页——
       // 此前 doNetwork/doScreenshot/doPdf 直接在当前页（首会话 = about:blank）执行，
       // network 恒 0 entries（wave2 实证）。navigate 失败（404/DNS/...）由下方
@@ -437,6 +449,7 @@ export abstract class BrowseChannel extends UiChannel {
       throw new Error(`unknown_action:${step.action}`);
     }
     const c = await this.getMcpClient();
+    this.touchKeepalive(); // v1.9：step dispatch 后保活（StepEngine 每 step 调）
 
     // 1. act 前 quickSnapshot（仅 step.expect 存在时）
     //    失败时（页面未就绪 / evaluate 不可用）→ undefined，跳过 preexisting 判定
@@ -494,6 +507,7 @@ export abstract class BrowseChannel extends UiChannel {
     opts?: ExpectPollOptions,
   ): Promise<"verified" | "preexisting" | "failed"> {
     const c = await this.getMcpClient();
+    this.touchKeepalive(); // v1.9：expect 轮询前保活（ExpectPoll 可能持续数十秒）
     return expectPoll(c, cond, pre, opts);
   }
 

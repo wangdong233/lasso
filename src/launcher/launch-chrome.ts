@@ -6,9 +6,13 @@
  *
  * 不做的事（守 R-CI-02 + INV-64）：
  *  - 不引新 npm dep（仅 node:child_process / node:path / node:fs / node:process / node:url；
- *    INV-64 grep 守：launcher/*.ts 只 import node:* 内置）
+ *    INV-64 grep 守：launcher/*.ts 只 import node:* 内置 + 同目录模块 + ../util/kill-tree.js 豁免）
  *  - 不装 Chrome（parse11 §1.2 守；用户手动装；本 launcher 只探测 + spawn）
- *  - 不接管 Chrome lifecycle（spawn 后 detached；chrome 自己管 SIGTERM）
+ *  - **v1.9（parse17 §3.3 机制二）承诺修订**：spawn 后仍 detached、进程内不做 lifecycle
+ *    管理；但 spawn 成功（含 cdp_not_ready 慢启动）即登记磁盘台账
+ *    ~/.cache/lasso/launched-chromes.json（port/pid/profileDir）——`lasso-mcp
+ *    chrome-stop` 子命令与 server 停机路径按台账收尾（只杀台账在案且 cmdline
+ *    验证 `--user-data-dir` 归属的 pid）。
  *  - 不缓存路径探测结果（每次 launch 都重探；用户可能在不同 shell 装到不同路径）
  *
  * 与 doctor #5 chrome_binary 关系（守不开第二套）：
@@ -38,6 +42,7 @@ import {
   chromeCandidatesForPlatform,
   type ChromePathCandidate,
 } from "./chrome-paths.js";
+import { recordLaunch } from "./chrome-ledger.js";
 
 // ============================================================
 // 类型
@@ -285,6 +290,18 @@ export async function launchChrome(
     try {
       const r = await fetchFn(cdpVersionUrl(port));
       if (r.ok) {
+        // v1.9（parse17 §3.3 机制二）：ok=true 返回前落盘台账（chrome-stop /
+        // server 停机按记录收尾）。pid undefined（spawn 竞态）跳过；写失败
+        // best-effort（recordLaunch 内部 catch，不让 launch 失败）。
+        if (pid !== undefined) {
+          await recordLaunch({
+            port,
+            pid,
+            profileDir,
+            launchedAt: Date.now(),
+            status: "ready",
+          });
+        }
         return {
           ok: true,
           binaryPath: found.path,
@@ -300,7 +317,19 @@ export async function launchChrome(
   }
 
   // 探活失败：诚实返 ok:false + 原因（chrome_exited / cdp_not_ready）。
-  // 注意：cdp_not_ready 时 Chrome 可能仍在慢启动——按既有设计不接管 lifecycle，不代 kill。
+  // 注意：cdp_not_ready 时 Chrome 可能仍在慢启动——launch 时刻仍不代 kill（会误杀
+  // 慢启动 Chrome，wave2 U-04-1 实证 pid 74620）；但 v1.9 起登记台账，后续
+  // chrome-stop / 停机收尾可按记录（cmdline 验证归属后）关闭——这是对「不代 kill」
+  // 承诺的精确化而非推翻：不在 launch 时刻杀，在收尾时刻杀（归属可验证）。
+  if (!exited && pid !== undefined) {
+    await recordLaunch({
+      port,
+      pid,
+      profileDir,
+      launchedAt: Date.now(),
+      status: "cdp_not_ready",
+    });
+  }
   return {
     ok: false,
     binaryPath: found.path,
@@ -328,8 +357,10 @@ export async function launchChrome(
  *  - 0  → ok=true（Chrome 已 spawn）
  *  - 1  → ok=false（未找到 Chrome / spawn 失败 / unsupported_platform）
  *
- * 不接管 Chrome lifecycle：spawn 后本 CLI 退出，Chrome detached 继续跑。
- * 用户手动 kill Chrome 或 OS 关机时退出。
+ * 进程内不接管 Chrome lifecycle：spawn 后本 CLI 退出，Chrome detached 继续跑。
+ * v1.9（parse17 机制二）：spawn 已登记磁盘台账 launched-chromes.json——
+ * `lasso-mcp chrome-stop [--port N|--all]` 与 server 停机路径按台账收尾
+ * （只杀 cmdline 验证 `--user-data-dir` 归属的 pid）。
  *
  * INV-64 衍生：本函数只解析 argv + 调 launchChrome；不引新 dep。
  */

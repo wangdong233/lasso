@@ -19,8 +19,10 @@
  *  - spawnFn 注入：mock child_process.spawn → 返伪 ChildProcess（不真启子进程）
  *  - 不引入 puppeteer / open / chrome-launcher 等社区包（INV-64 守）
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as path from "node:path";
+import * as os from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
 import {
   launchChrome,
   parseLaunchChromeArgs,
@@ -116,6 +118,20 @@ function makeMockFetchSafe(): { fetchFn: (url: string) => Promise<{ ok: boolean 
   const { fetchFn } = makeMockFetch();
   return { fetchFn };
 }
+
+// ============================================================
+// v1.9 台账隔离：launchChrome spawn 成功/慢启动会写 launched-chromes.json 台账。
+// 本 spec 的 mock spawn 返伪 pid —— 必须把台账指到 tmp（不污染 ~/.cache/lasso/）。
+// ============================================================
+let ledgerTmpDir: string;
+beforeAll(() => {
+  ledgerTmpDir = mkdtempSync(path.join(os.tmpdir(), "lasso-launch-chrome-ledger-"));
+  process.env.LASSO_LAUNCHED_CHROMES_PATH = path.join(ledgerTmpDir, "launched-chromes.json");
+});
+afterAll(() => {
+  rmSync(ledgerTmpDir, { recursive: true, force: true });
+  delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+});
 
 // ============================================================
 // chromeCandidatesForPlatform —— 三平台候选路径表

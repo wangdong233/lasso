@@ -51,6 +51,12 @@ export interface LassoConfig {
   searchCacheDir: string;
   /** free_only 全局默认（env LASSO_SEARCH_FREE_ONLY，默认 L4=全部允许） */
   searchFreeOnly: FreeTierLevel;
+  /**
+   * v1.9（parse17 §2.2 (a) 机制一）：MCP 浏览器子进程空闲回收阈值（ms）。
+   * env LASSO_HEADLESS_IDLE_MS（默认 300_000 = 5min；0 = 禁用 idle watchdog）。
+   * 到期由 zombie reaper（60s 周期）树杀整棵 shim→node→Chromium 树。
+   */
+  headlessIdleMs: number;
 }
 
 export interface LoadConfigOptions {
@@ -60,6 +66,25 @@ export interface LoadConfigOptions {
 
 function defaultCacheDir(): string {
   return path.join(os.homedir(), ".cache", "lasso");
+}
+
+/**
+ * v1.9（parse17 §2.2 (a)）：LASSO_HEADLESS_IDLE_MS 默认 5min。
+ * parse17 §1.2 折中：高频连续 browse 复用浏览器（懒复用设计），5min 无人用即回收
+ * （52 进程积留的对症）。要回退 v1.8.1 常驻行为配 3600000。
+ */
+export const DEFAULT_HEADLESS_IDLE_MS = 300_000;
+
+/**
+ * 解析 LASSO_HEADLESS_IDLE_MS：parseInt；负数 / NaN / 未设 → 回退默认；
+ * 0 → 禁用（index.ts 不启动 zombie reaper——文档明示 opt-out 即自负残留）。
+ * 不设上限 clamp（用户要配更长随他，parse17 §2.2 (a)）。
+ */
+function parseHeadlessIdleMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HEADLESS_IDLE_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return DEFAULT_HEADLESS_IDLE_MS;
+  return n;
 }
 
 // ============================================================
@@ -169,6 +194,7 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   LASSO_RECORD_SEARCH: false,
   LASSO_CALLER_CAP_DEFAULT: 100,
   LASSO_PROVIDERS_FILE: "",
+  LASSO_HEADLESS_IDLE_MS: 300000,
 };
 
 /**
@@ -277,6 +303,9 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     ? rawFreeOnly
     : "L4";
 
+  // v1.9（parse17 机制一）：headless idle 回收阈值（0 = 禁用）
+  const headlessIdleMs = parseHeadlessIdleMs(env.LASSO_HEADLESS_IDLE_MS);
+
   return {
     runId: opts.runId,
     providers,
@@ -287,5 +316,6 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     cacheDir,
     searchCacheDir: path.join(cacheDir, "search-cache"),
     searchFreeOnly,
+    headlessIdleMs,
   };
 }

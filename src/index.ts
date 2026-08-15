@@ -140,6 +140,11 @@ import { CookieStore } from "./logged-in/CookieStore.js";
 // v1.0 Phase C/D（parse11 §3.2 + §3.3 + §7.2）：launcher + replay-baseline 子命令
 // INV-64 守：launcher/*.ts 不引新 npm dep（仅 node:* 内置）；index.ts 仅 import 子命令入口
 import { runLaunchChromeCli } from "./launcher/launch-chrome.js";
+import {
+  runChromeStopCli,
+  stopLaunchedChromes,
+  stopLaunchedChromesSync,
+} from "./launcher/chrome-stop.js";
 import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -194,7 +199,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.8.1";
+const LASSO_SERVER_VERSION = "1.9.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -351,7 +356,22 @@ async function runMcpServer(): Promise<void> {
 
   // ----- 装配 SubprocessManager + 3 channels -----
   const subproc = new SubprocessManager();
-  subproc.startZombieReaper();
+  // v1.9（parse17 §2.2 (c) 机制一）：idle 阈值从写死 1h 改为 config.headlessIdleMs
+  // （env LASSO_HEADLESS_IDLE_MS，默认 5min）。0 = 禁用 idle watchdog（reaper 完全
+  // 不启动，含旧 1h 兜底也没了——opt-out 即自负残留，文档明示）。
+  // 注意：reaper 启动放在 logged_in 装配 + setReapHook 之后（parse17 §7.2-31：
+  // hook 先于调度器挂好，首个 60s 周期即可用）。
+  const startIdleWatchdog = () => {
+    if (config.headlessIdleMs > 0) {
+      subproc.startZombieReaper(60_000, config.headlessIdleMs);
+    } else {
+      logger.info({
+        evt: "idle_watchdog_disabled",
+        idle_ms: 0,
+        note: "LASSO_HEADLESS_IDLE_MS=0 — headless browser stays resident until server exit",
+      });
+    }
+  };
 
   // ----- v0.8 装配：ProfileRegistry + CookieStore 工厂（parse9 §2.2 + §3）-----
   // ProfileRegistry 启动加载（首次建 default profile；mode 0o700）
@@ -407,6 +427,17 @@ async function runMcpServer(): Promise<void> {
     profileRegistry,
     cookieStoreFactory,
   );
+  // v1.9（parse17 §4.4 机制三）：idle 回收 logged_in spec 前 hook —— 机制一回收
+  // logged_in 的 mcp 子进程前先恢复用户 tab 列表（「浏览器用完收尾」完整语义）。
+  // hook 内 SubprocessManager 侧已有 3s race 上界；restore 自身永不 throw。
+  subproc.setReapHook(async (name) => {
+    if (name.startsWith("logged_in:")) {
+      logger.info({ evt: "reap_hook_tab_restore", name });
+      await logged_in.restoreTabs();
+    }
+  });
+  // v1.9：reaper 在 setReapHook 之后启动（§7.2-31 装配顺序）
+  startIdleWatchdog();
 
   // ----- v0.2 装配 BraveChannel（若 BRAVE_API_KEYS 配置）+ SearchCache -----
   // parse2 §3.3.4 / §3.4：brave 从 registry 取 QuotaLedger（INV-10：禁直读 env），
@@ -1001,6 +1032,9 @@ async function runMcpServer(): Promise<void> {
     // v0.8：cookie export/import 入口（INV-52：admin opt-in；从 LoggedInChannel 转发）
     cookieExport: () => logged_in.exportCookies(),
     cookieImport: () => logged_in.importCookies(),
+    // v1.9（parse17 §4.4 机制三）：tab_restore 入口（从 LoggedInChannel.restoreTabs 转发；
+    // 只关快照后新增的 tab，红线不碰用户原有 tab）
+    tabRestore: () => logged_in.restoreTabs(),
   });
 
   // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
@@ -1135,6 +1169,26 @@ async function runMcpServer(): Promise<void> {
         logger.warn({ evt: "steel_release_on_shutdown_failed", error: String(e) });
       }
     }
+    // v1.9（parse17 §3.6 机制二）：停机收尾台账 Chrome（3s 上界；失败 warn 不阻断停机）。
+    // 只杀台账在案且 cmdline 验证 --user-data-dir 归属的 pid（chrome-stop 红线）。
+    try {
+      await Promise.race([
+        stopLaunchedChromes({ all: true, logFn: (p) => logger.info(p) }),
+        new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
+      ]);
+    } catch (e) {
+      logger.warn({ evt: "chrome_stop_on_shutdown_failed", error: String(e) });
+    }
+    // v1.9（parse17 §4.4 机制三）：server 结束 = 会话结束，自动恢复用户 tab 列表
+    //（3s 上界；CDP 不可达等失败 warn 放弃——restore 永不 throw）。
+    try {
+      await Promise.race([
+        logged_in.restoreTabs(),
+        new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
+      ]);
+    } catch (e) {
+      logger.warn({ evt: "tab_restore_on_shutdown_failed", error: String(e) });
+    }
     try {
       // W2-DEF-N2（v1.8.1）：**不再 await subproc.shutdown()**——其内部 client.close()
       // 实测会悬挂（残留 server 进程卡在此处永不到达 process.exit，exit 钩子不触发，
@@ -1153,6 +1207,13 @@ async function runMcpServer(): Promise<void> {
   // 受管子进程（chrome-devtools-mcp / rust-helper）会变 ppid=1 孤儿（wave1 T-BROWSE-24）。
   // process.on("exit") 钩子必须同步 → killAllSync 零 await best-effort SIGKILL 残留 pid。
   process.on("exit", () => {
+    // v1.9（parse17 §3.6 机制二）：exit 钩子同步收尾台账 Chrome（零 await 纪律，
+    // W1-DEF-6 先例——同步版跳过 SIGTERM 优雅步，ps 验证归属后 killTreeSync 直杀）。
+    try {
+      stopLaunchedChromesSync((p) => logger.info(p));
+    } catch {
+      // best-effort：exit 钩子绝不能抛
+    }
     subproc.killAllSync();
   });
 }
@@ -1170,6 +1231,8 @@ const CLI_USAGE = [
   "  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json",
   "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
   "                                               Launch a debug-enabled Chrome for logged_in channel",
+  "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
+  "                                               on-disk ledger (pid ownership verified via cmdline)",
   "  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression",
   "  lasso-mcp --version | -v                     Print version",
   "  lasso-mcp --help | -h                        Print this usage",
@@ -1232,6 +1295,12 @@ async function main(): Promise<void> {
   // 跨平台 Chrome launcher 子命令。runLaunchChromeCli 默认读 process.argv.slice(3)。
   if (process.argv[2] === "launch-chrome") {
     await runLaunchChromeCli();
+    return;
+  }
+  // v1.9（parse17 §3.6 机制二）：`lasso chrome-stop [--port N|--all]` —— 按磁盘台账
+  // 收尾 launch-chrome 起的 Chrome（cmdline 验证归属后才杀；幂等 exit 0）。
+  if (process.argv[2] === "chrome-stop") {
+    await runChromeStopCli();
     return;
   }
   // v1.0 Phase C（parse11 §3.2 + §7.2）：`lasso replay-baseline [--strict]`

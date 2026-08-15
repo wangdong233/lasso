@@ -23,8 +23,9 @@
  */
 import { McpClient, type StdioSpawnParams } from "./McpClient.js";
 import { Agent } from "undici";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
+import { killTreeSync } from "../util/kill-tree.js";
 
 // ============================================================
 // 版本锁（parse1 §3.5 + §7.1 风险 L1）
@@ -112,6 +113,15 @@ export class SubprocessManager {
   private rustProcs = new Map<string, RustProc>();
   private rustSpecs = new Map<string, RustSpawnSpec>();
   private zombieTimer: NodeJS.Timeout | null = null;
+  /**
+   * v1.9（parse17 §2.2 (b)）：回收前回调 hook（机制三接线用；默认 null 零行为变化）。
+   *
+   * cleanupZombies 在 _kill 前 await 它（3s 上界，超时 warn 放行不阻断 reaper）——
+   * index.ts 装配段用它实现「idle 回收 logged_in spec 前先恢复用户 tab 列表」。
+   * INV-7 合规性：hook 是 lifecycle 编排点，本类不关心回调内容、不读协议帧
+   * （与 ResourceMonitor 注入 listManagedPids 同范式，v0.7 先例）。
+   */
+  private reapHook: ((name: string) => Promise<void>) | null = null;
   /**
    * v0.2 连接池（parse2 §3.6.2 / F3.5.7）。
    * key = host origin（如 "https://api.search.brave.com" /
@@ -208,9 +218,44 @@ export class SubprocessManager {
           name,
           idle_ms: now - m.lastUsedAt,
         });
+        // v1.9（parse17 §2.2 (b)）：回收前 reap hook（有界 3s，不阻塞 reaper；
+        // hook 抛错/超时只 warn——恢复动作是 best-effort，不能拖死回收本身）
+        if (this.reapHook) {
+          try {
+            await Promise.race([
+              this.reapHook(name),
+              new Promise<void>((resolve) =>
+                setTimeout(() => resolve(), 3_000),
+              ),
+            ]);
+          } catch (e) {
+            logger.warn({ evt: "reap_hook_error", name, error: String(e) });
+          }
+        }
         await this._kill(name);
       }
     }
+  }
+
+  /**
+   * v1.9（parse17 §2.2 (b)）：刷新一个受管 MCP 子进程的 lastUsedAt（长调用保活）。
+   *
+   * 背景：lastUsedAt 只在 ensureRunning 复用时刷新——带 steps 的长 browse
+   * （多步导航 + ExpectPoll 轮询）可能超过 idle 阈值，若不 touch，watchdog 会在
+   * 调用进行中杀掉浏览器。BrowseChannel 在每个 action/step dispatch 后调本方法，
+   * 「in-flight 窗口」内 lastUsedAt 持续新鲜。未知 spec / 已 closed → no-op。
+   */
+  touch(name: string): void {
+    const m = this.procs.get(name);
+    if (m && !m.closed) m.lastUsedAt = Date.now();
+  }
+
+  /**
+   * v1.9（parse17 §2.2 (b)）：设置/清除回收前回调（机制三接线用）。
+   * 传 null 恢复零行为（默认态）。
+   */
+  setReapHook(hook: ((name: string) => Promise<void>) | null): void {
+    this.reapHook = hook;
   }
 
   // ============================================================
@@ -350,36 +395,13 @@ export class SubprocessManager {
    * W2-DEF-N2（v1.8.1）：对 pid 及其全部后代递归 SIGKILL（best-effort）。
    * 单 pid SIGKILL 杀不死 npx shim 下层的 node/Chrome（ppid=1 孤儿的来源）——
    * macOS 无 /proc，用 pgrep -P 逐层枚举子进程。INV-7 语义不变：纯 lifecycle。
+   *
+   * v1.9（parse17 §3.5）：实现原样搬到 util/kill-tree.ts（单一真源，chrome-stop
+   * 共享同一原语，杜绝第二份 pgrep 递归漂移）；本方法保留为薄委托——既有调用点
+   * （killAllSync / _kill）与 INV-76 (n) 的 grep 不变。
    */
   private _killTreeSync(name: string, pid: number): void {
-    const queue = [pid];
-    const victims: number[] = [];
-    let guard = 0;
-    while (queue.length > 0 && guard++ < 64) {
-      const p = queue.shift()!;
-      victims.push(p);
-      try {
-        const r = spawnSync("pgrep", ["-P", String(p)], {
-          encoding: "utf8",
-          timeout: 1000,
-        });
-        if (r.stdout) {
-          for (const line of r.stdout.split("\n")) {
-            if (/^\d+$/.test(line.trim())) queue.push(Number(line.trim()));
-          }
-        }
-      } catch {
-        // pgrep 不可用——退化为只杀根 pid
-      }
-    }
-    for (const v of victims) {
-      try {
-        process.kill(v, "SIGKILL");
-        logger.info({ evt: "subproc_exit_kill", name, pid: v, signal: "SIGKILL" });
-      } catch (e) {
-        // 已死（ESRCH）或权限不足（EPERM）——best-effort，不抛
-      }
-    }
+    killTreeSync(pid, name);
   }
 
   // ============================================================
@@ -526,13 +548,19 @@ export class SubprocessManager {
   }
 
   /**
-   * kill 一个 proc：关 client（SDK transport 会 SIGTERM 子进程）+ 标 closed。
+   * kill 一个 proc：关 client（SDK transport 会 SIGTERM 子进程）+ 树杀残存 + 标 closed。
    * 幂等。
+   *
+   * G5 修复（v1.9 parse17 §2.2 (b)）：SDK close 只对 npm exec shim 发 SIGTERM、
+   * 不转发到下层 node/Chromium——只 close 不树杀 = 「回收即孤儿化」（ppid=1），
+   * 要等 server exit 才被 lifecyclePids 兜底。补 `_killTreeSync` 后，`_kill` 的
+   * 全部调用方（cleanupZombies / forgetSpec / shutdownOne / restart）一次全修。
    */
   private async _kill(name: string): Promise<void> {
     const m = this.procs.get(name);
     if (!m) return;
     m.closed = true;
+    const pid = m.client.pid;
     try {
       await m.client.close();
     } catch (e) {
@@ -542,6 +570,8 @@ export class SubprocessManager {
         error: String(e),
       });
     }
+    // G5：close 失败/不致死都不阻断树杀（SIGKILL 是唯一可靠致死原语）
+    if (pid !== null) this._killTreeSync(name, pid);
     this.procs.delete(name);
   }
 

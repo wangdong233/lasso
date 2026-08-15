@@ -1,0 +1,40 @@
+{
+  "steps": [
+    "launch-chrome 9226: ok=true pid=4669",
+    "user tabs: E812438B:https://example.org/ | E128EE29:https://example.com/ | 78ABFD95:chrome://newtab/",
+    "browse_logged_in navigate: outcome=unknown final_url=undefined err=Error: http_503:server_error",
+    "snapshot-time tabs: 3 → E812438B:https://httpbin.org/html | E128EE29:https://example.com/ | 78ABFD95:chrome://newtab/",
+    "extra tab opened: A0398F3A → now 4 pages",
+    "admin tab_restore: {\"ok\":true,\"action\":\"tab_restore\",\"configured\":true,\"closed\":[\"A0398F3A4FC80DFF4CB6601900A78716\"],\"timestamp\":1786789611063}",
+    "after restore: 3 pages; snapshot_intact=true user_intact=true extra_closed=true → E812438B:https://httpbin.org/html | E128EE29:https://example.com/ | 78ABFD95:chrome://newtab/",
+    "tab_restore without reason: ok=false error=field required: reason",
+    "resource: peak=1421MB/15procs after=0MB/0procs released=true; port9226_closed_by_server_shutdown=true"
+  ],
+  "user_tab_count": 3,
+  "snapshot_tab_count": 3,
+  "user_tabs_in_snapshot": true,
+  "extra_tab_id": "A0398F3A4FC80DFF4CB6601900A78716",
+  "tab_restore_result": {
+    "ok": true,
+    "action": "tab_restore",
+    "configured": true,
+    "closed": [
+      "A0398F3A4FC80DFF4CB6601900A78716"
+    ],
+    "timestamp": 1786789611063
+  },
+  "snapshot_tabs_intact": true,
+  "user_tabs_intact": true,
+  "extra_tab_closed": true,
+  "no_reason_rejected": true,
+  "peak": {
+    "count": 15,
+    "rssMb": 1421
+  },
+  "after": {
+    "count": 0,
+    "rssMb": 0
+  },
+  "released": true,
+  "port_closed": true
+}

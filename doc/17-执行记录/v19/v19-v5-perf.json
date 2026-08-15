@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "id": "V5-1",
+      "label": "navigate+extract markdown (headless)",
+      "ok": true,
+      "ms": 6597,
+      "detail": "nav=worked extract=worked title=\"Example Domain\" md_head=\"This domain is for use in documentation examples without nee\"",
+      "before": {
+        "count": 1,
+        "rssMb": 83
+      },
+      "peak": {
+        "count": 9,
+        "rssMb": 834,
+        "cpuS": 7.6
+      },
+      "after": {
+        "count": 9,
+        "rssMb": 844
+      },
+      "released": false,
+      "overThreshold": true
+    },
+    {
+      "id": "V5-2",
+      "label": "screenshot (headless fullPage)",
+      "ok": true,
+      "ms": 852,
+      "detail": "worked file=/tmp/lasso-screenshot-08290011-22f5-4058-9d85-22a331f6df3d.png size=15668",
+      "before": {
+        "count": 9,
+        "rssMb": 847
+      },
+      "peak": {
+        "count": 9,
+        "rssMb": 851,
+        "cpuS": 7.9
+      },
+      "after": {
+        "count": 9,
+        "rssMb": 857
+      },
+      "released": true,
+      "overThreshold": true
+    },
+    {
+      "id": "V5-3",
+      "label": "network (headless)",
+      "ok": true,
+      "ms": 3900,
+      "detail": "worked method=performance_observer entries=?",
+      "before": {
+        "count": 9,
+        "rssMb": 857
+      },
+      "peak": {
+        "count": 9,
+        "rssMb": 860,
+        "cpuS": 8.1
+      },
+      "after": {
+        "count": 9,
+        "rssMb": 860
+      },
+      "released": true,
+      "overThreshold": true
+    },
+    {
+      "id": "V5-4",
+      "label": "search (fallback chain)",
+      "ok": true,
+      "ms": 17,
+      "detail": "worked method=serp_scrape_baidu results=0 err=none",
+      "before": {
+        "count": 9,
+        "rssMb": 860
+      },
+      "peak": {
+        "count": 9,
+        "rssMb": 860,
+        "cpuS": 8.1
+      },
+      "after": {
+        "count": 9,
+        "rssMb": 860
+      },
+      "released": true,
+      "overThreshold": true
+    },
+    {
+      "id": "V5-5",
+      "label": "desktop snapshot (AXAPI+rust)",
+      "ok": true,
+      "ms": 60,
+      "detail": "worked method=ax_snapshot err=none preview=\"\"",
+      "before": {
+        "count": 9,
+        "rssMb": 860
+      },
+      "peak": {
+        "count": 9,
+        "rssMb": 860,
+        "cpuS": 8.1
+      },
+      "after": {
+        "count": 10,
+        "rssMb": 864
+      },
+      "released": false,
+      "overThreshold": true
+    }
+  ],
+  "teardown": {
+    "before": 10,
+    "after": 0,
+    "released": true
+  }
+}

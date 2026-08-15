@@ -103,9 +103,10 @@ function makeHeadlessWithStub(): {
   // 不需要 registerSpec（mock 后 spec 不被读）
   const fakeSubproc: Pick<
     import("../../src/subprocess/SubprocessManager.js").SubprocessManager,
-    "registerSpec" | "ensureRunning" | "shutdown" | "healthProbe"
+    "registerSpec" | "ensureRunning" | "shutdown" | "healthProbe" | "touch"
   > = {
     registerSpec: vi.fn(),
+    touch: vi.fn(),
     ensureRunning: vi.fn(async () => stubInfo.client),
     shutdown: vi.fn(async () => {}),
     healthProbe: vi.fn(async () => "healthy"),

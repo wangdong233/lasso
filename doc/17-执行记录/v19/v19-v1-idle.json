@@ -1,0 +1,31 @@
+{
+  "steps": [
+    "before: count=1 rss=81MB cpu=0.6s procs=[90095:lasso-server]",
+    "browse#1: 5446ms outcome=worked method=chrome_devtools_mcp md_len=0",
+    "after browse#1 tree: count=9 rss=819MB server_pid=90095 chrome_tree_pids=[90101,90143,90152,90162,90163,90164,90166,90167]",
+    "after idle: reaped_in=58215ms count=1 rss=118MB survivors=[NONE]",
+    "browse#2(cold): 5593ms outcome=worked method=chrome_devtools_mcp md_len=0",
+    "second idle reap: 54124ms",
+    "peak: count=11 rss=840MB cpu=7.6s",
+    "after: count=1 rss=88MB cpu=1.2s procs=[90095:lasso-server]",
+    "released()=true"
+  ],
+  "idle_tree_gone": true,
+  "reaped_after_ms": 58215,
+  "cold_restart_ok": false,
+  "peak": {
+    "count": 11,
+    "rssMb": 840,
+    "cpuS": 7.6
+  },
+  "after": {
+    "count": 1,
+    "rssMb": 88,
+    "cpuS": 1.2
+  },
+  "released": true,
+  "idle_log_evidence": [
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T10:10:18.281Z\",\"evt\":\"zombie_reaped\",\"name\":\"headless\",\"idle_ms\":56151}",
+    "{\"level\":\"info\",\"ts\":\"2026-08-15T10:11:18.282Z\",\"evt\":\"zombie_reaped\",\"name\":\"headless\",\"idle_ms\":51751}"
+  ]
+}

@@ -179,6 +179,7 @@ function makeHeadlessWithStub(htmlFixture: string): {
   const { client, calls } = makeStubClient(htmlFixture);
   const fakeSubproc = {
     registerSpec: vi.fn(),
+    touch: vi.fn(), // v1.9 touchKeepalive 保活接线
     ensureRunning: vi.fn(async () => client),
     shutdown: vi.fn(async () => {}),
     healthProbe: vi.fn(async () => "healthy"),

@@ -155,6 +155,18 @@ export class CdpClient {
     return true;
   }
 
+  /**
+   * v1.9（parse17 §4.2 机制三）：CDP Target.closeTarget —— browser 级关闭一个
+   * page target。TabSession.restore 的 fallback 路径（主路径 /json/close/<id> 是
+   * Chrome 已废弃的 DevTools HTTP 端点——R-INT-08 外部契约风险，本方法是对冲）。
+   * 复用既有 connect/pending 基建，不破坏既有 3 方法语义与 INV-46 相关注释。
+   */
+  async closeTarget(targetId: string): Promise<boolean> {
+    await this.connect();
+    await this.send("Target.closeTarget", { targetId });
+    return true;
+  }
+
   async close(): Promise<void> {
     if (this.ws) {
       try {

@@ -1,0 +1,49 @@
+{
+  "a": {
+    "processes_after_launch": 5,
+    "port_open_after_launch": true,
+    "ledger_after_launch": [
+      {
+        "port": 9225,
+        "pid": 95714,
+        "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default",
+        "launchedAt": 1786788941974,
+        "status": "ready"
+      }
+    ],
+    "processes_after_stop": 0,
+    "port_open_after_stop": false,
+    "ledger_after_stop": [],
+    "peak": {
+      "count": 8,
+      "rssMb": 657
+    },
+    "after": {
+      "count": 0,
+      "rssMb": 0
+    },
+    "released": true,
+    "idempotent_exit": 0
+  },
+  "b": {
+    "victim_survived": true,
+    "ledger_after": []
+  },
+  "steps": [
+    "A.launch-chrome: exit=0 out={\n  \"ok\": true,\n  \"binaryPath\": \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\",\n  \"pid\": 95714,\n  \"port\": 9225,\n  \"profileDir\": \"/Users/wangdong/.cache/lasso/chrome-profile-default\"\n}\n{\"ts\":1786788941977,",
+    "A.after launch: chrome_procs=5 pid=undefined port_open=true ledger=[{\"port\":9225,\"pid\":95714,\"profileDir\":\"/Users/wangdong/.cache/lasso/chrome-profile-default\",\"launchedAt\":1786788941974,\"status\":\"ready\"}]",
+    "A.chrome-stop: exit=0 out={\n  \"stopped\": [\n    {\n      \"port\": 9225,\n      \"pid\": 95714,\n      \"action\": \"killed\"\n    }\n  ]\n}",
+    "A.after stop: chrome_procs=0 port_open=false ledger=[]",
+    "A.resource: peak=657MB/8procs after=0MB/0procs released=true",
+    "A.chrome-stop again: exit=0 out={\n  \"stopped\": []\n}",
+    "B.forged ledger: pid=95822(sleep) written",
+    "B.chrome-stop: exit=0 out={\n  \"stopped\": [\n    {\n      \"port\": 9224,\n      \"pid\": 95822,\n      \"action\": \"pid_reused_skipped\"\n    }\n  ]\n}",
+    "B.result: victim(sleep) survived=true ledger=[]",
+    "overall released=true after=0MB/0procs"
+  ],
+  "after": {
+    "count": 0,
+    "rssMb": 0
+  },
+  "released": true
+}

@@ -1,0 +1,46 @@
+{
+  "steps": [
+    "A.launch-chrome 9228: pid=5552",
+    "A.browse_headless: worked",
+    "A.after SIGTERM close: port_closed=true ledger=[] released=true after=0MB/0procs",
+    "B.launch-chrome 9229: pid=5946",
+    "B.server pid=5959 (transport zsh=5959)",
+    "B.after SIGKILL: port_closed=false ledger=[{\"port\":9229,\"pid\":5946,\"profileDir\":\"/Users/wangdong/.cache/lasso/chrome-profile-default\",\"launchedAt\":1786789692894,\"status\":\"ready\"}]",
+    "B.chrome-stop fallback: { \"stopped\": [ { \"port\": 9229, \"pid\": 5946, \"action\": \"killed\" } ] } ",
+    "B.after fallback: port_closed=true"
+  ],
+  "a": {
+    "chrome_killed": true,
+    "ledger_after": [],
+    "ms": 15500,
+    "after": {
+      "count": 0,
+      "rssMb": 0
+    },
+    "released": true,
+    "shutdown_log": [
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:57.767Z\",\"evt\":\"lasso_shutdown\",\"sig\":\"SIGTERM\",\"run_id\":\"4e6288f3-f607-43ea-8d2a-8001ab02f9fa\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.174Z\",\"evt\":\"chrome_stop_result\",\"port\":9228,\"pid\":5552,\"action\":\"killed\",\"tree_kill\":false}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5589,\"signal\":\"SIGKILL\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5628,\"signal\":\"SIGKILL\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5637,\"signal\":\"SIGKILL\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5641,\"signal\":\"SIGKILL\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5642,\"signal\":\"SIGKILL\"}",
+      "{\"level\":\"info\",\"ts\":\"2026-08-15T10:27:58.449Z\",\"evt\":\"subproc_exit_kill\",\"name\":\"headless\",\"pid\":5647,\"signal\":\"SIGKILL\"}"
+    ]
+  },
+  "b": {
+    "chrome_killed": false,
+    "ledger_after": [
+      {
+        "port": 9229,
+        "pid": 5946,
+        "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default",
+        "launchedAt": 1786789692894,
+        "status": "ready"
+      }
+    ],
+    "note": "SIGKILL 不可达 exit 钩子（Node 语义）——残留 Chrome 的机制出口是 chrome-stop 台账兜底",
+    "fallback_closed": true
+  }
+}

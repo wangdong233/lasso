@@ -71,6 +71,14 @@ export class HeadlessChannel extends BrowseChannel {
   }
 
   /**
+   * v1.9（parse17 §2.2 (d) 机制一）：action/step dispatch 后刷新 lastUsedAt，
+   * 防 idle watchdog（默认 5min）误杀 in-flight 长 browse。默认 no-op 见基类。
+   */
+  protected override touchKeepalive(): void {
+    this.subproc.touch("headless");
+  }
+
+  /**
    * override beforeNavigate hook（parse13 §3.4 P0 核心修复）：navigate 前注入 stealth。
    * 调用时机由 BrowseChannel.wrapNavigate 保障（actionDispatch Map navigate 入口已包一层）。
    *

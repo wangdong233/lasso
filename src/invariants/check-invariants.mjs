@@ -2628,7 +2628,10 @@ const assertions = [
           if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
           // launcher 内部互引（./chrome-paths）合规；其他相对路径需检查
           // （launcher/*.ts 同目录互引合规；跳出层 ../xxx 检查）
-          if (spec.startsWith("./")) continue; // 同目录互引（chrome-paths / launch-chrome 互引）
+          if (spec.startsWith("./")) continue; // 同目录互引（chrome-paths / launch-chrome / chrome-ledger / chrome-stop 互引）
+          // v1.9（parse17 §3.4/§3.5）显式豁免：chrome-stop 消费共享树杀原语
+          // util/kill-tree.ts（单一真源，禁第二套 pgrep 递归；INV-77a 守）。
+          if (spec === "../util/kill-tree.js") continue;
           // ../xxx 跳出 launcher/ 目录 → 验是否进业务模块
           if (/^\.\.\/(channels|serp|desktop|browse|logged-in|forest|runtime|fallback|tools|config|subprocess|search|observ|ssrf|util|invariants|doctor)\//.test(spec)) {
             return false;
@@ -3746,10 +3749,133 @@ const assertions = [
       const subCode = stripComments(sub.text);
       if (!/lifecyclePids/.test(subCode)) return false;
       if (!/_killTreeSync/.test(subCode)) return false;
-      if (!/pgrep/.test(subCode)) return false;
+      // v1.9（parse17 §3.5）：pgrep 递归实现原样搬到 util/kill-tree.ts（单一真源，
+      // chrome-stop 共享）；SubprocessManager 薄委托 import killTreeSync。pgrep grep
+      // 随之迁移到 kill-tree.ts，SubprocessManager 侧改为验 import 接线。
+      const killTree = byPath(/^util\/kill-tree\.ts$/);
+      if (!killTree) return false;
+      if (!/pgrep/.test(stripComments(killTree.text))) return false;
+      if (!/killTreeSync/.test(killTree.text)) return false;
+      if (!/kill-tree\.js/.test(subCode)) return false;
       // W2-DEF-1：build 复制 creepjs-baseline.json 进 dist（clean build 门禁可达）
       const pkg = readFileSync(join(SRC_ROOT, "..", "package.json"), "utf8");
       if (!/creepjs-baseline\.json/.test(pkg)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.9（parse17 §6）INV-77 —— 浏览器生命周期所有权与恢复安全
+  // ============================================================
+  {
+    id: "INV-77-browser-lifecycle-ownership-and-restore-safety",
+    desc: "v1.9：浏览器/tab 生命周期三机制回归守护——（a）树杀原语单一真源；（b）G5 优雅 _kill 必树杀；（c）idle 阈值 configurable 默认 5min；（d）launch-chrome 台账 + chrome-stop 出口；（e）只杀 cmdline 验证归属的 pid（防 pid 复用误杀）；（f）TabSession 快照+diff+三守卫（不关用户原有 tab）；（g）resource-meter 测试纪律基建存在",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const indexCode = stripComments(byPath(/^index\.ts$/)?.text ?? "");
+      const subMgr = byPath(/^subprocess\/SubprocessManager\.ts$/);
+      const subCode = stripComments(subMgr?.text ?? "");
+      const configCode = stripComments(byPath(/^config\/config\.ts$/)?.text ?? "");
+      const launchChromeCode = stripComments(
+        byPath(/^launcher\/launch-chrome\.ts$/)?.text ?? "",
+      );
+      const chromeStopCode = stripComments(
+        byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "",
+      );
+      const ledgerCode = stripComments(
+        byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "",
+      );
+      const tabSessionCode = byPath(/^logged-in\/TabSession\.ts$/)?.text ?? "";
+      const tabRegistryCode = byPath(/^logged-in\/TabRegistry\.ts$/)?.text ?? "";
+      const loggedInCode = stripComments(
+        byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? "",
+      );
+
+      // ----- (a) 树杀原语单一真源：kill-tree.ts 存在且导出 killTreeSync；
+      //          SubprocessManager 与 chrome-stop 都 import 它；SubprocessManager
+      //          仍含 _killTreeSync 薄委托（保 INV-76 (n) 兼容） -----
+      const killTree = byPath(/^util\/kill-tree\.ts$/);
+      if (!killTree) return false;
+      if (!/export function killTreeSync/.test(killTree.text)) return false;
+      if (!/kill-tree\.js/.test(subCode)) return false;
+      if (!/kill-tree\.js/.test(chromeStopCode)) return false;
+      if (!/_killTreeSync/.test(subCode)) return false;
+
+      // ----- (b) G5：_kill 方法体内含树杀（client.close 后 SIGKILL 兜底） -----
+      const killBody = subMgr.text.match(/private async _kill\(name: string\)[\s\S]*?\n  \}/);
+      if (!killBody) return false;
+      if (!/killTreeSync|_killTreeSync/.test(stripComments(killBody[0]))) return false;
+
+      // ----- (c) G1：idle 阈值 configurable（LASSO_HEADLESS_IDLE_MS，默认 300_000=5min；
+      //          0=禁用）且 index.ts 经 config 字段接 startZombieReaper -----
+      if (!/LASSO_HEADLESS_IDLE_MS/.test(configCode)) return false;
+      if (!/300_000/.test(configCode)) return false;
+      if (!/headlessIdleMs/.test(configCode)) return false;
+      if (!/startZombieReaper\(/.test(indexCode)) return false;
+      if (!/config\.headlessIdleMs/.test(indexCode)) return false;
+
+      // ----- (d) G2：launch-chrome 台账登记（ok + cdp_not_ready 两路径）+
+      //          chrome-stop CLI 出口 -----
+      const recordCalls = (launchChromeCode.match(/recordLaunch\(/g) || []).length;
+      if (recordCalls < 2) return false;
+      if (/chrome_exited/.test(launchChromeCode) && !/exited && pid !== undefined/.test(launchChromeCode))
+        return false; // chrome_exited 不登记（进程已死）
+      if (!/process\.argv\[2\] === "chrome-stop"/.test(indexCode)) return false;
+      if (!/chrome-stop/.test(byPath(/^index\.ts$/)?.text ?? "")) return false;
+
+      // ----- (e) 红线：只杀 cmdline 验证归属的 pid（防 pid 复用误杀） -----
+      //   chrome-stop 源码含 --user-data-dir= 验证 + ps 调用 + verifyOwnership /
+      //   pid_reused_skipped 字面量；且验证守卫（return/continue）在 stopLaunchedChromes
+      //   函数体内先于任何 process.kill / killTree 调用行号。
+      const stopSrc = byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "";
+      if (!/--user-data-dir=/.test(chromeStopCode)) return false;
+      if (!/spawnSync\("ps"/.test(chromeStopCode)) return false;
+      if (!/verifyOwnership/.test(chromeStopCode)) return false;
+      if (!/pid_reused_skipped/.test(chromeStopCode)) return false;
+      if (!/LaunchedChromeRecord/.test(ledgerCode)) return false;
+      if (!/launched-chromes\.json/.test(ledgerCode)) return false;
+      const stopBody = stopSrc.match(
+        /export async function stopLaunchedChromes\([\s\S]*?\n\}/,
+      );
+      if (!stopBody) return false;
+      const body = stopBody[0];
+      const guardIdx = body.indexOf("if (!verifyOwnership(");
+      const sigtermIdx = body.indexOf('process.kill(rec.pid, "SIGTERM")');
+      const treeKillIdx = body.indexOf("killTreeFn(rec.pid)");
+      if (guardIdx === -1 || sigtermIdx === -1 || treeKillIdx === -1) return false;
+      if (!(guardIdx < sigtermIdx && guardIdx < treeKillIdx)) return false;
+
+      // ----- (f) G3：TabSession 快照+diff+三守卫；TabRegistry 无 restore（两语义
+      //          不混淆）；LoggedInChannel 首附着 takeSnapshotIfAbsent -----
+      if (!/\/json\/list/.test(tabSessionCode)) return false;
+      if (!/\/json\/close\//.test(tabSessionCode)) return false;
+      for (const literal of ["cdp_unreachable", "browser_restarted", "diff_too_large", "no_snapshot"]) {
+        if (!tabSessionCode.includes(literal)) return false;
+      }
+      const restoreBody = tabSessionCode.match(/async restore\(\)[\s\S]*?\n  \}/);
+      if (!restoreBody) return false;
+      if (!/snapshot/.test(restoreBody[0])) return false;
+      if (/restore/.test(stripComments(tabRegistryCode ?? ""))) return false;
+      if (!/takeSnapshotIfAbsent/.test(loggedInCode)) return false;
+      if (!/restoreTabs/.test(loggedInCode)) return false;
+
+      // ----- (g) 资源测算基建（parse17 测试纪律配套）：resource-meter 存在且
+      //          提供 before/peak/after/released 四 API + lasso 特征签名 -----
+      let meterSrc = "";
+      try {
+        meterSrc = readFileSync(
+          join(SRC_ROOT, "..", "test", "helpers", "resource-meter.ts"),
+          "utf8",
+        );
+      } catch {
+        return false;
+      }
+      if (!/before\(\)/.test(meterSrc)) return false;
+      if (!/peak\(\)/.test(meterSrc)) return false;
+      if (!/after\(\)/.test(meterSrc)) return false;
+      if (!/released\(/.test(meterSrc)) return false;
+      if (!/--disable-blink-features/.test(meterSrc)) return false;
+      if (!/user-data-dir=/.test(meterSrc)) return false;
 
       return true;
     },

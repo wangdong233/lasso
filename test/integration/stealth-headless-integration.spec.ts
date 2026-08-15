@@ -87,6 +87,7 @@ function makeMockSubproc(stubClient: McpClient): {
     registerSpec: vi.fn((name: string, spec: unknown) => {
       registerSpecCalls.push({ name, spec });
     }),
+    touch: vi.fn(), // v1.9 touchKeepalive 保活接线
     ensureRunning: vi.fn(async (name: string) => {
       ensureRunningCalls.push(name);
       return stubClient;

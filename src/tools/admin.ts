@@ -80,6 +80,9 @@ export const adminSchema = {
     "cookie_restore",
     // v1.8 Phase D（D7）：breaker_reset —— 短/长熔断手工唤醒（mutation 必传 reason）
     "breaker_reset",
+    // v1.9（parse17 §4.4 机制三）：tab_restore —— 恢复用户原 tab 列表（mutation
+    // 必传 reason；只关快照后新增的 tab）。显式 opt-in 入口（同 cookie_restore 惯例）。
+    "tab_restore",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -175,6 +178,15 @@ export interface AdminToolDeps {
   cookieExport?: () => Promise<{ sha256: string; bytes: number; profile: string }>;
   /** v0.8：cookie_restore op=import 入口（包装 LoggedInChannel.importCookies）。 */
   cookieImport?: () => Promise<{ imported: number; failed: number; profile: string }>;
+  /**
+   * v1.9（parse17 §4.4 机制三）：tab_restore 入口（包装 LoggedInChannel.restoreTabs）。
+   * 未注入 → tab_restore 返 configured:false（零回归形态，同 logged_in deps 惯例）。
+   */
+  tabRestore?: () => Promise<{
+    ok: boolean;
+    closed: string[];
+    reason?: string;
+  }>;
 }
 
 // ============================================================
@@ -545,6 +557,30 @@ export function registerAdminTool(
                 },
                 note: "breaker state reset to closed; if capability was disabled by long_circuit_open, run capability_enable to restore it (reset does not auto-enable)",
               });
+            }
+
+            // ---------- v1.9（parse17 §4.4 机制三）：tab_restore ----------
+            // mutation（必传 reason）。用户/CC 主动收尾：「任务完成，恢复我的 tab
+            // 列表」。只关快照后新增的 tab（红线：不关用户原有 tab——TabSession diff
+            // 定义保证）。返回 {action, ok, ...result}，不抛。
+            case "tab_restore": {
+              const err = requireArgs(action, args, ["reason"]);
+              if (err) return err;
+              if (!deps.tabRestore) {
+                return ok(action, { configured: false });
+              }
+              try {
+                const result = await deps.tabRestore();
+                audit(action, callerId, args.reason, {
+                  restored_ok: result.ok,
+                  closed: result.closed.length,
+                  reason: result.reason,
+                });
+                return ok(action, { configured: true, ...result });
+              } catch (e) {
+                audit(action, callerId, args.reason, { error: String(e) });
+                return fail(action, `tab_restore failed: ${String(e)}`);
+              }
             }
 
             default: {

@@ -190,7 +190,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.8.0**（本版修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
+**当前版本 v1.9.0**（v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
 
 **前提**：Node.js ≥ 20；Claude Code（或任何支持 MCP 的客户端）。
 
@@ -282,6 +282,15 @@ lasso launch-chrome
 
 > 🔴 **红线**：2FA / 短信验证码 / CAPTCHA / 邮件魔法链接——Lasso 不替你解，必须你在本机 Chrome 里手动过一次。
 
+**用完怎么收尾（v1.9 新增）**：`launch-chrome` 起的 Chrome 会登记在台账里，一条命令即可关闭（只关 Lasso 自己起的、验证过归属的那个，不会误伤你手动开的浏览器）：
+
+```bash
+lasso chrome-stop          # 关台账里所有 Lasso 起的 Chrome
+lasso chrome-stop --port 9222   # 只关指定端口的那个
+```
+
+`browse_logged_in` 在你的 Chrome 里新开的 tab，任务结束后说一句 `admin {action:"tab_restore", reason:"任务完成"}` 就会关掉 Lasso 开的 tab、恢复你原来的 tab 列表（server 退出时也会自动做）。无头浏览器则默认 **5 分钟没人用就自动回收**，不再常驻占内存——高频连用想省冷启动，配 `LASSO_HEADLESS_IDLE_MS=3600000`（1 小时）；配 `0` 完全禁用。
+
 **详见** → [Key 配置指南 · 登录态浏览](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
 
 ### 三、控桌面（✅ 免费 · 不用 key，系统授权一次）
@@ -350,6 +359,7 @@ Steel 用 Docker 一行启动：`docker run -p 3000:3000 -p 9223:9223 ghcr.io/st
 - 放行公司内网 / 特殊代理网段
 - 给登录 cookie 加一个自己的加密口令（不设则走 macOS 钥匙串）
 - 落盘搜索结果快照（做回归测试用）
+- 调无头浏览器空闲自动回收时间（`LASSO_HEADLESS_IDLE_MS`，默认 5 分钟；配 `0` 禁用）
 - 设 Steel 自托管云浏览器端点（`STEEL_ENDPOINT`，如 `http://localhost:3000`；需同时开 `LASSO_ALLOW_CLOUD_BROWSER=true` 才启用）
 
 完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip，`198.18.0.0/15`）与 `127.0.0.1`（本机 Chrome CDP 调试端口用）都已内置放行**，无需额外配置——这是设计行为，不是漏配。
