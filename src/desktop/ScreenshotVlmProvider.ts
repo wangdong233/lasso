@@ -12,7 +12,13 @@
  * 边界（D10 screenshotVlm 跨 MCP 耦合）：
  *  - LASSO_VLM_ENDPOINT 可选；未配时返 didnt 不阻断
  *  - HTTP MCP 调用走标准 McpClient.connectHttp（与 search/browse 同一个封装）
- *  - VLM 返回 shape 不在 v0.3.5 锁死（M0.5b 验收 60%+ 准确率后再锁 schema）
+ *  - VLM 返回 shape 不锁死；T2-6（round2）：推断经宽化解析为坐标动作后由
+ *    rust cgevent_dispatch 真执行（M0.5b 已废除，不再有「Rust 端后续执行」假设）；
+ *    不可解析/执行失败 → 诚实 unknown（vlm_inference_only），推断原文附 data；
+ *    T3-2（round3）：带 screenshot_region 时 VLM 返区域相对坐标，dispatch 前
+ *    经 offsetVlmActionsByRegion 平移回全局坐标（假 worked 换装回归封堵）；
+ *    T3-6（round3）：cgevent_dispatch 报 tcc_event_synthesis_denied → didnt
+ *    （与 CGEventProvider 同判：权限缺失不是暂时性故障）
  *
  * INV-21：本类不出现平台 API 字面量；screenshot 经 RustBridge.call("screenshot")。
  *
@@ -183,25 +189,147 @@ export class ScreenshotVlmProvider {
         prompt: buildVlmPrompt(opts),
         timeoutMs: DEFAULT_VLM_TIMEOUT_MS,
       });
-      // VLM 调用成功 = worked（具体动作执行由 Rust 端 M0.5b 落地，此处仅返回推断）
-      const data: DesktopResult = {
-        actions_and_results: [],
-        expect_verified: false,
-        screenshot_base64: shot.data.base64,
-        screenshot_format: "png",
-        fallback_used: true,
-      };
-      // vlmResult 暂存到 actions_and_results 作 debug（v0.3.5 不锁 VLM shape）
-      if (vlmResult && typeof vlmResult === "object") {
-        data.actions_and_results.push({
-          ref: "@vlm",
-          ok: true,
-          error: JSON.stringify(vlmResult).slice(0, 500),
-        });
+
+      // ==========================================================
+      // T2-6（round2）：VLM 推断 → 真执行闭环。
+      // 旧注释「具体动作执行由 Rust 端 M0.5b 落地」——M0.5b 已废除（T3），
+      // 承诺永久落空；VLM 调用成功即 worked = tri-state 铁律在链尾的违背
+      // （tiers 1-3 全败的 canvas/Metal 场景最终拿到假 worked）。
+      // 现形态（对齐 UI-TARS-desktop 推断→物理执行）：
+      //  a) 容错解析推断为坐标动作（click/move/drag/scroll；不锁 VLM shape）
+      //  b) 可解析 → rust.call("cgevent_dispatch") 真执行（T7 路径复用），
+      //     actions_and_results 填真逐项结果
+      //  c) 解析失败 / 执行失败 → outcome=unknown + error="vlm_inference_only:…"
+      //     （推断原文仍附 data——截图 token 已花不浪费）
+      // ==========================================================
+      const actions = offsetVlmActionsByRegion(
+        parseVlmActions(vlmResult),
+        opts.screenshot_region,
+      );
+      const inferenceRaw = summarizeVlmResult(vlmResult);
+
+      if (actions.length === 0) {
+        // c) 不可解析为坐标动作 → 不猜执行（Peekaboo "refusing ambiguous
+        // evidence before dispatch"）；诚实 unknown
+        return {
+          outcome: "unknown",
+          data: {
+            actions_and_results: [
+              {
+                ref: "@vlm",
+                ok: false,
+                error: `vlm_inference_only:no_coordinate_action:${inferenceRaw}`,
+              },
+            ],
+            screenshot_base64: shot.data.base64,
+            screenshot_format: "png" as const,
+            fallback_used: true,
+          },
+          served_by: ScreenshotVlmProvider.NAME,
+          fallback_used: true,
+          retrieval_method: "vlm",
+          error: "vlm_inference_only:no_coordinate_action",
+        };
       }
+
+      // b) 真执行：cgevent_dispatch（T7 wire；每项独立成败；5s 上界同 CGEventProvider）
+      const resp = await this.rust.call(
+        "cgevent_dispatch",
+        { actions },
+        5_000,
+      );
+
+      if (!resp.ok) {
+        // T3-6（round3 v1.13）：同 producer（cgevent_dispatch）双消费者映射对齐——
+        // CGEventProvider 把 tcc_event_synthesis_denied 映射 didnt（权限缺失不是
+        // 暂时性故障，重试/降级也点不动）；本档此前一律 unknown 是分类学缺口。
+        if (resp.error_kind === "tcc_event_synthesis_denied") {
+          return {
+            outcome: "didnt",
+            data: null,
+            served_by: ScreenshotVlmProvider.NAME,
+            fallback_used: true,
+            retrieval_method: "tcc_event_synthesis_denied",
+            error:
+              "tcc_event_synthesis_denied: macOS 15+ 需在 System Settings → Privacy & Security → Event Synthesizing 授权 helper（或 Accessibility）",
+          };
+        }
+        return {
+          outcome: "unknown",
+          data: {
+            actions_and_results: [
+              {
+                ref: "@vlm",
+                ok: false,
+                error: `vlm_inference_only:execution_failed:${resp.error ?? resp.error_kind ?? "rust_error"}`,
+              },
+            ],
+            screenshot_base64: shot.data.base64,
+            screenshot_format: "png" as const,
+            fallback_used: true,
+          },
+          served_by: ScreenshotVlmProvider.NAME,
+          fallback_used: true,
+          retrieval_method: "vlm",
+          error: `vlm_inference_only:execution_failed:${resp.error_kind ?? "rust_error"}`,
+        };
+      }
+
+      // 结果映射（CGEventProvider 同款）：results[index] ↔ actions[index]
+      const result = (resp.result ?? {}) as { results?: unknown };
+      const resultsArr = Array.isArray(result.results) ? result.results : [];
+      const actionsAndResults: {
+        ref: string;
+        ok: boolean;
+        error?: string;
+      }[] = [];
+      let successCount = 0;
+      for (let i = 0; i < actions.length; i++) {
+        const r = resultsArr[i] as Record<string, unknown> | undefined;
+        const ok = !!r && typeof r === "object" && r.ok === true;
+        const errKind =
+          r && typeof r.error_kind === "string" ? r.error_kind : undefined;
+        const errMsg =
+          r && typeof r.error === "string" ? r.error : undefined;
+        actionsAndResults.push({
+          ref: vlmActionRefLabel(actions[i]),
+          ok,
+          error: ok ? undefined : errMsg ?? errKind ?? "cgevent_action_failed",
+        });
+        if (ok) successCount++;
+      }
+
+      if (successCount === 0) {
+        // c) 全部项执行失败 → 诚实 unknown（推断原文附 @vlm 条目）
+        actionsAndResults.unshift({
+          ref: "@vlm",
+          ok: false,
+          error: `vlm_inference_only:all_actions_failed:${inferenceRaw}`,
+        });
+        return {
+          outcome: "unknown",
+          data: {
+            actions_and_results: actionsAndResults,
+            screenshot_base64: shot.data.base64,
+            screenshot_format: "png" as const,
+            fallback_used: true,
+          },
+          served_by: ScreenshotVlmProvider.NAME,
+          fallback_used: true,
+          retrieval_method: "vlm",
+          error: "vlm_inference_only:all_actions_failed",
+        };
+      }
+
+      // a) 至少 1 项真执行成功 → worked（actions_and_results 是真逐项结果）
       return {
         outcome: "worked",
-        data,
+        data: {
+          actions_and_results: actionsAndResults,
+          screenshot_base64: shot.data.base64,
+          screenshot_format: "png" as const,
+          fallback_used: true,
+        },
         served_by: ScreenshotVlmProvider.NAME,
         fallback_used: true,
         retrieval_method: "vlm",
@@ -217,6 +345,186 @@ export class ScreenshotVlmProvider {
       };
     }
   }
+}
+
+// ============================================================
+// T2-6：VLM 推断 → cgevent_dispatch 坐标动作（宽化提取，不锁 VLM shape）
+// ============================================================
+/**
+ * 把 VLM 返回（shape 未锁：media-gen-mcp vlm / 任意 vision 模型）容错解析为
+ * cgevent_dispatch wire 动作。接受形态：
+ *  - 顶层数组 / {actions:[]} / {action:[]} / 单对象
+ *  - click : {kind:"click", x, y[, button:"left"|"right"|"center"]}
+ *  - move  : {kind:"move", x, y}
+ *  - drag  : {kind:"drag", from:{x,y}|from_x/from_y, to:{x,y}|to_x/to_y}
+ *  - scroll: {kind:"scroll", dx, dy[, x, y]}
+ *
+ * 边界（tri-state 精神）：
+ *  - 只收坐标鼠标四类——键盘注入不接受 VLM 推断（按键语义必须 caller 显式
+ *    指定，INV-28 逻辑名纪律精神）
+ *  - 坐标必须是有限数（NaN/Infinity 拒）；形状不合规项静默丢弃
+ *
+ * @returns 合规动作数组（空数组 = 不可解析 → 调用方走诚实 unknown）
+ */
+export function parseVlmActions(vlmResult: unknown): Array<Record<string, unknown>> {
+  const candidates = extractVlmActionCandidates(vlmResult);
+  const out: Array<Record<string, unknown>> = [];
+  for (const c of candidates) {
+    const parsed = parseOneVlmAction(c);
+    if (parsed !== null) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * T3-2（round3 v1.13）：VLM 档截图 region 的坐标偏移补偿（纯函数）。
+ *
+ * 五环证据链：act 接受 screenshot_region → captureScreenshot 裁图给 VLM →
+ * VLM 返回**区域相对坐标** → cgevent.rs parse_point 直传**全局显示坐标**——
+ * 不补偿则落点系统性偏移 (region.x, region.y) 且逐项 ok:true 总 outcome
+ * "worked"（T2-6 消灭的假 worked 以「执行在错误位置还报成功」形态回归）。
+ *
+ * 修法：parse 之后、dispatch 之前在 TS 侧平移（不依赖 VLM 数学能力——prompt
+ * 不告知区域原点，模型自然返区域相对坐标，由本函数换算回全局）：
+ *  - click/move : x,y += (region.x, region.y)
+ *  - drag       : from_x/from_y/to_x/to_y 四值 += 原点
+ *  - scroll     : 可选 x,y 在场才平移（缺省 = 当前光标，与本档 CGEvent 同语义）；dx/dy 不动
+ *  - 无 region  ：原数组原样返回（零变化）
+ */
+export function offsetVlmActionsByRegion(
+  actions: Array<Record<string, unknown>>,
+  region?: { x: number; y: number; w: number; h: number },
+): Array<Record<string, unknown>> {
+  if (!region) return actions;
+  const ox = region.x;
+  const oy = region.y;
+  return actions.map((a) => {
+    if (a.kind === "click" || a.kind === "move") {
+      return { ...a, x: (a.x as number) + ox, y: (a.y as number) + oy };
+    }
+    if (a.kind === "drag") {
+      return {
+        ...a,
+        from_x: (a.from_x as number) + ox,
+        from_y: (a.from_y as number) + oy,
+        to_x: (a.to_x as number) + ox,
+        to_y: (a.to_y as number) + oy,
+      };
+    }
+    if (
+      a.kind === "scroll" &&
+      typeof a.x === "number" &&
+      typeof a.y === "number"
+    ) {
+      return { ...a, x: a.x + ox, y: a.y + oy };
+    }
+    return a;
+  });
+}
+
+function extractVlmActionCandidates(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object") {
+    const rec = v as Record<string, unknown>;
+    if (Array.isArray(rec.actions)) return rec.actions;
+    if (Array.isArray(rec.action)) return rec.action;
+    return [rec];
+  }
+  return [];
+}
+
+function parseOneVlmAction(c: unknown): Record<string, unknown> | null {
+  if (!c || typeof c !== "object") return null;
+  const a = c as Record<string, unknown>;
+  const kind =
+    typeof a.kind === "string"
+      ? a.kind
+      : typeof a.action === "string"
+        ? a.action
+        : "";
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const pt = (o: unknown): { x: number; y: number } | null => {
+    if (!o || typeof o !== "object") return null;
+    const r = o as Record<string, unknown>;
+    const x = num(r.x);
+    const y = num(r.y);
+    return x !== null && y !== null ? { x, y } : null;
+  };
+
+  if (kind === "click" || kind === "move") {
+    const x = num(a.x);
+    const y = num(a.y);
+    if (x === null || y === null) return null;
+    const out: Record<string, unknown> = { kind, x, y };
+    if (
+      kind === "click" &&
+      (a.button === "left" || a.button === "right" || a.button === "center")
+    ) {
+      out.button = a.button; // 逻辑名透传（INV-28：raw button code 不经此路径产生）
+    }
+    return out;
+  }
+  if (kind === "drag") {
+    // from/to 双形态：嵌套 {from:{x,y}} 或平铺 {from_x,from_y}
+    const fromNest = pt(a.from);
+    const toNest = pt(a.to);
+    const fromX = fromNest?.x ?? num(a.from_x);
+    const fromY = fromNest?.y ?? num(a.from_y);
+    const toX = toNest?.x ?? num(a.to_x);
+    const toY = toNest?.y ?? num(a.to_y);
+    if (
+      fromX === null || fromY === null ||
+      toX === null || toY === null
+    ) {
+      return null;
+    }
+    return { kind: "drag", from_x: fromX, from_y: fromY, to_x: toX, to_y: toY };
+  }
+  if (kind === "scroll") {
+    const dx = num(a.dx);
+    const dy = num(a.dy);
+    if (dx === null && dy === null) return null;
+    const out: Record<string, unknown> = { kind: "scroll", dx: dx ?? 0, dy: dy ?? 0 };
+    const x = num(a.x);
+    const y = num(a.y);
+    if (x !== null && y !== null) {
+      out.x = x;
+      out.y = y;
+    }
+    return out;
+  }
+  return null;
+}
+
+/** VLM 原始返回截断摘要（debug 附注；不泄全量——500 上界同旧 @vlm 条目）。 */
+function summarizeVlmResult(vlmResult: unknown): string {
+  try {
+    const s =
+      vlmResult && typeof vlmResult === "object"
+        ? JSON.stringify(vlmResult)
+        : String(vlmResult);
+    return s.slice(0, 500);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+/** vlm 动作 → audit ref 标签（真执行结果条目用；CGEventProvider.specRefLabel 同范式）。 */
+function vlmActionRefLabel(a: Record<string, unknown>): string {
+  if (a.kind === "click") {
+    return `vlm_click@(${a.x},${a.y})`;
+  }
+  if (a.kind === "move") {
+    return `vlm_move@(${a.x},${a.y})`;
+  }
+  if (a.kind === "drag") {
+    return `vlm_drag(${a.from_x},${a.from_y})->(${a.to_x},${a.to_y})`;
+  }
+  if (a.kind === "scroll") {
+    return `vlm_scroll(${a.dx},${a.dy})`;
+  }
+  return "vlm_action";
 }
 
 // ============================================================

@@ -204,10 +204,10 @@ describe("doctor INV-63 镜像：LASSO_VERSION 常量", () => {
     expect(LASSO_VERSION.length).toBeGreaterThan(0);
   });
 
-  it("LASSO_VERSION 当前值为 1.10.0（v1.7 Phase A creepjs 回归门禁 + Stagehand 探测）", () => {
+  it("LASSO_VERSION 当前值为 1.13.0（v1.7 Phase A creepjs 回归门禁 + Stagehand 探测）", () => {
     // 守 INV-63：package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致。
     // 本 spec 只验 doctor.ts 这处；INV-63 grep 守全 3 处对齐。
-    expect(LASSO_VERSION).toBe("1.11.0");
+    expect(LASSO_VERSION).toBe("1.13.0");
   });
 });
 
@@ -292,5 +292,23 @@ describe("doctor #36 machine_search_mcp", () => {
         process.env.LASSO_MACHINE_CLAUDE_JSON_PATH = oldPath;
       }
     }
+  });
+});
+
+// ============================================================
+// #25 stealth_profile_self_check（round3-review03 补钉：check 首次获得
+// CI 可失败断言；languages 路改为对 buildUserAgentOverrideScript 真源直验）
+// ============================================================
+describe("doctor #25 stealth_profile_self_check", () => {
+  it("status=pass（四 profile 加载 + CORE marker + UA override languages 真源直验）", async () => {
+    const report = await runDoctor({
+      skipNetwork: true,
+      skipInvariants: true,
+    });
+    const check = report.checks.find(
+      (c) => c.name === "stealth_profile_self_check",
+    );
+    expect(check).toBeDefined();
+    expect(check?.status).toBe("pass");
   });
 });

@@ -520,3 +520,42 @@ describe("parseMachineMcpContent — 形状兼容", () => {
     expect(r[0].source).toBe("explicit-source");
   });
 });
+
+// ============================================================
+// v1.12 round2 T2-5：freshness 透传（首位引擎不再静默丢显式参数）
+// ============================================================
+describe("MachineMcpSearchChannel.search — T2-5 freshness 透传", () => {
+  it("传 freshness → callTool 含 search_recency_filter（ZHIPU_RECENCY_MAP 映射）", async () => {
+    stubCall.mockResolvedValue(NONEMPTY);
+    const ch = new MachineMcpSearchChannel(
+      "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
+      "Bearer xxx",
+    );
+    await ch.search("hello", {
+      limit: 7,
+      engine: "machine_mcp",
+      region: "us",
+      no_cache: false,
+      freshness: "week",
+    });
+    const [, args] = stubCall.mock.calls[0];
+    const a = args as Record<string, unknown>;
+    expect(a.search_recency_filter).toBe("oneWeek");
+  });
+
+  it("不传 freshness → callTool 无 search_recency_filter 键（byte-identical v1.11）", async () => {
+    stubCall.mockResolvedValue(NONEMPTY);
+    const ch = new MachineMcpSearchChannel(
+      "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
+      "Bearer xxx",
+    );
+    await ch.search("hello", {
+      limit: 7,
+      engine: "machine_mcp",
+      region: "us",
+      no_cache: false,
+    });
+    const [, args] = stubCall.mock.calls[0];
+    expect((args as Record<string, unknown>).search_recency_filter).toBeUndefined();
+  });
+});

@@ -326,6 +326,45 @@ fn parse_point(obj: &serde_json::Value, xk: &str, yk: &str) -> Result<core_graph
     Ok(core_graphics_types::geometry::CGPoint { x, y })
 }
 
+// ============================================================
+// v1.12 round2 T2-8：鼠标事件物理质量（drag 插值 + clickState）
+// ============================================================
+
+/// kCGMouseEventClickState（CGEventField 1；core-graphics 0.24 无命名常量，本地钉死）。
+/// agent-desktop input/mouse.rs 同款：down/up 事件都设 clickState=1。
+const KCG_MOUSE_EVENT_CLICK_STATE: core_graphics::event::CGEventField = 1;
+
+/// drag 插值参数（agent-desktop 实测参数照抄，不做参数化）：
+/// 按住 200ms + 步进 16ms + 沉淀 100ms。
+const DRAG_HOLD_MS: u64 = 200;
+const DRAG_STEP_MS: u64 = 16;
+const DRAG_SETTLE_MS: u64 = 100;
+
+/// drag 插值点数：max(4, HOLD/STEP)（agent-desktop 公式；200/16=12）。
+/// 纯函数（单测锚点）；真实节奏由 exec_mouse_action 施加。
+fn drag_interpolation_step_count() -> usize {
+    std::cmp::max(4, (DRAG_HOLD_MS / DRAG_STEP_MS) as usize)
+}
+
+/// from→to 线性插值路径点（含终点、不含起点；每点一个 LeftMouseDragged 事件）。
+/// 纯函数（单测锚点）——序列形状可断言，物理 post 归真机手测。
+fn drag_interpolation_points(
+    from: core_graphics_types::geometry::CGPoint,
+    to: core_graphics_types::geometry::CGPoint,
+) -> Vec<core_graphics_types::geometry::CGPoint> {
+    let n = drag_interpolation_step_count();
+    (1..=n)
+        .map(|i| {
+            let t = i as f64 / n as f64;
+            core_graphics_types::geometry::CGPoint {
+                x: from.x + (to.x - from.x) * t,
+                y: from.y + (to.y - from.y) * t,
+            }
+        })
+        .collect()
+}
+
+
 /// 执行一个鼠标 action（click/move/drag/scroll）。返回 Err 时带 error_kind 语义前缀
 /// （invalid_params / cgevent_construct_failed）。
 #[cfg(target_os = "macos")]
@@ -365,10 +404,17 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             let s = new_source()?;
             let down = CGEvent::new_mouse_event(s, down_ty, pos, button)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "mouse down".to_string()))?;
+            // v1.12（round2 T2-8）：clickState=1（agent-desktop input/mouse.rs 同款——
+            // field 1 = kCGMouseEventClickState；挑剔 app 靠它区分单击/拖拽起手）
+            down.set_integer_value_field(KCG_MOUSE_EVENT_CLICK_STATE, 1);
             down.post(CGEventTapLocation::HID);
+            // v1.12（round2 T2-8）：10ms down→up 间隔（零间隔双事件被部分 app 判定
+            // 为异常/忽略；数值照抄 agent-desktop 实测参数，不做参数化）
+            std::thread::sleep(std::time::Duration::from_millis(10));
             let s2 = new_source()?;
             let up = CGEvent::new_mouse_event(s2, up_ty, pos, button)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "mouse up".to_string()))?;
+            up.set_integer_value_field(KCG_MOUSE_EVENT_CLICK_STATE, 1);
             up.post(CGEventTapLocation::HID);
             Ok(())
         }
@@ -390,10 +436,28 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             let down = CGEvent::new_mouse_event(s, CGEventType::LeftMouseDown, from, core_graphics::event::CGMouseButton::Left)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag down".to_string()))?;
             down.post(CGEventTapLocation::HID);
-            let s2 = new_source()?;
-            let dragged = CGEvent::new_mouse_event(s2, CGEventType::LeftMouseDragged, to, core_graphics::event::CGMouseButton::Left)
+            // ============================================================
+            // v1.12（round2 T2-8）：drag 物理质量——200ms 按住 + 逐点插值 + 100ms 沉淀。
+            // 旧实现单个 LeftMouseDragged 后立即 up：滑条/拖拽排序/文件拖放类目标
+            // 只认移动轨迹，单事件 = 大概率失败。数值照抄 agent-desktop 实测参数：
+            //   - 200ms 按住（让目标注册 press）
+            //   - 插值点数 = max(4, 200ms/16ms) = 12 点，每点 16ms 步进
+            //   - 100ms 沉淀后 up（让目标提交 drop）
+            // ============================================================
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            for pt in drag_interpolation_points(from, to) {
+                let si = new_source()?;
+                let dragged = CGEvent::new_mouse_event(
+                    si,
+                    CGEventType::LeftMouseDragged,
+                    pt,
+                    core_graphics::event::CGMouseButton::Left,
+                )
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag moved".to_string()))?;
-            dragged.post(CGEventTapLocation::HID);
+                dragged.post(CGEventTapLocation::HID);
+                std::thread::sleep(std::time::Duration::from_millis(DRAG_STEP_MS));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(DRAG_SETTLE_MS));
             let s3 = new_source()?;
             let up = CGEvent::new_mouse_event(s3, CGEventType::LeftMouseUp, to, core_graphics::event::CGMouseButton::Left)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag up".to_string()))?;
@@ -438,10 +502,12 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
 
 // ============================================================================
 // 共用：post 一个 keydown + keyup pair（hotkey 也走此路径，只是带 flags）
+// T2-7（round2）：pub(crate) —— ax.rs do_type 档内兜底（AXFocus + 合成键盘）
+// 复用本路径，不经 wire 层（同进程直调）。
 // ============================================================================
 
 #[cfg(target_os = "macos")]
-fn post_key_event(
+pub(crate) fn post_key_event(
     source: core_graphics::event_source::CGEventSource,
     mapping: &KeyMapping,
 ) -> Result<(), ()> {
@@ -596,6 +662,59 @@ mod tests {
         assert!(parse_mouse_button(Some("0")).is_err());
         assert!(parse_mouse_button(Some("1")).is_err());
         assert!(parse_mouse_button(Some("middle")).is_err());
+    }
+
+    // ============================================================
+    // v1.12 round2 T2-8：鼠标事件物理质量（drag 插值 + clickState）
+    // 纯函数断言；物理 post 节奏归真机手测清单（C1 扩展：拖动滑条/拖拽排序）
+    // ============================================================
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn t28_click_state_field_is_one() {
+        // agent-desktop input/mouse.rs 同款：kCGMouseEventClickState = field 1
+        assert_eq!(KCG_MOUSE_EVENT_CLICK_STATE, 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn t28_drag_timing_params_match_agent_desktop() {
+        // 数值照抄 agent-desktop 实测参数（不做参数化）：200ms 按住 + 16ms 步进 + 100ms 沉淀
+        assert_eq!(DRAG_HOLD_MS, 200);
+        assert_eq!(DRAG_STEP_MS, 16);
+        assert_eq!(DRAG_SETTLE_MS, 100);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn t28_drag_interpolation_at_least_four_points() {
+        assert!(drag_interpolation_step_count() >= 4);
+        // agent-desktop 公式：max(4, HOLD/STEP) = max(4, 12) = 12
+        assert_eq!(drag_interpolation_step_count(), 12);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn t28_drag_interpolation_path_shape() {
+        use core_graphics_types::geometry::CGPoint;
+        let from = CGPoint { x: 0.0, y: 0.0 };
+        let to = CGPoint { x: 120.0, y: 60.0 };
+        let pts = drag_interpolation_points(from, to);
+        // 不含起点（down 事件已在起点）；含终点（up 前最后 dragged 抵达 to）
+        assert_eq!(pts.len(), 12);
+        let first = pts[0];
+        assert!(first.x > 0.0 && first.x < 120.0);
+        let last = pts[pts.len() - 1];
+        assert!((last.x - 120.0).abs() < 1e-9);
+        assert!((last.y - 60.0).abs() < 1e-9);
+        // 单调递增（滑条类目标只认单向移动轨迹）
+        for w in pts.windows(2) {
+            assert!(w[1].x > w[0].x);
+            assert!(w[1].y > w[0].y);
+        }
+        // from == to 的退化 drag：所有点重合（不 NaN 不发散）
+        let same = drag_interpolation_points(from, from);
+        assert!(same.iter().all(|p| p.x == 0.0 && p.y == 0.0));
     }
 
     #[cfg(target_os = "macos")]

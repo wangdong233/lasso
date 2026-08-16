@@ -12,6 +12,8 @@
  *  - INV-37 衍生：disableChannel 是 channel→tool 映射的唯一禁用入口
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { ToolManager, type ToolRegistration } from "../../../src/runtime/ToolManager.js";
 import type { RegisteredTool, McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -478,5 +480,38 @@ describe("ToolManager.wrapHandler — v1.11 T14 单点横切", () => {
     const text = readFileSync(filePath, "utf8");
     expect(text).toMatch(/server\.tool\(/); // v0.5 直调路径保留
     expect(text).not.toMatch(/toolManager\.register/); // 未迁移（字节级等价承诺）
+  });
+});
+
+// ============================================================
+// v1.12 round2 T2-13：setMetrics 生产装配接线（index.ts grep 断言）
+// 此前 setMetrics 全仓生产零调用（仅测试可达）——T14 的 wrapHandler
+// metrics 钩子在生产装配下走 null 分支，admin 工具时延/错误不入 INV-43 观测窗。
+// ============================================================
+describe("T2-13 — setMetrics 生产装配接线", () => {
+  it("index.ts 装配段调用 toolManager.setMetrics(metrics)（decider.attachMetrics 后）", () => {
+    const src = readFileSync(
+      path.resolve("src/index.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/toolManager\.setMetrics\(metrics\)/);
+    // 与 decider.attachMetrics(metrics) 同一装配段（先后顺序均在 toolManager 创建之后）
+    const tmCreate = src.indexOf("new ToolManager(server)");
+    const attach = src.indexOf("toolManager.setMetrics(metrics)");
+    expect(tmCreate).toBeGreaterThan(-1);
+    expect(attach).toBeGreaterThan(tmCreate);
+  });
+
+  it("装配后 admin 调用入 metrics 窗（行为级：wrapHandler metrics 钩子真可达）", async () => {
+    const { server } = makeMockServer();
+    const tm = new ToolManager(server);
+    const seen: string[] = [];
+    tm.setMetrics({
+      record: (ch: string, outcome: string) => seen.push(`${ch}:${outcome}`),
+    } as never);
+    tm.register("admin", { ...makeReg("t213_probe"), handler: async () => ({}) });
+    const call = (server.tool as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    await (call[call.length - 1] as () => Promise<unknown>)();
+    expect(seen).toContain("admin:worked");
   });
 });

@@ -196,3 +196,41 @@ describe("T9 — google 死 selector 清理", () => {
     void engines;
   });
 });
+
+// ============================================================
+// v1.12 round2 T2-5：freshness 补全（DDG df= 拼接 + 透传链）
+// ============================================================
+describe("T2-5 — serpUrlFor freshness → DDG df=（round2）", () => {
+  it("不传 freshness → URL byte-identical（v1.11 行为）", () => {
+    expect(serpUrlFor("ddg", "rust async", 10)).toBe(
+      "https://html.duckduckgo.com/html/?q=rust%20async",
+    );
+  });
+
+  it("day/week/month/year → df=d/w/m/y", () => {
+    expect(serpUrlFor("ddg", "q", 10, "day")).toBe(
+      "https://html.duckduckgo.com/html/?q=q&df=d",
+    );
+    expect(serpUrlFor("ddg", "q", 10, "week")).toBe(
+      "https://html.duckduckgo.com/html/?q=q&df=w",
+    );
+    expect(serpUrlFor("ddg", "q", 10, "month")).toBe(
+      "https://html.duckduckgo.com/html/?q=q&df=m",
+    );
+    expect(serpUrlFor("ddg", "q", 10, "year")).toBe(
+      "https://html.duckduckgo.com/html/?q=q&df=y",
+    );
+  });
+
+  it("baidu 无对应参数不拼（诚实降级：URL 与不传一致）", () => {
+    expect(serpUrlFor("baidu", "测试", 10, "day")).toBe(
+      serpUrlFor("baidu", "测试", 10),
+    );
+  });
+
+  it("serpScrapeFallback 透传 freshness → browseExec 收到带 df= 的 ddg URL", async () => {
+    const { exec, calls } = makeExec({ outcome: "worked", preview: ddgSnapshotText() });
+    await serpScrapeFallback("rust async runtime", 10, exec, null, "week");
+    expect(calls[0]!.url).toContain("&df=w");
+  });
+});

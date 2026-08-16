@@ -163,7 +163,15 @@ describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () =
     const script = String(scriptCall!.args.function);
     // CORE 3 路
     expect(script).toMatch(/["']webdriver["']/); // 路 1
-    expect(script).toMatch(/["']languages["']/); // 路 2
+    // 路 2（T3-1 v1.13 机制迁移）：navigator.languages 从 CORE 硬编码迁入
+    // buildUserAgentOverrideScript（profile 感知）——断言移到 UA override 脚本上
+    const uaScript = String(
+      calls
+        .filter((c) => c.name === "evaluate_script")
+        .map((c) => c.args.function)[0]!,
+    );
+    expect(uaScript).toMatch(/["']languages["']/); // 路 2（迁移后位置）
+    expect(uaScript).toMatch(/["']language["']/); // 路 16 navigator.language
     expect(script).toMatch(/notifications/); // 路 3 permissions
     // vendored 12 路（每路关键标识）
     expect(script).toMatch(/chrome\.runtime/); // 路 4 chrome.runtime 增强
@@ -402,5 +410,71 @@ describe("StealthEngine.injectProfile — W1-DEF-1 上游 isError 校验（禁�
     expect(typeof fn).toBe("function");
     // 在 Node 里执行：document/navigator 未定义——各段 IIFE 自包 try/catch，不抛
     expect(() => fn()).not.toThrow();
+  });
+});
+
+// ============================================================
+// T3-1（round3 v1.13）：locale 层间一致性——profileLanguages + UA override 迁移
+// ============================================================
+describe("T3-1 — navigator.languages profile 感知（迁入 UA override 脚本）", () => {
+  it("profileLanguages：language → [language, 主子标签]（真实浏览器同款形状）", async () => {
+    const { profileLanguages } = await import(
+      "../../src/browse/StealthEngine.js"
+    );
+    expect(profileLanguages("en-US")).toEqual(["en-US", "en"]);
+    expect(profileLanguages("zh-CN")).toEqual(["zh-CN", "zh"]);
+    expect(profileLanguages("en-GB")).toEqual(["en-GB", "en"]);
+    // 无子标签的 language：两元素同值（真实浏览器 ["en","en"] 形状）
+    expect(profileLanguages("en")).toEqual(["en", "en"]);
+  });
+
+  it("四 profile：languages[0] === language（与 navigator.language 同源同值）", async () => {
+    const { profileLanguages } = await import(
+      "../../src/browse/StealthEngine.js"
+    );
+    for (const [name, p] of Object.entries(STEALTH_PROFILES)) {
+      const langs = profileLanguages(p.language);
+      expect(langs[0], `${name}: languages[0] 应等于 language`).toBe(p.language);
+      expect(langs[1]).toBe(p.language.split("-")[0]);
+    }
+  });
+
+  it("四 profile：acceptLanguage 主 token 与 languages 数组一致（HTTP 头 ↔ JS 层同源）", async () => {
+    const { profileLanguages } = await import(
+      "../../src/browse/StealthEngine.js"
+    );
+    for (const [name, p] of Object.entries(STEALTH_PROFILES)) {
+      const [l0, l1] = profileLanguages(p.language);
+      expect(
+        p.acceptLanguage.startsWith(`${l0},${l1}`),
+        `${name}: acceptLanguage 应以 "${l0},${l1}" 开头（实际 ${p.acceptLanguage}）`,
+      ).toBe(true);
+    }
+  });
+
+  it("UA override 脚本（第 2 次机制第 1 次执行）嵌入 profile 的 languages 值", async () => {
+    const engine = new StealthEngine();
+    const { client, calls } = makeMockClient();
+    await engine.injectProfile(client, "mac_safari_17");
+    const evalCalls = calls.filter((c) => c.name === "evaluate_script");
+    const uaScript = String(evalCalls[0]!.args.function);
+    // mac_safari_17 language=zh-CN → languages=["zh-CN","zh"]（旧硬编码是 ["en-US","en"]）
+    expect(uaScript).toContain('"languages"');
+    expect(uaScript).toContain(JSON.stringify(["zh-CN", "zh"]));
+    // 真实契约验证：函数表达式可 eval
+    const fn = eval(`(${uaScript})`) as () => unknown;
+    expect(typeof fn).toBe("function");
+  });
+
+  it("CORE SCRIPT 不再硬编码 en-US languages（迁移完成；指路注释在位）", () => {
+    // 机制等价迁移的防回归：CORE 内不得再有 languages 的 defineProperty 代码
+    // （回潮 = languages 与 profile 脱钩；指路注释里的历史值不算代码）
+    expect(STEALTH_INJECTION_SCRIPT).not.toMatch(
+      /defineProperty\(navigator,\s*"languages"/,
+    );
+    expect(STEALTH_INJECTION_SCRIPT).not.toMatch(
+      /return\s*\[\s*"en-US",\s*"en"\s*\]/,
+    );
+    expect(STEALTH_INJECTION_SCRIPT).toContain("navigator.languages");
   });
 });

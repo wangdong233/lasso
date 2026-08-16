@@ -102,6 +102,9 @@ export const defaultSteelSessionProvider: SteelSessionProvider = async (
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(proxyUrl ? { proxyUrl } : {}),
+    // T3-4（round3 v1.13）：悬挂 endpoint（accept-but-silent）3s 内诚实 reject
+    // → caller catch → outcome=unknown（可 fallback），不再无限挂起。
+    signal: AbortSignal.timeout(3_000),
   });
   if (!r.ok) {
     const body = await r.text().catch(() => "");
@@ -341,6 +344,11 @@ export class SteelChannel extends BrowseChannel {
    * （sessions.routes.ts L113-130 + sessions.schema.ts L114）。
    *
    * 失败容忍：release 失败仅 warn（不影响 channel 退出）。
+   *
+   * T3-4（round3 v1.13）：fetch 传 AbortSignal.timeout(3s)——本方法在停机链上
+   * 被调（index.ts shutdown race 3s 是第一层上界），accept-but-silent endpoint
+   * 实测可挂 ~301s；此处二层上界让悬挂 fetch 自身也能在 3s 内 reject（不占
+   * 句柄到进程退出）。session 激活 fetch（defaultSteelSessionProvider）同款。
    */
   async releaseSession(): Promise<void> {
     if (this.cachedSessionId && this.steelEndpoint) {
@@ -349,6 +357,7 @@ export class SteelChannel extends BrowseChannel {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
+          signal: AbortSignal.timeout(3_000),
         });
         logger.info({
           evt: "steel_session_released",

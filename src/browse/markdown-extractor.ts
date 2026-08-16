@@ -31,6 +31,13 @@ export type ExtractMode = "raw" | "markdown" | "markdown_cited";
 
 export interface MarkdownExtractOptions {
   mode: ExtractMode;
+  /**
+   * 页面 URL（v1.12 round2 T2-3）：透传 defuddle 激活 ~28 站点专用 extractor
+   * （github/reddit/hackernews/wikipedia/substack/medium/discourse/mastodon…）+
+   * markdown 相对链接绝对化（/item?id=1 → https://…/item?id=1，LLM 可直接 fetch）。
+   * 不传 = v1.11 行为（零 extractor 激活、相对链接保持相对）。
+   */
+  url?: string;
   /** turndown 配置：heading style（"atx" = # 风格，LLM 友好；默认 "atx"） */
   headingStyle?: "atx" | "setext";
   /** bullet list marker（默认 "-"） */
@@ -90,18 +97,31 @@ export async function extractMarkdown(
     return { markdown: html, served_by: "raw" };
   }
 
-  // ---------- 1. defuddle 抽正文 HTML（去导航/广告/样板） ----------
+  // ---------- 1. defuddle 抽正文（T2-3/T2-4：URL 透传 + separateMarkdown 接管转换） ----------
   let articleHtml: string | null = null;
+  let articleMarkdown: string | null = null;
   let title: string | undefined;
   let byline: string | undefined;
   let excerpt: string | undefined;
 
   try {
     // defuddle/node Defuddle 函数：接 (html_string, url, options) → Promise<DefuddleResponse>
-    // url 传空串（defuddle 内部用于相对链接解析；空串容忍）
-    const result = await Defuddle(html, "", {});
+    // T2-3（round2）：url 透传（opts.url ?? "" 保持 v1.11 不传时行为）——
+    //   ① 激活 extractor-registry 站点专用 extractor（findByPredicate 首行
+    //      new URL(url).hostname；空串抛 TypeError 被内部 catch 吞 → 零激活，即 v1.11 现状）；
+    //   ② markdown 相对链接绝对化。
+    // T2-4（round2）：separateMarkdown:true → defuddle 内置 markdown.ts 接管转换档
+    //   （GFM 表格 / MathML→LaTeX / colspan 检测 / 脚注 / callout / 代码语言检测），
+    //   替代裸 turndown（v1.11 实测裸 turndown 丢表格结构："a\n\nb\n\n1\n\n2"）。
+    // useAsync:false 钉死（红线）：defuddle 默认允许 async extractor 三方 fetch
+    //   （youtube InnerTube 等），会绕过 Lasso httpClient/SSRF 面与超时预算——禁用。
+    const result = await Defuddle(html, opts.url ?? "", {
+      separateMarkdown: true,
+      useAsync: false,
+    });
     if (result && result.content) {
       articleHtml = result.content;
+      articleMarkdown = result.contentMarkdown || null;
       title = result.title || undefined;
       byline = result.author || undefined;
       excerpt = result.description || undefined;
@@ -110,9 +130,10 @@ export async function extractMarkdown(
     // defuddle 失败 → 降级 turndown-only（served_by 标记降级；不阻断）
     logger.warn({ evt: "defuddle_failed", error: String(e).slice(0, 200) });
     articleHtml = null;
+    articleMarkdown = null;
   }
 
-  // ---------- 2. turndown HTML→markdown ----------
+  // ---------- 2. HTML→markdown（T2-4：defuddle 转换优先，turndown 降级保底） ----------
   const turndown = new TurndownService({
     headingStyle: opts.headingStyle ?? "atx",
     bulletListMarker: opts.bulletMarker ?? "-",
@@ -123,11 +144,19 @@ export async function extractMarkdown(
   const servedBy = articleHtml ? MARKDOWN_ENGINE.pipeline : "turndown-only";
 
   let markdown: string;
-  try {
-    markdown = turndown.turndown(inputHtml);
-  } catch (e) {
-    // turndown 失败 = 引擎彻底挂，抛错让调用方走 outcome=unknown
-    throw new Error(`[markdown-extractor] turndown failed: ${String(e).slice(0, 200)}`);
+  if (articleMarkdown) {
+    // T2-4：defuddle separateMarkdown 产物直接接管（结构保真；defuddle 内部即
+    // turndown + 上游高质量规则集，served_by 字面 "defuddle+turndown" 仍准确）。
+    // 输出或含 Obsidian 方言（==高亮== / ![](youtube链接) / [^N] 脚注）——对 LLM
+    // 阅读无害，接受（README 注明）。
+    markdown = articleMarkdown;
+  } else {
+    try {
+      markdown = turndown.turndown(inputHtml);
+    } catch (e) {
+      // turndown 失败 = 引擎彻底挂，抛错让调用方走 outcome=unknown
+      throw new Error(`[markdown-extractor] turndown failed: ${String(e).slice(0, 200)}`);
+    }
   }
 
   // ---------- 3. markdown_cited 档：⟨N⟩ 引用角标 ----------

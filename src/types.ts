@@ -149,7 +149,7 @@ export interface BrowseOptions {
   network_filter?: "xhr" | "fetch" | "img" | "3rd-party" | "all";
   /** 是否抓 response body（v0.5 不实装，文档化推迟 v0.6） */
   network_include_bodies?: boolean;
-  /** PerformanceObserver 采集窗口（默认 3000ms；超时后断开 observer 读 entries） */
+  /** v0.5 注入时代的采集窗口；v1.11 原生直调后无行为消费（cdp-actions.ts），字段保留仅为 zod 契约稳定 */
   network_timeout_ms?: number;
   // ============================================================
   // v1.1 新增（parse12 §1.3 + §2.2）—— MarkdownExtractor mode-aware 三模式
@@ -476,7 +476,7 @@ export interface NetworkOptions {
  *  - third_party_count : 跨 host 的资源条数（不论 filter；CC 据 filter=all 时可知全量 vs 3rd-party 占比）
  *  - envelope          : bounded output（资源列表 JSON.stringify 后过 applyOutputEnvelope 落 .txt）
  *  - state_id          : BrowseChannel 写盘 state-store 的短指针
- *  - next_step         : Go/No-Go F2 提示（PerformanceObserver 在 fake-ip TUN 下可能抓不全时填）
+ *  - next_step         : 抓取量偏低启发式提示（<5 entries 多半页面真实简单；v1.11 原生采集无 TUN timing 干扰面）
  *
  * INV-34 衍生：network 经 applyOutputEnvelope（资源列表 JSON 字符串过 envelope 落 .txt，mode 0o600）。
  */
@@ -492,6 +492,6 @@ export interface NetworkResult {
   envelope?: import("./util/output-envelope.js").BoundedOutput;
   /** BrowseChannel.browse() 写盘的 state 短指针 */
   state_id?: string;
-  /** Go/No-Go F2：PerformanceObserver 在 SSRF-allowlisted fake-ip TUN 下可能抓不全时填 */
+  /** 抓取量偏低启发式提示（<5 entries 多半页面真实简单；v1.11 原生采集无 TUN timing 干扰面） */
   next_step?: string;
 }

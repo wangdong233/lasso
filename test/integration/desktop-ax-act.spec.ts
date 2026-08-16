@@ -308,6 +308,27 @@ describe("T15 — act expect 后置条件（事件送达 ≠ 语义成功）", (
     expect(r.data?.expect_verified).toBe(false);
   });
 
+  it("T2-10：第一次命中后消失 → 不成立（瞬时命中 ≠ 稳定状态；连续 2 次才算）", async () => {
+    let findCount = 0;
+    const { desktop } = assemble({
+      ax_act: axActScript([{ index: 0, ref: "@e0", ok: true, kind: "click" }]),
+      ax_find: () => {
+        findCount++;
+        return findCount === 1
+          ? { matches: [{ ref: "@e0", label: "Flash" }], count: 1 } // 仅第 1 次
+          : { matches: [], count: 0 }; // 之后消失
+      },
+    });
+    const r = await desktop.act({
+      actions: [{ kind: "click", ref: "@e0" }],
+      expect: { text: "Flash", timeout_ms: 500 },
+    });
+    // 旧实现首命中即真（假 expect_verified）；稳定性采样后诚实 didnt
+    expect(r.outcome).toBe("didnt");
+    expect(r.error).toMatch(/^expect_failed:expected_condition_not_met/);
+    expect(findCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("expect.gone=true → 目标消失才 verified（仍存在则 didnt）", async () => {
     const { desktop } = assemble({
       ax_act: axActScript([{ index: 0, ref: "@e0", ok: true, kind: "click" }]),

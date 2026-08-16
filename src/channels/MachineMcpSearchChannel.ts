@@ -29,9 +29,13 @@ import type {
   InteractResult,
   Outcome,
   SearchResult,
+  SearchFreshness,
 } from "../types.js";
 import { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
+// v1.12（round2 T2-5）：freshness 透传（与 SearchChannel 调同一 web_search_prime
+// 上游，参数名 search_recency_filter 已被 SearchChannel 实证）
+import { ZHIPU_RECENCY_MAP } from "./SearchChannel.js";
 
 // ============================================================
 // 公共选项（与 ZhipuSearchChannel.SearchOpts 同构，便于 caller 复用）
@@ -42,6 +46,12 @@ export interface MachineMcpSearchOpts {
   /** "cn" / "us"。 */
   region: string;
   no_cache: boolean;
+  /**
+   * v1.12（round2 T2-5）：时效性过滤。machine_mcp 是 FallbackChain 首位引擎——
+   * 此前无此字段，用户传 freshness 时首位引擎静默忽略（tri-state 同构小违背）。
+   * 不传 = 不限时效（v1.11 行为）。
+   */
+  freshness?: SearchFreshness;
 }
 
 // ============================================================
@@ -128,6 +138,10 @@ export class MachineMcpSearchChannel extends BaseChannel {
         search_query: query,
         search_intent: true,
         count: opts.limit,
+        // v1.12（round2 T2-5）：freshness 透传（同一上游同参数名；不传 = 不限时效）
+        ...(opts.freshness
+          ? { search_recency_filter: ZHIPU_RECENCY_MAP[opts.freshness] ?? opts.freshness }
+          : {}),
       })) as { content?: Array<{ type: string; text?: string }> };
 
       const parsed = parseMachineMcpContent(resp?.content);

@@ -275,6 +275,8 @@ export async function doFetchUrl(
     const { extractMarkdown } = await import("../browse/markdown-extractor.js");
     const md = await extractMarkdown(bodyText, {
       mode,
+      // T2-3（round2）：URL 透传激活 defuddle 站点 extractor + 相对链接绝对化
+      url: rawUrl,
       headingStyle: "atx",
       bulletMarker: "-",
       enableCitations: mode === "markdown_cited",

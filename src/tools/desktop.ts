@@ -108,7 +108,11 @@ const desktopSchema = {
         .object({
           text: z.string().optional(),
           role: z.string().optional(),
-          ref: z.string().optional(),
+          // T3-3（round3 v1.13）：ref 字段已删——ax_find 只消费 text/role（ref 是
+          // act/expect domain）。旧 schema 收 ref 却静默忽略 → 纯 ref 查询全节点
+          // 命中 + ok:true（语义错位 + token 爆炸）。Rust 端另有兜底 invalid_params
+          // （防绕过 zod 直发 wire 的客户端）；zod 默认 strip 未知键，多传 ref 的
+          // 调用降级为「空 where」→ Rust 兜底诚实拒绝。
         })
         .optional(),
       screenshot_region: z

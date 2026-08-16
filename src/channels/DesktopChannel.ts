@@ -292,18 +292,26 @@ export class DesktopChannel extends UiChannel {
       ...(expect.role ? { role: expect.role } : {}),
     };
     const deadline = Date.now() + (expect.timeout_ms ?? 5_000);
+    // T2-10（round2）：稳定性采样——相邻两次 poll 均命中才成立（Peekaboo v4.0
+    // verify 范式「stability sampling + unknown never implies success」）。
+    // 瞬时命中（动画帧/加载闪现元素）不再产出假 ok；gone 语义反向同理
+    // （相邻两次 poll 均不命中才算消失）。顺带把有效验证间隔拉到 ≥200ms，
+    // 缓解 dense app 100ms 全量 re-walk 的 AX 压力。
+    const REQUIRED_CONSECUTIVE = 2;
+    let consecutive = 0;
     while (Date.now() < deadline) {
       try {
         const r = await this.axProvider.find({ app: opts.app, where });
         if (r.outcome === "worked" && r.data) {
           const matched = r.data.count > 0;
-          if (expect.gone) {
-            if (!matched) return { ok: true };
-          } else if (matched) {
-            return { ok: true };
-          }
+          const conditionMet = expect.gone ? !matched : matched;
+          consecutive = conditionMet ? consecutive + 1 : 0;
+          if (consecutive >= REQUIRED_CONSECUTIVE) return { ok: true };
+        } else {
+          consecutive = 0;
         }
       } catch (e) {
+        consecutive = 0;
         logger.warn({
           evt: "desktop_expect_iter_error",
           channel: this.name,
@@ -353,18 +361,31 @@ export class DesktopChannel extends UiChannel {
     let lastError: string | undefined;
     let firstIteration = true;
 
+    // T2-10（round2）：稳定性采样——首命中不算，相邻两次 poll 均命中才 worked
+    // （瞬时命中 = 动画帧/加载闪现元素，不是稳定状态）。streak 从第 1 次
+    // iteration 起步 → verdict=preexisting（wait 开始时条件已成立）。
+    const REQUIRED_CONSECUTIVE = 2;
+    let consecutiveMatches = 0;
+    let streakFromStart = false;
+
     while (Date.now() < deadline) {
       try {
         const r = await this.axProvider.find(opts);
         if (r.outcome === "worked" && r.data && r.data.count > 0) {
-          // 匹配成功
-          return {
-            outcome: "worked",
-            data: { verdict: firstIteration ? "preexisting" : "worked" },
-            served_by: AxProviderNameRef,
-            fallback_used: false,
-            retrieval_method: "ax_wait",
-          };
+          consecutiveMatches++;
+          if (consecutiveMatches === 1) streakFromStart = firstIteration;
+          if (consecutiveMatches >= REQUIRED_CONSECUTIVE) {
+            // 匹配成功（连续 2 次确认）
+            return {
+              outcome: "worked",
+              data: { verdict: streakFromStart ? "preexisting" : "worked" },
+              served_by: AxProviderNameRef,
+              fallback_used: false,
+              retrieval_method: "ax_wait",
+            };
+          }
+        } else {
+          consecutiveMatches = 0;
         }
         if (r.outcome === "didnt") {
           // ax 自己返 didnt（如 tcc_denied）—— 上报 didnt，不再 poll
@@ -380,6 +401,7 @@ export class DesktopChannel extends UiChannel {
         // outcome === "unknown" —— 继续 poll（可能 helper 暂时性故障）
         lastError = r.error;
       } catch (e) {
+        consecutiveMatches = 0;
         lastError = e instanceof Error ? e.message : String(e);
         logger.warn({
           evt: "desktop_wait_iter_error",

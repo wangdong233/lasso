@@ -159,3 +159,48 @@ describe("desktop tool schema — D8 appleScript 档两键可达", () => {
     expect(parsed.options.appleScriptParams).toEqual({ name: "hello" });
   });
 });
+
+// ============================================================
+// T3-3（round3 v1.13）：where.ref 静默忽略根治（zod 删字段 + Rust 兜底）
+// 旧缺陷：zod 收 where.ref 却无人消费 → 纯 ref 查询全节点命中 + ok:true。
+// ============================================================
+describe("T3-3 — where.ref 删字段（find 需要 text 或 role）", () => {
+  it("zod strip：where.ref 不再是 schema 字段（多传被剥，parsed where 为空对象）", () => {
+    const { server, captured } = makeCaptureServer();
+    const { desktop } = assemble({ ping: () => ({ pong: true }) });
+    registerDesktopTool(server as never, desktop);
+
+    const parsed = z.object(captured[0]!.schema as never).parse({
+      action: "find",
+      options: { where: { ref: "@e5" } },
+    }) as { options: { where: Record<string, unknown> } };
+    // zod 默认 strip 未知键：ref 被剥 → 空 where（Rust 兜底 invalid_params 的前置路径）
+    expect(parsed.options.where).toEqual({});
+  });
+
+  it("wire 形状：空 where 原样到达 ax_find（Rust 兜底接管，TS 层不吞不改）", async () => {
+    const { rust, desktop } = assemble({
+      ax_find: () => ({ matches: [], count: 0 }),
+    });
+    await desktop.observe("find", { where: {} });
+    const call = rust.calls.find((c) => c.method === "ax_find");
+    expect(call).toBeTruthy();
+    expect(call!.params).toEqual({ app: undefined, max_depth: 8, where: {} });
+  });
+
+  it("schema 源码：where object 只声明 text/role（ref 已删；expect.ref 不受影响）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(
+      fileURLToPath(new URL("../../src/tools/desktop.ts", import.meta.url)),
+      "utf8",
+    );
+    const whereBlock = src.match(/where:\s*z\s*\.\s*object\(\{[\s\S]*?\}\)/)?.[0] ?? "";
+    expect(whereBlock).toContain("text");
+    expect(whereBlock).toContain("role");
+    expect(whereBlock).not.toMatch(/\bref:\s*z\./);
+    // expect 的 ref 保留（round3 拒绝清单：expect.ref 现状已闭环）
+    const expectBlock = src.match(/expect:\s*z\s*\.\s*object\(\{[\s\S]*?\}\)/)?.[0] ?? "";
+    expect(expectBlock).toMatch(/\bref:\s*z\./);
+  });
+});

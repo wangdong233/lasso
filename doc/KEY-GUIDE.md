@@ -273,7 +273,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 
 ### `STAGEHAND_API_KEY` —— AI 友好的页面观察（程序化实验通道）
 
-> ⚠️ **状态说明（重要）**：Stagehand 在 Lasso 中是**程序化实验通道**——配了 key 只会装配内部 channel 与熔断器，**没有对应的 MCP 工具入口**（`tools/list` 里不会出现 stagehand 工具）。其 REST 契约未经验证（wave1 裁决 R-ECO-6；`lasso doctor` #39 `stagehand_rest_contract_probe` 专测此项）。要实际过 Cloudflare 级反爬，请用 [Steel 自托管](#steel_endpoint--自托管云浏览器v16-新推荐免费) 或 browserbase。
+> ⚠️ **状态说明（重要）**：Stagehand 在 Lasso 中是**程序化实验通道**——配了 key 只会装配内部 channel 与熔断器，**没有对应的 MCP 工具入口**（`tools/list` 里不会出现 stagehand 工具）。其 `/verify|/extract` REST 契约未经验证（wave1 裁决 R-ECO-6；v1.12 复核补记：上游托管 REST 已上线但形状是 `sessions.*` 生命周期 API、无 `/verify` 路由、v0 unstable——本通道契约仍无佐证；`lasso doctor` #39 `stagehand_rest_contract_probe` 专测此项）。要实际过 Cloudflare 级反爬，请用 [Steel 自托管](#steel_endpoint--自托管云浏览器v16-新推荐免费) 或 browserbase。
 
 **去哪申请**：<https://api.stagehand.dev>
 

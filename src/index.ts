@@ -50,7 +50,10 @@ import { BingChannel } from "./channels/BingChannel.js";
 import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
 // v1.4 Phase A：detectMachineSearchMcp（只读 ~/.claude.json，永不 log key 值）
 import { detectMachineSearchMcp } from "./search/MachineMcpDetector.js";
-import { HeadlessChannel } from "./channels/HeadlessChannel.js";
+import {
+  HeadlessChannel,
+  defaultHeadlessProfileForHost,
+} from "./channels/HeadlessChannel.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
 import { AxProvider } from "./desktop/AxProvider.js";
@@ -90,7 +93,7 @@ import { registerFetchUrlTool } from "./tools/fetch-url.js";
 import { registerScreenshotTool } from "./tools/screenshot.js";
 import { registerPdfTool } from "./tools/pdf.js";
 // v0.5 M0.5c：network 独立工具（parse6 §3.4，TS-only 增量，零回归）
-// INV-33 守：network 走新加 dispatch entry（cdp-actions.ts doNetwork = evaluate_script 注入 PerformanceObserver）
+// INV-33 守：network 走新加 dispatch entry（cdp-actions.ts doNetwork；v1.11 起 1.7.0 原生 list_network_requests 直调——round2 T2-2 注释修正）
 // INV-34 守：network 显式 applyOutputEnvelope(jsonString, hint, ".txt")；资源列表过 envelope
 import { registerNetworkTool } from "./tools/network.js";
 // v0.9 Phase B（parse10 §3.3 + §6 M3）：wayback_lookup 独立 tool（死链救援，不自动探测）
@@ -201,7 +204,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.11.0";
+const LASSO_SERVER_VERSION = "1.13.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -422,10 +425,12 @@ async function runMcpServer(): Promise<void> {
   // 「browse_headless 零 stealth 注入」P0 业务缺口。stealth 实例在 headless 装配前建。
   const headlessStealth = new StealthEngine();
   // v1.11（round1 T10）：LASSO_PROXY 出口代理（仅 headless 生效；logged_in 永不读）
+  // v1.12（round2 T2-1）：默认 profile 宿主对齐（darwin→mac_chrome，消除 UA↔
+  // client hints 的 OS 级 shape 矛盾；见 HeadlessChannel.defaultHeadlessProfileForHost）
   const headless = new HeadlessChannel(
     subproc,
     headlessStealth,
-    "windows_chrome_120",
+    defaultHeadlessProfileForHost(),
     config.proxy || undefined,
   );
   // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper——「用完即关」调度器。
@@ -769,7 +774,7 @@ async function runMcpServer(): Promise<void> {
   registerPdfTool(server, headless, ssrfConfig);
   // v0.5 M0.5c：network 独立工具（parse6 §3.4）
   // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
-  // network 走新加 entry（doNetwork from cdp-actions = evaluate_script 注入 PerformanceObserver）
+  // network 走新加 entry（doNetwork from cdp-actions；v1.11 起 1.7.0 原生 list_network_requests 直调）
   registerNetworkTool(server, headless, ssrfConfig);
   // v1.8 Phase D（D1）：read_text 注册（@oN 续页；readOnly + 非 openWorld，INV-5）
   registerReadTextTool(server);
@@ -997,6 +1002,10 @@ async function runMcpServer(): Promise<void> {
   // ---- v0.7-1. MetricsCollector（per-channel 成功率 / p95）----
   const metrics = new MetricsCollector();
   decider.attachMetrics(metrics);
+  // v1.12（round2 T2-13）：T14 的 wrapHandler metrics 钩子装配接线——此前
+  // setMetrics 全仓生产零调用（仅测试可达），admin/动态注册工具的时延/错误
+  // 不入 INV-43 观测窗（decider.attachMetrics 同款 late-binding 一行）。
+  toolManager.setMetrics(metrics);
 
   // ---- v0.7-2. LongCircuitBreaker Map（60min 长熔断 + onOpen 联动 bag.disable）----
   // INV-42：onOpen 闭包内显式调 bag.disable + 标 reason="long_circuit_open"
@@ -1199,9 +1208,17 @@ async function runMcpServer(): Promise<void> {
     resourceMonitor.stop();
     // v1.8 Phase B（D5）：停机路径 best-effort 释放 Steel session
     // （POST /v1/sessions/release；失败仅 warn 不阻断退出——releaseSession 内部已吞错）。
+    // T3-4（round3 v1.13）：3s 上界——此前是停机链唯一无上界 await（兄弟步
+    // stopLaunchedChromes / restoreTabs 均 race 3s）。自托管 Steel 停摆 /
+    // endpoint 悬挂（accept-but-silent 实测挂 ~301s）会把 stdin_eof 全场景
+    // 阻塞到分钟级；race 输者随 process.exit 消亡，无句柄残留。SteelChannel
+    // 侧 fetch 另传 AbortSignal.timeout(3s) 双保险。
     if (steelChannel) {
       try {
-        await steelChannel.releaseSession();
+        await Promise.race([
+          steelChannel.releaseSession(),
+          new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
+        ]);
       } catch (e) {
         logger.warn({ evt: "steel_release_on_shutdown_failed", error: String(e) });
       }
@@ -1239,6 +1256,15 @@ async function runMcpServer(): Promise<void> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // T2-12（round2）：stdin EOF → 优雅停机。上游 SDK #2002（v1/v2 同病）：StdioServerTransport
+  // 的 start() 只挂 data/error，不监听 close/end——CC 异常退出（崩溃/关窗）后父进程死亡、
+  // stdin EOF，但活跃 ChildProcess 句柄保活事件循环，Lasso 不退出 → cdp-mcp/rust-helper 树
+  // 孤儿直到 zombie reaper 1h 阈值。MCP stdio 语义共识：客户端关 stdin = 终止服务。
+  // 复用幂等 shutdown（shuttingDown 防双触发）：正常 CC 退出先 SIGTERM，后到 stdin EOF
+  // 被幂等挡住，零竞态新增。SDK transport 已挂 data 监听（流 flowing 模式），EOF 后
+  // end/close 必达。
+  process.stdin.on("end", () => void shutdown("stdin_eof"));
+  process.stdin.on("close", () => void shutdown("stdin_eof"));
   // v1.8 Phase B（W1-DEF-6）：exit 兜底——SIGTERM/SIGINT 优雅路径走 subproc.shutdown()，
   // 但「stdin 关闭等自然退出 / uncaughtException 后 exit」不触发信号处理器，
   // 受管子进程（chrome-devtools-mcp / rust-helper）会变 ppid=1 孤儿（wave1 T-BROWSE-24）。

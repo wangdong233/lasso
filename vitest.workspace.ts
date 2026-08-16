@@ -16,12 +16,16 @@ const SLOW_SPECS = [
   // 真实 spawn 子进程（node dist / rust-helper / Chrome 探测）
   "test/integration/cli-conventions.spec.ts",
   "test/integration/doctor-cli-config-file.spec.ts",
+  "test/integration/stdin-eof-shutdown.spec.ts",
   "test/unit/launch-chrome.spec.ts",
   "test/unit/rust-bridge.spec.ts",
   "test/unit/subprocess-lifecycle.spec.ts",
   // doctor 冷启动 / 多 section 探测 + expect 轮询窗口（任务点名）
   "test/unit/doctor-v17-integration.spec.ts",
   "test/unit/expect-poll.spec.ts",
+  // round2 W-3 顺手移桶：doctor proxy_config 用例全量并发下 5169ms 超 5s 默认
+  // testTimeout、单文件 1648ms 通过（round2-arch 两次全量 + 两次单跑实测）
+  "test/unit/proxy-egress.spec.ts",
 ];
 
 export default defineWorkspace([

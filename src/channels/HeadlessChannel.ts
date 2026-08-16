@@ -26,6 +26,22 @@ import { StealthEngine } from "../browse/StealthEngine.js";
 import { STEALTH_PROFILES, type StealthProfileName } from "../browse/stealth-profiles.js";
 import { logger } from "../util/logger.js";
 
+/**
+ * v1.12（round2 T2-1）：宿主平台对齐的默认 stealth profile。
+ *
+ * darwin → mac_chrome：chrome-devtools-mcp 1.7.0 不暴露 setExtraHTTPHeaders，
+ * 低熵 client hints（sec-ch-ua-platform）发宿主真值——windows profile 在 mac
+ * 宿主上产生「UA 称 Windows、hints 招供 macOS」的 OS 级 shape 矛盾（round2-browser
+ * E1 实测）。非 darwin → windows_chrome_120（Windows 宿主自洽；Linux 宿主为已知
+ * 残余矛盾，round2-verdict T2-1 记档）。
+ *
+ * 构造期确定性选择（process.platform 只读），非 env/config 可配——不触 INV-30
+ * anti-gaming 面（profile 数据本体仍在 stealth-profiles.ts 顶级 const）。
+ */
+export function defaultHeadlessProfileForHost(): StealthProfileName {
+  return process.platform === "darwin" ? "mac_chrome" : "windows_chrome_120";
+}
+
 export class HeadlessChannel extends BrowseChannel {
   readonly name = "browse_headless";
 
@@ -35,7 +51,8 @@ export class HeadlessChannel extends BrowseChannel {
   constructor(
     private readonly subproc: SubprocessManager,
     stealth?: StealthEngine,
-    profileName: StealthProfileName = "windows_chrome_120",
+    // v1.12（round2 T2-1）：缺省从硬编码 windows_chrome_120 改宿主对齐默认
+    profileName: StealthProfileName = defaultHeadlessProfileForHost(),
     /**
      * v1.11（round1 T10）：出口代理（config.proxy；空 = 不代理）。
      * 经 1.7.0 `--proxy-server=` 传给 Chromium。**仅 headless 生效**——
@@ -71,6 +88,12 @@ export class HeadlessChannel extends BrowseChannel {
         "--no-usage-statistics",
         "--chromeArg=--disable-blink-features=AutomationControlled",
         `--chromeArg=--user-agent=${profile.userAgent}`,
+        // T3-1（round3 v1.13）：HTTP Accept-Language 头与 JS 层对齐。--user-agent
+        // 改不了 Accept-Language 头（宿主真值 zh-CN 泄漏 ↔ JS 层 profile language
+        // = 同请求内自矛盾的自然不可能形状）；--accept-lang 是 Chromium 标准
+        // switch，值取 profile.acceptLanguage（与 navigator.languages 同源）。
+        // E1' run B/C 实测：头变 "en-US,en;q=0.9,..." ≈ 真实双语用户形态。
+        `--chromeArg=--accept-lang=${profile.acceptLanguage}`,
         `--viewport=${profile.viewport.width}x${profile.viewport.height}`,
         // v1.11（round1 T10）：出口代理（LASSO_PROXY 用户显式配置；空不加 flag）
         ...(proxyUrl ? [`--proxy-server=${proxyUrl}`] : []),

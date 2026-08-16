@@ -267,7 +267,9 @@ describe("HeadlessChannel — 16 路 evasion 覆盖（注入 script 含每路 ma
   // CORE 3 路 + vendored 12 路 + UA override = 16 路（UA override 走第 2 次 evaluate）
   const expectedMarkers: Array<[string, RegExp]> = [
     ["路1 navigator.webdriver", /navigator["\s,]*"webdriver"|defineProperty\(navigator,\s*"webdriver"/],
-    ["路2 navigator.languages", /"en-US",\s*"en"/],
+    // 路2 navigator.languages：T3-1（round3 v1.13）迁入 UA override 脚本
+    // （profile 感知）——不再属于 STEALTH_INJECTION_SCRIPT const；本表只守
+    // CORE 剩余 2 路 + vendored 12 路，languages 断言见 T3-1 describe。
     ["路3 navigator.permissions", /permissions\.query|Notification\.permission/],
     ["路4 chrome.runtime", /chrome\.runtime|chrome\[["']runtime["']\]|sendMessage/],
     ["路5 chrome.app", /chrome\.app|isInstalled|InstallState/],
@@ -283,14 +285,14 @@ describe("HeadlessChannel — 16 路 evasion 覆盖（注入 script 含每路 ma
     ["路15 userAgentData", /userAgentData|brands/],
   ];
 
-  it("注入的 STEALTH_INJECTION_SCRIPT 含 15 路 marker（CORE 3 + vendored 12）", () => {
+  it("注入的 STEALTH_INJECTION_SCRIPT 含 CORE 2 路 + vendored 12 路 marker（路 2 languages 已迁 UA override——T3-1）", () => {
     // 直接对顶级 const 断言（injectProfile 注入的就是这个 const）
     for (const [label, marker] of expectedMarkers) {
       expect(STEALTH_INJECTION_SCRIPT, `marker 缺失: ${label}`).toMatch(marker);
     }
   });
 
-  it("HeadlessChannel.browse(navigate) 注入的 script 含 15 路 marker（端到端）", async () => {
+  it("HeadlessChannel.browse(navigate) 注入的 script 含 14 路 marker + 路 16 UA override（端到端）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const ch = new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
@@ -305,6 +307,72 @@ describe("HeadlessChannel — 16 路 evasion 覆盖（注入 script 含每路 ma
     }
     // 路 16 UA override —— navigator.userAgent 被改写（含 Chrome/151）
     expect(allScripts).toMatch(/Chrome\/151/);
+    // 路 2（T3-1 迁移后位置）：UA override 脚本内 languages 与 profile 同源
+    // （windows_chrome_120 → ["en-US","en"]）
+    expect(allScripts).toMatch(/\["en-US","en"\]/);
+  });
+});
+
+// ============================================================
+// T3-1（round3 v1.13）：locale 层间一致性——accept-lang flag + languages profile 感知
+// ============================================================
+describe("HeadlessChannel — T3-1 locale 层间一致性（HTTP 头 ↔ JS 层同源）", () => {
+  const ALL_PROFILES = Object.keys(STEALTH_PROFILES) as StealthProfileName[];
+
+  it("spec 含 --chromeArg=--accept-lang=<profile.acceptLanguage>（四 profile 逐个构造验证）", () => {
+    for (const profileName of ALL_PROFILES) {
+      const stub = makeStubClient();
+      const { subproc, registerSpecCalls } = makeMockSubproc(stub.client);
+      new HeadlessChannel(subproc, new StealthEngine(), profileName);
+
+      const headlessSpec = registerSpecCalls.find((c) => c.name === "headless");
+      expect(headlessSpec, profileName).toBeTruthy();
+      const args = (headlessSpec!.spec as { args: string[] }).args;
+      const expected = `--chromeArg=--accept-lang=${STEALTH_PROFILES[profileName].acceptLanguage}`;
+      expect(
+        args.some((a) => a === expected),
+        `${profileName}: spec 应含 ${expected}`,
+      ).toBe(true);
+      // 既有 flag 零回归
+      expect(args.some((a) => a.startsWith("--chromeArg=--user-agent="))).toBe(true);
+      expect(args.some((a) => a.startsWith("--viewport="))).toBe(true);
+    }
+  });
+
+  it("端到端：四 profile 的 UA override 脚本均嵌 [language, 主子标签] languages（languages[0]===language）", async () => {
+    for (const profileName of ALL_PROFILES) {
+      const stub = makeStubClient();
+      const { subproc } = makeMockSubproc(stub.client);
+      const ch = new HeadlessChannel(subproc, new StealthEngine(), profileName);
+
+      await ch.browse("https://example.com/", "navigate", {});
+
+      const profile = STEALTH_PROFILES[profileName];
+      const expectedLangs = JSON.stringify([
+        profile.language,
+        profile.language.split("-")[0],
+      ]);
+      const evalCalls = stub.calls.filter((c) => c.name === "evaluate_script");
+      const uaCall = evalCalls.find((c) =>
+        String(c.args.function).includes(profile.userAgent.slice(0, 40)),
+      );
+      expect(uaCall, `${profileName}: UA override eval 应在`).toBeTruthy();
+      const fnStr = String(uaCall!.args.function);
+      expect(
+        fnStr.includes(expectedLangs),
+        `${profileName}: UA override 应嵌 languages=${expectedLangs}`,
+      ).toBe(true);
+      // navigator.language 与 languages[0] 同值（同请求内不自矛盾）
+      expect(fnStr).toContain(JSON.stringify(profile.language));
+    }
+  });
+
+  it("acceptLanguage 主 token 与 languages 数组逐字符一致（头值由 profile 派生，形状自洽）", () => {
+    for (const profileName of ALL_PROFILES) {
+      const p = STEALTH_PROFILES[profileName];
+      const [l0, l1] = [p.language, p.language.split("-")[0]];
+      expect(p.acceptLanguage.startsWith(`${l0},${l1}`)).toBe(true);
+    }
   });
 });
 

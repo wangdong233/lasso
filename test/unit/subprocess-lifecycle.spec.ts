@@ -139,7 +139,12 @@ describe("index.ts 停机接线（源码级断言；W1-DEF-6 + D5）", () => {
 
   it("D5：停机路径调 steelChannel.releaseSession()（best-effort，失败仅 warn 不阻断退出）", () => {
     expect(indexSrc).toMatch(/if \(steelChannel\) \{/);
-    expect(indexSrc).toMatch(/await steelChannel\.releaseSession\(\)/);
+    expect(indexSrc).toMatch(/steelChannel\.releaseSession\(\)/);
+    // T3-4（round3 v1.13）：steel 段与兄弟步同款 3s 上界（Promise.race 封顶——
+    // 停机链无无界 await；此前裸 await 是唯一例外，悬挂 endpoint 可阻塞 ≤5min）
+    expect(indexSrc).toMatch(
+      /Promise\.race\(\[\s*steelChannel\.releaseSession\(\),\s*[\s\S]*?3_000/,
+    );
     // best-effort：releaseSession 外层 try/catch（吞错不阻断 process.exit）
     expect(indexSrc).toMatch(/steel_release_on_shutdown_failed/);
   });

@@ -63,15 +63,35 @@ export function serpEngineForQuery(query: string): "baidu" | "ddg" {
   return CJK_RE.test(query) ? "baidu" : "ddg";
 }
 
+/**
+ * freshness → DDG `df=` 值（html.duckduckgo.com 原生参数；三方文档一致）。
+ * baidu 无对应参数不拼（诚实降级——round2 T2-5）。
+ */
+const DDG_FRESHNESS_DF: Record<string, string> = {
+  day: "d",
+  week: "w",
+  month: "m",
+  year: "y",
+};
+
 /** 引擎 → SERP URL 构造。 */
 export function serpUrlFor(
   engine: "baidu" | "ddg",
   query: string,
   limit: number,
+  /**
+   * v1.12（round2 T2-5）：可选时效过滤。ddg 分支拼原生 `&df=`（d/w/m/y）；
+   * baidu 无对应参数不拼（诚实降级）。不传 = v1.11 URL byte-identical。
+   */
+  freshness?: "day" | "week" | "month" | "year",
 ): string {
   if (engine === "ddg") {
     // html.duckduckgo.com 纯 HTML 端点（无 JS 也能渲染；browse_headless 渲染后同款快照正则抽取）
-    return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const df = freshness ? DDG_FRESHNESS_DF[freshness] : undefined;
+    return (
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}` +
+      (df ? `&df=${df}` : "")
+    );
   }
   return `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`;
 }
@@ -81,10 +101,15 @@ export async function serpScrapeFallback(
   limit: number,
   browseExec: BrowseExec,
   serpHealth?: SerpHealthMonitor | null,
+  /**
+   * v1.12（round2 T2-5）：可选时效过滤（兜底路径此前静默丢显式参数）。
+   * 不传 = v1.11 行为（URL 不拼 df=）。
+   */
+  freshness?: "day" | "week" | "month" | "year",
 ): Promise<InteractResult<SearchResult>> {
   // v1.11（round1 T9）：CJK/非 CJK 分流（百度 / DDG）
   const engine = serpEngineForQuery(query);
-  const serpUrl = serpUrlFor(engine, query, limit);
+  const serpUrl = serpUrlFor(engine, query, limit, freshness);
   const retrievalMethod = engine === "ddg" ? "serp_scrape_ddg" : "serp_scrape_baidu";
 
   const browseResult = await browseExec(serpUrl);

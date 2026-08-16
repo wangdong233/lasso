@@ -161,6 +161,8 @@ export class AxProvider {
       stateId: newStateId(),
       root: finalRoot,
       createdAt: Date.now(),
+      // T2-11（round2）：截断诚实信号透传（仅截断时出现——浅树 byte-identical）
+      ...(root.truncated === true ? { truncated: true } : {}),
     };
     return {
       outcome: "worked",
@@ -175,7 +177,9 @@ export class AxProvider {
    * find action：调 ax_find（v0.3.5 每次 re-walk）。
    *
    * @returns InteractResult<{matches, count}>：
-   *   - worked : matches 数组（@eN ref + role + label + rect）
+   *   - worked : matches 数组（@eN ref + role + label + rect；v1.12 round2 T2-9 起
+   *              命中节点可含可选 actions 数组——AXActionNames，如 ["AXPress"]，
+   *              空清单 Rust 端省略；passthrough 本层不剥）
    *   - didnt  : 0 matches 不算 didnt（worked + count=0；find=0 是合法答案）
    *   - 错误契约同 snapshot
    */

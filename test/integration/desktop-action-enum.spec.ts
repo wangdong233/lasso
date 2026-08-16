@@ -166,6 +166,26 @@ describe("desktop(action:'snapshot')", () => {
     expect(rust.calls.filter((c) => c.method === "ax_snapshot")).toHaveLength(1);
   });
 
+  it("T2-11：dense fixture（根 truncated:true）→ OutlineSnapshot.truncated=true 透传", async () => {
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      ax_snapshot: () => ({ root: { ...mockAxTree(), truncated: true } }),
+    });
+    const r = await desktop.observe("snapshot", { app: "Finder", max_depth: 3 });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.truncated).toBe(true);
+  });
+
+  it("T2-11：浅 fixture（无截断）→ truncated 字段缺席（byte-identical v1.11）", async () => {
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      ax_snapshot: () => ({ root: mockAxTree() }),
+    });
+    const r = await desktop.observe("snapshot", { app: "Finder", max_depth: 3 });
+    expect(r.outcome).toBe("worked");
+    expect(r.data).not.toHaveProperty("truncated");
+  });
+
   it("didnt：rust helper 返 tcc_denied → outcome=didnt（不 fallback）", async () => {
     // 用一个临时 mock 让 ax_snapshot 返 ok=false + tcc_denied
     const rust = new MockRustBridge({
@@ -237,6 +257,29 @@ describe("desktop(action:'find')", () => {
     const r = await desktop.observe("find", {});
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("missing_where_clause");
+  });
+
+  it("T2-9：命中项含 actions 数组（AXActionNames）时原样透传（observe→act 路由有据）", async () => {
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      ax_find: () => ({
+        matches: [
+          {
+            ref: "@e1",
+            role: "button",
+            label: "新建文件夹",
+            actions: ["AXPress", "AXShowMenu"],
+          },
+          // 无 actions 的命中项（Rust 端空清单省略）原样透传
+          { ref: "@e2", role: "text", label: "标题" },
+        ],
+        count: 2,
+      }),
+    });
+    const r = await desktop.observe("find", { where: { text: "建" } });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.matches[0]).toMatchObject({ actions: ["AXPress", "AXShowMenu"] });
+    expect(r.data?.matches[1]).not.toHaveProperty("actions");
   });
 });
 
@@ -371,6 +414,45 @@ describe("desktop(action:'wait') — tri-state", () => {
     const r = await desktop.wait({}, 200);
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("missing_where_clause");
+  });
+
+  // ============================================================
+  // v1.12 round2 T2-10：稳定性采样（连续 2 次命中才算）
+  // ============================================================
+  it("T2-10：第一次命中后消失 → 不成立（瞬时命中 = 动画帧/闪现元素）", async () => {
+    // 脚本：仅第 1 次 poll 命中，之后全部空 → 旧实现首命中即真（假 worked）
+    let calls = 0;
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      ax_find: () => {
+        calls++;
+        return calls === 1
+          ? { matches: [{ ref: "@e1" }], count: 1 }
+          : { matches: [], count: 0 };
+      },
+    });
+    const r = await desktop.wait({ where: { text: "X" } }, 600);
+    expect(r.outcome).toBe("didnt");
+    expect(r.data?.verdict).toBe("didnt");
+    // 至少 poll 了 2 轮（streak 需要）
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("T2-10：连续 2 次命中 → worked；第 2 轮起命中 → verdict=worked（非 preexisting）", async () => {
+    // 脚本：第 1 次 poll 空，第 2/3 次命中 → streak 不从首轮起步
+    let calls = 0;
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      ax_find: () => {
+        calls++;
+        return calls === 1
+          ? { matches: [], count: 0 }
+          : { matches: [{ ref: "@e1" }], count: 1 };
+      },
+    });
+    const r = await desktop.wait({ where: { text: "X" } }, 1_500);
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.verdict).toBe("worked");
   });
 });
 

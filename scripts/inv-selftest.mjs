@@ -107,6 +107,50 @@ const VIOLATION_SAMPLES = [
     // 锚点动态取 package.json 当前版本（版本 bump 后样本不失效）
     mutation: { replace: ["__PKG_VERSION__", "0.0.0-selftest"] },
   },
+  {
+    // v1.12（round2 T2-14）：INV-79 落地（v1.11）时未注册样本——纪律写入与
+    // INV-79 同版本，第一条新 INV 即违反自定纪律。本样本验 (b) 遥测子检查：
+    // HeadlessChannel 丢 --no-usage-statistics（1.7.0 默认采集遥测）→ 红。
+    inv: "INV-79",
+    desc: "HeadlessChannel 丢 --no-usage-statistics（1.7.0 遥测回采）",
+    file: "channels/HeadlessChannel.ts",
+    mutation: {
+      replaceAll: ['"--no-usage-statistics"', '"--usage-statistics-off"'],
+    },
+  },
+  {
+    // v1.13（round3 T3-7）：外部契约类三条补样本（round2 T2-14 记档的下一步）。
+    // INV-76 (a)：StealthEngine 丢 toFnExpression 包装 → IIFE 语句串直传
+    // evaluate_script（上游 0.3.0 起拒收的旧缺陷形态）→ 红。
+    inv: "INV-76",
+    desc: "STEALTH_INJECTION_SCRIPT 绕过 toFnExpression 包装（上游函数表达式契约破坏）",
+    file: "browse/StealthEngine.ts",
+    mutation: {
+      replaceAll: [
+        "toFnExpression(STEALTH_INJECTION_SCRIPT)",
+        "STEALTH_INJECTION_SCRIPT",
+      ],
+    },
+  },
+  {
+    // INV-68 (a)：markdown-extractor.ts 出现第三运行时（spawn/python）→ 红。
+    inv: "INV-68",
+    desc: "markdown-extractor.ts 引入第三运行时（spawn python 子进程）",
+    file: "browse/markdown-extractor.ts",
+    mutation: {
+      append:
+        'export function __evilThirdRuntime() {\n  const cp = spawn("python", ["-c", "pass"]);\n  void cp;\n}\n',
+    },
+  },
+  {
+    // INV-71 (b)：loadConfig 丢 file→env 合并（config.json 静默失效）→ 红。
+    inv: "INV-71",
+    desc: "loadConfig 丢 {...fileEnv,...envSource} 合并（配置文件机制空心化）",
+    file: "config/config.ts",
+    mutation: {
+      replace: ["{ ...fileEnv, ...envSource }", "{ ...envSource }"],
+    },
+  },
 ];
 
 // ============================================================
@@ -216,5 +260,20 @@ if (bad.length > 0) {
   console.error("红线纪律：pin 必须在已知违规下红过一次；仍绿的 pin 不可证伪，应重写。");
   process.exit(1);
 }
+
+// ---- 4. 样本覆盖率报告（v1.12 round2 T2-14；v1.13 round3 T3-7 补外部契约三条）----
+// 非门禁输出：不设阈值不 fail（守单人可持续——未验证 pin 一次性补样是过度设计）；
+// 覆盖数只增不减由 code review 把关。T3-7 后外部契约类（INV-76/68/71）已覆盖；
+// 后续按需补（无既定优先清单——出现「写不出样本的 INV」即是发现）。
+const passedIds = (baseline.stdout.match(/^PASS\s+(\S+)/gm) ?? []).map((l) =>
+  l.slice(5).trim(),
+);
+const allIds = [...passedIds, ...baseline.failedIds];
+const isCovered = (id) => VIOLATION_SAMPLES.some((s) => id.startsWith(s.inv + "-"));
+const coveredCount = allIds.filter(isCovered).length;
+console.log(
+  `\n样本覆盖 ${coveredCount}/${allIds.length}（未验证 pin ${allIds.length - coveredCount} 条；` +
+    `外部契约类 INV-76/68/71 已于 v1.13 T3-7 覆盖）`,
+);
 console.log(`\nAll ${results.length} sampled pins flipped red under violation. 工作树零污染。`);
 process.exit(exitCode);

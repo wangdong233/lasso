@@ -574,3 +574,66 @@ describe("defaultSteelSessionProvider — 契约形状（不触网）", () => {
   });
   // 不做真实 fetch 调用（会触网 + 需 Steel Docker）；契约校验留给手测清单（parse14 §5.3 smoke）
 });
+
+// ============================================================
+// T3-4（round3 v1.13）：release fetch 3s 上界（AbortSignal.timeout）
+// 证据：accept-but-silent endpoint 对裸 fetch 挂 ~301s（Node 24 同运行时实测）——
+// 停机链唯一无上界步。本测 mock 悬挂 fetch（仅响应 abort）证 3s+ε 内诚实返回。
+// ============================================================
+describe("SteelChannel — T3-4 releaseSession fetch 3s 上界", () => {
+  it("悬挂 fetch（accept-but-silent）→ AbortSignal 3s 内 reject → release 吞错清空（不无限挂）", async () => {
+    const stub = makeStubClient();
+    const { subproc } = makeMockSubproc(stub.client);
+    const ch = new SteelChannel(
+      subproc,
+      "http://localhost:3000",
+      new StealthEngine(),
+      { sessionProvider: makeMockSessionProvider() },
+    );
+    await ch.browse("https://example.com/", "navigate", {});
+    expect(ch._testGetCachedSessionId()).not.toBeNull();
+
+    // accept-but-silent：永不 resolve，只在 signal abort 时 reject（真实 fetch 同款）
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        (_input: unknown, init?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new Error("This operation was aborted")),
+            );
+          }),
+      );
+
+    const started = Date.now();
+    await expect(ch.releaseSession()).resolves.not.toThrow();
+    const elapsed = Date.now() - started;
+
+    // fetch 收到 AbortSignal（契约：release fetch 必传 signal）
+    const init = fetchSpy.mock.calls[0]?.[1] as { signal?: AbortSignal } | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    // 3s 上界生效：≥2.5s（确实等到 abort 才返回）、≤6s（3s + ε）
+    expect(elapsed).toBeGreaterThanOrEqual(2_500);
+    expect(elapsed).toBeLessThan(6_000);
+    // release 语义：失败也清空 cached state（既有行为保留）
+    expect(ch._testGetCachedSessionId()).toBeNull();
+
+    fetchSpy.mockRestore();
+  }, 10_000);
+
+  it("session 激活 fetch（defaultSteelSessionProvider）同样传 AbortSignal（源码契约）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(
+      fileURLToPath(new URL("../../src/channels/SteelChannel.ts", import.meta.url)),
+      "utf8",
+    );
+    // 两处 fetch（/v1/sessions 激活 + /v1/sessions/release 释放）均带 signal。
+    // 匹配到 `});`（调用收尾）——内层 `{})`（JSON.stringify 实参）后随逗号不误停。
+    const fetchBlocks = src.match(/await fetch\([\s\S]*?\}\);/g) ?? [];
+    expect(fetchBlocks.length).toBeGreaterThanOrEqual(2);
+    for (const block of fetchBlocks) {
+      expect(block).toContain("AbortSignal.timeout(3_000)");
+    }
+  });
+});

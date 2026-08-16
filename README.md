@@ -41,10 +41,10 @@
 |---|---|
 | 「搜一下 rust async 生态最新动态」 | 结构化搜索结果（某家临时挂掉自动换下一家，你无感） |
 | 「搜最近一周 Claude Code 的更新」（v1.11） | 按 `freshness=week` 过滤的时效结果——不用往查询词里手写日期 |
-| 「抓一下 github.com 首页文字」 | 干净正文（自动剥掉导航 / 广告 / 冗余，省 30–70% 字数） |
+| 「抓一下 github.com 首页文字」 | 干净正文（自动剥掉导航 / 广告 / 冗余，省 30–70% 字数；28 个高频站点走专用抽取器、表格不丢结构——v1.12） |
 | 「打开我已登录的 Jira 看看待办」 | 登录态页面快照（复用你本机 Chrome，2FA 你自己解） |
 | 「这个链接打不开了，找找存档」 | 互联网档案馆最近一份快照 |
-| 「把 Finder 当前窗口的文件列出来」 | 桌面上的窗口和控件列表（语义树，非截图） |
+| 「把 Finder 当前窗口的文件列出来」 | 桌面上的窗口和控件列表（语义树，非截图；树被截断会明说 `truncated:true`——v1.12） |
 | 「点一下那个新建文件夹按钮」「在搜索框里输入 XX」（v1.11） | 桌面动作真实执行（AXAPI 语义点击/输入 + 结果验证；canvas/Electron 自动降级坐标点击） |
 | 「把这一页截个整页长图」「存成 PDF」 | 落盘的文件路径（不会把一大坨图片数据塞进对话） |
 | 「这个页面加载了哪些第三方跟踪」 | 资源列表 + 跟踪域名计数 |
@@ -192,7 +192,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.11.0**（v1.11「全交互抓手」实施维度补齐：**桌面从「能看」变「能点」**——`desktop` 的 click/type/scroll 真正落地（AXAPI 语义点击 + 写后读回验证 + 过期引用诚实报错），并新增坐标鼠标动作（拖拽/滚轮/移动，canvas/Electron 兜底）和 `skeleton` 树剪枝（密集应用 token 大幅下降）；**驱动层升级 chrome-devtools-mcp 0.3.0 → 1.7.0**（11 个月 57 版红利；启动级反检测 UA/视口；已默认关闭上游遥测）；**search 新增 `freshness` 时效过滤**（day/week/month/year 透传三引擎，查新闻/版本动向不再往查询词里手写日期）；英文查询的零 Key 兜底从百度换成 DuckDuckGo；新增 `LASSO_PROXY` 浏览器出口代理（只影响无头/云浏览器，登录态 Chrome 出口不动）；v1.10 浏览器默认静默 + 用完即关：`launch-chrome` 默认零窗口零打扰启动（macOS/Windows 适配，`--mode visible` 可回退）、恒带后台反节流与静音、server 运行期最后使用后 ~60 秒自动关闭（`LASSO_LAUNCH_IDLE_MS` 可调，5 分钟语义配 300000 保留）；v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
+**当前版本 v1.13.0**（v1.13 实施层调优 7 项（最优性审查第 3 轮）：**无头浏览器语言指纹一致**——HTTP `Accept-Language` 头现随 stealth 档案下发（此前发宿主真值，中文机器上配英文档案会露出「头 zh-CN ↔ 页面 en-US」的自相矛盾）；`navigator.languages` 同步改为档案感知；**VLM 截图带区域时的落点修复**——`screenshot_region` 场景下 VLM 推断坐标自动换算回全屏坐标（此前系统性偏移一个区域原点的距离、还报成功）；**`desktop find` 拒绝纯 ref 查询**——`where` 只认 text/role，纯 ref 查询诚实报 invalid_params（此前静默退化成全树命中，token 爆炸还装成功）；**退出更快更稳**——Steel 会话释放加 3 秒上界（自托管 Steel 停摆时 CC 退出不再最长卡 5 分钟）；VLM 档遇 macOS 输入合成权限缺失时明确报「需要授权」而非含糊失败；v1.12 实施层调优 14 项（最优性审查第 2 轮）：**markdown 抽取双激活**——defuddle 站点专用抽取器（HN/Reddit/GitHub/Wikipedia/Substack/Medium 等 28 站）+ 表格/数学结构保真转换（GFM 表格不再丢结构；相对链接自动绝对化；输出可能含 Obsidian 方言如 `==高亮==`、`[^N]` 脚注）；**无头浏览器默认指纹与宿主系统对齐**——macOS 上默认 macOS Chrome 指纹（消除「UA 说 Windows、client hints 招供 macOS」的矛盾，doctor 会提示与已装 Chrome 的版本偏差）；**桌面链尾诚实化**——VLM 截图推断不再谎报成功（能执行则真执行、不能则诚实 unknown）、`wait/expect` 需连续两次命中才算（加载闪现元素不再假成功）、`snapshot` 截断时顶层 `truncated:true`、`find` 命中节点附可执行动作清单；**Electron 输入框修复**——吞 AXSetValue 的控件（Slack/VSCode 等）type 自动降级为「聚焦 + 键盘合成」（ASCII）；**拖拽变可用**——按下 200ms + 12 点插值轨迹 + 沉淀 100ms（滑条/拖拽排序从大概率失败变可用）；**freshness 全链一致**——machine_mcp 与 DuckDuckGo 兜底不再静默丢弃时效参数；CC 异常退出时 Lasso 进程即时收尾（此前最长悬挂 1 小时）；v1.11「全交互抓手」实施维度补齐：**桌面从「能看」变「能点」**——`desktop` 的 click/type/scroll 真正落地（AXAPI 语义点击 + 写后读回验证 + 过期引用诚实报错），并新增坐标鼠标动作（拖拽/滚轮/移动，canvas/Electron 兜底）和 `skeleton` 树剪枝（密集应用 token 大幅下降）；**驱动层升级 chrome-devtools-mcp 0.3.0 → 1.7.0**（11 个月 57 版红利；启动级反检测 UA/视口；已默认关闭上游遥测）；**search 新增 `freshness` 时效过滤**（day/week/month/year 透传全部引擎，查新闻/版本动向不再往查询词里手写日期）；英文查询的零 Key 兜底从百度换成 DuckDuckGo；新增 `LASSO_PROXY` 浏览器出口代理（只影响无头/云浏览器，登录态 Chrome 出口不动）；v1.10 浏览器默认静默 + 用完即关：`launch-chrome` 默认零窗口零打扰启动（macOS/Windows 适配，`--mode visible` 可回退）、恒带后台反节流与静音、server 运行期最后使用后 ~60 秒自动关闭（`LASSO_LAUNCH_IDLE_MS` 可调，5 分钟语义配 300000 保留）；v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
 
 **前提**：Node.js ≥ 20；Claude Code（或任何支持 MCP 的客户端）。
 

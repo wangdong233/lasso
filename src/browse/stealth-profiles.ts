@@ -46,9 +46,12 @@ import { UA_CLIENT_HINTS_SCRIPT } from "./stealth-evasions/ua-client-hints.js";
 /**
  * 单条 stealth profile（parse5 §3.3.2 StealthProfile 接口；v1.5 加 header 集 parse13 §3.2）。
  *  - userAgent : navigator.userAgent override（也作 chrome-devtools-mcp --user-agent flag）
- *  - viewport  : window outer size（chrome-devtools-mcp --window-size flag）
- *  - timezone  : Intl.DateTimeFormat().resolvedOptions().timeZone override
- *  - language  : navigator.language / Accept-Language header
+ *  - viewport  : window outer size（chrome-devtools-mcp --viewport= flag）
+ *  - timezone  : 档案字段，无行为消费（上游 1.7.0 CLI 无 timezone flag、Chrome 无此
+ *                开关、JS 侧不 override Intl）——页面时区跟随宿主，与宿主 IP 自洽
+ *                （T3-5 round3 注释归真；此前误标「override」）
+ *  - language  : navigator.language / Accept-Language header（JS 层 languages 数组
+ *                与 HTTP 头 --accept-lang 均由它派生——T3-1 同源同值）
  *  - platform  : navigator.platform（Win32 / MacIntel / Linux x86_64）
  *
  * v1.5 新增 header 集（parse13 §3.2 方案 A 手工升级；从 Apify header-generator
@@ -57,6 +60,9 @@ import { UA_CLIENT_HINTS_SCRIPT } from "./stealth-evasions/ua-client-hints.js";
  *      注：HTTP 网络层 sec-ch-ua 注入依赖 chrome-devtools-mcp 暴露 setExtraHTTPHeaders
  *      （parse13 §4.5 spike）；v1.5 MVP 暂只走 JS 侧 navigator.userAgentData（ua-client-hints.ts）
  *  - accept / acceptEncoding / acceptLanguage  : Accept-* header
+ *      （T3-1 v1.13：acceptLanguage 经 `--chromeArg=--accept-lang=` 成为活数据——
+ *        HTTP Accept-Language 头与 JS 层 navigator.languages 同源同值；accept /
+ *        acceptEncoding 仍为档案数据，待上游暴露 header 注入机制）
  *  - secFetchSite / secFetchMode / secFetchUser / secFetchDest : Sec-Fetch-* header（navigate 首请求）
  *  - upgradeInsecureRequests : Upgrade-Insecure-Requests header
  *
@@ -88,8 +94,11 @@ export interface StealthProfile {
 /**
  * 预定义 stealth 配置表（INV-30：不从 config/env 读）。
  *
- * 选择这 3 条覆盖最常见反爬指纹组合：
+ * 覆盖 4 条 profile（v1.12 round2 T2-1 加 mac_chrome）：
  *  - windows_chrome_120 : 最大用户群（Chrome on Windows），低怀疑度
+ *  - mac_chrome         : Chrome on macOS（v1.12 T2-1——darwin 宿主默认；UA 平台
+ *                         token 与 sec-ch-ua-platform 同为 macOS，消除「UA 称
+ *                         Windows、client hints 招供 macOS」的 OS 级 shape 矛盾）
  *  - mac_safari_17      : macOS Safari（与开发机环境一致，便于 dev/test）
  *  - linux_firefox_121  : Linux Firefox（少数站点要求 non-Chrome UA 才放行）
  *
@@ -98,10 +107,11 @@ export interface StealthProfile {
  * 但 UA **值**升 Chrome 130 / Safari 17.5 / Firefox 130（profile key ≠ UA 版本号，
  * key 是稳定引用句柄）。加新 profile = 加这里一行（≤2 处改动守 02 §4 简单性）。
  *
- * header 集（parse13 §3.2 方案 A）：windows_chrome 发 sec-ch-ua（Chrome 130 brands）；
- * mac_safari / linux_firefox secChUa="" 表浏览器原生不发 client hints（Safari 17 / Firefox
- * 130 均不支持 sec-ch-ua）。UA 版本 ↔ secChUa 版本 ↔ userAgentData.brands 版本三方一致
- * （windows_chrome profile：均 130）—— parse13 §8.2 producer 契约核心。
+ * header 集（parse13 §3.2 方案 A）：windows_chrome/mac_chrome 发 sec-ch-ua（brands 与
+ * UA 版本一致）；mac_safari / linux_firefox secChUa="" 表浏览器原生不发 client hints
+ * （Safari 17 / Firefox 130 均不支持 sec-ch-ua）。UA 版本 ↔ secChUa 版本 ↔
+ * userAgentData.brands 版本三方一致（chrome profile：均 151）—— parse13 §8.2
+ * producer 契约核心。
  */
 export const STEALTH_PROFILES = {
   windows_chrome_120: {
@@ -118,6 +128,36 @@ export const STEALTH_PROFILES = {
     secChUa: '"Google Chrome";v="151", "Not_A Brand";v="99", "Chromium";v="151"',
     secChUaMobile: "?0",
     secChUaPlatform: '"Windows"',
+    accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    acceptEncoding: "gzip, deflate, br, zstd",
+    acceptLanguage: "en-US,en;q=0.9",
+    secFetchSite: "none",
+    secFetchMode: "navigate",
+    secFetchUser: "?1",
+    secFetchDest: "document",
+    upgradeInsecureRequests: "1",
+  },
+  mac_chrome: {
+    // v1.12（round2 T2-1）：Chrome on macOS。动机（round2-browser E1 本机 L3 实测）：
+    // --user-agent 只改 UA 头，低熵 client hints（sec-ch-ua-platform）发宿主真值——
+    // darwin 宿主配 windows profile 会产生「UA 称 Windows NT 10.0、hints 招供
+    // "macOS"」的 OS 级矛盾，命中 shape-coherence 检测模式。chrome-devtools-mcp
+    // 1.7.0 不暴露 setExtraHTTPHeaders（header 侧不可修）→ 唯一现架构修法 =
+    // profile 平台与宿主一致（JS 层 evasion 从 UA 推断平台自动跟随）。
+    // 三方一致：UA Chrome/151 ↔ secChUa brands 151 ↔ secChUaPlatform "macOS" ↔
+    // platform "MacIntel"（ghost brand 151%4=3 → "Not_A Brand"，同 windows 规则）。
+    // 已知残余（round2-verdict 记档）：版本 skew（profile 151 vs 宿主 major）由
+    // doctor stealth_profile_self_check 的 skew hint 观测（T2-1 rider）。
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    viewport: { width: 1680, height: 1050 },
+    timezone: "America/New_York",
+    language: "en-US",
+    platform: "MacIntel",
+    secChUa: '"Google Chrome";v="151", "Not_A Brand";v="99", "Chromium";v="151"',
+    secChUaMobile: "?0",
+    secChUaPlatform: '"macOS"',
     accept:
       "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
     acceptEncoding: "gzip, deflate, br, zstd",
@@ -201,7 +241,10 @@ export const STEALTH_PROFILE_NAMES = Object.keys(
  * v1.5 16 路覆盖（parse13 §3.1 表逐条；port from puppeteer-extra-plugin-stealth@2.11.2 MIT）：
  *  CORE 3 路（v1.4 保留；chrome.runtime 基础版移除由增强版文件替代）：
  *   1. navigator.webdriver → undefined（最关键，puppeteer 默认 true 是头号破绽）
- *   2. navigator.languages → ['en-US', 'en']（headless Chrome 默认空数组是破绽）
+ *   2. navigator.languages → 非空（headless Chrome 默认空数组是破绽）。T3-1
+ *       （round3 v1.13）：值从硬编码 ["en-US","en"] 改 profile 感知
+ *       [language, 主子标签]，注入点迁 buildUserAgentOverrideScript（路 16）；
+ *       16 路计数不变，CORE 载荷内留注释指路
  *   3. navigator.permissions.query → Notification 不被拒（headless 默认 denied）
  *  vendored 12 路（parse13 §3.1 新增；每路一个 stealth-evasions/*.ts 文件，MIT 头）：
  *   4.  chrome.runtime（增强版，sendMessage/connect mock + 枚举 + 事件桩；替代极简 window.chrome）
@@ -216,14 +259,17 @@ export const STEALTH_PROFILE_NAMES = Object.keys(
  *  13.  iframe.contentWindow（createElement proxy；修 HEADCHR_IFRAME 检测）
  *  14.  window.outerdimensions（outerWidth=innerWidth / outerHeight=innerHeight+85）
  *  15.  UA client hints（navigator.userAgentData；brands 版本与 UA 一致；Safari/Firefox 跳过）
- *  16.  user-agent-override（navigator.userAgent / platform / language 改写；profile-specific，
- *       由 StealthEngine.buildUserAgentOverrideScript 单独注入，本 SCRIPT 不含 — 走第 2 次 evaluate）
+ *  16.  user-agent-override（navigator.userAgent / platform / language / languages
+ *       改写；profile-specific，由 StealthEngine.buildUserAgentOverrideScript 单独
+ *       注入，本 SCRIPT 不含 — 走第 2 次 evaluate；T3-1 起 languages 也在此路）
  *
- * userAgent / viewport 在 HeadlessChannel 构造期经 chrome-devtools-mcp 1.7.0
- * `--chromeArg=--user-agent=` / `--viewport=` 启动 flag 控制（v1.11 round1 T2 落地，
- * 消除网络层 HeadlessChrome UA 头）；timezone 无启动 flag，由 JS 侧（本脚本 +
- * StealthEngine.buildUserAgentOverrideScript）与页面 Intl 上下文承担。本脚本补齐
- * JS 侧 navigator 属性（16 路 evasion，launch flag 覆盖不到的面）。
+ * userAgent / viewport / Accept-Language 在 HeadlessChannel 构造期经
+ * chrome-devtools-mcp 1.7.0 `--chromeArg=--user-agent=` / `--viewport=` /
+ * `--chromeArg=--accept-lang=` 启动 flag 控制（UA/viewport = v1.11 round1 T2；
+ * accept-lang = v1.13 round3 T3-1，HTTP 头与 JS 层 languages 同源同值）；
+ * timezone 无启动 flag（上游 1.7.0 CLI 32 项无此选项，Chrome 亦无此开关），
+ * 页面 Intl 跟随宿主 —— 与宿主 IP 自洽的诚实形态。本脚本补齐 JS 侧
+ * navigator 属性（16 路 evasion，launch flag 覆盖不到的面）。
  *
  * license：vendored evasion 文件头均带 `// Vendored from puppeteer-extra-plugin-stealth@2.11.2 (MIT)`。
  */
@@ -235,13 +281,13 @@ const CORE_STEALTH_SCRIPT = `(function(){
       configurable: true,
     });
   } catch (e) {}
-  try {
-    // 2. navigator.languages → 非空（headless 默认 [] 是破绽）
-    Object.defineProperty(navigator, "languages", {
-      get: function() { return ["en-US", "en"]; },
-      configurable: true,
-    });
-  } catch (e) {}
+  // 2. navigator.languages → 非空（headless 默认 [] 是破绽）。
+  //    T3-1（round3 v1.13）：硬编码 ["en-US","en"] 已迁 StealthEngine
+  //    .buildUserAgentOverrideScript —— profile 感知（[language, 主子标签]），
+  //    与 navigator.language / HTTP Accept-Language（--accept-lang flag）同源同值
+  //    （真实浏览器两值同源永不相异；旧形态宿主 zh-CN 时全 profile 中招）。
+  //    机制等价迁移：UA override 脚本先于本 SCRIPT 执行，16 路计数不变，
+  //    此处留注释指路（stealth_injected 日志 roads:16）。
   try {
     // 3. navigator.permissions.query(Notification) 不返 denied（headless 默认 denied）
     var origQuery = navigator.permissions && navigator.permissions.query;

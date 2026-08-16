@@ -148,11 +148,16 @@ describe("T1 — chrome-devtools-mcp 1.7.0 迁移（版本锁 + 全 spec 关遥�
 // T2：headless launch 级 UA / viewport
 // ============================================================
 describe("T2 — headless 通道 launch 级 UA/viewport（经 1.7.0 chromeArg 透传）", () => {
-  it("默认 profile（windows_chrome_120）：spec 含 --chromeArg=--user-agent=<UA> 且 UA 值来自 STEALTH_PROFILES", () => {
+  it("默认 profile（v1.12 宿主对齐：darwin→mac_chrome / 其他→windows_chrome_120）：spec 含 --chromeArg=--user-agent=<UA> 且 UA 值来自 STEALTH_PROFILES", () => {
     const cap = new LockedInSpecCapture();
     new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
     const spec = cap.get("headless");
-    const expected = `--chromeArg=--user-agent=${STEALTH_PROFILES.windows_chrome_120.userAgent}`;
+    // v1.12（round2 T2-1）：默认 profile 平台感知——按当前宿主取期望值
+    const expectedProfile =
+      process.platform === "darwin"
+        ? STEALTH_PROFILES.mac_chrome
+        : STEALTH_PROFILES.windows_chrome_120;
+    const expected = `--chromeArg=--user-agent=${expectedProfile.userAgent}`;
     expect(spec.args).toContain(expected);
   });
 
@@ -167,11 +172,14 @@ describe("T2 — headless 通道 launch 级 UA/viewport（经 1.7.0 chromeArg �
     expect(uaArg!.toLowerCase()).not.toContain("headless");
   });
 
-  it("viewport 与 profile.viewport 同源（1920x1080）", () => {
+  it("viewport 与默认 profile.viewport 同源（v1.12 平台感知默认）", () => {
     const cap = new LockedInSpecCapture();
     new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
     const spec = cap.get("headless");
-    const p = STEALTH_PROFILES.windows_chrome_120.viewport;
+    const p =
+      process.platform === "darwin"
+        ? STEALTH_PROFILES.mac_chrome.viewport
+        : STEALTH_PROFILES.windows_chrome_120.viewport;
     expect(spec.args).toContain(`--viewport=${p.width}x${p.height}`);
   });
 

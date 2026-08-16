@@ -60,6 +60,12 @@ export interface AxNode {
    * 默认不出现 = wire byte-identical v1.10）。
    */
   childrenCount?: number;
+  /**
+   * v1.12（round2 T2-11）：仅树根出现——max_depth 边界存在真实子节点时 Rust 端
+   * 置 true（截断与真叶子可区分；agent-desktop v0.7.0 同款认定「截断必须可见」）。
+   * 浅树不出现 = byte-identical v1.11。
+   */
+  truncated?: boolean;
 }
 
 // ============================================================
@@ -109,6 +115,12 @@ export interface OutlineSnapshot {
   stateId: string;
   root: OutlineNode;
   createdAt: number;
+  /**
+   * v1.12（round2 T2-11）：max_depth 截断诚实信号——树被截断（边界节点有真实
+   * 子节点）时 true，提示 LLM 该 skeleton / 加大 max_depth / 换更近 root。
+   * 仅截断时出现（浅树 byte-identical）。
+   */
+  truncated?: boolean;
 }
 
 // ============================================================
@@ -168,10 +180,14 @@ export type UiAction =
 // ============================================================
 // WhereClause（find action 的查询条件）
 // ============================================================
+/**
+ * T3-3（round3 v1.13）：ref 字段已删（与 tools/desktop.ts zod 同步）。
+ * ax_find 只消费 text/role；ref 是 act/expect domain。纯 ref 的 where 在
+ * Rust 端被 invalid_params 拒（兜底，防绕过 zod 直发 wire 的客户端）。
+ */
 export interface WhereClause {
   text?: string;
   role?: string;
-  ref?: string;
 }
 
 // ============================================================

@@ -222,6 +222,84 @@ describe("extractMarkdown — 边界", () => {
 });
 
 // ============================================================
+// §5.6（v1.12 round2 T2-3/T2-4）：defuddle URL 透传 + separateMarkdown 转换接管
+// ============================================================
+// HN 列表页 fixture：tr.athing × 2 → defuddle hackernews extractor canExtract()
+const HN_LISTING_HTML =
+  `<html><body><table>` +
+  `<tr class="athing"><td class="title"><span class="rank">1.</span></td>` +
+  `<td class="title"><span class="titleline"><a href="/item?id=1">Story One</a></span></td></tr>` +
+  `<tr><td></td><td class="subtext"><span class="score">100 points</span></td></tr>` +
+  `<tr class="athing"><td class="title"><span class="rank">2.</span></td>` +
+  `<td class="title"><span class="titleline"><a href="/item?id=2">Story Two</a></span></td></tr>` +
+  `<tr><td></td><td class="subtext"><span class="score">50 points</span></td></tr>` +
+  `</table></body></html>`;
+
+const TABLE_HTML =
+  `<html><body><article><h1>Data</h1>` +
+  `<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>` +
+  `</article></body></html>`;
+
+describe("extractMarkdown — T2-3 URL 透传（站点 extractor + 链接绝对化）", () => {
+  it("传 url=HN → 站点 extractor 路径激活 + 相对链接绝对化（/item?id=1 → https://…）", async () => {
+    const r = await extractMarkdown(HN_LISTING_HTML, {
+      mode: "markdown",
+      url: "https://news.ycombinator.com/",
+    });
+    expect(r.served_by).toBe("defuddle+turndown");
+    // extractor 路径可区分信号 1：相对链接被绝对化（LLM 可直接 fetch）
+    expect(r.markdown).toContain("https://news.ycombinator.com/item?id=1");
+    expect(r.markdown).toContain("https://news.ycombinator.com/item?id=2");
+    // extractor 路径可区分信号 2：HN extractor 产出的列表编号结构
+    expect(r.markdown).toContain("Story One");
+    expect(r.markdown).toContain("Story Two");
+  });
+
+  it("不传 url → v1.11 行为保持：零 extractor 激活、相对链接不绝对化", async () => {
+    const r = await extractMarkdown(HN_LISTING_HTML, { mode: "markdown" });
+    // 相对链接保持相对（无 https://news.ycombinator.com 前缀注入）
+    expect(r.markdown).not.toContain("https://news.ycombinator.com/item?id=1");
+    expect(r.markdown).toContain("Story One"); // 正文仍抽出
+  });
+});
+
+describe("extractMarkdown — T2-4 separateMarkdown 转换接管（表格结构保真）", () => {
+  it("表格 fixture → GFM separator 行存在（| --- |），不再丢结构", async () => {
+    const r = await extractMarkdown(TABLE_HTML, {
+      mode: "markdown",
+      url: "https://example.com/table",
+    });
+    expect(r.markdown).toContain("| a | b |");
+    expect(r.markdown).toContain("| --- |");
+    expect(r.markdown).toContain("| 1 | 2 |");
+    expect(r.served_by).toBe("defuddle+turndown");
+  });
+
+  it("defuddle 失败降级档保留：turndown-only 路径仍可走通", async () => {
+    // 极简非正文 HTML：defuddle 可能仍成功；此处验证降级语义不回归——
+    // served_by 二值集合不变（降级标记机制原样保留）
+    const r = await extractMarkdown("<html><body><p>x</p></body></html>", {
+      mode: "markdown",
+      url: "https://example.com/",
+    });
+    expect(["defuddle+turndown", "turndown-only"]).toContain(r.served_by);
+    expect(r.markdown.length).toBeGreaterThan(0);
+  });
+
+  it("markdown_cited 档在 T2-4 转换产物上角标仍生效（管线顺序不变）", async () => {
+    const r = await extractMarkdown(
+      `<html><body><article><h1>T</h1>` +
+        `<p>see <a href="https://example.com/a">alpha</a> and <a href="https://example.com/b">beta</a></p>` +
+        `</article></body></html>`,
+      { mode: "markdown_cited", url: "https://example.com/cited" },
+    );
+    expect(r.markdown).toContain("References");
+    expect(r.citations).toBeTruthy();
+    expect(r.citations!.length).toBe(2);
+  });
+});
+
+// ============================================================
 // smoke-test helper（parse12 §5.5 + doctor #33/#34）
 // ============================================================
 describe("smokeTestMarkdownEngine — 引擎可用性", () => {

@@ -16,7 +16,10 @@
 import type { DoctorOptions } from "./doctor.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 import { SubprocessManager } from "../subprocess/SubprocessManager.js";
-import { HeadlessChannel } from "../channels/HeadlessChannel.js";
+import {
+  HeadlessChannel,
+  defaultHeadlessProfileForHost,
+} from "../channels/HeadlessChannel.js";
 import { StealthEngine } from "../browse/StealthEngine.js";
 import { logger } from "../util/logger.js";
 
@@ -38,7 +41,8 @@ function createDefaultHeadlessHandle(): HeadlessClientHandle {
   // HeadlessChannel 构造器副作用：registerSpec("headless", {npx chrome-devtools-mcp
   // --headless --isolated --disable-blink-features=AutomationControlled})——与运行时
   // browse_headless 通道同一 spawn 形状（v1.5 parse13 §4.3）。
-  new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
+  // v1.12（round2 T2-1）：探测宿主默认 profile（darwin→mac_chrome）——与运行时装配同一选择
+  new HeadlessChannel(subproc, new StealthEngine(), defaultHeadlessProfileForHost());
   return {
     ensureRunning: () => subproc.ensureRunning("headless"),
     shutdown: () => subproc.shutdown(),

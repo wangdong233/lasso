@@ -432,7 +432,8 @@ export function registerSearchTool(
             );
           }
           if (channelName === "browse_headless") {
-            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth);
+            // v1.12（round2 T2-5）：freshness 透传（ddg df=）
+            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth, freshness);
           }
           throw new Error(`unknown_channel:${channelName}`);
         };
@@ -469,7 +470,8 @@ export function registerSearchTool(
             });
           }
           if (channelName === "browse_headless") {
-            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth);
+            // v1.12（round2 T2-5）：freshness 透传（ddg df=）
+            return serpScrapeFallback(query, limit, browseHeadlessExec, serpHealth, freshness);
           }
           throw new Error(`unknown_channel:${channelName}`);
         };
@@ -621,6 +623,8 @@ export async function runFallbackChainEngine(
         engine: "machine_mcp",
         region,
         no_cache: noCache,
+        // v1.12（round2 T2-5）：freshness 透传（首位引擎此前静默忽略显式参数）
+        ...(freshness ? { freshness } : {}),
       });
     }
     if (channelName === "search.zhipu") {
@@ -653,7 +657,8 @@ export async function runFallbackChainEngine(
     if (channelName === "browse_headless") {
       // SERP scrape fallback（与 v0.8 同函数；serpHealth hook 省略 —— fallback_chain
       // 是 caller-tier 显式 opt-in 路径，不再叠加 SerpHealthMonitor 计数；守简单性）。
-      return serpScrapeFallback(query, limit, browseHeadlessExec, null);
+      // v1.12（round2 T2-5）：freshness 透传（ddg df=）
+      return serpScrapeFallback(query, limit, browseHeadlessExec, null, freshness);
     }
     throw new Error(`unknown_fallback_chain_channel:${channelName}`);
   };

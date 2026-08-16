@@ -142,8 +142,14 @@ describe("STEALTH_INJECTION_SCRIPT — navigator.webdriver 抹除（parse5 §3.3
     );
   });
 
-  it("含 navigator.languages 注入（headless 默认空数组是破绽）", () => {
-    expect(STEALTH_INJECTION_SCRIPT).toContain('"languages"');
+  it("navigator.languages 注入已迁 buildUserAgentOverrideScript（T3-1 机制等价迁移；CORE 原位留注释指路）", () => {
+    // T3-1（round3 v1.13）：CORE #2 硬编码 ["en-US","en"] 移入 UA override 脚本
+    // （profile 感知）。CORE 载荷不再 defineProperty languages，但保留指路注释
+    // （round3-review03：注释仅供读者导航——doctor #25 已改为对
+    // buildUserAgentOverrideScript 真源直验，不再依赖注释字样过检）。
+    expect(STEALTH_INJECTION_SCRIPT).not.toContain('"languages"');
+    expect(STEALTH_INJECTION_SCRIPT).toContain("navigator.languages");
+    expect(STEALTH_INJECTION_SCRIPT).toContain("buildUserAgentOverrideScript");
   });
 
   it("含 window.chrome（Chrome impersonation）", () => {
@@ -341,5 +347,84 @@ describe("INV-30 anti-gaming — stealth-profiles.ts 顶级 const 红线", () =>
 
   it("CLOUDFLARE_DETECTION_SCRIPT 是 export const", () => {
     expect(SRC).toMatch(/export\s+const\s+CLOUDFLARE_DETECTION_SCRIPT\b/);
+  });
+});
+
+// ============================================================
+// v1.12 round2 T2-1：mac_chrome 宿主对齐 profile + 装配分支
+// ============================================================
+describe("STEALTH_PROFILES v1.12 — mac_chrome（round2 T2-1 宿主对齐）", () => {
+  it("mac_chrome 存在于 STEALTH_PROFILES 与 STEALTH_PROFILE_NAMES（4 条）", () => {
+    expect(STEALTH_PROFILES.mac_chrome).toBeTruthy();
+    expect(STEALTH_PROFILE_NAMES).toContain("mac_chrome");
+    expect(STEALTH_PROFILE_NAMES.length).toBe(4);
+  });
+
+  it("mac_chrome UA↔secChUa↔secChUaPlatform↔platform 四方 OS 一致（全部 macOS）", () => {
+    const p = STEALTH_PROFILES.mac_chrome;
+    // UA 平台 token 是 Macintosh（非 Windows——E1 的 OS 级矛盾源头）
+    expect(p.userAgent).toContain("Macintosh; Intel Mac OS X 10_15_7");
+    expect(p.userAgent).not.toContain("Windows NT");
+    // client hints 平台 = "macOS"（与宿主真值一致——--user-agent 不影响低熵 hints）
+    expect(p.secChUaPlatform).toBe('"macOS"');
+    expect(p.platform).toBe("MacIntel");
+    expect(p.secChUaMobile).toBe("?0");
+  });
+
+  it("mac_chrome UA↔secChUa brands 三方一致 + ghost brand 按 major%4 派生", () => {
+    const p = STEALTH_PROFILES.mac_chrome;
+    const uaMajor = p.userAgent.match(/Chrome\/(\d+)/)![1];
+    expect(p.secChUa).toContain(`"Google Chrome";v="${uaMajor}"`);
+    expect(p.secChUa).toContain(`"Chromium";v="${uaMajor}"`);
+    const major = parseInt(uaMajor, 10);
+    const ghostBrands = ["Not.A/Brand", "Not)A;Brand", "Not?A_Brand", "Not_A Brand"];
+    expect(p.secChUa).toContain(`"${ghostBrands[major % 4]}";v="99"`);
+  });
+
+  it("mac_chrome 无 HeadlessChrome token（sannysoft 级红线）", () => {
+    for (const p of Object.values(STEALTH_PROFILES)) {
+      expect(p.userAgent).not.toContain("HeadlessChrome");
+    }
+  });
+});
+
+describe("defaultHeadlessProfileForHost — 装配分支（round2 T2-1）", () => {
+  const MODULE = "../../src/channels/HeadlessChannel.js";
+
+  it("darwin → mac_chrome", async () => {
+    const { defaultHeadlessProfileForHost } = await import(MODULE);
+    const desc = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    try {
+      expect(defaultHeadlessProfileForHost()).toBe("mac_chrome");
+    } finally {
+      if (desc) Object.defineProperty(process, "platform", desc);
+    }
+  });
+
+  it("win32 / linux → windows_chrome_120（Win 自洽；Linux 已知残余记档）", async () => {
+    const { defaultHeadlessProfileForHost } = await import(MODULE);
+    const desc = Object.getOwnPropertyDescriptor(process, "platform");
+    for (const plat of ["win32", "linux"]) {
+      Object.defineProperty(process, "platform", { value: plat });
+      try {
+        expect(defaultHeadlessProfileForHost()).toBe("windows_chrome_120");
+      } finally {
+        if (desc) Object.defineProperty(process, "platform", desc);
+      }
+    }
+  });
+
+  it("返回值必须是 STEALTH_PROFILES 在册 profile（INV-30 面：不产生表外值）", async () => {
+    const { defaultHeadlessProfileForHost } = await import(MODULE);
+    const name = defaultHeadlessProfileForHost() as StealthProfileName;
+    expect(STEALTH_PROFILE_NAMES).toContain(name);
+  });
+
+  it("index.ts 运行时装配走 defaultHeadlessProfileForHost（非硬编码 windows）", () => {
+    const src = fs.readFileSync(path.resolve("src/index.ts"), "utf8");
+    // 装配行不再硬编码字符串 profile（工具 schema 的用户可选默认不在本断言范围）
+    expect(src).toMatch(/defaultHeadlessProfileForHost\(\)/);
+    expect(src).not.toMatch(/new HeadlessChannel\(\s*[^)]*"windows_chrome_120"/);
   });
 });

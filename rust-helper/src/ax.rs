@@ -136,30 +136,66 @@ mod platform {
         };
         let mut visited = std::collections::HashSet::new();
         let mut live = Vec::new();
-        let tree = walk(&root, 0, max_depth, skeleton, &mut visited, &mut live);
+        // T2-11（round2）：max_depth 截断诚实信号（agent-desktop v0.7.0 同款
+        // breaking change 认定「截断必须可见」——边界静默空 children 与真叶子
+        // 不可区分，LLM 无法判断该 skeleton/加深/换 root）
+        let mut truncated = false;
+        let tree = walk(&root, 0, max_depth, skeleton, &mut visited, &mut live, &mut truncated);
         match serde_json::to_value(&tree) {
-            Ok(v) => Response::ok(id, v),
+            Ok(v) => Response::ok(id, apply_truncated_flag(v, truncated)),
             Err(e) => Response::err(id, "ax_unavailable", format!("serialize: {e}")),
         }
+    }
+
+    /// T2-11（round2）：truncated=true 时在响应根对象插顶层 `truncated:true`
+    /// （**仅截断时出现**——浅树 byte-identical；skip 形态同 children_count 模式）。
+    /// 纯函数（单测锚点）。
+    fn apply_truncated_flag(
+        tree_value: serde_json::Value,
+        truncated: bool,
+    ) -> serde_json::Value {
+        if !truncated {
+            return tree_value;
+        }
+        let mut v = tree_value;
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("truncated".into(), serde_json::Value::Bool(true));
+        }
+        v
     }
 
     /// `ax_find`：基于 snapshot 后的纯字符串/role 查询（parse4 §3.3 find 专用）。
     /// v0.3.5 简化：每次 find 都重 walk（state_id 仅做协议占位，未真缓存）；
     /// TS 端 OutlineMapper 可后续做 snapshot cache（v0.4+ 优化）。
+    ///
+    /// T3-3（round3 v1.13）：where 存在但 text/role 均空 → invalid_params。
+    /// 旧形态纯 ref 查询（ref 是 act/expect domain，find 不消费）两谓词 None
+    /// → 无过滤全节点命中 + ok:true（语义错位 + token 爆炸）。TS 端 zod 已删
+    /// where.ref；本兜底防其它客户端绕过 zod 直发 wire。
     pub fn find(id: &str, params: &serde_json::Value) -> Response {
         let app = params.get("app").and_then(|v| v.as_str());
         let max_depth = params
             .get("max_depth")
             .and_then(|v| v.as_u64())
             .unwrap_or(8) as usize;
-        let want_text = params
-            .get("where")
+        // 谓词取非空串（空串 contains 恒真 = 无过滤，同 None 处理）
+        let where_obj = params.get("where").filter(|w| w.is_object());
+        let want_text = where_obj
             .and_then(|w| w.get("text"))
-            .and_then(|v| v.as_str());
-        let want_role = params
-            .get("where")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty());
+        let want_role = where_obj
             .and_then(|w| w.get("role"))
-            .and_then(|v| v.as_str());
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty());
+        if where_obj.is_some() && want_text.is_none() && want_role.is_none() {
+            return Response::err(
+                id,
+                "invalid_params",
+                "ax_find requires where.text or where.role (ref is act/expect domain; \
+                 a pure-ref/empty where would match the whole tree)",
+            );
+        }
 
         let root = match resolve_root(app) {
             Ok(r) => r,
@@ -167,12 +203,26 @@ mod platform {
         };
         let mut visited = std::collections::HashSet::new();
         let mut live = Vec::new();
-        let tree = walk(&root, 0, max_depth, false, &mut visited, &mut live);
+        // T2-11：truncated 信号仅 snapshot 消费；find/act 传占位（walk 签名统一）
+        let mut _truncated = false;
+        let tree = walk(&root, 0, max_depth, false, &mut visited, &mut live, &mut _truncated);
 
         // 递归过滤
+        // T2-9（round2）：命中节点附 actions 数组（AXActionNames；live 前序对位，
+        // 零额外遍历——与 number_refs 同款 cursor 消费模式）。空数组省略
+        // （serde skip 同 children_count 模式——不命中路径 byte-identical）。
         let mut hits: Vec<serde_json::Value> = Vec::new();
         let mut ref_counter: usize = 0;
-        collect_matches(&tree, want_text, want_role, &mut hits, &mut ref_counter);
+        let mut live_cursor: usize = 0;
+        collect_matches(
+            &tree,
+            &live,
+            &mut live_cursor,
+            want_text,
+            want_role,
+            &mut hits,
+            &mut ref_counter,
+        );
 
         Response::ok(
             id,
@@ -246,7 +296,9 @@ mod platform {
         //    一致**（同一函数产出），彻底消灭 F2（两套遍历漂移 → @eN 错位）。
         let mut visited = std::collections::HashSet::new();
         let mut live: Vec<AXUIElement> = Vec::new();
-        let tree = walk(&root, 0, max_depth, false, &mut visited, &mut live);
+        // T2-11：truncated 信号仅 snapshot 消费；find/act 传占位（walk 签名统一）
+        let mut _truncated = false;
+        let tree = walk(&root, 0, max_depth, false, &mut visited, &mut live, &mut _truncated);
         let mut numbered: Vec<ResolvedElem> = Vec::new();
         let mut cursor = 0usize;
         number_refs(
@@ -464,7 +516,31 @@ mod platform {
     }
 
     /// type：AXValue settable 前置校验 → AXSetValue → 写后读回比对（secure 豁免）。
+    ///
+    /// T2-7（round2）：AX 路径不可用（AXValue not settable / AXSetValue 失败——
+    /// Electron 吞 AXSetValue 的典型症状）时**档内兜底**：AXFocus 置位 + 合成
+    /// 键盘逐字符（对标 agent-desktop type_text.rs execute_type 梯子）。
+    /// 此前错误信息自称「走档2/3」，但档2 白名单无 type、档3 normalize 无 type
+    /// ——type 降级链三环全死，属降级链完整性缺口。
     fn do_type(entry: &ResolvedElem, text: &str) -> Result<(), (String, String)> {
+        match do_type_via_axvalue(entry, text) {
+            Ok(()) => Ok(()),
+            Err((kind, msg)) if type_error_should_fallback(&kind) => {
+                // 档内兜底：focus + 合成键盘（失败保持诚实——错误 kind 走
+                // unknown 语义，DesktopChannel 仍可降档）
+                type_via_keyboard(entry, text).map_err(|(fkind, fmsg)| {
+                    (
+                        fkind,
+                        format!("{}; keyboard fallback failed: {}", msg, fmsg),
+                    )
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// AXSetValue 主路径（v1.10 既有 do_type 逻辑原样；T2-7 拆出便于兜底包裹）。
+    fn do_type_via_axvalue(entry: &ResolvedElem, text: &str) -> Result<(), (String, String)> {
         let value_attr = AXAttribute::<CFType>::new(&CFString::new("AXValue"));
         let settable = entry
             .el
@@ -473,7 +549,7 @@ mod platform {
         if !settable {
             return Err((
                 "ax_action_unsupported".into(),
-                format!("AXValue not settable for role {:?} (Electron 吞 AXSetValue 时走档2/3)", entry.raw_role),
+                format!("AXValue not settable for role {:?}", entry.raw_role),
             ));
         }
         let cf_text = CFString::new(text);
@@ -505,6 +581,175 @@ mod platform {
         Ok(())
     }
 
+    /// T2-7（round2）：type 档内兜底——AXFocus 置位 + cgevent 键盘合成逐字符。
+    ///
+    /// 梯子（agent-desktop type_text.rs 范式）：AXValue 写+验证（主路径）→ 失败 →
+    /// AXFocused=true → 50ms 让焦点生效 → cmd+a 全选（**整值替换语义**，与
+    /// AXSetValue 路径一致）→ 逐字符 keydown/keyup → 读回验证。
+    ///
+    /// 边界（诚实降级）：
+    ///  - 仅 ASCII：非 ASCII 字符无 keyCode 直映射，返 ax_type_non_ascii 保持失败
+    ///    诚实（剪贴板粘贴路线不做——污染用户剪贴板面）
+    ///  - AXFocused 不可设 → ax_focus_unsupported（链尾诚实失败，可降档）
+    ///  - 焦点置位是可见副作用（单用户场景可接受；文档明示，不引入策略框架）
+    fn type_via_keyboard(entry: &ResolvedElem, text: &str) -> Result<(), (String, String)> {
+        // 1. 仅 ASCII 守门（纯函数 ensure_ascii_typable，单测覆盖）
+        ensure_ascii_typable(text)?;
+
+        // 2. AXFocused settable 校验 → 置 true
+        let focus_attr = AXAttribute::<CFType>::new(&CFString::new("AXFocused"));
+        let focus_settable = entry
+            .el
+            .is_settable(&focus_attr)
+            .map_err(|e| ("ax_unavailable".into(), format!("is_settable(AXFocused): {e:?}")))?;
+        if !focus_settable {
+            return Err((
+                "ax_focus_unsupported".into(),
+                format!("AXFocused not settable for role {:?}", entry.raw_role),
+            ));
+        }
+        entry
+            .el
+            .set_attribute(&focus_attr, CFBoolean::true_value().into_CFType())
+            .map_err(|e| ("ax_set_failed".into(), format!("AXFocused set: {e:?}")))?;
+
+        // 3. 50ms 等焦点生效（agent-desktop 实测参数）
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // 4. 整值替换：cmd+a 全选（后续输入替换选中内容 = AXSetValue 替换语义）
+        if !text.is_empty() {
+            post_hotkey("cmd+a")?;
+        }
+
+        // 5. 逐字符合成（ASCII → keymap spec；新 source per event 同 cgevent 惯例）
+        for ch in text.chars() {
+            let spec = ascii_char_to_keymap_spec(ch).ok_or_else(|| {
+                (
+                    "ax_type_non_ascii".into(),
+                    format!("no keymap mapping for ASCII char {:?}", ch),
+                )
+            })?;
+            let mapping = crate::cgevent_keymap::parse_hotkey(&spec).ok_or_else(|| {
+                (
+                    "cgevent_unknown_key".into(),
+                    format!("keymap parse failed for {:?} -> {:?}", ch, spec),
+                )
+            })?;
+            post_mapping(&mapping)?;
+        }
+
+        // 6. 读回验证（AXValue 可读且为 string 则比对；读失败/非 string 不视为
+        //    失败——事件已物理送达，Electron 自绘控件 AXValue 更新时机不由我们控制）
+        if entry.raw_role.contains("Secure") {
+            return Ok(()); // secure 遮蔽，同主路径豁免
+        }
+        let value_attr = AXAttribute::<CFType>::new(&CFString::new("AXValue"));
+        if let Ok(read_back) = entry.el.attribute::<CFType>(&value_attr) {
+            if let Some(got) = read_back.downcast_into::<CFString>() {
+                let got = got.to_string();
+                if got != text {
+                    return Err((
+                        "ax_verify_failed".into(),
+                        format!(
+                            "keyboard fallback read-back mismatch: wrote {:?} chars, read {:?}",
+                            text.len(),
+                            got.len()
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// T2-7：post 一个 KeyMapping（keydown+keyup；source per event）。
+    fn post_mapping(
+        mapping: &crate::cgevent_keymap::KeyMapping,
+    ) -> Result<(), (String, String)> {
+        use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+            .map_err(|_| ("cgevent_source_failed".into(), "CGEventSource::new".into()))?;
+        crate::cgevent::post_key_event(source, mapping)
+            .map_err(|_| ("cgevent_construct_failed".into(), "post_key_event".into()))
+    }
+
+    /// T2-7：hotkey spec 便捷封装（cmd+a 全选用）。
+    fn post_hotkey(spec: &str) -> Result<(), (String, String)> {
+        let mapping = crate::cgevent_keymap::parse_hotkey(spec).ok_or_else(|| {
+            (
+                "cgevent_unknown_key".into(),
+                format!("keymap parse failed for {:?}", spec),
+            )
+        })?;
+        post_mapping(&mapping)
+    }
+
+    // ------------------------------------------------------------
+    // T2-7 纯逻辑 helpers（单测覆盖；真机路径归手测清单）
+    // ------------------------------------------------------------
+
+    /// do_type 主路径错误 → 是否走键盘兜底的分支判定（纯函数，单测锚点）。
+    fn type_error_should_fallback(kind: &str) -> bool {
+        // 仅「AXValue 写不进」两类兜底；verify 失败 = 值确实没写对，
+        // 键盘重打一遍语义上仍是重试而非兜底（保持失败诚实）
+        kind == "ax_action_unsupported" || kind == "ax_set_failed"
+    }
+
+    /// 键盘兜底 ASCII 守门（纯函数，单测锚点）：非 ASCII → 诚实拒绝。
+    fn ensure_ascii_typable(text: &str) -> Result<(), (String, String)> {
+        for ch in text.chars() {
+            if !ch.is_ascii() {
+                return Err((
+                    "ax_type_non_ascii".into(),
+                    format!(
+                        "keyboard fallback is ASCII-only; non-ASCII {:?} needs AXSetValue-capable control or tier-2/3",
+                        ch
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// ASCII 可打印字符 → cgevent keymap hotkey spec（US layout；纯函数，单测锚点）。
+    /// 大写/上档符号走 shift+ 组合；无映射（控制字符等）返 None → 诚实失败。
+    fn ascii_char_to_keymap_spec(ch: char) -> Option<String> {
+        match ch {
+            'a'..='z' | '0'..='9' => Some(ch.to_string()),
+            'A'..='Z' => Some(format!("shift+{}", ch.to_ascii_lowercase())),
+            ' ' => Some("space".into()),
+            '\n' => Some("return".into()),
+            '\t' => Some("tab".into()),
+            // US layout 直达标点
+            '-' | '=' | '[' | ']' | '\\' | ';' | '\'' | '`' | ',' | '.' | '/' => {
+                Some(ch.to_string())
+            }
+            // US layout 上档符号（shift+基键）
+            '!' => Some("shift+1".into()),
+            '@' => Some("shift+2".into()),
+            '#' => Some("shift+3".into()),
+            '$' => Some("shift+4".into()),
+            '%' => Some("shift+5".into()),
+            '^' => Some("shift+6".into()),
+            '&' => Some("shift+7".into()),
+            '*' => Some("shift+8".into()),
+            '(' => Some("shift+9".into()),
+            ')' => Some("shift+0".into()),
+            '_' => Some("shift+-".into()),
+            '+' => Some("shift+=".into()),
+            '{' => Some("shift+[".into()),
+            '}' => Some("shift+]".into()),
+            '|' => Some("shift+\\".into()),
+            ':' => Some("shift+;".into()),
+            '"' => Some("shift+'".into()),
+            '~' => Some("shift+`".into()),
+            '<' => Some("shift+,".into()),
+            '>' => Some("shift+.".into()),
+            '?' => Some("shift+/".into()),
+            _ => None, // 其余控制字符（NUL/ESC/DEL…）不合成——诚实失败
+        }
+    }
+
     /// scroll：AXScrollToVisible（AXAPI 无按像素滚动原语；细粒度滚轮是档3 CGEvent 域）。
     fn do_scroll(entry: &ResolvedElem) -> Result<(), (String, String)> {
         let names = action_names_of(&entry.el);
@@ -521,13 +766,22 @@ mod platform {
             .map_err(|e| ("ax_perform_failed".into(), format!("AXScrollToVisible: {e:?}")))
     }
 
+    /// T2-9（round2）：命中节点附 `actions` 数组（AXActionNames，如
+    /// ["AXPress","AXShowMenu"]）。LLM observe→act 路由有据（哪些元素可按/可设值
+    /// 直接可见）；**不进 snapshot 全树**（token 预算守护：全树每节点一次
+    /// AXActionNames FFI 既贵又胀）——只对 find 命中节点读，live 前序对位零额外
+    /// 遍历（与 number_refs 同款 cursor 消费）。空清单省略（byte-identical 默认路径）。
     fn collect_matches(
         node: &AxNode,
+        live: &[AXUIElement],
+        cursor: &mut usize,
         want_text: Option<&str>,
         want_role: Option<&str>,
         out: &mut Vec<serde_json::Value>,
         ref_counter: &mut usize,
     ) {
+        let el = live.get(*cursor).cloned();
+        *cursor += 1;
         let text_match = want_text.map_or(true, |t| {
             !node.label.is_empty() && node.label.to_lowercase().contains(&t.to_lowercase())
         });
@@ -535,15 +789,22 @@ mod platform {
         if text_match && role_match {
             let ref_id = format!("@e{}", *ref_counter);
             *ref_counter += 1;
-            out.push(serde_json::json!({
+            let mut entry = serde_json::json!({
                 "ref": ref_id,
                 "role": node.role,
                 "label": node.label,
                 "rect": node.rect,
-            }));
+            });
+            if let Some(el) = el {
+                let names = action_names_of(&el);
+                if !names.is_empty() {
+                    entry["actions"] = serde_json::json!(names);
+                }
+            }
+            out.push(entry);
         }
         for child in &node.children {
-            collect_matches(child, want_text, want_role, out, ref_counter);
+            collect_matches(child, live, cursor, want_text, want_role, out, ref_counter);
         }
     }
 
@@ -579,6 +840,9 @@ mod platform {
         skeleton: bool,
         visited: &mut std::collections::HashSet<usize>,
         live: &mut Vec<AXUIElement>,
+        // T2-11（round2）：max_depth 边界且节点有真实子节点时置 true
+        // （snapshot 响应顶层 truncated:true；仅截断时出现）。
+        truncated: &mut bool,
     ) -> AxNode {
         // 防环：指针身份已访问 → 剪枝（不再递归；返占位空节点）。
         // live 仍推入本元素（占位节点在编号序列里占一个槽——与 OutlineMapper /
@@ -629,17 +893,20 @@ mod platform {
                     // web wrapper 子代深度不 +1（wrapper 链不消耗预算）
                     let child_depth = if wrapper { depth } else { depth + 1 };
                     arr.iter()
-                        .map(|c| walk(&*c, child_depth, max_depth, skeleton, visited, live))
+                        .map(|c| walk(&*c, child_depth, max_depth, skeleton, visited, live, truncated))
                         .collect()
                 }
                 Err(_) => Vec::new(),
             }
         } else {
             // v1.11 T8 skeleton：边界节点填真实子数（子树省略但保留规模信号）
-            if skeleton {
-                if let Ok(arr) =
-                    el.attribute::<CFArray<AXUIElement>>(&AXAttribute::children())
-                {
+            // T2-11（round2）：非 skeleton 默认模式同样读一次边界子数——
+            // 有真实子节点即置 truncated（静默空 children 与真叶子从此可区分）
+            if let Ok(arr) = el.attribute::<CFArray<AXUIElement>>(&AXAttribute::children()) {
+                if !arr.is_empty() {
+                    *truncated = true;
+                }
+                if skeleton {
                     children_count = Some(arr.len() as usize);
                 }
             }
@@ -820,6 +1087,223 @@ mod platform {
                 }),
             );
             assert_ne!(r.error_kind.as_deref(), Some("invalid_params"));
+        }
+
+        // ====================================================================
+        // v1.13 round3 T3-3：ax_find 的 where 兜底（纯 ref / 空谓词 → invalid_params）
+        // 守卫在 resolve_root 之前 —— CI 无 TCC 也可测（不依赖真机 AX）。
+        // ====================================================================
+
+        #[test]
+        fn t33_find_where_ref_only_rejected() {
+            // ref 是 act/expect domain：纯 ref 查询不得静默退化为全树命中
+            let r = find(
+                "t",
+                &serde_json::json!({ "where": { "ref": "@e5" } }),
+            );
+            assert!(!r.ok);
+            assert_eq!(r.error_kind.as_deref(), Some("invalid_params"));
+            assert!(r.error.unwrap_or_default().contains("where.text or where.role"));
+        }
+
+        #[test]
+        fn t33_find_where_empty_object_rejected() {
+            let r = find("t", &serde_json::json!({ "where": {} }));
+            assert!(!r.ok);
+            assert_eq!(r.error_kind.as_deref(), Some("invalid_params"));
+        }
+
+        #[test]
+        fn t33_find_where_blank_text_rejected() {
+            // 空白串 contains 恒真 = 无过滤，与 None 同罪
+            let r = find(
+                "t",
+                &serde_json::json!({ "where": { "text": "   " } }),
+            );
+            assert!(!r.ok);
+            assert_eq!(r.error_kind.as_deref(), Some("invalid_params"));
+        }
+
+        #[test]
+        fn t33_find_where_text_present_not_invalid_params() {
+            // 合法谓词（text 非空）不触发兜底：CI 无 TCC → tcc_denied（合法分支）
+            let r = find(
+                "t",
+                &serde_json::json!({ "where": { "text": "新建文件夹" } }),
+            );
+            assert_ne!(r.error_kind.as_deref(), Some("invalid_params"));
+            if !r.ok {
+                assert_eq!(r.error_kind.as_deref(), Some("tcc_denied"));
+            }
+        }
+
+        #[test]
+        fn t33_find_where_absent_keeps_legacy_shape() {
+            // where 缺席（非「在场但空」）保持既有形状：不 invalid_params
+            // （TS 端 AxProvider 已前置 missing_where_clause 拒绝；本路径仅直发 wire 客户端可达）
+            let r = find("t", &serde_json::json!({}));
+            assert_ne!(r.error_kind.as_deref(), Some("invalid_params"));
+        }
+
+        // ====================================================================
+        // v1.12 round2 T2-7：type 档内兜底（AXFocus + 合成键盘）纯逻辑测试
+        // 真机 focus+合成路径归手测清单 desktop 段（Electron 输入框用例）
+        // ====================================================================
+
+        #[test]
+        fn t27_fallback_branch_selection() {
+            // 「AXValue 写不进」两类 → 兜底
+            assert!(type_error_should_fallback("ax_action_unsupported"));
+            assert!(type_error_should_fallback("ax_set_failed"));
+            // 其他（读回失败 / AX 不可用 / 超时）→ 不兜底，保持原错误
+            assert!(!type_error_should_fallback("ax_verify_failed"));
+            assert!(!type_error_should_fallback("ax_unavailable"));
+            assert!(!type_error_should_fallback(""));
+        }
+
+        #[test]
+        fn t27_ascii_gate_rejects_non_ascii() {
+            // 纯 ASCII（含上档符号与空格）通过
+            assert!(ensure_ascii_typable("hello World 123 !@#").is_ok());
+            assert!(ensure_ascii_typable("").is_ok());
+            // 非 ASCII（中文/emoji）→ ax_type_non_ascii 诚实拒绝
+            let e = ensure_ascii_typable("你好").unwrap_err();
+            assert_eq!(e.0, "ax_type_non_ascii");
+            assert!(e.1.contains("ASCII-only"));
+            let e = ensure_ascii_typable("a\u{1F600}").unwrap_err();
+            assert_eq!(e.0, "ax_type_non_ascii");
+        }
+
+        #[test]
+        fn t27_ascii_char_keymap_specs_parse() {
+            // 每个映射出的 spec 必须能被 cgevent keymap 解析（防表内漂移）
+            for ch in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
+                let spec = ascii_char_to_keymap_spec(ch).expect("lowercase+digits must map");
+                assert!(
+                    crate::cgevent_keymap::parse_hotkey(&spec).is_some(),
+                    "spec {:?} for {:?} must parse",
+                    spec,
+                    ch
+                );
+            }
+            for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+                let spec = ascii_char_to_keymap_spec(ch).expect("uppercase must map");
+                assert_eq!(spec, format!("shift+{}", ch.to_ascii_lowercase()));
+                assert!(crate::cgevent_keymap::parse_hotkey(&spec).is_some());
+            }
+            // US layout 全部直达标点 + 上档符号
+            for ch in "-=[]\\;',./`".chars() {
+                let spec = ascii_char_to_keymap_spec(ch).expect("direct punct must map");
+                assert!(crate::cgevent_keymap::parse_hotkey(&spec).is_some());
+            }
+            for ch in "!@#$%^&*()_+{}|:\"<>?~".chars() {
+                let spec = ascii_char_to_keymap_spec(ch).expect("shifted punct must map");
+                assert!(
+                    crate::cgevent_keymap::parse_hotkey(&spec).is_some(),
+                    "spec {:?} for {:?} must parse",
+                    spec,
+                    ch
+                );
+            }
+            // 空白与无映射控制字符
+            assert_eq!(ascii_char_to_keymap_spec(' '), Some("space".into()));
+            assert_eq!(ascii_char_to_keymap_spec('\n'), Some("return".into()));
+            assert_eq!(ascii_char_to_keymap_spec('\t'), Some("tab".into()));
+            assert_eq!(ascii_char_to_keymap_spec('\u{0}'), None);
+            assert_eq!(ascii_char_to_keymap_spec('\u{7f}'), None);
+        }
+
+        // ====================================================================
+        // v1.12 round2 T2-9：find 命中节点附 actions 数组
+        // CI 无 TCC → action_names 读失败返空 → 断言「空省略 byte-identical」+
+        // cursor 对位不破编号；真机带 actions 的路径归手测清单。
+        // ====================================================================
+        #[test]
+        fn t29_find_match_entry_omits_empty_actions() {
+            use accessibility::AXUIElement;
+            // 合成树：root(text="Save") - child(button "Save") - grand("Other")
+            let tree = AxNode {
+                role: "window".into(),
+                raw_role: "AXWindow".into(),
+                label: "Save Panel".into(),
+                rect: AxRect::default(),
+                enabled: true,
+                focused: false,
+                depth: 0,
+                children: vec![AxNode {
+                    role: "button".into(),
+                    raw_role: "AXButton".into(),
+                    label: "Save".into(),
+                    rect: AxRect::default(),
+                    enabled: true,
+                    focused: false,
+                    depth: 1,
+                    children: vec![],
+                    window_id: None,
+                    children_count: None,
+                }],
+                window_id: None,
+                children_count: None,
+            };
+            // live 对位：CI 无 TCC 用 system_wide 占位（action_names 读失败 → 空 → 省略）
+            let live = vec![AXUIElement::system_wide(), AXUIElement::system_wide()];
+            let mut hits = Vec::new();
+            let mut ref_counter = 0usize;
+            let mut cursor = 0usize;
+            collect_matches(
+                &tree,
+                &live,
+                &mut cursor,
+                Some("save"),
+                None,
+                &mut hits,
+                &mut ref_counter,
+            );
+            // 命中 2 节点（window label 含 "save" + button label "Save"）
+            assert_eq!(hits.len(), 2);
+            for h in &hits {
+                // 空清单省略：字段恰为 ref/role/label/rect 四键（byte-identical v1.11 形状；
+                // serde_json Object 是 BTreeMap → keys 排序比较）
+                let mut keys: Vec<&str> = h
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(|k| k.as_str())
+                    .collect();
+                keys.sort_unstable();
+                let mut expected = vec!["ref", "role", "label", "rect"];
+                expected.sort_unstable();
+                assert_eq!(keys, expected, "entry={:?}", h);
+            }
+            assert_eq!(hits[0]["ref"], "@e0");
+            assert_eq!(hits[1]["ref"], "@e1");
+            // cursor 消费 = 全节点数（含未命中节点；与 number_refs 对位一致）
+            assert_eq!(cursor, 2);
+        }
+
+        // ====================================================================
+        // v1.12 round2 T2-11：snapshot 截断诚实信号 truncated
+        // （apply_truncated_flag 纯函数；真实边界检测归真机手测）
+        // ====================================================================
+        #[test]
+        fn t211_truncated_flag_only_inserted_when_set() {
+            let shallow = serde_json::json!({
+                "role": "window", "label": "Shallow", "children": []
+            });
+            // 未截断：byte-identical（无 truncated 键）
+            let out = apply_truncated_flag(shallow.clone(), false);
+            assert_eq!(out, shallow);
+            assert!(out.get("truncated").is_none());
+            // 截断：顶层插 truncated:true（其余字段不动）
+            let dense = serde_json::json!({
+                "role": "window", "label": "Dense", "children": [
+                    {"role": "group", "label": "", "children": []}
+                ]
+            });
+            let out2 = apply_truncated_flag(dense.clone(), true);
+            assert_eq!(out2.get("truncated"), Some(&serde_json::json!(true)));
+            assert_eq!(out2.get("label"), dense.get("label"));
+            assert_eq!(out2.get("children"), dense.get("children"));
         }
     }
 }

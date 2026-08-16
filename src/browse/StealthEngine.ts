@@ -44,7 +44,8 @@ export class StealthEngine {
    * v1.5 流程（parse13 §3.1 + §4.5）：
    *  1. profile 校验（未知 profile 名 → throw；caller catch 走 didnt）
    *  2. evaluate_script(buildUserAgentOverrideScript) → navigator.userAgent / platform /
-   *     language 改写（**先执行**，使后续 UA client hints 能读到正确 Chrome 版本）
+   *     language / languages 改写（**先执行**，使后续 UA client hints 能读到正确 Chrome
+   *     版本；languages 自 T3-1 profile 感知，与 language 同源同值）
    *  3. evaluate_script(STEALTH_INJECTION_SCRIPT 16 路) → webdriver / languages / permissions /
    *     chrome.runtime/app/csi/loadTimes / plugins / vendor / hardwareConcurrency / media.codecs /
    *     webgl.vendor / iframe.contentWindow / outerdimensions / userAgentData（brands 版本与
@@ -56,8 +57,12 @@ export class StealthEngine {
    * （secChUa / secFetch* / accept*）已定义在 StealthProfile 顶级 const（INV-30），供后续
    * chrome-devtools-mcp 暴露 header 注入工具时直用。
    *
-   * 注：viewport / timezone 由 chrome-devtools-mcp 启动 flag 控制
-   *    （subprocess spec 加 --window-size / --timezone）；StealthEngine 不在这里设。
+   * 注：viewport 经 chrome-devtools-mcp 启动 flag `--viewport=` 控制（HeadlessChannel
+   *    spec 构造期拼入）；timezone **无启动 flag**（上游 1.7.0 CLI 32 项无此选项，
+   *    Chrome 亦无此开关）——profile.timezone 是档案字段、无行为消费，页面 Intl
+   *    跟随宿主（与宿主 IP 自洽的诚实形态）；StealthEngine 不在这里设。
+   *    （T3-5 round3 注释归真：此前「--window-size / --timezone」双失实已修正——
+   *     真实 flag 名是 --viewport=，且 spec 从无 timezone flag。）
    *
    * @param client McpClient（chrome-devtools-mcp connection）
    * @param profileName STEALTH_PROFILES 顶级 const 的 key
@@ -237,13 +242,36 @@ export function toFnExpression(script: string): string {
 // buildUserAgentOverrideScript（profile-specific payload builder）
 // ============================================================
 /**
- * 构造 navigator.userAgent / platform / language override 注入脚本。
+ * T3-1（round3 v1.13）：profile.language → navigator.languages 值。
+ *
+ * 真实浏览器 navigator.languages 与 navigator.language / Accept-Language 头
+ * 同源同值（主标签在前 + 主子标签兜底）——旧 CORE 硬编码 ["en-US","en"] 在
+ * zh-CN 宿主 / 非 en-US profile 下产生「头 zh-CN ↔ JS en-US」的自然不可能形状
+ * （与 T2-1 所修 OS 矛盾同族）。派生规则：[language, language 的主子标签]。
+ *
+ * @returns 恰好 2 元素（真实浏览器同款形状；acceptLanguage 主 token 与此一致）
+ */
+export function profileLanguages(language: string): [string, string] {
+  const primary = language.split("-")[0]!.toLowerCase();
+  return [language, primary];
+}
+
+/**
+ * 构造 navigator.userAgent / platform / language / languages override 注入脚本。
  *
  * 设计：脚本是纯字符串拼装（无副作用），profile 字段经 JSON.stringify
  * 转义防注入（profile 是顶级 const 数据，本就是 trusted，但仍走 JSON.stringify
  * 守编码正确性 —— 守 02 §4 简单性：用对的语言做对的事）。
+ *
+ * T3-1（round3 v1.13）：navigator.languages 从 CORE_STEALTH_SCRIPT #2 硬编码
+ * ["en-US","en"] 迁入此处（profile 感知；CORE 原位置留注释指路，16 路计数不变）。
+ * 本脚本先于 STEALTH_INJECTION_SCRIPT 执行（W1-DEF-1 顺序），languages 在任何
+ * 页面 JS 读取前已就位。
+ *
+ * round3-review03：导出供 doctor #25 stealth_profile_self_check 逐 profile 校验
+ * （languages 反检测点的真 producer 在此，不在 CORE 注释——L0 证据升级 L1）。
  */
-function buildUserAgentOverrideScript(profile: StealthProfile): string {
+export function buildUserAgentOverrideScript(profile: StealthProfile): string {
   // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 契约），不再传 IIFE 语句串。
   return `() => {
   try {
@@ -261,6 +289,12 @@ function buildUserAgentOverrideScript(profile: StealthProfile): string {
   try {
     Object.defineProperty(navigator, "language", {
       get: function() { return ${JSON.stringify(profile.language)}; },
+      configurable: true,
+    });
+  } catch (e) {}
+  try {
+    Object.defineProperty(navigator, "languages", {
+      get: function() { return ${JSON.stringify(profileLanguages(profile.language))}; },
       configurable: true,
     });
   } catch (e) {}

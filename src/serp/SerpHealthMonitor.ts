@@ -63,7 +63,8 @@ export class SerpHealthMonitor {
   /**
    * extract.ts 在抽完结果后调（**不抛错**；失败保守 no-op）。
    *
-   * @param engine           "baidu" | "google"
+   * @param engine           "baidu" | "ddg"（v1.11 round1 T9 起非 CJK 走 DDG；
+   *                         round2 T2-5 顺手修正陈旧注释——旧文写 "google" 从未实现）
    * @param selectorVersion  "v1"（当前静态版本；未来 ChangeDetection 升级时换 v2）
    * @param query            用户查询词（ChangeDetection baseline 文件名组分）
    * @param dom              抽取时拿到的 a11y 树文本 / HTML（dom hash 源）

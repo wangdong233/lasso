@@ -15,8 +15,10 @@
  *   wait                ──→  wait_for
  *   evaluate            ──→  evaluate_script
  *   pdf      (v0.5)     ──→  pdf  (CDP Page.printToPDF；cdp-actions.ts doPdf)
- *   console  (v0.5)     ──→  console_log / evaluate (cdp-actions.ts doConsole 占位)
- *   network  (v0.5)     ──→  evaluate_script 注入 PerformanceObserver (cdp-actions.ts doNetwork)
+ *   console  (v0.5)     ──→  1.7.0 原生 list_console_messages 直调（cdp-actions.ts doConsole）
+ *   network  (v0.5)     ──→  1.7.0 原生 list_network_requests 直调（cdp-actions.ts doNetwork）
+ * （v1.12 round2 T2-2 注释修正：v0.5 时代的 evaluate_script 注入 PerformanceObserver
+ *  路径已在 v1.11 1.7.0 迁移时原生化——src 无 PerformanceObserver 实现残留）
  * 上游工具名漂移只影响这张 Map（单点改）—— 风险 L1（parse1 §7.1）的缓解。
  * v0.5（parse6 §4.4）：pdf / network_log / console_log 上游工具名集中硬编码在 cdp-actions.ts
  *                      CDP_UPSTREAM_TOOL_NAMES 顶级 const；doctor CLI 探测。
@@ -125,8 +127,9 @@ export abstract class BrowseChannel extends UiChannel {
     // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：追加 pdf + console + network entry
     // INV-33 守：pdf/console/network 三 action 必经 dispatch Map，禁第二套 dispatch。
     // screenshot 复用既有 v0.1 entry（不动）；pdf 由 doPdf 实装（chrome-devtools-mcp `pdf`）；
-    // network 由 doNetwork 实装（evaluate_script 注入 PerformanceObserver；F2 已知限制）；
-    // console 是 v0.5 M0.5b 占位（v0.6+ 若有 console tool 需求再升级 evaluate_script 注入）。
+    // v1.11 起 network 由 1.7.0 原生 list_network_requests 直调（doNetwork）、console 由
+    // 原生 list_console_messages 直调（doConsole）——v0.5「M0.5b 占位/PerformanceObserver
+    // 注入」描述已过时（v1.12 round2 T2-2 注释修正；probe 语义与 observe-only 边界不变）。
     ["pdf", doPdf],
     ["console", doConsole],
     ["network", doNetwork],
@@ -869,6 +872,8 @@ async function doExtract(
   const { extractMarkdown } = await import("../browse/markdown-extractor.js");
   const mdResult = await extractMarkdown(parsed.html, {
     mode,
+    // T2-3（round2）：URL 透传激活 defuddle 站点 extractor + 相对链接绝对化
+    url: parsed.url,
     headingStyle: "atx",
     bulletMarker: "-",
     enableCitations: mode === "markdown_cited",

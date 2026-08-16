@@ -35,7 +35,8 @@
  *  25. stealth_profile_self_check  — v0.4 M0.4c：stealth-profiles 顶级 const 加载 + shape 自检（INV-30）
  *  26. cdp_mcp_pdf_tool_available  — v0.5 M0.5b：cdp-actions CDP_UPSTREAM_TOOL_NAMES.pdf 加载（Go/No-Go F1）
  *  27. cdp_mcp_network_observer_available — v0.5 M0.5c：cdp-actions CDP_UPSTREAM_TOOL_NAMES.network_log +
- *                                    doNetwork 加载（Go/No-Go F2；PerformanceObserver 注入路径健在）
+ *                                    doNetwork 加载（Go/No-Go F2；v1.11 起走原生 list_network_requests
+ *                                    直调；旧 PerformanceObserver 注入路径已随 T5 删除）
  *  31. platform_backend_active          — v1.0 Phase D：AxBackendFactory.detectKind() 返 mac/win_uia/linux_atspi
  *                                    之一 + 工厂可装配（parse11 §3.4 + INV-60）
  *  32. recording_baseline_count         — v1.0 Phase C：fixtures/serp-baseline/ 录制数（≥10 pass；
@@ -83,9 +84,14 @@
  *      parse5 §3.4 v0.4 M0.4a 4 项 forest 扩展；
  *      parse5 §3.4 + §3.3 v0.4 M0.4c 1 项 stealth + #21 HEAD 探测升级。
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { promises as fs, constants as fsConstants, readFileSync } from "node:fs";
+import {
+  promises as fs,
+  constants as fsConstants,
+  readFileSync,
+  existsSync,
+} from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -103,6 +109,9 @@ import {
 import { RootRegistry } from "../forest/RootRegistry.js";
 import { InteractDispatcher } from "../forest/InteractDispatcher.js";
 // v0.4 M0.4c：stealth 顶级 const 自检（用于 #25 doctor check + INV-30 镜像）
+// round3-review03：另导 buildUserAgentOverrideScript——T3-1 起 languages 反检测点
+// 的真 producer 是该脚本（StealthEngine），#25 逐 profile 直验真源（不再靠
+// CORE 指路注释里的 "navigator.languages" 字样过检——注释是 L0 不是证据）。
 import {
   STEALTH_PROFILES,
   STEALTH_PROFILE_NAMES,
@@ -110,6 +119,7 @@ import {
   CLOUDFLARE_DETECTION_SCRIPT,
   CLOUDFLARE_CHALLENGE_MARKERS,
 } from "../browse/stealth-profiles.js";
+import { buildUserAgentOverrideScript } from "../browse/StealthEngine.js";
 // v0.5 M0.5b：cdp-actions 上游工具名集中表（用于 #26 cdp_mcp_pdf_tool_available doctor check）
 // parse6 §4.4 + §7.1 F1：doctor 探测 chrome-devtools-mcp 是否暴露 `pdf` 工具；不暴露时
 //                          pdf tool 返 outcome=didnt + retrieval_method=upstream_unsupported:pdf
@@ -133,13 +143,15 @@ import {
 //            CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const（INV-30 衍生：不从 env/config 读）。
 import { probeCreepjs, type CreepjsLiesReport } from "./creepjs-probe.js";
 import type { StealthProfileName } from "../browse/stealth-profiles.js";
+// v1.12（round2 T2-1）：探测默认 = 宿主对齐 profile（与运行时装配同一选择）
+import { defaultHeadlessProfileForHost } from "../channels/HeadlessChannel.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.11.0";
+export const LASSO_VERSION = "1.13.0";
 
 // ============================================================
 // 类型
@@ -419,7 +431,9 @@ export interface DoctorOptions {
    */
   stealthCheck?: boolean;
   /**
-   * v1.7 Phase A：探测用 stealth profile（默认 windows_chrome_120）。
+   * v1.7 Phase A：探测用 stealth profile。
+   * v1.12（round2 T2-1）：默认改为宿主对齐（darwin→mac_chrome，与运行时装配
+   * 同一选择——defaultHeadlessProfileForHost）。
    *
    * profile 名必须存在于 STEALTH_PROFILES 顶级 const（INV-30）；否则
    * StealthEngine.injectProfile 抛 unknown_stealth_profile:<name>，#38 降级 warn。
@@ -747,7 +761,7 @@ export async function runDoctor(
     checks.push(
       await checkStealthCreepjsRegression({
         clientProvider: opts.stealthCheckClientProvider,
-        profile: opts.stealthCheckProfile ?? "windows_chrome_120",
+        profile: opts.stealthCheckProfile ?? defaultHeadlessProfileForHost(),
         skipNetwork: opts.skipNetwork,
         baselinePath: opts.stealthCheckBaselinePath,
       }),
@@ -1564,8 +1578,9 @@ async function checkForestRefCounter(): Promise<DoctorCheck> {
  * 烟雾测试 stealth-profiles.ts 顶级 const 加载健全：
  *  - STEALTH_PROFILES 至少 3 条 profile（windows_chrome_120 / mac_safari_17 / linux_firefox_121）
  *  - 每条 profile 必须含 userAgent / viewport / timezone / language / platform 五字段
- *  - STEALTH_INJECTION_SCRIPT 是非空字符串（webdriver / languages / window.chrome / permissions
- *    4 个反检测点；CSP/语法不深测，真实通关留 bot.sannysoft 手测清单）
+ *  - STEALTH_INJECTION_SCRIPT 是非空字符串（webdriver / window.chrome / permissions
+ *    3 个反检测点；languages 自 T3-1 迁 StealthEngine.buildUserAgentOverrideScript，
+ *    本 check 另逐 profile 直验该真源——CSP/语法不深测，真实通关留 bot.sannysoft 手测清单）
  *  - CLOUDFLARE_DETECTION_SCRIPT 是非空字符串 + CLOUDFLARE_CHALLENGE_MARKERS 是非空数组
  *  - STEALTH_PROFILE_NAMES 与 Object.keys(STEALTH_PROFILES) 一致
  *
@@ -1641,11 +1656,13 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
         detail: "STEALTH_INJECTION_SCRIPT 空",
       };
     }
-    // 关键反检测点检查（webdriver / languages / window.chrome / permissions 四点；
-    // parse5 §3.3.2 注释明确这 4 个是 bot.sannysoft 类检测的主要破绽）
+    // 关键反检测点检查（webdriver / window.chrome / permissions 三点；
+    // parse5 §3.3.2 注释明确这些是 bot.sannysoft 类检测的主要破绽）。
+    // round3-review03：languages 从本清单移除——T3-1 迁移后该路的真 producer 是
+    // StealthEngine.buildUserAgentOverrideScript（下方逐 profile 直验真源）；
+    // 旧标记检查命中的只是 CORE 指路注释里的字样（L0 证据，注释一删即假红）。
     const injectionMustHaves = [
       "webdriver",
-      "languages",
       "chrome",
       "permissions",
     ];
@@ -1657,6 +1674,24 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
         name: "stealth_profile_self_check",
         status: "fail",
         detail: `STEALTH_INJECTION_SCRIPT 缺反检测点：${missingHooks.join(", ")}`,
+      };
+    }
+    // languages 路（T3-1 迁移后位置）：逐 profile 验 UA override 脚本嵌
+    // languages 数组与 language 值（languages[0] === language 的 doctor 侧投影）。
+    const badUaLang = profileNames.filter((name) => {
+      const uaScript = buildUserAgentOverrideScript(STEALTH_PROFILES[name]);
+      return (
+        !uaScript.includes('"languages"') ||
+        !uaScript.includes(JSON.stringify(STEALTH_PROFILES[name].language))
+      );
+    });
+    if (badUaLang.length > 0) {
+      return {
+        name: "stealth_profile_self_check",
+        status: "fail",
+        detail: `UA override 脚本缺 languages/language（T3-1 迁移后的注入点）：${badUaLang.join(", ")}`,
+        next_step:
+          "检查 src/browse/StealthEngine.ts buildUserAgentOverrideScript（navigator.languages defineProperty）",
       };
     }
 
@@ -1698,10 +1733,13 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
     //    锚点：Chrome 151 shipped 2026-07-28（4.3 周周期 ≈ 1.0 月/major）。
     //    UA 版本过旧本身即启发式弱信号（round1 T4 证据）。
     const uaAgeHint = estimateUaAgeMonths();
+    // v1.12（round2 T2-1 rider）：宿主默认 profile 与已装 Chrome 的版本 skew 提示
+    // （hint 非 gate；探测失败静默回退 age hint，INV-30 不动）
+    const skewHint = chromeVersionSkewHint(defaultHeadlessProfileForHost());
     return {
       name: "stealth_profile_self_check",
       status: "pass",
-      detail: `STEALTH_PROFILES ${profileNames.length} 条 [${profileNames.join(", ")}]；injection ${STEALTH_INJECTION_SCRIPT.length}B；cloudflare markers ${CLOUDFLARE_CHALLENGE_MARKERS.length} 项；${uaAgeHint}`,
+      detail: `STEALTH_PROFILES ${profileNames.length} 条 [${profileNames.join(", ")}]；injection ${STEALTH_INJECTION_SCRIPT.length}B；cloudflare markers ${CLOUDFLARE_CHALLENGE_MARKERS.length} 项；宿主默认 ${defaultHeadlessProfileForHost()}${skewHint}；${uaAgeHint}`,
     };
   } catch (e) {
     return {
@@ -1742,6 +1780,56 @@ function estimateUaAgeMonths(): string {
     return `UA 年龄约 ${ageMonths} 月（Chrome ${major}，v1.11 T4 刷新基线内）`;
   } catch {
     return "UA 年龄：估算失败";
+  }
+}
+
+// ============================================================
+// v1.12 round2 T2-1 rider：宿主默认 profile ↔ 已装 Chrome 版本 skew 提示
+// ============================================================
+/**
+ * 探测已装 Chrome major（launcher 候选路径表同源——chrome-paths.ts MACOS/LINUX
+ * 候选 + Windows 常见装位），与宿主默认 profile 的 UA major 比对。
+ *
+ * 语义（round2-verdict T2-1 rider）：
+ *  - hint 非 gate：只附在 #25 detail，不改 pass/fail（INV-30 anti-gaming 不动）
+ *  - |skew| ≥ 2 建议刷新 STEALTH_PROFILES 值域（版本 skew 是 headless 检测弱信号）
+ *  - 探测失败（无已装 Chrome / --version 超时 / 解析不出）→ 空串静默回退
+ *    现有 age hint（chrome-devtools-mcp bundled chromium 场景没有可比对对象）
+ */
+const CHROME_VERSION_PROBE_PATHS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+] as const;
+
+function chromeVersionSkewHint(defaultProfile: StealthProfileName): string {
+  try {
+    const bin = CHROME_VERSION_PROBE_PATHS.find((p) => existsSync(p));
+    if (!bin) return "";
+    const out = execFileSync(bin, ["--version"], {
+      encoding: "utf8",
+      timeout: 3_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const m = out.match(/(\d+)\./);
+    const profileMajorMatch =
+      STEALTH_PROFILES[defaultProfile].userAgent.match(/Chrome\/(\d+)/);
+    if (!m || !profileMajorMatch) return "";
+    const installed = parseInt(m[1], 10);
+    const profileMajor = parseInt(profileMajorMatch[1], 10);
+    const skew = profileMajor - installed;
+    const sign = skew >= 0 ? "+" : "";
+    if (Math.abs(skew) >= 2) {
+      return `；版本 skew ${sign}${skew}（profile Chrome ${profileMajor} vs 已装 ${installed}，|skew|≥2 建议刷新 STEALTH_PROFILES 值域）`;
+    }
+    return `；版本 skew ${sign}${skew}（profile Chrome ${profileMajor} vs 已装 ${installed}）`;
+  } catch {
+    return "";
   }
 }
 
@@ -1816,8 +1904,8 @@ function checkCdpMcpPdfToolAvailable(): DoctorCheck {
 /**
  * 27. cdp_mcp_network_observer_available（v0.5 M0.5c 新增，parse6 §4.4 + §7.1 F2）
  *
- * 探测 chrome-devtools-mcp 是否能抓 network 资源（v0.5 MVP 走 evaluate_script 注入
- * PerformanceObserver；上游若有专门 network_log 工具，v0.6+ 切换）。
+ * 探测 chrome-devtools-mcp 是否能抓 network 资源（v0.5 曾走 evaluate_script 注入
+ * PerformanceObserver，v1.11（round1 T5）已切换 1.7.0 原生 network 工具——切换完成，非待办）。
  *
  * 静态层（不 spawn chrome-devtools-mcp 子进程；与 #26 同范式）：
  *  - cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log + .evaluate_script 字段加载
@@ -2738,10 +2826,12 @@ async function checkStagehandRestContract(opts: {
         name: CHECK_NAME,
         status: "warn",
         detail:
-          `api.stagehand.dev/verify → ${resp.status}（REST 契约不存在；R-ECO-6 确认；` +
-          `StagehandChannel 为 v0.4 设计期假设，observe 调用将失败）`,
+          `api.stagehand.dev/verify → ${resp.status}（/verify 路由不存在；R-ECO-6 维持。` +
+          `v1.12 round2 T2-2 补记：上游托管 REST 已上线但形状是 sessions.* 生命周期 API` +
+          `（stagehand-ruby Stainless SDK 实证）+ v0 unstable——本通道 /verify|/extract ` +
+          `契约仍无佐证）`,
         next_step:
-          "v1.8 据用户需求决：删 StagehandChannel 或改 SDK 直连（成本高，架构冲突）",
+          "v1.8 决策点：重写对齐 sessions.* 真实契约（verify 原语不存在 = 功能缩水）或删除通道（doc/16 R-ECO-6 已补记准确底账）",
       };
     }
     // 2xx → 契约存在（R-ECO-6 反驳）→ pass
