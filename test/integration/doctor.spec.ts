@@ -178,7 +178,7 @@ describe("runDoctor — 场景判定", () => {
     const c = findCheck(r, "serp_selectors");
     expect(c.status).toBe("pass");
     expect(c.detail).toContain("BAIDU=2");
-    expect(c.detail).toContain("GOOGLE=2");
+    expect(c.detail).toContain("DDG=2"); // v1.11 T9：google 死配置删 → ddg
   });
 
   it("ssrf_config 永远 pass（loadSsrfConfig 不抛）", async () => {

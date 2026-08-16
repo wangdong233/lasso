@@ -25,7 +25,8 @@ export const UA_CLIENT_HINTS_SCRIPT = `(function(){
     var major = parseInt(m[1], 10);
     // 三件套 brands（Google Chrome / Chromium / ghost brand），版本与 UA 一致。
     // ghost brand 按 Chrome 版本 seed %4 取（puppeteer-extra _getBrands 范式），
-    // Chrome 130 → "Not?A_Brand"（与 STEALTH_PROFILES.secChUa 字面量对齐）。
+    // Chrome 151 → "Not_A Brand"（与 STEALTH_PROFILES.secChUa 字面量对齐；
+    // v1.11 round1 T4 随 profile 值刷新同步）。
     var ghostBrands = ["Not.A/Brand", "Not)A;Brand", "Not?A_Brand", "Not_A Brand"];
     var ghostBrand = ghostBrands[major % 4];
     var brands = [

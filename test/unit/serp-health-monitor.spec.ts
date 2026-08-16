@@ -116,10 +116,10 @@ describe("SerpHealthMonitor — onResult 计数", () => {
   it("google engine 独立计数（不串到 baidu）", () => {
     const m = makeMonitorWithTmp();
     m.onResult("baidu", "v1", "q", "<dom/>", true);
-    m.onResult("google", "v1", "q", "<dom/>", false);
+    m.onResult("ddg", "v1", "q", "<dom/>", false);
     const snap = m.snapshot();
     const baidu = snap.engines.find((e) => e.engine === "baidu");
-    const google = snap.engines.find((e) => e.engine === "google");
+    const google = snap.engines.find((e) => e.engine === "ddg");
     expect(baidu?.hit).toBe(1);
     expect(google?.miss).toBe(1);
   });
@@ -187,7 +187,7 @@ describe("SerpHealthMonitor — snapshot 形状", () => {
     const snap = m.snapshot();
     expect(snap.engines).toHaveLength(2);
     const engines = snap.engines.map((e) => e.engine).sort();
-    expect(engines).toEqual(["baidu", "google"]);
+    expect(engines).toEqual(["baidu", "ddg"]); // v1.11 T9
     expect(snap.recent_alerts).toEqual([]);
     expect(snap.recordings_count).toBe(0);
   });

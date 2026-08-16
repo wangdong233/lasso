@@ -54,6 +54,12 @@ export interface AxNode {
   focused: boolean;
   depth: number;
   children: AxNode[];
+  /**
+   * v1.11（round1 T8）：Rust 端 skeleton 模式下 max_depth 边界节点填写。
+   * 镜像 rust-helper/src/ax.rs::AxNode.children_count（skip_serializing_if：
+   * 默认不出现 = wire byte-identical v1.10）。
+   */
+  childrenCount?: number;
 }
 
 // ============================================================
@@ -83,6 +89,12 @@ export interface OutlineNode {
   rect: Rect;
   pictureOnly: boolean;
   children: OutlineNode[];
+  /**
+   * v1.11（round1 T8 skeleton）：max_depth 边界节点的真实子节点数。
+   * 仅 skeleton=true 时由 Rust 端边界节点填写（子树省略但保留规模信号——
+   * dense app token 成本数量级下降）。默认不出现（wire byte-identical v1.10）。
+   */
+  childrenCount?: number;
 }
 
 // ============================================================
@@ -115,10 +127,43 @@ export interface OutlineSnapshot {
  */
 export type UiAction =
   | { kind: "click"; ref: string }
+  | {
+      /**
+       * v1.11（round1 T7）：坐标点击（档3 cgEvent 专用路径）。
+       * ref（ax 档）与 x/y（cgEvent 档）二选一——都传时 ref 优先（ax 语义点击更稳）。
+       * button 逻辑按钮名（INV-28：禁 raw button code 数字）。
+       */
+      kind: "click";
+      x: number;
+      y: number;
+      button?: "left" | "right" | "center";
+    }
   | { kind: "type"; ref: string; text: string }
   | { kind: "press"; key: string }
   | { kind: "scroll"; ref: string; dx: number; dy: number }
-  | { kind: "hotkey"; keys: string[] };
+  | {
+      /** v1.11 T7：坐标滚动（档3 cgEvent；位置缺省 = 当前光标）。 */
+      kind: "scroll";
+      dx: number;
+      dy: number;
+      x?: number;
+      y?: number;
+    }
+  | { kind: "hotkey"; keys: string[] }
+  | {
+      /** v1.11 T7：拖拽（档3 cgEvent 专用路径）。 */
+      kind: "drag";
+      from_x: number;
+      from_y: number;
+      to_x: number;
+      to_y: number;
+    }
+  | {
+      /** v1.11 T7：移动光标（悬停语义；档3 cgEvent 专用路径）。 */
+      kind: "move";
+      x: number;
+      y: number;
+    };
 
 // ============================================================
 // WhereClause（find action 的查询条件）
@@ -169,6 +214,13 @@ export interface DesktopOptions {
    * LLM 只需「能点什么/填什么」时省 token。
    */
   interactive_only?: boolean;
+  /**
+   * v1.11（round1 T8）：skeleton 边界计数（walk 剪枝 v2）。
+   * true → max_depth 边界节点携带 childrenCount（真实子数）替代静默截断——
+   * dense app（Slack/Electron/IDE）token 成本数量级下降且保留「下面还有」信号。
+   * 默认 undefined = byte-identical v1.10（沿 INV-70 先例）。
+   */
+  skeleton?: boolean;
   actions?: UiAction[];
   expect?: DesktopExpect;
   where?: WhereClause;
@@ -275,6 +327,8 @@ export function isOutlineNode(v: unknown): v is OutlineNode {
     typeof n.ref === "string" &&
     isRect(n.rect) &&
     typeof n.pictureOnly === "boolean" &&
+    (n.childrenCount === undefined ||
+      typeof n.childrenCount === "number") &&
     Array.isArray(n.children) &&
     (n.children as unknown[]).every(isOutlineNode)
   );
@@ -285,14 +339,19 @@ export function isUiAction(v: unknown): v is UiAction {
   const a = v as Record<string, unknown>;
   switch (a.kind) {
     case "click":
-      return typeof a.ref === "string";
+      // v1.11 T7：ref 形态（ax 档）或 x/y 坐标形态（cgEvent 档）二选一
+      return (
+        typeof a.ref === "string" ||
+        (typeof a.x === "number" && typeof a.y === "number")
+      );
     case "type":
       return typeof a.ref === "string" && typeof a.text === "string";
     case "press":
       return typeof a.key === "string";
     case "scroll":
+      // v1.11 T7：ref 形态（ax 档 AXScrollToVisible）或纯 dx/dy 坐标形态（cgEvent 档）
       return (
-        typeof a.ref === "string" &&
+        (typeof a.ref === "string" || a.ref === undefined) &&
         typeof a.dx === "number" &&
         typeof a.dy === "number"
       );
@@ -301,6 +360,15 @@ export function isUiAction(v: unknown): v is UiAction {
         Array.isArray(a.keys) &&
         (a.keys as unknown[]).every((k) => typeof k === "string")
       );
+    case "drag":
+      return (
+        typeof a.from_x === "number" &&
+        typeof a.from_y === "number" &&
+        typeof a.to_x === "number" &&
+        typeof a.to_y === "number"
+      );
+    case "move":
+      return typeof a.x === "number" && typeof a.y === "number";
     default:
       return false;
   }

@@ -314,8 +314,8 @@ describe("network — 资源列表过 applyOutputEnvelope", () => {
     expect(r.data?.resource_count).toBe(0);
     expect(r.data?.third_party_count).toBe(0);
     expect(r.data?.page_host).toBe("example.com");
-    // F2 启发式：raw < 5 → next_step
-    expect(r.data?.next_step).toMatch(/PerformanceObserver entries count < 5/);
+    // v1.11 T5 启发式：raw < 5 → next_step（原生采集下不再怀疑 TUN，只提示）
+    expect(r.data?.next_step).toMatch(/entries count < 5/);
   });
 
   it("丰富 entries（同 host + 跨 host）→ resource_count + third_party_count 正确", async () => {

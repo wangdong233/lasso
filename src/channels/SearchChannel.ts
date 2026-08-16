@@ -48,7 +48,23 @@ export interface SearchOpts {
   /** "cn" / "us"。 */
   region: string;
   no_cache: boolean;
+  /**
+   * v1.11（round1 T6）：时效性过滤（上游原生 search_recency_filter 参数）。
+   * 不传 = 不限（byte-identical 基线）。
+   */
+  freshness?: "day" | "week" | "month" | "year";
 }
+
+/**
+ * v1.11（round1 T6）：SearchFreshness → 智谱上游 search_recency_filter 值映射。
+ * 上游枚举（MCP tool schema 实证）：oneDay/oneWeek/oneMonth/oneYear。
+ */
+export const ZHIPU_RECENCY_MAP: Record<string, string> = {
+  day: "oneDay",
+  week: "oneWeek",
+  month: "oneMonth",
+  year: "oneYear",
+};
 
 // ============================================================
 // ZhipuSearchChannel（v0.1 名 SearchChannel，v0.2 起语义改名 + 保留别名）
@@ -132,6 +148,10 @@ export class ZhipuSearchChannel extends BaseChannel {
         search_query: query,
         search_intent: true,
         count: opts.limit,
+        // v1.11（round1 T6）：freshness 透传（上游原生参数；不传 = 不限时效）
+        ...(opts.freshness
+          ? { search_recency_filter: ZHIPU_RECENCY_MAP[opts.freshness] ?? opts.freshness }
+          : {}),
       })) as { content?: Array<{ type: string; text?: string }> };
 
       const parsed = parseZhipuContent(resp?.content);

@@ -1,11 +1,13 @@
 /**
  * network tool 注册（parse6 §3.4 v0.5 M0.5c 新增）
  *
- * URL → navigate + 注入 PerformanceObserver 抓资源列表（经 HeadlessChannel.browse 入口）。
+ * URL → navigate + 原生 list_network_requests 抓资源列表（经 HeadlessChannel.browse 入口）。
  *
- * 设计要点（parse6 §3.4 + §4.4 + §7.1 F2）：
+ * 设计要点（parse6 §3.4 + §4.4 + §7.1 F2；v1.11 round1 T5 原生化）：
  *  - 经 BrowseChannel 入口（headless.browse(url, "network", opts)）—— 守 INV-33
- *  - 实现路径：evaluate_script 注入 PerformanceObserver（JS-level 抓取，parse6 §3.4.2 伪码）
+ *  - 实现路径：chrome-devtools-mcp 1.7.0 原生 list_network_requests（CDP Network 域；
+ *    0.3.0 时代的 evaluate_script 注入 PerformanceObserver 路径已删除——F2 抓不全
+ *    限制随原生工具关闭）
  *  - 3rd-party 过滤：URL host ≠ page host → third_party=true（v0.5 host 精确匹配；
  *    eTLD+1 推 v0.6；简化版用 URL.hostname 精确比较）
  *  - filter 维度：xhr / fetch / img / 3rd-party / all（5 case 单维度 switch；parse6 §3.4.3）
@@ -56,7 +58,7 @@ export const networkSchema = {
       // v0.5 接受但 doNetwork 现不映射（守 parse6 §3.4.3 文档化「v0.5 不实装 bodies」）
       // 为 v0.6+ 预留，避免 schema 漂移；CC 据 description 知道此字段未生效
       include_bodies: z.boolean().default(false),
-      // PerformanceObserver 采集窗口（默认 3000ms；上限 30000ms 防 caller 误传巨大值）
+      // v1.11 T5：原生工具即时返回，timeout_ms 不再控制采集窗口；字段保留（zod 契约稳定）
       timeout_ms: z.number().int().positive().max(30_000).default(3_000),
       wait_until: z
         .enum(["load", "domcontentloaded", "networkidle"])
@@ -137,7 +139,9 @@ export interface ResourceEntry {
  *  - third_party = (entry host !== pageHost) && (entry host !== "")
  *  - filter 维度 5 case 单维度 switch（parse6 §3.4.3）
  *
- * PerformanceObserver initiatorType 取值（W3C Resource Timing）：
+ * type 值：v1.11 T5 起 doNetwork 对 xhr/fetch/img filter 回填 canonical
+ * initiatorType（xmlhttprequest/fetch/img；上游 resourceTypes 已过滤，回填保
+ * filterResources 直通）；all/3rd-party 时为空串（工具层不过滤 type）。
  *  - xmlhttprequest (XHR) / fetch / img / css / script / link / iframe / object / embed / video / audio / etc.
  *  - 我们 normalize "xmlhttprequest" → "xhr"（filter 维度）；其他原样保留
  */
@@ -174,22 +178,19 @@ export function filterResources(
 }
 
 // ============================================================
-// Go/No-Go F2：PerformanceObserver 抓不全检测（parse6 §7.1 F2）
+// 抓取量偏低检测（v1.11 T5 语义修订）
 // ============================================================
 /**
- * 检测 PerformanceObserver 是否在当前环境抓不全。
+ * 检测原生 list_network_requests 结果是否偏低。
  *
- * 触发条件（parse6 §7.1 F2）：
- *  - network tool 测试资源数 < 页面真实资源数 × 0.5（典型页面 ≥10 资源；<5 视为抓不全）
- *
- * v0.5 启发式：raw entries 数 < 5（且不是 outcome=worked 空页面的合法场景）→ 挂 next_step
- * 这个阈值是保守的（避免误报合法空页面）；caller 据 next_step 自决是否升级。
+ * v1.11（round1 T5）：0.3.0 时代的 F2（fake-ip TUN 改 timing 致 PerformanceObserver
+ * 抓不全）随原生工具关闭。保留 <5 启发式仅作「页面真实简单 vs 采集异常」提示——
+ * 原生工具走 CDP Network 域，不再有 TUN timing 干扰面。
  */
 export function shouldFlagIncompleteEntries(
   rawEntryCount: number,
 ): boolean {
-  // 典型复杂页面 ≥10 资源；PerformanceObserver 抓 < 5 时高度怀疑 fake-ip TUN 透明代理改 timing
-  // 注：纯 JSON / 单页 SPA 可能合法 < 5 资源（不阻断 outcome=worked，只挂 hint）
+  // 典型复杂页面 ≥10 资源；< 5 多半是合法空页面（原生采集下不再怀疑 TUN）
   return rawEntryCount < 5;
 }
 
@@ -256,7 +257,7 @@ export async function doNetworkTool(
         resource_count: 0,
         third_party_count: 0,
         next_step:
-          "chrome-devtools-mcp@LOCKED 不支持 evaluate_script 注入；等待上游暴露 network_log 工具（v0.6+），或改用 browse_headless snapshot 观察 DOM 加载状态",
+          "chrome-devtools-mcp@LOCKED 不支持 list_network_requests；改用 browse_headless snapshot 观察 DOM 加载状态",
       },
       served_by: result.served_by,
       fallback_used: false,
@@ -296,7 +297,7 @@ export async function doNetworkTool(
     // F2：抓不全启发式（典型复杂页 ≥10 资源；raw < 5 时高度怀疑 fake-ip TUN 透明代理改 timing）
     if (shouldFlagIncompleteEntries(rawEntryCount)) {
       nextStep =
-        "PerformanceObserver entries count < 5：可能页面真实简单（合法），或 fake-ip TUN / proxy 改 timing 导致抓不全；retry options.timeout_ms=10000，或等待 v0.7 F3.7.x 完整 CDP Network-level perf trace";
+        "entries count < 5：多半页面真实简单（v1.11 起走原生 list_network_requests，无 PerformanceObserver TUN 干扰面）；单请求详情（响应体/头）v1.11 暂未接线（reqid 已保留，待 network_get action）";
     }
 
     try {
@@ -333,7 +334,7 @@ export async function doNetworkTool(
         resource_count: 0,
         third_party_count: 0,
         next_step:
-          "PerformanceObserver entries JSON 解析失败；可能上游 evaluate_script 返非预期格式；retry，或等待 v0.7 F3.7.x 完整 CDP Network-level perf trace",
+          "entries JSON 解析失败；可能上游 list_network_requests 文本渲染格式漂移；retry，或改用 browse_headless snapshot",
       },
       served_by: result.served_by,
       fallback_used: false,
@@ -360,7 +361,7 @@ export async function doNetworkTool(
     fallback_used: result.fallback_used,
     retrieval_method:
       result.outcome === "worked"
-        ? "performance_observer"
+        ? "native_list_network_requests"
         : (result.retrieval_method ?? "network_failed"),
     ...(result.error ? { error: result.error } : {}),
   };

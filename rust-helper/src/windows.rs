@@ -22,7 +22,6 @@
 //! screenshot.rs + tcc.rs；TS 层永不直接调平台符号。
 
 use crate::protocol::Response;
-use crate::tcc;
 
 // ============================================================================
 // Non-macOS fallback：返 not_macos（CI 在 Linux 跑 helper 时 list_windows 不报错，仅返空）

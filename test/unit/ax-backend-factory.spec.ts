@@ -168,7 +168,7 @@ describe("AxBackendFactory 三 backend 调对应 rust method 名", () => {
     const backend = AxBackendFactory.createFromKind("mac", rust);
     await backend.snapshot("Finder", 8);
     await backend.find("Finder", 8, { role: "button" });
-    await backend.act([{ type: "click", ref: "@e0" }] as never);
+    await backend.act("Finder", 8, { role: "button" }, [{ kind: "click", ref: "@e0" }] as never);
     expect(rust.calls.map((c) => c.method)).toEqual([
       "ax_snapshot",
       "ax_find",
@@ -181,7 +181,7 @@ describe("AxBackendFactory 三 backend 调对应 rust method 名", () => {
     const backend = AxBackendFactory.createFromKind("win_uia", rust);
     await backend.snapshot("notepad", 8);
     await backend.find("notepad", 8, { role: "button" });
-    await backend.act([{ type: "click", ref: "@e0" }] as never);
+    await backend.act("Finder", 8, { role: "button" }, [{ kind: "click", ref: "@e0" }] as never);
     expect(rust.calls.map((c) => c.method)).toEqual([
       "uia_snapshot",
       "uia_find",
@@ -194,7 +194,7 @@ describe("AxBackendFactory 三 backend 调对应 rust method 名", () => {
     const backend = AxBackendFactory.createFromKind("linux_atspi", rust);
     await backend.snapshot("gedit", 8);
     await backend.find("gedit", 8, { role: "button" });
-    await backend.act([{ type: "click", ref: "@e0" }] as never);
+    await backend.act("Finder", 8, { role: "button" }, [{ kind: "click", ref: "@e0" }] as never);
     expect(rust.calls.map((c) => c.method)).toEqual([
       "atspi_snapshot",
       "atspi_find",

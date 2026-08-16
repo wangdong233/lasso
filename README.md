@@ -40,10 +40,12 @@
 | 你说 …… | 你得到 |
 |---|---|
 | 「搜一下 rust async 生态最新动态」 | 结构化搜索结果（某家临时挂掉自动换下一家，你无感） |
+| 「搜最近一周 Claude Code 的更新」（v1.11） | 按 `freshness=week` 过滤的时效结果——不用往查询词里手写日期 |
 | 「抓一下 github.com 首页文字」 | 干净正文（自动剥掉导航 / 广告 / 冗余，省 30–70% 字数） |
 | 「打开我已登录的 Jira 看看待办」 | 登录态页面快照（复用你本机 Chrome，2FA 你自己解） |
 | 「这个链接打不开了，找找存档」 | 互联网档案馆最近一份快照 |
 | 「把 Finder 当前窗口的文件列出来」 | 桌面上的窗口和控件列表（语义树，非截图） |
+| 「点一下那个新建文件夹按钮」「在搜索框里输入 XX」（v1.11） | 桌面动作真实执行（AXAPI 语义点击/输入 + 结果验证；canvas/Electron 自动降级坐标点击） |
 | 「把这一页截个整页长图」「存成 PDF」 | 落盘的文件路径（不会把一大坨图片数据塞进对话） |
 | 「这个页面加载了哪些第三方跟踪」 | 资源列表 + 跟踪域名计数 |
 | 「列一下我现在能控的所有窗口和网页」 | 一个统一清单（网页和桌面窗口都在里面） |
@@ -190,7 +192,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.10.0**（v1.10 浏览器默认静默 + 用完即关：`launch-chrome` 默认零窗口零打扰启动（macOS/Windows 适配，`--mode visible` 可回退）、恒带后台反节流与静音、server 运行期最后使用后 ~60 秒自动关闭（`LASSO_LAUNCH_IDLE_MS` 可调，5 分钟语义配 300000 保留）；v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
+**当前版本 v1.11.0**（v1.11「全交互抓手」实施维度补齐：**桌面从「能看」变「能点」**——`desktop` 的 click/type/scroll 真正落地（AXAPI 语义点击 + 写后读回验证 + 过期引用诚实报错），并新增坐标鼠标动作（拖拽/滚轮/移动，canvas/Electron 兜底）和 `skeleton` 树剪枝（密集应用 token 大幅下降）；**驱动层升级 chrome-devtools-mcp 0.3.0 → 1.7.0**（11 个月 57 版红利；启动级反检测 UA/视口；已默认关闭上游遥测）；**search 新增 `freshness` 时效过滤**（day/week/month/year 透传三引擎，查新闻/版本动向不再往查询词里手写日期）；英文查询的零 Key 兜底从百度换成 DuckDuckGo；新增 `LASSO_PROXY` 浏览器出口代理（只影响无头/云浏览器，登录态 Chrome 出口不动）；v1.10 浏览器默认静默 + 用完即关：`launch-chrome` 默认零窗口零打扰启动（macOS/Windows 适配，`--mode visible` 可回退）、恒带后台反节流与静音、server 运行期最后使用后 ~60 秒自动关闭（`LASSO_LAUNCH_IDLE_MS` 可调，5 分钟语义配 300000 保留）；v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了 wave1 全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、caller-tier 配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
 
 **前提**：Node.js ≥ 20；Claude Code（或任何支持 MCP 的客户端）。
 

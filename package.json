@@ -1,6 +1,6 @@
 {
   "name": "lasso-mcp",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Claude Code 的全交互对外抓手 MCP —— 搜/抓/登录态抓/控桌面，四通道+多引擎 fallback+AES cookie+markdown 抽取。All-in-one interaction MCP for Claude Code.",
   "type": "module",
   "main": "dist/index.js",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check-invariants": "node src/invariants/check-invariants.mjs",
+    "inv-selftest": "node scripts/inv-selftest.mjs",
     "replay-baseline": "node dist/index.js replay-baseline"
   },
   "keywords": [
@@ -46,7 +47,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "defuddle": "^0.19.1",
     "ip-cidr": "^4.0.2",
     "turndown": "^7.2.4",

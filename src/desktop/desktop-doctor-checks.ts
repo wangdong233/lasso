@@ -1,7 +1,7 @@
 /**
  * desktop-doctor-checks（parse4 §3.4 + 13 §3.4 M0.5a 验收 #5/#6）
  *
- * 6 项 desktop readiness check（doctor.ts #15-#20）：
+ * 7 项 desktop readiness check（doctor.ts #15-#21；v1.11 T11 加 #21）：
  *   15. rust_helper_signed           — codesign -dvvv 验证 Developer ID 签名
  *   16. rust_helper_running          — ping 调用，3s 超时
  *   17. tcc_accessibility            — 调 rust.call("tcc_status") 读 accessibility 字段
@@ -76,7 +76,7 @@ const AX_READ_RATE_MIN_NODES = 1;
  *
  * @param rust       RustBridgeLike 实例；null 时 6 项全 skip warn（不阻塞 ready）
  * @param opts       可选覆盖：helperPath（codesign 检查路径）、vlmEndpoint
- * @returns DoctorCheck[]（6 项，顺序固定 #15-#20）
+ * @returns DoctorCheck[]（7 项，顺序固定 #15-#21）
  */
 export async function runRustDoctorChecks(
   rust: RustBridgeLike | null,
@@ -108,6 +108,8 @@ export async function runRustDoctorChecks(
     await checkAxReadRate(rust),
     // 20. vlm_endpoint_reachable
     await checkVlmEndpoint(vlmEndpoint),
+    // 21. tcc_event_synthesizing（v1.11 round1 T11；macOS 15+ 第三维）
+    await checkTccEventSynthesizing(rust),
   ];
 }
 
@@ -293,6 +295,59 @@ async function checkTccScreenRecording(
 }
 
 /**
+ * 21. tcc_event_synthesizing（v1.11 round1 T11）。
+ * 调 rust.call("tcc_status") 读 event_synthesizing 字段（三态）。
+ *  - "granted"      → pass
+ *  - "not_required" → pass（macOS < 15 无此维度；Accessibility 即够）
+ *  - "denied"       → warn（档3 cgEvent 键盘/鼠标合成被 WindowServer 静默拦截——
+ *                     仅 act press/hotkey/鼠标路径需要；observe 不依赖）
+ */
+async function checkTccEventSynthesizing(
+  rust: RustBridgeLike,
+): Promise<DoctorCheck> {
+  try {
+    const r = await rust.call("tcc_status", {}, 3_000);
+    if (!r.ok) {
+      return {
+        name: "tcc_event_synthesizing",
+        status: "warn",
+        detail: r.error ?? r.error_kind ?? "tcc_status returned ok=false",
+      };
+    }
+    const tcc = (r.result ?? {}) as { event_synthesizing?: string };
+    if (tcc.event_synthesizing === "granted") {
+      return {
+        name: "tcc_event_synthesizing",
+        status: "pass",
+        detail: "Event Synthesizing 已授权（macOS 15+ 合成键盘/指针输入可用）",
+      };
+    }
+    if (tcc.event_synthesizing === "denied") {
+      return {
+        name: "tcc_event_synthesizing",
+        status: "warn", // warn 而非 fail：仅档3 act 键盘/鼠标路径依赖；observe 不依赖
+        detail:
+          "Event Synthesizing 未授权（macOS 15+ 档3 cgEvent 键盘/鼠标合成会被静默拦截）",
+        next_step:
+          "System Settings → Privacy & Security → Event Synthesizing → 加入 lasso-rust-helper（15+ 新维度；Peekaboo permissions 文档同款）",
+      };
+    }
+    // not_required（macOS < 15）或字段缺失（旧 helper）→ pass
+    return {
+      name: "tcc_event_synthesizing",
+      status: "pass",
+      detail: `Event Synthesizing: ${tcc.event_synthesizing ?? "not_required"}（macOS < 15 无此维度）`,
+    };
+  } catch (e) {
+    return {
+      name: "tcc_event_synthesizing",
+      status: "warn",
+      detail: String(e),
+    };
+  }
+}
+
+/**
  * 19. ax_read_rate（parse4 §3.4 + 验收 #1）。
  * 在 system-wide root 跑 snapshot maxDepth=3，统计节点数。
  *  - ≥20  → pass（M0.5a 正式阈值；v0.3.5 phase C 默认 ≥1 = helper 能响应即过）
@@ -442,5 +497,11 @@ const SKIP_6: DoctorCheck[] = [
     name: "vlm_endpoint_reachable",
     status: "warn",
     detail: "desktopChecks=false（doctor CLI 默认装配无 DesktopChannel）",
+  },
+  {
+    name: "tcc_event_synthesizing",
+    status: "warn",
+    detail: "desktopChecks=false（doctor CLI 默认装配无 DesktopChannel）",
+    next_step: "调 desktop(action:'doctor') 取完整 7 项 desktop check",
   },
 ];

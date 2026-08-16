@@ -194,9 +194,10 @@ describe("probeCreepjs —— 成功路径（evaluate 返完整 lies）", () => 
     await probeCreepjs(client);
     const waitCall = calls.find((c) => c.name === "wait_for");
     expect(waitCall).toBeTruthy();
-    // W1-DEF-2（v1.8）：上游 0.3.0 契约——wait_for.text 是 string 不是数组
-    expect(waitCall!.args.text).toBe("FP ID:");
-    expect(Array.isArray(waitCall!.args.text)).toBe(false);
+    // v1.11（round1 T1）：上游 1.7.0 契约——wait_for.text 是非空 string 数组
+    // （zod.array(zod.string()).min(1)；0.3.0 单条 string 翻转）
+    expect(waitCall!.args.text).toEqual(["FP ID:"]);
+    expect(Array.isArray(waitCall!.args.text)).toBe(true);
   });
 
   it("evaluate_script 调 CREEPJS_LIES_EXTRACT_SCRIPT（顶级 const ID 不变）", async () => {

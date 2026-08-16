@@ -54,6 +54,12 @@ export interface BingOpts {
    */
   market: string;
   no_cache: boolean;
+  /**
+   * v1.11（round1 T6）：时效性过滤（Bing v7 原生 freshness 参数 Day/Week/Month）。
+   * year 档 Bing 无对应粒度 → 不传（诚实降级；year 需求走 Brave/智谱）。
+   * 不传 = 不限（byte-identical 基线）。
+   */
+  freshness?: "day" | "week" | "month" | "year";
 }
 
 /**
@@ -158,6 +164,7 @@ export class BingChannel extends BaseChannel {
         opts.limit,
         opts.market,
         key,
+        opts.freshness,
       );
 
       if (status === 429) {
@@ -215,6 +222,7 @@ export class BingChannel extends BaseChannel {
     count: number,
     market: string,
     key: string,
+    freshness?: "day" | "week" | "month" | "year",
   ): Promise<{
     outcome: Outcome;
     data: SearchResult["results"] | null;
@@ -229,6 +237,11 @@ export class BingChannel extends BaseChannel {
     url.searchParams.set("safeSearch", "Moderate");
     url.searchParams.set("textDecorations", "false");
     url.searchParams.set("textFormat", "Raw");
+    // v1.11（round1 T6）：freshness 透传（Bing v7 原生：Day/Week/Month；
+    // year 无对应粒度 → 不传，诚实降级）
+    if (freshness === "day") url.searchParams.set("freshness", "Day");
+    if (freshness === "week") url.searchParams.set("freshness", "Week");
+    if (freshness === "month") url.searchParams.set("freshness", "Month");
 
     const resp = await this.httpClient.fetch(url, {
       headers: {

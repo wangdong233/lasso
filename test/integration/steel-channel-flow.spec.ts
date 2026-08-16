@@ -171,7 +171,7 @@ describe("SteelChannel 端到端 mock REST flow", () => {
     expect(r.served_by).toBe("browse_cloud_steel");
     expect(r.retrieval_method).toBe("cloud_steel");
     expect(sessionProvider).toHaveBeenCalledTimes(1);
-    expect(sessionProvider).toHaveBeenCalledWith("http://localhost:3000");
+    expect(sessionProvider).toHaveBeenCalledWith("http://localhost:3000", undefined); // v1.11 T10：第 2 参 proxyUrl（未配 = undefined）
     expect(ch._testGetCachedSessionId()).toBe("steel-e2e-sess-001");
   });
 

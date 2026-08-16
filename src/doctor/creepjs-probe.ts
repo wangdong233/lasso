@@ -200,8 +200,9 @@ export async function probeCreepjs(
   // 在 fingerprint 完成后才渲染 "FP ID:"，wait_for 命中即 window.Fingerprint 已 populate。
   try {
     await client.callTool("wait_for", {
-      // W1-DEF-2（v1.8）：上游 0.3.0 wait_for.text 要 string，不再传数组
-      text: DEFAULT_WAIT_TEXT,
+      // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text 契约是
+      // array(string).min(1)（0.3.0 要 string，W1-DEF-2 随版本迁移翻转）。
+      text: [DEFAULT_WAIT_TEXT],
       timeout: waitTimeout,
     });
   } catch (e) {

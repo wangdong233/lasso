@@ -105,14 +105,17 @@ export interface StealthProfile {
  */
 export const STEALTH_PROFILES = {
   windows_chrome_120: {
+    // v1.11（round1 T4）：值刷新至 2026-08 stable 时代（Chrome 151，2026-07-28 shipped）。
+    // UA ↔ secChUa ↔ brands 三方一致（ghost brand 按 Chrome major %4 取：151%4=3 →
+    // "Not_A Brand"，与 ua-client-hints.ts 运行时派生规则对齐）。key 名不动（稳定标识符）。
     userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
     viewport: { width: 1920, height: 1080 },
     timezone: "America/New_York",
     language: "en-US",
     platform: "Win32",
-    // v1.5 header 集（Chrome 130 sec-ch-ua，brands 与 UA 版本一致）
-    secChUa: '"Google Chrome";v="130", "Not?A_Brand";v="99", "Chromium";v="130"',
+    // v1.11 header 集（Chrome 151 sec-ch-ua，brands 与 UA 版本一致）
+    secChUa: '"Google Chrome";v="151", "Not_A Brand";v="99", "Chromium";v="151"',
     secChUaMobile: "?0",
     secChUaPlatform: '"Windows"',
     accept:
@@ -126,13 +129,18 @@ export const STEALTH_PROFILES = {
     upgradeInsecureRequests: "1",
   },
   mac_safari_17: {
+    // v1.11（round1 T4）：值刷新至 Safari 27（2026-07-20 shipped；Apple 版本号随 OS 对齐，
+    // Safari 18 后跳 26/27）。macOS token 沿用冻结的 10_15_7（Apple UA 历史行为）。
+    // review03 F3 修正：`Safari/` token 保持冻结的 605.1.15（Apple 自 2013 起所有真机
+    // Safari 都发 Safari/605.1.15；Safari/27.0 是真实浏览器从不发出的伪造组合——
+    // 一行 regex 即识破，比旧值更显眼。真机 27 的 UA = Version/27.0 Safari/605.1.15）。
     userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15",
     viewport: { width: 1680, height: 1050 },
     timezone: "Asia/Shanghai",
     language: "zh-CN",
     platform: "MacIntel",
-    // Safari 17.5 原生不发 sec-ch-ua client hints → 空串表「不发此 header」
+    // Safari 原生不发 sec-ch-ua client hints → 空串表「不发此 header」
     secChUa: "",
     secChUaMobile: "",
     secChUaPlatform: "",
@@ -147,13 +155,14 @@ export const STEALTH_PROFILES = {
     upgradeInsecureRequests: "1",
   },
   linux_firefox_121: {
+    // v1.11（round1 T4）：值刷新至 Firefox 153（2026-07-20 shipped，153.0.3 2026-08-04）。
     userAgent:
-      "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+      "Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0",
     viewport: { width: 1920, height: 1080 },
     timezone: "Europe/London",
     language: "en-GB",
     platform: "Linux x86_64",
-    // Firefox 130 原生不发 sec-ch-ua client hints → 空串表「不发此 header」
+    // Firefox 原生不发 sec-ch-ua client hints → 空串表「不发此 header」
     secChUa: "",
     secChUaMobile: "",
     secChUaPlatform: "",
@@ -210,9 +219,11 @@ export const STEALTH_PROFILE_NAMES = Object.keys(
  *  16.  user-agent-override（navigator.userAgent / platform / language 改写；profile-specific，
  *       由 StealthEngine.buildUserAgentOverrideScript 单独注入，本 SCRIPT 不含 — 走第 2 次 evaluate）
  *
- * userAgent / viewport / timezone 由 chrome-devtools-mcp 启动 flag 控制
- * （subprocess spec 加 --user-agent / --window-size / --timezone）；本脚本只补
- * JS 侧 navigator 属性。
+ * userAgent / viewport 在 HeadlessChannel 构造期经 chrome-devtools-mcp 1.7.0
+ * `--chromeArg=--user-agent=` / `--viewport=` 启动 flag 控制（v1.11 round1 T2 落地，
+ * 消除网络层 HeadlessChrome UA 头）；timezone 无启动 flag，由 JS 侧（本脚本 +
+ * StealthEngine.buildUserAgentOverrideScript）与页面 Intl 上下文承担。本脚本补齐
+ * JS 侧 navigator 属性（16 路 evasion，launch flag 覆盖不到的面）。
  *
  * license：vendored evasion 文件头均带 `// Vendored from puppeteer-extra-plugin-stealth@2.11.2 (MIT)`。
  */

@@ -11,7 +11,7 @@
  *  listTools）/ 元信息（pid、stderr stream）。
  *
  * parse1 §3.2 原文假设 StdioClientTransport 接 { stdin, stdout, stderr } 流，
- * 但实际 SDK 1.29 的 StdioServerParameters 形状是 { command, args, env, stderr,
+ * 但实际 SDK（1.29+，v1.11 T16 升 1.30）的 StdioServerParameters 形状是 { command, args, env, stderr,
  * cwd }——transport 自己 spawn。所以本类按 SDK 真实 API 实现，意图不变（解耦
  * SubprocessManager 与协议帧）。
  *

@@ -261,6 +261,42 @@ describe("loadConfig — file→env 合并", () => {
     expect(cfg.cdpPort).toBe(9333);
   });
 
+  // ----- v1.11（round1 T12）：cdpPort NaN/越界守卫 -----
+  it("非法 LASSO_CDP_PORT（'abc'）→ 回退默认 9222（不 NaN 下渗 CDP 层）", () => {
+    const cfg = loadConfig({
+      runId: "test-run",
+      env: { LASSO_CDP_PORT: "abc" },
+    });
+    expect(cfg.cdpPort).toBe(9222);
+    expect(Number.isNaN(cfg.cdpPort)).toBe(false);
+  });
+
+  it("越界 LASSO_CDP_PORT（0 / 70000）→ 回退默认 9222", () => {
+    expect(
+      loadConfig({ runId: "t", env: { LASSO_CDP_PORT: "0" } }).cdpPort,
+    ).toBe(9222);
+    expect(
+      loadConfig({ runId: "t", env: { LASSO_CDP_PORT: "70000" } }).cdpPort,
+    ).toBe(9222);
+  });
+
+  it("合法边界 LASSO_CDP_PORT（1 / 65535）→ 原样接受", () => {
+    expect(
+      loadConfig({ runId: "t", env: { LASSO_CDP_PORT: "1" } }).cdpPort,
+    ).toBe(1);
+    expect(
+      loadConfig({ runId: "t", env: { LASSO_CDP_PORT: "65535" } }).cdpPort,
+    ).toBe(65535);
+  });
+
+  it("parseCdpPort 纯函数行为（NaN/越界回退默认；合法值原样）", async () => {
+    const { parseCdpPort } = await import("../../src/config/config.js");
+    expect(parseCdpPort("abc")).toBe(9222);
+    expect(parseCdpPort(undefined)).toBe(9222);
+    expect(parseCdpPort("")).toBe(9222);
+    expect(parseCdpPort("9400")).toBe(9400);
+  });
+
   it("零配置：无 file + 无 env key → loadConfig 仍可用（zhipuApiKey undefined）", () => {
     const cfg = loadConfig({
       runId: "test-run",

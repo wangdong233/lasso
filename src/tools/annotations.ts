@@ -187,13 +187,13 @@ export const pdfAnnotations: ToolAnnotations = {
  *   |  ------- | -------- | --------- | ----------------------------------- |
  *   |  network |   true   |   true    | 只读抓资源列表（无副作用）；触外网   |
  *
- * - readOnlyHint=true：network 只调 navigate + PerformanceObserver 注入读取
+ * - readOnlyHint=true：network 只调 navigate + 原生 list_network_requests 读取（v1.11 T5）
  *   `performance.getEntriesByType("resource")`，不发请求、不改页面状态。
- *   PerformanceObserver 是 read-only 浏览器 API；与 browse_headless readOnly=false
+ *   （上游只读枚举请求；与 browse_headless readOnly=false
  *   因可 click/fill 形成对比。CC 可据此自动批准 network。
  * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）。
  *
- * Go/No-Go F2（parse6 §4.4 + §7.1）：fake-ip TUN 下 PerformanceObserver 可能抓不全，
+ * v1.11 T5：0.3.0 注入路径已删（F2 TUN 抓不全限制随原生工具关闭），
  *                                  annotations 不变（能力上限是「读资源列表」，抓不全是运行时降级）。
  */
 export const networkAnnotations: ToolAnnotations = {

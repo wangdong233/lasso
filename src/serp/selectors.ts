@@ -1,9 +1,16 @@
 /**
- * SERP selectors（parse1 §3.13 + 08 §3.8 F3.8.1-8）
+ * SERP selectors（parse1 §3.13 + 08 §3.8 F3.8.1-8；v1.11 round1 T9 改版）
  *
- * 百度 / Google 搜索结果页的 selector 级联（主 → 备）。
+ * 百度 / DuckDuckGo 搜索结果页的 selector 级联（主 → 备）。
  * open-webSearch 风格：每条 selector 集包含 result_container / title / link / snippet
  * 四件套；命中失败时按顺序降级到下一条。
+ *
+ * v1.11（round1 T9）：
+ *  - Google selector **删除**（死配置清理——grep 零生产调用方，R-INT 卫生；
+ *    与 INV-23 全程走 browse_headless 的立场一致，google SERP 从未接线）
+ *  - DDG selector 接线：html.duckduckgo.com 纯 HTML 端点是零 Key 英文兜底的
+ *    社区共识引擎（firecrawl/open-webSearch 同选）；CJK query 走百度（现状）、
+ *    非 CJK query 走 DDG（修复「英文 query 落百度」的免费层英文兜底缺位）
  *
  * 设计注记（10 §D.1）：**SERP 是债不是资产**——主路径走结构化 API（智谱），
  * 这里只是 search → browse_headless 跨模态 fallback 时的兜底抽链接。
@@ -12,7 +19,7 @@
  * 借鉴：open-webSearch selector 级联风格；08 §3.8。
  */
 
-export type SerpEngine = "baidu" | "google";
+export type SerpEngine = "baidu" | "ddg";
 
 export interface SerpSelectorSet {
   engine: SerpEngine;
@@ -47,22 +54,22 @@ export const BAIDU_SELECTORS: SerpSelectorSet[] = [
 ];
 
 // ============================================================
-// Google
+// DuckDuckGo（v1.11 T9：非 CJK query 兜底；html.duckduckgo.com 纯 HTML 端点）
 // ============================================================
-export const GOOGLE_SELECTORS: SerpSelectorSet[] = [
+export const DDG_SELECTORS: SerpSelectorSet[] = [
   {
-    engine: "google",
-    result_container: "div.g",
-    title: "h3",
-    link: "div.yuRUbf a",
-    snippet: "div.VwiC3b",
+    engine: "ddg",
+    result_container: "div.result",
+    title: "a.result__a",
+    link: "a.result__a",
+    snippet: "a.result__snippet",
   },
   {
-    engine: "google",
-    result_container: "div.tF2Cxc",
-    title: "h3",
-    link: "a",
-    snippet: "div.VwiC3b",
+    engine: "ddg",
+    result_container: "div.web-result",
+    title: ".result__title a",
+    link: ".result__title a",
+    snippet: ".result__snippet",
   },
 ];
 
@@ -71,8 +78,9 @@ export const GOOGLE_SELECTORS: SerpSelectorSet[] = [
 // ============================================================
 /**
  * 选引擎对应的 selector 集（按优先级）。
- * 默认走 baidu（fake-ip / 国内网络更稳，且与 parse1 §3.13 主路径一致）。
+ * 默认走 baidu（CJK query / fake-ip 国内网络更稳）；
+ * 非 CJK query 由 extract.ts 分流到 ddg（v1.11 T9）。
  */
 export function selectorsFor(engine: SerpEngine = "baidu"): SerpSelectorSet[] {
-  return engine === "google" ? GOOGLE_SELECTORS : BAIDU_SELECTORS;
+  return engine === "ddg" ? DDG_SELECTORS : BAIDU_SELECTORS;
 }

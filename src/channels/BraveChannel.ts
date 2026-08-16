@@ -51,7 +51,23 @@ export interface BraveOpts {
   /** "CN" / "US" / "ALL"（Brave 用 ISO 国家码）。 */
   region: string;
   no_cache: boolean;
+  /**
+   * v1.11（round1 T6）：时效性过滤（Brave 原生 freshness 参数 pd/pw/pm/py）。
+   * 不传 = 不限（byte-identical 基线）。
+   */
+  freshness?: "day" | "week" | "month" | "year";
 }
+
+/**
+ * v1.11（round1 T6）：SearchFreshness → Brave freshness 参数值映射
+ * （Brave Web Search API：pd=past day / pw=past week / pm=past month / py=past year）。
+ */
+export const BRAVE_FRESHNESS_MAP: Record<string, string> = {
+  day: "pd",
+  week: "pw",
+  month: "pm",
+  year: "py",
+};
 
 /**
  * 注入式 HTTP client，便于测试 mock fetch。
@@ -154,6 +170,7 @@ export class BraveChannel extends BaseChannel {
         opts.limit,
         opts.region,
         key,
+        opts.freshness,
       );
 
       if (status === 429) {
@@ -211,6 +228,7 @@ export class BraveChannel extends BaseChannel {
     count: number,
     country: string,
     key: string,
+    freshness?: "day" | "week" | "month" | "year",
   ): Promise<{
     outcome: Outcome;
     data: SearchResult["results"] | null;
@@ -221,6 +239,8 @@ export class BraveChannel extends BaseChannel {
     url.searchParams.set("q", query);
     url.searchParams.set("count", String(Math.min(count, 20))); // Brave 单次 max 20
     url.searchParams.set("country", country);
+    // v1.11（round1 T6）：freshness 透传（Brave 原生参数 pd/pw/pm/py）
+    if (freshness) url.searchParams.set("freshness", BRAVE_FRESHNESS_MAP[freshness] ?? freshness);
 
     const resp = await this.httpClient.fetch(url, {
       headers: {

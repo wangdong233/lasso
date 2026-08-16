@@ -158,12 +158,16 @@ export class BrowserbaseChannel extends BrowseChannel {
     });
 
     // registerSpec 覆写（同 name 覆写——Map.set 语义，与 SubprocessManager 范式一致）
+    // v1.11（round1 T1）：--browser-url → --wsEndpoint。chrome-devtools-mcp 1.7.0 两者
+    // 互斥（cliOptions conflicts）；Browserbase 返回 wss:// 端点且需自定义 headers 语义，
+    // --wsEndpoint 才有保障（0.9.0+ 语义）。另加 --no-usage-statistics（1.7.0 默认开遥测）。
     this.subproc.registerSpec(this.specName, {
       command: "npx",
       args: [
         "-y",
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
-        `--browser-url=${wsUrl}`,
+        `--wsEndpoint=${wsUrl}`,
+        "--no-usage-statistics",
       ],
       mcpClientName: "lasso-browse-browserbase",
     });

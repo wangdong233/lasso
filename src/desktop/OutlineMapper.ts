@@ -92,6 +92,8 @@ export function axTreeToOutline(root: AxNode): OutlineMapResult {
       rect: n.rect,
       pictureOnly: isPictureOnly(n, children.length),
       children,
+      // v1.11（round1 T8）：skeleton 边界计数透传（Rust 端填；默认无此字段）
+      ...(n.childrenCount !== undefined ? { childrenCount: n.childrenCount } : {}),
     };
   };
   const outlineRoot = visit(root);

@@ -40,6 +40,7 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 | You say …… | You get |
 |---|---|
 | "Search for the latest on the rust async ecosystem" | Structured search results (auto-switches to the next engine if one is down — you don't feel a thing) |
+| "Search Claude Code updates from the last week" (v1.11) | Time-filtered results via `freshness=week` — no hand-written dates in the query |
 | "Grab the text of the github.com homepage" | Clean article text (nav bars / ads / clutter stripped — saves 30–70% on tokens) |
 | "Open my logged-in Jira and show my to-dos" | A snapshot of the logged-in page (reuses your local Chrome; you handle 2FA yourself) |
 | "This link is dead, find an archive" | The most recent snapshot from the Internet Archive |
@@ -188,6 +189,8 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 ---
 
 ## Install
+
+**Current version v1.11.0** (the "everything grab handle" implementation gap closed: **desktop goes from observe-only to full act** — `desktop` click/type/scroll now really execute (AXAPI semantic clicks + write-then-read-back verification + honest stale-ref errors), plus coordinate mouse actions (drag/wheel/move as canvas/Electron fallback) and a `skeleton` tree-pruning option (big token savings on dense apps); **driver layer upgraded chrome-devtools-mcp 0.3.0 → 1.7.0** (11 months / 57 releases of fixes; launch-level stealth UA/viewport; upstream telemetry explicitly disabled); **search gained a `freshness` time filter** (day/week/month/year passed through to all three engines — no more hand-writing dates into queries for news/release tracking); the zero-key English fallback switched from Baidu to DuckDuckGo; new `LASSO_PROXY` browser egress proxy (affects headless/cloud browsers only — your logged-in Chrome's egress stays untouched).)
 
 **Prerequisites**: Node.js ≥ 20; Claude Code (or any MCP-capable client).
 

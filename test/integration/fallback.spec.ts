@@ -208,9 +208,10 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
       expect(result.outcome).toBe("worked");
       expect(result.fallback_used).toBe(true);
       expect(result.served_by).toBe("browse_headless");
-      expect(result.retrieval_method).toBe("serp_scrape_baidu");
+      // v1.11 T9：英文 query 走 DDG 兜底（CJK query 才走 baidu）
+      expect(result.retrieval_method).toBe("serp_scrape_ddg");
       expect(result.data).not.toBeNull();
-      expect(result.data!.engine).toBe("baidu_serp");
+      expect(result.data!.engine).toBe("ddg_serp");
       expect(result.data!.results.length).toBeGreaterThan(0);
       // 审计链：search.zhipu unknown + browse_headless worked
       expect(result.actions_and_results).toHaveLength(2);

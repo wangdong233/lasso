@@ -6,11 +6,13 @@
  *  - 文件内容 = SearchCacheEntry JSON（含 result 完整）
  *  - TTL 用 mtime（fs.stat.mtimeMs）判断，不读自身 created_at（更可靠）
  *
- * attribution key（不变量 INV-11）：
- *  - 输入：canonical(query) | engine | region | limit
+ * attribution key（不变量 INV-11，v1.11 round1 T6 修订）：
+ *  - 输入：canonical(query) | engine | region | limit | freshness?
  *  - canonical：trim + lowercase + 去多余空白 + NFD + 去 diacritics（naïve → naive）
  *  - sha1 → hex（40 字符，足够避免碰撞）
  *  - 必须含 engine + region + limit —— 防同 query 不同 engine 误命中（智谱 ≠ Brave ≠ auto）
+ *  - v1.11 T6 加 freshness（影响结果的 query 参数）：同 query 不同 freshness → 不同 key
+ *    （day 档结果缓存不能被 year 档误命中）；不传 freshness = key 与基线 byte-identical
  *
  * LRU 1000：v0.2 简化懒清理（每次 set 后若总量 > MAX_ENTRIES，扫一遍删最旧 ~10%）；
  *   v0.3 升级为精确 mtime 排序 + 异步 GC。
@@ -55,8 +57,9 @@ export class SearchCache {
     engine: string,
     region: string,
     limit: number,
+    freshness?: string,
   ): Promise<InteractResult<SearchResult> | null> {
-    const key = this._key(query, engine, region, limit);
+    const key = this._key(query, engine, region, limit, freshness);
     const file = this._file(key);
     try {
       const stat = await fs.stat(file);
@@ -84,8 +87,9 @@ export class SearchCache {
     region: string,
     limit: number,
     result: InteractResult<SearchResult>,
+    freshness?: string,
   ): Promise<void> {
-    const key = this._key(query, engine, region, limit);
+    const key = this._key(query, engine, region, limit, freshness);
     const file = this._file(key);
     try {
       await fs.mkdir(path.dirname(file), { recursive: true });
@@ -128,15 +132,16 @@ export class SearchCache {
   }
 
   /**
-   * 暴露 cache key（测试 + doctor 用）。INV-11 守：含 engine+region+limit。
+   * 暴露 cache key（测试 + doctor 用）。INV-11 守：含 engine+region+limit（+freshness）。
    */
   computeKey(
     query: string,
     engine: string,
     region: string,
     limit: number,
+    freshness?: string,
   ): string {
-    return this._key(query, engine, region, limit);
+    return this._key(query, engine, region, limit, freshness);
   }
 
   /** 当前 cache 文件总数（测试 + doctor 用；非递归只到分片根）。 */
@@ -148,9 +153,11 @@ export class SearchCache {
   // 私有
   // ============================================================
   /**
-   * attribution key：sha1(canonical(query) | engine | region | limit)。
+   * attribution key：sha1(canonical(query) | engine | region | limit | freshness?)。
    *
-   * INV-11：必须含 engine + region + limit；缺一即违反不变量。
+   * INV-11（v1.11 T6 修订）：必须含 engine + region + limit + 全部影响结果的
+   * query 参数（当前为 freshness）；缺一即违反不变量。freshness 不传时 key 与
+   * v1.10 基线 byte-identical（可选参数零回归）。
    * canonical：trim + lowercase + 单空格 + NFD + 去 combining diacritics。
    */
   private _key(
@@ -158,6 +165,7 @@ export class SearchCache {
     engine: string,
     region: string,
     limit: number,
+    freshness?: string,
   ): string {
     const canon = q
       .trim()
@@ -167,7 +175,7 @@ export class SearchCache {
       .replace(/[̀-ͯ]/g, "");
     return crypto
       .createHash("sha1")
-      .update(`${canon}|${engine}|${region}|${limit}`)
+      .update(`${canon}|${engine}|${region}|${limit}${freshness ? `|${freshness}` : ""}`)
       .digest("hex");
   }
 

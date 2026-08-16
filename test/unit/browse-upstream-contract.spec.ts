@@ -1,15 +1,15 @@
 /**
  * BrowseChannel 上游契约回归单测（v1.8 Phase A，W1-DEF-1/2/3/5）
  *
- * 上游真实契约锚点（chrome-devtools-mcp@0.3.0，wave1 实测）：
+ * 上游真实契约锚点（chrome-devtools-mcp@1.7.0，round1 T1 tarball 白盒 + wave1 实测）：
  *  - evaluate_script 的 function 参数要**函数表达式**（上游 eval 成函数后调用），
  *    不是 IIFE 语句串 → mock 按 `eval("(" + fn + ")")` 真实执行（非函数即 isError）
- *  - wait_for.text 要 string，数组被 zod 拒（-32602 Expected string, received array）
- *  - take_screenshot 无 filePath 参数（被 zod strip），返回 base64 → Lasso 自行落盘
+ *  - wait_for.text 要非空 string 数组（1.7.0 zod.array().min(1)；0.3.0 是 string）
+ *  - take_screenshot 不传 filePath（Lasso 自落盘 + stat 校验语义更强）
  *  - navigate 对 404 页 / Chrome DNS 错误页同样返成功 → navigate 后必须校验加载结果
  *
  * 覆盖：
- *  - W1-DEF-2：wait action → wait_for 传单条 string（非数组）
+ *  - W1-DEF-2：wait action → wait_for 传 [string] 数组（1.7.0 契约）
  *  - W1-DEF-3：screenshot → 不传 filePath；base64 落盘 + fs 校验（文件真实存在且非空）；
  *              空 base64 / 上游 isError → outcome=didnt + screenshot_write_failed
  *  - W1-DEF-1：evaluate（markdown 抽取 / network 注入）传的必须是可 eval 的函数表达式，
@@ -145,10 +145,10 @@ afterEach(async () => {
 });
 
 // ============================================================
-// W1-DEF-2：wait_for.text 要 string
+// W1-DEF-2：wait_for.text 非空 string 数组（v1.11 随 1.7.0 翻转）
 // ============================================================
-describe("W1-DEF-2 — wait action 传单条 string（非数组）", () => {
-  it("wait_for.args.text 是 string，且 call 成功 → outcome=worked", async () => {
+describe("W1-DEF-2 — wait action 传非空 string 数组（1.7.0 契约）", () => {
+  it("wait_for.args.text 是 [string] 数组，且 call 成功 → outcome=worked", async () => {
     const { client, calls } = makeUpstreamClient();
     const ch = new TestBrowseChannel(client);
     const r = await ch.browse("https://example.com/", "wait", {
@@ -156,8 +156,11 @@ describe("W1-DEF-2 — wait action 传单条 string（非数组）", () => {
     } as BrowseOptions);
     const waitCall = calls.find((c) => c.name === "wait_for");
     expect(waitCall).toBeTruthy();
-    expect(waitCall!.args.text).toBe("Welcome");
-    expect(Array.isArray(waitCall!.args.text)).toBe(false);
+    // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text =
+    // zod.array(zod.string()).min(1)（waitForTextOnPage 对 text.flatMap）——
+    // 单条 string 会被 zod 拒（0.3.0 契约相反）
+    expect(waitCall!.args.text).toEqual(["Welcome"]);
+    expect(Array.isArray(waitCall!.args.text)).toBe(true);
     expect(r.outcome).toBe("worked");
   });
 });
@@ -231,17 +234,25 @@ describe("W1-DEF-1 — evaluate_script 传函数表达式（mock 按真实契约
     expect(typeof fn).toBe("function");
   });
 
-  it("network action：PerformanceObserver 注入走函数表达式（返回 Promise 由上游 await）", async () => {
+  it("network action：v1.11 T5 调原生 list_network_requests（不再注入 evaluate_script）", async () => {
     const { client, calls } = makeUpstreamClient();
     const ch = new TestBrowseChannel(client);
     const r = await ch.browse("https://example.com/", "network", {
       network_timeout_ms: 100,
     } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    expect(r.data!.preview).toBe("[]"); // Node 无 PerformanceObserver → 脚本 resolve "[]"
-    const evalCall = calls.find((c) => c.name === "evaluate_script");
-    expect(evalCall).toBeTruthy();
-    expect(typeof eval(`(${evalCall!.args.function})`)).toBe("function");
+    // 原生工具被调（1.7.0 list_network_requests；0.3.0 注入路径已删）
+    const listCall = calls.find((c) => c.name === "list_network_requests");
+    expect(listCall).toBeTruthy();
+    // mock stub 无 reqid= 行 → 空 entries（合法结果）
+    expect(r.data!.preview).toBe("[]");
+    // doNetwork 自身不再调 evaluate_script（navigate 校验路径的 evaluate 除外——
+    // 该调用发生在 list_network_requests 之前）
+    const listIdx = calls.indexOf(listCall!);
+    const evalAfter = calls
+      .slice(listIdx)
+      .find((c) => c.name === "evaluate_script");
+    expect(evalAfter).toBeUndefined();
   });
 });
 

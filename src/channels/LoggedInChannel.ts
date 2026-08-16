@@ -148,6 +148,8 @@ export class LoggedInChannel extends BrowseChannel {
         "-y",
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
         `--browser-url=http://localhost:${this.cdpPort}`,
+        // v1.11（round1 T1）：1.7.0 默认采集使用统计 → 显式关闭（隐私不倒退）。
+        "--no-usage-statistics",
       ],
       mcpClientName: `lasso-browse-logged-in-${p.name}`,
     });

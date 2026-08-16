@@ -265,7 +265,7 @@ describe("SteelChannel — 懒连接 + sessionProvider 注入 session", () => {
     const r = await ch.browse("https://example.com/", "navigate", {});
     expect(r.outcome).toBe("worked");
     expect(sessionProvider).toHaveBeenCalledTimes(1);
-    expect(sessionProvider).toHaveBeenCalledWith("http://localhost:3000");
+    expect(sessionProvider).toHaveBeenCalledWith("http://localhost:3000", undefined); // v1.11 T10：第 2 参 proxyUrl（未配 = undefined）
     expect(ch._testGetCachedSessionId()).toBe("steel-sess-abc-999");
 
     // registerSpec 调用：spec 含 --browser-url=http://localhost:9223（CDP nginx proxy，非 API 3000）

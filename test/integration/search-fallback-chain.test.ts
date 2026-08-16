@@ -210,6 +210,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -273,6 +274,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -336,6 +338,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -406,10 +409,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     };
 
     const result = await runFallbackChainEngine(
-      "test query",
+      "测试查询",
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -424,6 +428,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     expect(result.outcome).toBe("worked");
     expect(result.served_by).toBe("browse_headless");
     expect(result.fallback_used).toBe(true);
+    // v1.11 T9：CJK query → baidu 兜底（英文 query 走 ddg——见 serp-ddg.spec.ts）
     expect(result.data!.engine).toBe("baidu_serp");
     expect(result.data!.results.length).toBeGreaterThan(0);
   });
@@ -476,6 +481,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -556,6 +562,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -627,6 +634,7 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -685,6 +693,7 @@ describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤"
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       /* bing */ null,
@@ -753,6 +762,7 @@ describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤"
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -828,6 +838,7 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,
@@ -898,6 +909,7 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       10,
       "cn",
       false,
+      /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
       bing,

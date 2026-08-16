@@ -43,6 +43,13 @@ export interface LassoConfig {
   zhipuApiKey: string | undefined;
   zhipuEndpoint: string;
   cdpPort: number;
+  /**
+   * v1.11（round1 T10）：浏览器出口代理（env LASSO_PROXY；默认 "" 不代理）。
+   * 生效面：browse_headless spec `--proxy-server=` + Steel session `proxyUrl`。
+   * **browse_logged_in 永不读取**（用户真实 Chrome 出口必须原样——铁律，有负向测试钉死）。
+   * 用户显式配置（非 LLM 可控），不触碰 INV-30 stealth anti-gaming 面。
+   */
+  proxy: string;
   cacheDir: string;
   // --- v0.2 新增 ---
   /** ProviderRegistry 实例（v0.2 Phase A 落地，后续 channel/search 从这里查） */
@@ -117,6 +124,29 @@ function parseLaunchIdleMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_LAUNCH_IDLE_MS;
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 0) return DEFAULT_LAUNCH_IDLE_MS;
+  return n;
+}
+
+/**
+ * v1.11（round1 T12）：LASSO_CDP_PORT 解析（NaN/越界守卫）。
+ * parseInt 后 NaN / ≤0 / >65535 → 回退默认 9222 + logger.warn config_invalid_value
+ * （消灭静默 NaN 下渗 CDP 连接层；与 parseHeadlessIdleMs/parseLaunchIdleMs 同范式——
+ * config 数值解析归一单范式，R-CI-02 精神）。
+ */
+export const DEFAULT_CDP_PORT = 9222;
+
+export function parseCdpPort(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_CDP_PORT;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n <= 0 || n > 65_535) {
+    logger.warn({
+      evt: "config_invalid_value",
+      key: "LASSO_CDP_PORT",
+      value: raw,
+      fallback: DEFAULT_CDP_PORT,
+    });
+    return DEFAULT_CDP_PORT;
+  }
   return n;
 }
 
@@ -245,6 +275,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
   LASSO_LAUNCH_MODE: "hidden",
   LASSO_LAUNCH_IDLE_MS: 60000,
+  // v1.11（round1 T10）：浏览器出口代理（browse_headless + Steel 生效；
+  // browse_logged_in 永不读取——用户真实 Chrome 出口原样）
+  LASSO_PROXY: "",
 };
 
 /**
@@ -337,7 +370,12 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   const zhipuEndpoint =
     env.ZHIPU_ENDPOINT ?? providers.get("zhipu")?.endpoint_url ?? "";
 
-  const cdpPort = parseInt(env.LASSO_CDP_PORT ?? "9222", 10);
+  // v1.11（round1 T12）：NaN/越界守卫统一数值解析范式（与 parseHeadlessIdleMs 同款；
+  //   修复 L340 裸 parseInt：用户配 "abc" → NaN 静默下渗 CDP 连接层，报错更晚更怪）
+  const cdpPort = parseCdpPort(env.LASSO_CDP_PORT);
+
+  // v1.11（round1 T10）：LASSO_PROXY 出口代理（trim；空/未设 = 不代理）
+  const proxy = (env.LASSO_PROXY ?? "").trim();
 
   const cacheDir = env.LASSO_CACHE_DIR ?? defaultCacheDir();
 
@@ -366,6 +404,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     zhipuApiKey: zhipuKey,
     zhipuEndpoint,
     cdpPort,
+    proxy,
     cacheDir,
     searchCacheDir: path.join(cacheDir, "search-cache"),
     searchFreeOnly,

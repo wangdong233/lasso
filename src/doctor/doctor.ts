@@ -54,8 +54,8 @@
  *                                    （404=REST 契约虚构确认 → warn；2xx=契约存在 → pass；永不 fail —— 已知状态）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
- *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#20 全 warn skip（无 RustBridge 装配）
- *  - desktopChecks=true：跑 #15-#20 全 6 项（DesktopChannel.doctor / registerDoctorTool 显式 opt-in）
+ *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#21 全 warn skip（无 RustBridge 装配）
+ *  - desktopChecks=true：跑 #15-#21 全 7 项（v1.11 T11 加 #21 tcc_event_synthesizing）
  *  - 复用既有 runDoctor（不开第二套 doctor，R-CI-02）
  *
  * v0.4 M0.4a 关键设计（parse5 §3.4 + task #7）：
@@ -91,7 +91,7 @@ import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
-import { BAIDU_SELECTORS, GOOGLE_SELECTORS } from "../serp/selectors.js";
+import { BAIDU_SELECTORS, DDG_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
 import { BUILTIN_PROVIDERS } from "../config/providers.js";
 import { ProviderRegistry } from "../config/provider-registry.js";
@@ -139,7 +139,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.10.0";
+export const LASSO_VERSION = "1.11.0";
 
 // ============================================================
 // 类型
@@ -268,9 +268,9 @@ export interface DoctorOptions {
   /** 跳过触网检查（zhipu_endpoint_reachable + cdp_9222_logged_in + cdp_mcp_installable）。 */
   skipNetwork?: boolean;
   /**
-   * v0.3.5（parse4 §3.4）：跑 #15-#20 desktop check。
-   *  - false（默认）：6 项 desktop check 全 warn skip（doctor CLI 路径）
-   *  - true：跑全 6 项（需 desktopBridge 注入；desktop tool / DesktopChannel.doctor 用）
+   * v0.3.5（parse4 §3.4）：跑 #15-#20 desktop check（v1.11 T11 扩为 #15-#21 共 7 项）。
+   *  - false（默认）：7 项 desktop check 全 warn skip（doctor CLI 路径）
+   *  - true：跑全 7 项（需 desktopBridge 注入；desktop tool / DesktopChannel.doctor 用）
    */
   desktopChecks?: boolean;
   /**
@@ -443,6 +443,11 @@ export interface DoctorOptions {
    * 测试注入用：单测可指向临时 fixture 文件验证 baseline 比对逻辑。
    */
   stealthCheckBaselinePath?: string;
+  /**
+   * v1.11（round1 T10）：出口代理回显（默认读 process.env.LASSO_PROXY）。
+   * doctor 只回显不验证连通性（用户显式配置；回显错配是排障第一步）。
+   */
+  proxy?: string;
 }
 
 // ============================================================
@@ -511,6 +516,9 @@ export async function runDoctor(
 
   // 9. serp_selectors
   checks.push(checkSerpSelectors());
+
+  // v1.11（round1 T10）：proxy 配置回显（LASSO_PROXY；只回显不探活）
+  checks.push(checkProxyConfig(opts.proxy ?? process.env.LASSO_PROXY ?? ""));
 
   // 10. invariants
   checks.push(
@@ -967,13 +975,31 @@ function checkSsrfConfig(): DoctorCheck {
   }
 }
 
-/** 9. SERP selector 表加载（百度 / Google）。 */
+/** 9. SERP selector 表加载（百度 / DDG；v1.11 T9：google 死配置已删）。 */
 function checkSerpSelectors(): DoctorCheck {
-  const total = BAIDU_SELECTORS.length + GOOGLE_SELECTORS.length;
+  const total = BAIDU_SELECTORS.length + DDG_SELECTORS.length;
   return {
     name: "serp_selectors",
     status: total > 0 ? "pass" : "fail",
-    detail: `BAIDU=${BAIDU_SELECTORS.length} GOOGLE=${GOOGLE_SELECTORS.length}`,
+    detail: `BAIDU=${BAIDU_SELECTORS.length} DDG=${DDG_SELECTORS.length}`,
+  };
+}
+
+/**
+ * v1.11（round1 T10）：LASSO_PROXY 出口代理配置回显。
+ *
+ * 生效面：browse_headless（--proxy-server）+ Steel（session proxyUrl）。
+ * browse_logged_in 永不读取（用户真实 Chrome 出口原样——铁律）。
+ * 只回显不探活：代理连通性依赖用户网络环境，doctor 不做误导性判定。
+ */
+function checkProxyConfig(proxy: string): DoctorCheck {
+  const trimmed = proxy.trim();
+  return {
+    name: "proxy_config",
+    status: "pass",
+    detail: trimmed
+      ? `LASSO_PROXY=${trimmed}（browse_headless --proxy-server + Steel proxyUrl 生效；browse_logged_in 不读取）`
+      : "LASSO_PROXY 未配置（默认直连；配置后 headless/Steel 走代理出口）",
   };
 }
 
@@ -1667,10 +1693,15 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
       };
     }
 
+    // 6. v1.11（round1 T4）：UA 版本年龄提示（hint 非 gate——不改 pass/fail，
+    //    守 INV-30 anti-gaming：doctor 只提示，不自动改 profile）。
+    //    锚点：Chrome 151 shipped 2026-07-28（4.3 周周期 ≈ 1.0 月/major）。
+    //    UA 版本过旧本身即启发式弱信号（round1 T4 证据）。
+    const uaAgeHint = estimateUaAgeMonths();
     return {
       name: "stealth_profile_self_check",
       status: "pass",
-      detail: `STEALTH_PROFILES ${profileNames.length} 条 [${profileNames.join(", ")}]；injection ${STEALTH_INJECTION_SCRIPT.length}B；cloudflare markers ${CLOUDFLARE_CHALLENGE_MARKERS.length} 项`,
+      detail: `STEALTH_PROFILES ${profileNames.length} 条 [${profileNames.join(", ")}]；injection ${STEALTH_INJECTION_SCRIPT.length}B；cloudflare markers ${CLOUDFLARE_CHALLENGE_MARKERS.length} 项；${uaAgeHint}`,
     };
   } catch (e) {
     return {
@@ -1679,6 +1710,38 @@ function checkStealthProfileSelfCheck(): DoctorCheck {
       detail: String(e),
       next_step: "检查 src/browse/stealth-profiles.ts 顶级 const 加载（import 异常 / 循环依赖）",
     };
+  }
+}
+
+/**
+ * v1.11（round1 T4）：windows_chrome_120 profile 的 UA 版本年龄估算（月）。
+ *
+ * 纯本地启发式（INV-30 anti-gaming：不从 env/config/network 读、不自动改值）：
+ *  - 锚点 = Chrome 151 shipped 2026-07-28（写死的顶级 const 锚）
+ *  - 年龄 ≈ (now - 锚) / 30.44d + (151 - major) × 1.0 月/major（4.3 周周期）
+ *  - 仅作 doctor detail 提示；>12 月附刷新建议
+ */
+const CHROME_UA_AGE_ANCHOR = { major: 151, shippedAt: Date.UTC(2026, 6, 28) };
+const MS_PER_MONTH = 30.44 * 24 * 3600 * 1000;
+
+function estimateUaAgeMonths(): string {
+  try {
+    const ua = STEALTH_PROFILES.windows_chrome_120.userAgent;
+    const m = ua.match(/Chrome\/(\d+)/);
+    if (!m) return "UA 年龄：未知（windows profile 无 Chrome 版本号）";
+    const major = parseInt(m[1], 10);
+    const monthsSinceAnchor =
+      (Date.now() - CHROME_UA_AGE_ANCHOR.shippedAt) / MS_PER_MONTH;
+    const ageMonths = Math.max(
+      0,
+      Math.round(monthsSinceAnchor + (CHROME_UA_AGE_ANCHOR.major - major)),
+    );
+    if (ageMonths > 12) {
+      return `UA 年龄约 ${ageMonths} 月（Chrome ${major} 过旧——建议刷新 STEALTH_PROFILES 值域，round1 T4）`;
+    }
+    return `UA 年龄约 ${ageMonths} 月（Chrome ${major}，v1.11 T4 刷新基线内）`;
+  } catch {
+    return "UA 年龄：估算失败";
   }
 }
 
@@ -1761,14 +1824,18 @@ function checkCdpMcpPdfToolAvailable(): DoctorCheck {
  *  - cdp-actions.ts 顶级导出 doNetwork 函数（typeof === 'function'）
  *  - BrowseChannel.ts actionDispatch Map 含 ["network", ...] entry（INV-33 守）
  *
- * 动态层（v0.5.1+ 评估）：spawn chrome-devtools-mcp + tools/list，grep evaluate_script 工具名；
- *                       静态层够用（PerformanceObserver 是 Web 标准必支持）。
+ * 动态层（v0.5.1+ 评估）：spawn chrome-devtools-mcp + tools/list，grep 工具名；
+ *                       静态层够用（1.7.0 已 tarball 白盒实证 list_network_requests 存在）。
+ *
+ * v1.11（round1 T5）：doNetwork 从 evaluate_script 注入 PerformanceObserver 改调
+ * 1.7.0 原生 list_network_requests（CDP Network 域）——F2（fake-ip TUN 抓不全）
+ * 限制随原生工具关闭。
  *
  * 与 #26 关系：
  *  - #26 探测 pdf 上游工具（CDP Page.printToPDF；上游可能不暴露）
- *  - #27 探测 network 上游工具（evaluate_script；上游必暴露 — PerformanceObserver 是 Web 标准）
- *  - 因此 #27 静态层够用，运行时几乎不会 unsupport；若真不支持 → network tool 返
- *    outcome=didnt + retrieval_method=upstream_unsupported:network + next_step（Go/No-Go F2）
+ *  - #27 探测 network 上游工具（list_network_requests；1.7.0 实证存在）
+ *  - 若运行时不支持 → network tool 返 outcome=didnt +
+ *    retrieval_method=upstream_unsupported:network + next_step（Go/No-Go F2）
  *
  * doctor 永不 fail（守 parse6 §7.1 F2：network 是可选工具；不支持不阻塞 ready）
  */
@@ -1793,21 +1860,21 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
       };
     }
     if (
-      !toolNames.evaluate_script ||
-      typeof toolNames.evaluate_script !== "string"
+      !toolNames.network_get ||
+      typeof toolNames.network_get !== "string"
     ) {
       return {
         name: "cdp_mcp_network_observer_available",
         status: "fail",
         detail:
-          "CDP_UPSTREAM_TOOL_NAMES.evaluate_script 缺失或非字符串（doNetwork 注入路径依赖）",
+          "CDP_UPSTREAM_TOOL_NAMES.network_get 缺失或非字符串（v1.11 T5 原生工具详情路径依赖）",
         next_step:
-          "补全 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.evaluate_script 字段",
+          "补全 cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_get 字段",
       };
     }
 
-    // 静态层 2：detail 报当前探测的工具名 + 注入路径
-    const detail = `cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log = "${toolNames.network_log}"；doNetwork 走 ${toolNames.evaluate_script} 注入 PerformanceObserver（JS-level；F2 已知限制：fake-ip TUN 抓不全）`;
+    // 静态层 2：detail 报当前探测的工具名 + 原生路径
+    const detail = `cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log = "${toolNames.network_log}"；doNetwork 走 1.7.0 原生工具（v1.11 T5；PerformanceObserver 注入路径已删，F2 TUN 抓不全限制关闭）`;
 
     // doctor 永不 fail（守 parse6 §7.1 F2：network 是可选工具；不支持不阻塞 ready）
     // 真正的「PerformanceObserver 在当前环境是否抓得全」由 network tool 运行时自决
@@ -1817,7 +1884,7 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
       status: "pass",
       detail,
       next_step:
-        "运行时若 network tool 返 upstream_unsupported:network 或 entries < 5，retry options.timeout_ms=10000，或等待 v0.7 F3.7.x 完整 CDP Network-level perf trace",
+        "运行时若 network tool 返 upstream_unsupported:network，说明锁定的 chrome-devtools-mcp 不含 list_network_requests；entries < 5 多半是页面真实简单（v1.11 原生采集无 TUN 盲区）",
     };
   } catch (e) {
     return {

@@ -75,7 +75,11 @@ import { logger } from "../util/logger.js";
  * 失败：endpoint 不可达 / Steel 未启动 → 抛错；caller catch → outcome=unknown
  */
 export interface SteelSessionProvider {
-  (endpoint: string): Promise<{ sessionId: string; status: string }>;
+  /**
+   * v1.11（round1 T10）：第 2 参 proxyUrl（可选；LASSO_PROXY 用户显式配置）。
+   * 注入 mock 可忽略第 2 参（向后兼容——未配代理时与 v1.10 调用形状一致）。
+   */
+  (endpoint: string, proxyUrl?: string): Promise<{ sessionId: string; status: string }>;
 }
 
 /**
@@ -90,11 +94,14 @@ export interface SteelSessionProvider {
  */
 export const defaultSteelSessionProvider: SteelSessionProvider = async (
   endpoint,
+  proxyUrl,
 ) => {
+  // v1.11（round1 T10）：Steel session schema 原生 proxyUrl（本文件 L66 注释早列了；
+  //   LASSO_PROXY 配置时带上——出口一致性）
   const r = await fetch(`${endpoint}/v1/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(proxyUrl ? { proxyUrl } : {}),
   });
   if (!r.ok) {
     const body = await r.text().catch(() => "");
@@ -142,6 +149,11 @@ export interface SteelChannelOptions {
   sessionProvider?: SteelSessionProvider;
   /** SubprocessManager spec 名，默认 "steel" */
   specName?: string;
+  /**
+   * v1.11（round1 T10）：出口代理（config.proxy；空 = 不代理）。
+   * 经 Steel session body `proxyUrl` 传给云端 Chrome（session schema 原生字段）。
+   */
+  proxyUrl?: string;
 }
 
 export class SteelChannel extends BrowseChannel {
@@ -161,6 +173,8 @@ export class SteelChannel extends BrowseChannel {
   private readonly sessionProvider: SteelSessionProvider;
   private readonly specName: string;
   private readonly cdpEndpoint: string;
+  /** v1.11（round1 T10）：出口代理（LASSO_PROXY；空 = 不代理） */
+  private readonly proxyUrl: string;
 
   constructor(
     private readonly subproc: SubprocessManager,
@@ -172,6 +186,7 @@ export class SteelChannel extends BrowseChannel {
     this.profileName = opts.profileName ?? "windows_chrome_120";
     this.sessionProvider = opts.sessionProvider ?? defaultSteelSessionProvider;
     this.specName = opts.specName ?? "steel";
+    this.proxyUrl = opts.proxyUrl ?? "";
     // CDP endpoint = Steel API host + :9223（nginx proxy port → Chrome 内部 9222）
     this.cdpEndpoint = deriveCdpEndpoint(steelEndpoint);
   }
@@ -227,6 +242,7 @@ export class SteelChannel extends BrowseChannel {
       if (!this.cachedSessionId) {
         const { sessionId, status } = await this.sessionProvider(
           this.steelEndpoint,
+          this.proxyUrl || undefined,
         );
         this.cachedSessionId = sessionId;
         logger.info({
@@ -245,6 +261,8 @@ export class SteelChannel extends BrowseChannel {
           "-y",
           `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
           `--browser-url=${this.cdpEndpoint}`,
+          // v1.11（round1 T1）：1.7.0 默认采集使用统计 → 显式关闭（隐私不倒退）。
+          "--no-usage-statistics",
         ],
         mcpClientName: "lasso-browse-steel",
       });

@@ -60,7 +60,9 @@ accessibility-sys = "0.2"
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 # core-graphics + core-graphics-types: CGPoint/CGSize/CGRect + CGWindowList 截屏.
-core-graphics = "0.24"
+# v1.11（round1 T7）加 highsierra feature：解锁 CGEvent::new_scroll_event
+# （CGEventCreateScrollWheelEvent2 绑定；档3 鼠标 scroll 路径用）。
+core-graphics = { version = "0.24", features = ["highsierra"] }
 core-graphics-types = "0.2"
 # foreign-types-shared: ForeignType trait for CGImage::as_ptr()（core-graphics 内部也用）.
 foreign-types-shared = "0.3"

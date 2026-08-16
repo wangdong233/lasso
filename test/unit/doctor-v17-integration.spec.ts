@@ -110,7 +110,7 @@ function frozenBaseline(opts: {
   return JSON.stringify({
     _doc: "test frozen baseline",
     frozenAt: "2026-08-10T00:00:00.000Z",
-    lassoVersion: "1.10.0",
+    lassoVersion: "1.11.0",
     creepjsPageSha: "test-sha",
     profile: "windows_chrome_120",
     baseline: {
@@ -129,7 +129,7 @@ function frozenBaseline(opts: {
 const PENDING_BASELINE = JSON.stringify({
   _doc: "test pending baseline",
   frozenAt: null,
-  lassoVersion: "1.10.0",
+  lassoVersion: "1.11.0",
   creepjsPageSha: null,
   profile: "windows_chrome_120",
   baseline: {
@@ -487,14 +487,14 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
     expect(names).toContain("stagehand_rest_contract_probe");
   });
 
-  it("lasso_version === 1.10.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+  it("lasso_version === 1.11.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
     const r = await runDoctor({
       zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.10.0");
-    expect(LASSO_VERSION).toBe("1.10.0");
+    expect(r.lasso_version).toBe("1.11.0");
+    expect(LASSO_VERSION).toBe("1.11.0");
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {

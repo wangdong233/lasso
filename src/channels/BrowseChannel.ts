@@ -916,9 +916,10 @@ async function doWait(
 ): Promise<Partial<BrowseResult>> {
   const text = opts.expect?.text;
   if (!text) throw new Error("wait: opts.expect.text required");
-  // W1-DEF-2（v1.8）：上游 0.3.0 wait_for.text 要 string（数组被 zod 拒
-  // -32602 Expected string, received array）——直接传单条 string。
-  await c.callTool("wait_for", { text });
+  // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text 契约是
+  // array(string).min(1)（McpPage.waitForTextOnPage 对 text.flatMap）——单条 string
+  // 会被 zod 拒。0.3.0 时代相反（要 string）——W1-DEF-2 随版本迁移翻转，INV-76 (b) 同步。
+  await c.callTool("wait_for", { text: [text] });
   return { preview: `waited for "${text}"` };
 }
 

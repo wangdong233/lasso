@@ -128,7 +128,8 @@ export class AxProvider {
     opts: DesktopOptions,
   ): Promise<InteractResult<OutlineSnapshot>> {
     const maxDepth = opts.max_depth ?? 8;
-    const resp = await this.backend.snapshot(opts.app, maxDepth);
+    // v1.11（round1 T8）：skeleton 边界计数透传（默认 false = byte-identical）
+    const resp = await this.backend.snapshot(opts.app, maxDepth, opts.skeleton);
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {
@@ -220,18 +221,22 @@ export class AxProvider {
   }
 
   /**
-   * act action：调 ax_act（Phase B Rust 端占位，返 not_implemented；M0.5b 落地）。
+   * act action：调 backend.act（v1.11 round1 T3 真实装；原 Phase B 占位废除）。
    *
-   * v0.3.5 Phase B：ax_act 在 Rust helper 返 not_implemented → 本方法返
-   * outcome=unknown + error="not_implemented"（让 DesktopChannel fallback 链
-   * 走到 screenshotVlm 档；M0.5b 后 ax_act 真实装则 outcome=worked）。
+   * v1.11（round1 T3）语义：
+   *  - app/max_depth/where 透传给 backend —— Rust 端「重新 walk + 同序重编号」
+   *    解析 @eN（where 在 = find 命中序；缺席 = snapshot 全节点前序）。
+   *  - Rust 返 ok=true + actions_and_results 逐项 {ref, ok, error_kind?, error?}。
+   *  - outcome 判定（tri-state 诚实）：
+   *      全项 ok                          → worked
+   *      部分项 ok                        → worked（部分成功；per-item 错误可见）
+   *      全项失败 且 任一项 stale_ref      → **didnt**（UI 已变，需重新 observe；
+   *                                          短路 fallback 链——再试其他档也基于旧 ref，无意义）
+   *      全项失败 且 无 stale_ref          → unknown（press/hotkey 属档3 domain /
+   *                                          真实执行错 → 链继续 appleScript→cgEvent→screenshotVlm）
+   *  - stale_ref → didnt 是 round1 T3 裁决的显式映射（TS 端错误映射）。
    *
-   * v0.4 M0.4b 语义调整（4-tier 衍生）：
-   *  - 「无 actions」从 didnt 改为 unknown（让链继续到 appleScript / cgEvent /
-   *    screenshotVlm）。原 v0.3.5 didnt 语义在 2-tier 下成立（ax 失败 = 整个
-   *    desktop 不可用），但 4-tier 下 appleScript/cgEvent 各有独立 domain，
-   *    ax 「无 actions」= 「ax 无事可做」应让链尝试其他档。
-   *  - 不破坏既有 v0.3.5 测试：现有 spec 不测 ax no-actions 的 didnt 短路。
+   * v0.4 M0.4b 语义调整（4-tier 衍生）：「无 actions」→ unknown（让链继续）。
    */
   async act(
     opts: DesktopOptions,
@@ -247,7 +252,12 @@ export class AxProvider {
         error: "no_actions_specified",
       };
     }
-    const resp = await this.backend.act(opts.actions);
+    const resp = await this.backend.act(
+      opts.app,
+      opts.max_depth ?? 8,
+      opts.where,
+      opts.actions,
+    );
     const outcome = outcomeOf(resp);
     if (outcome !== "worked") {
       return {
@@ -259,10 +269,56 @@ export class AxProvider {
         error: resp.error ?? resp.error_kind,
       };
     }
-    const result = (resp.result ?? {}) as DesktopResult;
+    const result = (resp.result ?? {}) as {
+      actions_and_results?: Array<{
+        ref?: string;
+        ok?: boolean;
+        error_kind?: string;
+        error?: string;
+      }>;
+    };
+    const items = Array.isArray(result.actions_and_results)
+      ? result.actions_and_results
+      : [];
+    // v1.11 T3：逐项结果 → ActionResult（error 合并 error_kind 前缀）
+    const actionsAndResults = items.map((it) => ({
+      ref: typeof it?.ref === "string" ? it.ref : "",
+      ok: it?.ok === true,
+      error:
+        it?.ok === true
+          ? undefined
+          : it?.error
+            ? it.error_kind
+              ? `${it.error_kind}:${it.error}`
+              : it.error
+            : it?.error_kind ?? "ax_action_failed",
+    }));
+    const okCount = actionsAndResults.filter((r) => r.ok).length;
+    if (okCount === 0) {
+      // 全项失败：stale_ref → didnt（UI 已变，重试无意义）；否则 unknown（链继续）
+      const hasStale = items.some((it) => it?.error_kind === "stale_ref");
+      if (hasStale) {
+        return {
+          outcome: "didnt",
+          data: { actions_and_results: actionsAndResults, fallback_used: false },
+          served_by: AxProvider.NAME,
+          fallback_used: false,
+          retrieval_method: "ax_stale_ref",
+          error: "stale_ref: UI changed since observe; re-run snapshot/find for fresh refs",
+        };
+      }
+      return {
+        outcome: "unknown",
+        data: { actions_and_results: actionsAndResults, fallback_used: false },
+        served_by: AxProvider.NAME,
+        fallback_used: false,
+        retrieval_method: "ax_act",
+        error: "all_ax_actions_failed",
+      };
+    }
     return {
       outcome: "worked",
-      data: result,
+      data: { actions_and_results: actionsAndResults, fallback_used: false },
       served_by: AxProvider.NAME,
       fallback_used: false,
       retrieval_method: "ax_act",

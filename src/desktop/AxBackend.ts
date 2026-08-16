@@ -56,9 +56,14 @@ import type { RustBridge, RustResponse } from "../subprocess/RustBridge.js";
  * 统一映射）；OutlineMapper 三平台共享（ INV-61 衍生：OutlineNode 契约单一 mapper）。
  */
 export interface AxBackend {
+  /**
+   * v1.11（round1 T8）：加 skeleton 参数（边界 childrenCount 计数；默认 false =
+   * wire byte-identical v1.10）。三平台同形（INV-61）。
+   */
   snapshot(
     app: string | undefined,
     maxDepth: number,
+    skeleton?: boolean,
   ): Promise<RustResponse>;
 
   find(
@@ -67,7 +72,20 @@ export interface AxBackend {
     where: WhereClause,
   ): Promise<RustResponse>;
 
-  act(actions: DesktopOptions["actions"]): Promise<RustResponse>;
+  /**
+   * v1.11（round1 T3）：act 从 `(actions)` 扩为 `(app, maxDepth, where, actions)`。
+   *
+   * why：Rust 端 ax_act 靠「重新 walk + 确定性同序重编号」解析 @eN ref——编号序
+   * 与 find（where 在 = 命中序）或 snapshot（where 缺席 = 全节点前序）一致，
+   * 故必须透传同一 where/app/max_depth 才能解析出调用方 observe 时看到的同一元素。
+   * 三平台同形（INV-61）：uia_act / atspi_act 接收同一 params 形状。
+   */
+  act(
+    app: string | undefined,
+    maxDepth: number,
+    where: WhereClause | undefined,
+    actions: DesktopOptions["actions"],
+  ): Promise<RustResponse>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -111,8 +129,14 @@ export class MacAxBackend implements AxBackend {
   async snapshot(
     app: string | undefined,
     maxDepth: number,
+    skeleton?: boolean,
   ): Promise<RustResponse> {
-    return this.rust.call("ax_snapshot", { app, max_depth: maxDepth });
+    // v1.11 T8：skeleton 透传（默认 false 不传 = byte-identical）
+    return this.rust.call("ax_snapshot", {
+      app,
+      max_depth: maxDepth,
+      ...(skeleton ? { skeleton } : {}),
+    });
   }
 
   async find(
@@ -127,8 +151,19 @@ export class MacAxBackend implements AxBackend {
     });
   }
 
-  async act(actions: DesktopOptions["actions"]): Promise<RustResponse> {
-    return this.rust.call("ax_act", { actions });
+  async act(
+    app: string | undefined,
+    maxDepth: number,
+    where: WhereClause | undefined,
+    actions: DesktopOptions["actions"],
+  ): Promise<RustResponse> {
+    // v1.11（round1 T3）：app/max_depth/where 透传——Rust 端同序重编号解析 @eN
+    return this.rust.call("ax_act", {
+      app,
+      max_depth: maxDepth,
+      where,
+      actions,
+    });
   }
 }
 
@@ -155,8 +190,14 @@ export class WinUiaBackend implements AxBackend {
   async snapshot(
     app: string | undefined,
     maxDepth: number,
+    skeleton?: boolean,
   ): Promise<RustResponse> {
-    return this.rust.call("uia_snapshot", { app, max_depth: maxDepth });
+    // v1.11 T8：skeleton 透传（默认 false 不传 = byte-identical）
+    return this.rust.call("uia_snapshot", {
+      app,
+      max_depth: maxDepth,
+      ...(skeleton ? { skeleton } : {}),
+    });
   }
 
   async find(
@@ -171,8 +212,19 @@ export class WinUiaBackend implements AxBackend {
     });
   }
 
-  async act(actions: DesktopOptions["actions"]): Promise<RustResponse> {
-    return this.rust.call("uia_act", { actions });
+  async act(
+    app: string | undefined,
+    maxDepth: number,
+    where: WhereClause | undefined,
+    actions: DesktopOptions["actions"],
+  ): Promise<RustResponse> {
+    // v1.11（round1 T3）：app/max_depth/where 透传——Rust 端同序重编号解析 @eN
+    return this.rust.call("uia_act", {
+      app,
+      max_depth: maxDepth,
+      where,
+      actions,
+    });
   }
 }
 
@@ -198,8 +250,14 @@ export class LinuxAtspiBackend implements AxBackend {
   async snapshot(
     app: string | undefined,
     maxDepth: number,
+    skeleton?: boolean,
   ): Promise<RustResponse> {
-    return this.rust.call("atspi_snapshot", { app, max_depth: maxDepth });
+    // v1.11 T8：skeleton 透传（默认 false 不传 = byte-identical）
+    return this.rust.call("atspi_snapshot", {
+      app,
+      max_depth: maxDepth,
+      ...(skeleton ? { skeleton } : {}),
+    });
   }
 
   async find(
@@ -214,8 +272,19 @@ export class LinuxAtspiBackend implements AxBackend {
     });
   }
 
-  async act(actions: DesktopOptions["actions"]): Promise<RustResponse> {
-    return this.rust.call("atspi_act", { actions });
+  async act(
+    app: string | undefined,
+    maxDepth: number,
+    where: WhereClause | undefined,
+    actions: DesktopOptions["actions"],
+  ): Promise<RustResponse> {
+    // v1.11（round1 T3）：app/max_depth/where 透传——Rust 端同序重编号解析 @eN
+    return this.rust.call("atspi_act", {
+      app,
+      max_depth: maxDepth,
+      where,
+      actions,
+    });
   }
 }
 

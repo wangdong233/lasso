@@ -23,7 +23,7 @@ import type { McpClient } from "../subprocess/McpClient.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { StealthEngine } from "../browse/StealthEngine.js";
-import type { StealthProfileName } from "../browse/stealth-profiles.js";
+import { STEALTH_PROFILES, type StealthProfileName } from "../browse/stealth-profiles.js";
 import { logger } from "../util/logger.js";
 
 export class HeadlessChannel extends BrowseChannel {
@@ -36,6 +36,12 @@ export class HeadlessChannel extends BrowseChannel {
     private readonly subproc: SubprocessManager,
     stealth?: StealthEngine,
     profileName: StealthProfileName = "windows_chrome_120",
+    /**
+     * v1.11（round1 T10）：出口代理（config.proxy；空 = 不代理）。
+     * 经 1.7.0 `--proxy-server=` 传给 Chromium。**仅 headless 生效**——
+     * LoggedInChannel 永不读 LASSO_PROXY（用户真实 Chrome 出口原样，铁律）。
+     */
+    proxyUrl?: string,
   ) {
     super();
     // stealth 可选（向后兼容：未传则内部建一个 default StealthEngine；v1.5 index.ts 装配段
@@ -45,14 +51,16 @@ export class HeadlessChannel extends BrowseChannel {
     // v1.5（parse13 §3.3）：加 Chromium flag —— --disable-blink-features=AutomationControlled
     // 移除 navigator.webdriver=true 痕迹（与 JS evasion 路 1 navigator.webdriver→undefined 双保险）。
     //
-    // §4.3 spike 结论（L1 证据 = chrome-devtools-mcp@0.3.0 --help + unknown-flag 启动测）：
-    //  - chrome-devtools-mcp@0.3.0 只文档化 6 个自有 flag（--headless/--isolated/--channel/...），
-    //    无 --chrome-arg 透传机制；yargs strict 未开 → unknown flag 不报错（实测 --disable-blink-features
-    //    启动 banner 正常输出，exit=0）。
-    //  - unknown flag 是否真到 Chromium 进程 = L3 真机验证项（parse13 §8.4 deferred-Spike），
-    //    钉在 parse13-acceptance.md 手测清单（sannysoft navigator.webdriver=false）。
-    //  - 降级兜底：即便 flag 未到 Chromium，JS evasion 路 1（navigator.webdriver→undefined）已覆盖
-    //    同一检测点；flag 失效不阻断 browse（best-effort 语义）。
+    // v1.11（round1 T1）：chrome-devtools-mcp 0.3.0 → 1.7.0。
+    //  - 1.7.0 有 --chromeArg 透传机制 → --disable-blink-features=AutomationControlled
+    //    经 `--chromeArg=<flag>` 真正到达 Chromium（0.3.0 unknown-flag 哑弹时代结束；
+    //    parse13 §8.4 L3 未验证项就此关闭）。
+    //  - 1.7.0 默认采集使用统计（README L45）→ --no-usage-statistics 必加（隐私不倒退）。
+    //  - v1.11（round1 T2）：launch 级 UA/viewport —— `--chromeArg=--user-agent=<profile UA>`
+    //    消除网络层 HeadlessChrome UA 头（JS defineProperty 改不了 HTTP 头；UA 头↔navigator
+    //    不一致即标记）。profile 构造期已选定（上方 profileName），无生命周期冲突。
+    //    JS 侧 16 路 evasion 保留为双保险。
+    const profile = STEALTH_PROFILES[this.profileName];
     subproc.registerSpec("headless", {
       command: "npx",
       args: [
@@ -60,7 +68,12 @@ export class HeadlessChannel extends BrowseChannel {
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
         "--headless",
         "--isolated",
-        "--disable-blink-features=AutomationControlled",
+        "--no-usage-statistics",
+        "--chromeArg=--disable-blink-features=AutomationControlled",
+        `--chromeArg=--user-agent=${profile.userAgent}`,
+        `--viewport=${profile.viewport.width}x${profile.viewport.height}`,
+        // v1.11（round1 T10）：出口代理（LASSO_PROXY 用户显式配置；空不加 flag）
+        ...(proxyUrl ? [`--proxy-server=${proxyUrl}`] : []),
       ],
       mcpClientName: "lasso-browse-headless",
     });

@@ -38,6 +38,7 @@ import type {
   FreeTierLevel,
   InteractResult,
   ProviderConfig,
+  SearchFreshness,
   SearchResult,
 } from "../types.js";
 import type { SearchChannel } from "../channels/SearchChannel.js";
@@ -94,6 +95,13 @@ export const searchSchema = {
   free_only: z.enum(["L1", "L2", "L3", "L4"]).optional(),
   /** v0.2 新增（parse2 §3.3.2）：true 时每条结果带 served_by 标签 */
   attributed: z.boolean().default(false),
+  /**
+   * v1.11 新增（round1 T6）：时效性过滤，透传三引擎（智谱 search_recency_filter /
+   * Brave freshness=pd/pw/pm/py / Bing freshness=Day/Week/Month）。
+   * optional 无 default —— 不传 = 不限时效 = byte-identical 基线（与 extract_mode
+   * 同款守护手法）。Bing 无 year 粒度（该档 Bing 侧不传，诚实降级）。
+   */
+  freshness: z.enum(["day", "week", "month", "year"]).optional(),
 };
 
 // ============================================================
@@ -203,10 +211,12 @@ export function registerSearchTool(
       const noCache: boolean = args.no_cache;
       const attributed: boolean = args.attributed;
       const freeOnly: FreeTierLevel | undefined = args.free_only;
+      // v1.11（round1 T6）：时效性过滤（透传三引擎 + 入 cache key）
+      const freshness: SearchFreshness | undefined = args.freshness;
 
       // ---------- 1. cache 命中（除非 no_cache）----------
       if (!noCache && cache) {
-        const cached = await cache.get(query, engine, region, limit);
+        const cached = await cache.get(query, engine, region, limit, freshness);
         if (cached) {
           // attribution 不入 cache key —— 命中后若 attributed=true 再走一次 wrap
           const outResult: InteractResult<SearchResult> = { ...cached };
@@ -313,6 +323,7 @@ export function registerSearchTool(
           limit,
           region,
           noCache,
+          freshness,
           search,
           brave ?? null,
           bing ?? null,
@@ -342,7 +353,7 @@ export function registerSearchTool(
         // 与 v0.8 路径同范式：engine 字段是 cache key 一部分（fallback_chain 独立 key 空间）。
         if (fbResult.outcome === "worked" && !noCache && cache) {
           try {
-            await cache.set(query, engine, region, limit, fbResult);
+            await cache.set(query, engine, region, limit, fbResult, freshness);
           } catch (e) {
             logger.warn({
               evt: "search_cache_set_error",
@@ -404,6 +415,7 @@ export function registerSearchTool(
                     engine: "zhipu",
                     region,
                     no_cache: noCache,
+                    ...(freshness ? { freshness } : {}),
                   });
                 }
                 if (cn === "search.brave" && brave) {
@@ -411,6 +423,7 @@ export function registerSearchTool(
                     limit: sub,
                     region: region === "cn" ? "CN" : "US",
                     no_cache: noCache,
+                    ...(freshness ? { freshness } : {}),
                   });
                 }
                 throw new Error(`unknown_fanout_channel:${cn}`);
@@ -444,6 +457,7 @@ export function registerSearchTool(
               engine: "zhipu",
               region,
               no_cache: noCache,
+              ...(freshness ? { freshness } : {}),
             });
           }
           if (channelName === "search.brave" && brave) {
@@ -451,6 +465,7 @@ export function registerSearchTool(
               limit,
               region: region === "cn" ? "CN" : "US",
               no_cache: noCache,
+              ...(freshness ? { freshness } : {}),
             });
           }
           if (channelName === "browse_headless") {
@@ -476,7 +491,7 @@ export function registerSearchTool(
       // ---------- 4. cache 写入（仅 worked + !no_cache + cache 注入）----------
       if (result.outcome === "worked" && !noCache && cache) {
         try {
-          await cache.set(query, engine, region, limit, result);
+          await cache.set(query, engine, region, limit, result, freshness);
         } catch (e) {
           logger.warn({
             evt: "search_cache_set_error",
@@ -552,6 +567,11 @@ export async function runFallbackChainEngine(
   limit: number,
   region: string,
   noCache: boolean,
+  /**
+   * v1.11（round1 T6）：时效性过滤（透传 zhipu/brave/bing 三源；
+   * 不传 = 不限时效 = byte-identical 基线）。
+   */
+  freshness: SearchFreshness | undefined,
   search: SearchChannel,
   brave: BraveChannel | null,
   bing: BingChannel | null,
@@ -609,6 +629,7 @@ export async function runFallbackChainEngine(
         engine: "zhipu",
         region,
         no_cache: noCache,
+        ...(freshness ? { freshness } : {}),
       });
     }
     if (channelName === "search.brave" && brave) {
@@ -616,6 +637,7 @@ export async function runFallbackChainEngine(
         limit,
         region: region === "cn" ? "CN" : "US",
         no_cache: noCache,
+        ...(freshness ? { freshness } : {}),
       });
     }
     if (channelName === "search.bing" && bing) {
@@ -625,6 +647,7 @@ export async function runFallbackChainEngine(
         limit,
         market,
         no_cache: noCache,
+        ...(freshness ? { freshness } : {}),
       });
     }
     if (channelName === "browse_headless") {

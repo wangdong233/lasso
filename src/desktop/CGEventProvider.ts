@@ -50,9 +50,25 @@ import type {
 } from "./desktop-types.js";
 
 // ============================================================
-// INV-28：cgevent 档仅支持 press / hotkey（click/type/scroll 走 ax/appleScript）
+// INV-28：cgevent 档支持的动作集（v1.11 T7 扩鼠标四路径）
 // ============================================================
-const ALLOWED_CGEVENT_KINDS = new Set<string>(["press", "hotkey"]);
+/**
+ * v1.11（round1 T7）：从 press/hotkey 扩到 + click/drag/scroll/move。
+ *  - press/hotkey      ：键盘（逻辑键名；raw keycode 拒绝）
+ *  - click(x,y)        ：坐标点击（逻辑按钮名 left/right/center；raw button code 拒绝）
+ *  - drag(from→to)     ：坐标拖拽
+ *  - scroll(dx,dy[,x,y])：滚轮（位置缺省 = 当前光标）
+ *  - move(x,y)         ：移动光标（悬停语义）
+ * ref 形态的 click/scroll（无坐标）不是本档 domain（ax 档吃 ref）→ skip（unknown）。
+ */
+const ALLOWED_CGEVENT_KINDS = new Set<string>([
+  "press",
+  "hotkey",
+  "click",
+  "drag",
+  "scroll",
+  "move",
+]);
 
 /**
  * CGEvent 档允许的 UiAction 子集（类型化）。
@@ -80,7 +96,42 @@ interface CGEventHotkeyAction {
   /** 已 join 的组合键 spec（"cmd+c"）；由 normalizeAction 从 UiAction 转来。 */
   keys: string;
 }
-type CGEventAction = CGEventPressAction | CGEventHotkeyAction;
+/** v1.11 T7：坐标点击（button 逻辑名；INV-28 禁 raw button code）。 */
+interface CGEventMouseClickAction {
+  kind: "click";
+  x: number;
+  y: number;
+  button?: "left" | "right" | "center";
+}
+/** v1.11 T7：拖拽（from → to）。 */
+interface CGEventDragAction {
+  kind: "drag";
+  from_x: number;
+  from_y: number;
+  to_x: number;
+  to_y: number;
+}
+/** v1.11 T7：滚轮（位置缺省 = 当前光标）。 */
+interface CGEventScrollAction {
+  kind: "scroll";
+  dx: number;
+  dy: number;
+  x?: number;
+  y?: number;
+}
+/** v1.11 T7：移动光标（悬停语义）。 */
+interface CGEventMoveAction {
+  kind: "move";
+  x: number;
+  y: number;
+}
+type CGEventAction =
+  | CGEventPressAction
+  | CGEventHotkeyAction
+  | CGEventMouseClickAction
+  | CGEventDragAction
+  | CGEventScrollAction
+  | CGEventMoveAction;
 
 /**
  * INV-28 守门：拒绝 raw keycode 数字入参。
@@ -106,11 +157,16 @@ function hasRawKeycodeLeak(action: unknown): boolean {
   // （cgevent_dispatch 内部 wire 是 [{kind:"hotkey", keys:"cmd+c"}]，但那是 Rust 端
   // 的内部 batch 格式；TS 端入口必须走 UiAction 形状。）
   if (a.kind === "hotkey" && typeof a.keys === "number") return true;
+  // v1.11 T7（INV-28 鼠标面）：click 的 button 字段必须是 string 逻辑名；
+  // number 即 raw button code 直传（拒）
+  if (a.kind === "click" && a.button !== undefined && typeof a.button === "number") {
+    return true;
+  }
   return false;
 }
 
 /**
- * 把 UiAction（press/hotkey 子集）规范化为 cgevent_dispatch wire 格式。
+ * 把 UiAction（本档子集）规范化为 cgevent_dispatch wire 格式。
  *
  * @returns 规范化后的 action；null 表示该 action 形态不支持 cgevent（caller skip）
  */
@@ -123,6 +179,47 @@ function normalizeForCgevent(action: UiAction): CGEventAction | null {
     // 多元素 join("+") 得 "cmd+c" 形态；0 元素或形状不对返 null（caller 当作不支持）
     if (action.keys.length === 0) return null;
     return { kind: "hotkey", keys: action.keys.join("+") };
+  }
+  // ----- v1.11（round1 T7）鼠标四路径（坐标形态）-----
+  // 注：click/scroll 的 ref 形态与坐标形态共享 kind 标签（TS 判别联合不可判），
+  // 经宽化 record 形状读字段（wire 上同一 kind 两形态，zod 已分形态校验）。
+  const a = action as unknown as Record<string, unknown>;
+  if (action.kind === "move") {
+    return { kind: "move", x: a.x as number, y: a.y as number };
+  }
+  if (action.kind === "drag") {
+    return {
+      kind: "drag",
+      from_x: a.from_x as number,
+      from_y: a.from_y as number,
+      to_x: a.to_x as number,
+      to_y: a.to_y as number,
+    };
+  }
+  if (action.kind === "click" && typeof a.x === "number" && typeof a.y === "number") {
+    // 坐标点击（ref-only click 无坐标 → 不是本档 domain，返 null 让链继续）
+    const out: CGEventMouseClickAction = {
+      kind: "click",
+      x: a.x,
+      y: a.y,
+    };
+    if (a.button === "left" || a.button === "right" || a.button === "center") {
+      out.button = a.button;
+    }
+    return out;
+  }
+  if (action.kind === "scroll" && a.ref === undefined) {
+    // 坐标滚动（无 ref；位置缺省 = 当前光标）
+    const out: CGEventScrollAction = {
+      kind: "scroll",
+      dx: a.dx as number,
+      dy: a.dy as number,
+    };
+    if (typeof a.x === "number" && typeof a.y === "number") {
+      out.x = a.x;
+      out.y = a.y;
+    }
+    return out;
   }
   return null;
 }
@@ -227,6 +324,19 @@ export class CGEventProvider {
     );
 
     if (!resp.ok) {
+      // v1.11（round1 T11）：macOS 15+ Event Synthesizing 拒绝 → didnt（明确"否"：
+      // 权限缺失不是暂时性故障，重试/降级 screenshotVlm 也点不动——诚实报因 + 引导）
+      if (resp.error_kind === "tcc_event_synthesis_denied") {
+        return {
+          outcome: "didnt",
+          data: null,
+          served_by: CGEventProvider.NAME,
+          fallback_used: false,
+          retrieval_method: "tcc_event_synthesis_denied",
+          error:
+            "tcc_event_synthesis_denied: macOS 15+ 需在 System Settings → Privacy & Security → Event Synthesizing 授权 helper（或 Accessibility）",
+        };
+      }
       // 通讯级错误：unknown（可被上游 fallback）
       return {
         outcome: "unknown",
@@ -251,12 +361,7 @@ export class CGEventProvider {
       if (!r || typeof r !== "object") continue;
       const ok = r.ok === true;
       const spec = cgeventActions[i];
-      const ref =
-        spec?.kind === "press"
-          ? spec.key
-          : spec?.kind === "hotkey"
-            ? spec.keys
-            : `action${i}`;
+      const ref = specRefLabel(spec) ?? `action${i}`;
       const errKind =
         typeof r.error_kind === "string" ? r.error_kind : undefined;
       const errMsg = typeof r.error === "string" ? r.error : undefined;
@@ -299,6 +404,30 @@ export class CGEventProvider {
 // ============================================================
 // 内部导出（单测断言用）
 // ============================================================
+/**
+ * v1.11 T7：action spec → audit ref 标签（press→key / hotkey→spec /
+ * click→(x,y) / drag→from→to / scroll→dx,dy / move→(x,y)）。
+ */
+function specRefLabel(spec: CGEventAction | undefined): string | undefined {
+  if (!spec) return undefined;
+  switch (spec.kind) {
+    case "press":
+      return spec.key;
+    case "hotkey":
+      return spec.keys;
+    case "click":
+      return `click@(${spec.x},${spec.y})${spec.button ? `:${spec.button}` : ""}`;
+    case "drag":
+      return `drag(${spec.from_x},${spec.from_y})->(${spec.to_x},${spec.to_y})`;
+    case "scroll":
+      return `scroll(${spec.dx},${spec.dy})`;
+    case "move":
+      return `move@(${spec.x},${spec.y})`;
+    default:
+      return undefined;
+  }
+}
+
 /**
  * 单测锚点：暴露 ALLOWED_CGEVENT_KINDS 副本供 cg-event-provider.spec.ts 断言。
  */

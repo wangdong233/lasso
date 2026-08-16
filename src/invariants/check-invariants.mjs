@@ -65,7 +65,7 @@
  *  INV-8 fallback 链不跨 surface 类型（v0.3.5 改写：DesktopChannel fallback plan 必须全 desktop.*）
  *  INV-9 ProviderRegistry 类单一真源（只在 config/provider-registry.ts）—— v0.2
  *  INV-10 BraveChannel 禁直接读 process.env.BRAVE_API_KEYS，必须经 QuotaLedger —— v0.2
- *  INV-11 SearchCache key 必须含 engine + region + limit（防跨 provider 误命中）—— v0.2
+ *  INV-11 SearchCache key 必须含 engine + region + limit + 全部影响结果的 query 参数（v1.11 T6 修订：+freshness；防跨 provider / 跨时效档误命中）—— v0.2
  *  INV-12 BrowseChannel.browse()/runChain() 入口必须经 withOperation() ALS 包裹 —— v0.3
  *  INV-13 expect failed 必须 outcome=didnt + 终止（铁律：event delivery ≠ semantic success）—— v0.3
  *  INV-14 HIGH_RISK_PATTERNS 模块顶级 const，不从 config/env 读 —— v0.3
@@ -126,12 +126,25 @@
  *
  * 运行：node src/invariants/check-invariants.mjs   或   npm run check-invariants
  * CI ：exit 0 = 全绿；exit 1 = 至少一条红线。
+ *
+ * v1.11（round1 T13）假绿防线纪律：**新增 INV 必须在 scripts/inv-selftest.mjs 的
+ * VIOLATION_SAMPLES 注册违规样本**（pin 必须红过一次）。写不出违规样本的 INV
+ * 本身就是发现（不可证伪 → 应重写）。运行：npm run inv-selftest 或
+ * npm run check-invariants -- --selftest（对 src 临时副本注入，工作树零污染）。
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join, relative } from "node:path";
+import { join, relative, isAbsolute } from "node:path";
 
-const SRC_ROOT = fileURLToPath(new URL("../", import.meta.url));
+// v1.11（round1 T13）：SRC_ROOT 可被 env 覆盖——inv-selftest.mjs 对 src 树
+// **临时副本**注入违规样本后经此入口复检（工作树零污染）。
+// 绝对路径直接用（new URL("/abs") 会抛 Invalid URL）；相对路径按本文件位置解析。
+const __invOverride = process.env.LASSO_INV_SRC_ROOT;
+const SRC_ROOT = __invOverride
+  ? (isAbsolute(__invOverride)
+      ? __invOverride
+      : fileURLToPath(new URL(__invOverride, import.meta.url)))
+  : fileURLToPath(new URL("../", import.meta.url));
 
 function listTsFiles(root) {
   return readdirSync(root, { recursive: true })
@@ -314,7 +327,9 @@ const assertions = [
   },
   {
     id: "INV-11-cache-key-attributed",
-    desc: "SearchCache key 必须含 engine + region + limit（防跨 provider 误命中）",
+    desc:
+      "SearchCache key 必须含 engine + region + limit + 全部影响结果的 query 参数" +
+      "（v1.11 T6：+freshness；防跨 provider / 跨时效档误命中）",
     check: () => {
       const cache = SRC.find((s) => s.f.includes("SearchCache"));
       if (!cache) return true; // 允许尚未实装（Phase D 落地）
@@ -323,7 +338,9 @@ const assertions = [
       const hasEngine = /\bengine\b/.test(txt);
       const hasRegion = /\bregion\b/.test(txt);
       const hasLimit = /\blimit\b/.test(txt);
-      return hasEngine && hasRegion && hasLimit;
+      // v1.11 T6：freshness 是影响结果的 query 参数 → 必须入 key（跨时效档防误命中）
+      const hasFreshness = /\bfreshness\b/.test(txt);
+      return hasEngine && hasRegion && hasLimit && hasFreshness;
     },
   },
   // ============================================================
@@ -3195,7 +3212,8 @@ const assertions = [
   //    (b) stealth-profiles.ts STEALTH_INJECTION_SCRIPT 由 12 路 import join（grep 12 个 from "./stealth-evasions/"）
   //    (c) StealthProfile 接口含 header 集（secChUa / secChUaMobile / secChUaPlatform / accept / acceptEncoding /
   //        acceptLanguage / secFetchSite / secFetchMode / secFetchUser / secFetchDest / upgradeInsecureRequests）
-  //    (d) UA 升 Chrome 130+：windows_chrome_120 profile UA 含 "Chrome/130"；Firefox profile 含 "Firefox/130"；Safari 含 "Version/17.5"
+  //    (d) UA 值域刷新（v1.11 round1 T4）：Chrome 151 / Firefox 153 / Safari 27（2026-08
+  //        stable 时代）+ UA↔secChUa↔brands 三方一致 + 旧时代值清零
   //    (e) HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）
   //    (f) index.ts 装配段 new HeadlessChannel 含 stealth 实例参数
   {
@@ -3205,7 +3223,7 @@ const assertions = [
       "（a）stealth-evasions/ 目录 12 文件均带 MIT 头；" +
       "（b）STEALTH_INJECTION_SCRIPT 由 12 路 import join；" +
       "（c）StealthProfile 接口含 secChUa/secFetch*/accept* header 集；" +
-      "（d）UA 升 Chrome 130 / Firefox 130 / Safari 17.5；" +
+      "（d）UA 值域 Chrome 151 / Firefox 153 / Safari 27（v1.11 T4 刷新 + 三方一致 + Safari/ token 冻结 605.1.15——review03 F3 钉）；" +
       "（e）HeadlessChannel override beforeNavigate 调 stealth.injectProfile；" +
       "（f）index.ts new HeadlessChannel 传 stealth 实例",
     check: () => {
@@ -3266,18 +3284,32 @@ const assertions = [
         if (!new RegExp("\\b" + h + "\\s*:").test(ifaceRegion)) return false;
       }
 
-      // ----- (d) UA 升 Chrome 130+ / Firefox 130 / Safari 17.5 -----
-      //   必要条件 7：windows_chrome_120 profile UA 含 Chrome/130（直接字面量子串，容错性强）
-      if (!/Chrome\/130\./.test(spCode)) return false;
-      //   必要条件 8：linux_firefox_121 profile UA 含 Firefox/130 + rv:130
-      if (!/Firefox\/130\./.test(spCode)) return false;
-      if (!/rv:130\./.test(spCode)) return false;
-      //   必要条件 9：mac_safari_17 profile UA 含 Version/17.5
-      if (!/Version\/17\.5/.test(spCode)) return false;
-      //   必要条件 10：UA 不含 Chrome/120 / Firefox/121 / Version/17.0（旧版必须清掉）
-      if (/Chrome\/120\./.test(spCode)) return false;
-      if (/Firefox\/121\./.test(spCode)) return false;
-      if (/Version\/17\.0\s/.test(spCode)) return false;
+      // ----- (d) UA 值域 ≥ 当前 stable 时代 + 三方一致（v1.11 round1 T4 刷新） -----
+      //   必要条件 7：windows_chrome_120 profile UA 含 Chrome/151（2026-08 stable 时代值）
+      if (!/Chrome\/151\./.test(spCode)) return false;
+      //   必要条件 8：linux_firefox_121 profile UA 含 Firefox/153 + rv:153
+      if (!/Firefox\/153\./.test(spCode)) return false;
+      if (!/rv:153\./.test(spCode)) return false;
+      //   必要条件 9：mac_safari_17 profile UA 含 Version/27.0
+      if (!/Version\/27\.0/.test(spCode)) return false;
+      //   必要条件 9b（round1 review03 F3）：`Safari/` token 只许真实冻结值——
+      //   Safari/605.1.15（Apple 自 2013 全版本）或 Safari/537.36（Chromium 族兼容 token）。
+      //   `Safari/<新版本>`（如 Safari/27.0）是真实浏览器从不发出的伪造组合
+      //   （一行 regex 即识破）。T4 刷新时曾误写成 Safari/27.0——本条件机械化拦截同类错误。
+      if (!/Safari\/605\.1\.15/.test(spCode)) return false;
+      if (/Safari\/(?!605\.1\.15|537\.36)\d/.test(spCode)) return false;
+      //   必要条件 10：UA 不含旧时代值（Chrome/120-130 / Firefox/121-130 / Version/17.x
+      //   必须清掉——UA 版本过旧本身即启发式弱信号）
+      if (/Chrome\/1[23]\d\./.test(spCode)) return false;
+      if (/Firefox\/1[23]\d\./.test(spCode)) return false;
+      if (/rv:1[23]\d\./.test(spCode)) return false;
+      if (/Version\/17\./.test(spCode)) return false;
+      //   必要条件 10b（v1.11 T4 三方一致）：UA Chrome major ↔ secChUa brands 版本一致
+      //   （Chrome major %4 决定 ghost brand——151%4=3 → "Not_A Brand"；
+      //   与 ua-client-hints.ts 运行时派生规则对齐，UA 头↔navigator 不一致即 bot 标记）
+      if (!/'"Google Chrome";v="151", "Not_A Brand";v="99", "Chromium";v="151"'/.test(spCode)) {
+        return false;
+      }
 
       // ----- (e) HeadlessChannel override afterNavigate 调 stealth.injectProfile -----
       // （W1-DEF-1c v1.8：从 beforeNavigate 迁到 afterNavigate——导航前注入随文档重置丢失）
@@ -3553,11 +3585,17 @@ const assertions = [
   // wave1 实测锚点（doc/17-执行记录/wave1-summary.md §3 探测 B）：
   //   chrome-devtools-mcp@0.3.0 真实契约 = take_screenshot 无 filePath（返 base64）/
   //   wait_for.text 要 string / evaluate_script 要函数表达式 / 无 pdf 工具。
+  //   v1.11（round1 T1）0.3.0 → 1.7.0 迁移复核（tarball build 逐文件白盒）：
+  //   evaluate_script function:string 保持；take_screenshot format/fullPage 保持
+  //   （filePath 新有，Lasso 维持自落盘+stat）；**wait_for.text 翻转为
+  //   array(string).min(1)**（McpPage.waitForTextOnPage 对 text.flatMap）；pdf 工具
+  //   仍不存在（doPdf tri-state 降级路径不变）；1.7.0 默认采集使用统计 → 全 spec
+  //   加 --no-usage-statistics。
   // 守：
-  //  INV-76  v1.8 wave1 修复回归守护：
+  //  INV-76  v1.8 wave1 修复回归守护（v1.11 随 1.7.0 迁移复核修订）：
   //    (a) evaluate_script 调用点全部函数表达式（W1-DEF-1；StealthEngine 对语句串脚本
   //        必经 toFnExpression 包装）
-  //    (b) wait_for.text 传 string 非 数组（W1-DEF-2）
+  //    (b) wait_for.text 传 非空 string 数组（1.7.0 契约；0.3.0 单条 string 翻转）
   //    (c) doScreenshot 不传 filePath + 自落盘后 stat 校验存在且非空（W1-DEF-3 禁伪造路径）
   //    (d) StealthEngine 记 stealth_injected 前必有 isError 检查（W1-DEF-1 后半：禁误报）
   //    (e) CdpClient 用 Storage.getCookies/setCookies（W1-DEF-4；Chrome 150 移除 Network 域）
@@ -3573,8 +3611,8 @@ const assertions = [
   {
     id: "INV-76-wave1-upstream-contract-and-wiring-regression-guard",
     desc:
-      "v1.8：wave1 修复回归守护（W1-DEF-1..10 + D1/D11 + F-CLI-01）：" +
-      "（a）evaluate_script 函数表达式契约；（b）wait_for text string；" +
+      "v1.8：wave1 修复回归守护（W1-DEF-1..10 + D1/D11 + F-CLI-01；v1.11 随 chrome-devtools-mcp 1.7.0 迁移复核修订）：" +
+      "（a）evaluate_script 函数表达式契约；（b）wait_for text 非空 string 数组（1.7.0 契约）；" +
       "（c）screenshot 自落盘 + stat 校验；（d）stealth_injected 前置 isError 检查；" +
       "（e）CdpClient Storage 域；（f）launch-chrome 探活 + 隔离 profile；" +
       "（g）exit 兜底 killAllSync；（h）rust spawn error 归因；" +
@@ -3602,13 +3640,15 @@ const assertions = [
         return false;
       }
 
-      // ----- (b) wait_for text string（W1-DEF-2）-----
+      // ----- (b) wait_for text 非空 string 数组（v1.11 round1 T1：1.7.0 契约翻转）-----
       const waitCallers = SRC.filter((s) =>
         s.text.includes('callTool("wait_for"'),
       );
       if (waitCallers.length < 2) return false; // BrowseChannel doWait + creepjs-probe
       for (const f of waitCallers) {
-        if (/text:\s*\[/.test(stripComments(f.text))) return false;
+        // 1.7.0 wait_for.text = zod.array(zod.string()).min(1)（waitForTextOnPage
+        // 对 text.flatMap）——传裸 string 会被 zod 拒（-32602 Expected array）。
+        if (!/text:\s*\[/.test(stripComments(f.text))) return false;
       }
 
       // ----- (c) doScreenshot 落盘校验（W1-DEF-3）-----
@@ -3619,7 +3659,8 @@ const assertions = [
         browseCode.match(/callTool\("take_screenshot"[\s\S]{0,300}?\}\)\)/)?.[0] ??
         "";
       if (!shotRegion) return false;
-      // 上游 0.3.0 无 filePath 参数（被 zod strip → 伪造路径）——禁传
+      // 1.7.0 有 filePath 参数，但 Lasso 维持自落盘 + stat 校验（禁伪造路径语义更强，
+      // 0.3.0/1.7.0 双契约下同形）——仍禁传 filePath
       if (/filePath\s*:/.test(shotRegion)) return false;
       // 自落盘 + stat 校验（存在且非空才返路径；W1-DEF-1b 后升级为 size 与解码长度精确一致）
       if (!/await writeFile\(/.test(browseCode)) return false;
@@ -4009,7 +4050,102 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // v1.11（round1 T1/T2，doc/19-最优性审查轮次/round1-verdict.md §2）
+  // INV-79 —— chrome-devtools-mcp 0.3.0→1.7.0 迁移守护 + launch 级 stealth flag
+  // ============================================================
+  // 守（迁移契约机械化，5 组断言）：
+  //  INV-79  v1.11 驱动层升级回归守护：
+  //    (a) LOCKED_CDP_MCP_VERSION === "1.7.0"（版本锁单点）
+  //    (b) 全部四个通道 spec（HeadlessChannel / LoggedInChannel / SteelChannel /
+  //        BrowserbaseChannel）args 含 --no-usage-statistics（1.7.0 默认采集遥测，
+  //        漏一处 = 隐私倒退）
+  //    (c) BrowserbaseChannel 用 --wsEndpoint（1.7.0 与 --browserUrl 互斥；wss 语义
+  //        保障），且不再出现 --browser-url=${wsUrl} 旧形态
+  //    (d) HeadlessChannel spec 含 --chromeArg=--disable-blink-features=AutomationControlled
+  //        + --chromeArg=--user-agent=（经 1.7.0 chromeArg 透传真正到达 Chromium；
+  //        parse13 §8.4 L3 未验证项关闭）+ --viewport=（launch 级 viewport，
+  //        与 profile.viewport 一致）
+  //    (e) 全 src 禁回归 0.3.0 专属哑 flag 形态（裸 --disable-blink-features 直接
+  //        作 mcp 参数、无 chromeArg 包装）
+  {
+    id: "INV-79-cdp-mcp-170-migration-and-launch-stealth-guard",
+    desc:
+      "v1.11：chrome-devtools-mcp 0.3.0→1.7.0 迁移守护 + launch 级 stealth（round1 T1/T2）——" +
+      "（a）版本锁 1.7.0；（b）四通道 spec 全含 --no-usage-statistics（1.7.0 默认采集遥测，关）；" +
+      "（c）Browserbase --wsEndpoint（与 --browserUrl 互斥，wss 语义保障）；" +
+      "（d）headless spec --chromeArg=--disable-blink-features=AutomationControlled + " +
+      "--chromeArg=--user-agent= + --viewport=（launch 级 UA/viewport，UA 头↔navigator 一致）；" +
+      "（e）零裸 --disable-blink-features 哑 flag 形态（未经 chromeArg 包装 = 0.3.0 哑弹回潮）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+
+      // ----- (a) 版本锁 -----
+      const subproc = byPath(/^subprocess\/SubprocessManager\.ts$/);
+      if (!subproc) return false;
+      if (!/LOCKED_CDP_MCP_VERSION = "1\.7\.0"/.test(subproc.text)) return false;
+
+      // ----- (b) 四通道 spec 全含 --no-usage-statistics -----
+      const specFiles = [
+        /^channels\/HeadlessChannel\.ts$/,
+        /^channels\/LoggedInChannel\.ts$/,
+        /^channels\/SteelChannel\.ts$/,
+        /^channels\/BrowserbaseChannel\.ts$/,
+      ];
+      for (const re of specFiles) {
+        const f = byPath(re);
+        if (!f) return false;
+        const code = stripComments(f.text);
+        if (!code.includes('"--no-usage-statistics"')) return false;
+      }
+
+      // ----- (c) Browserbase --wsEndpoint -----
+      const bb = byPath(/^channels\/BrowserbaseChannel\.ts$/);
+      if (!bb) return false;
+      const bbCode = stripComments(bb.text);
+      if (!/`--wsEndpoint=\$\{wsUrl\}`/.test(bbCode)) return false;
+      if (/`--browser-url=\$\{wsUrl\}`/.test(bbCode)) return false; // 旧形态禁回潮
+
+      // ----- (d) headless launch 级 stealth flag -----
+      const headless = byPath(/^channels\/HeadlessChannel\.ts$/);
+      if (!headless) return false;
+      const headlessCode = stripComments(headless.text);
+      if (!/"--chromeArg=--disable-blink-features=AutomationControlled"/.test(headlessCode)) {
+        return false;
+      }
+      if (!/`--chromeArg=--user-agent=\$\{profile\.userAgent\}`/.test(headlessCode)) {
+        return false;
+      }
+      if (!/`--viewport=\$\{profile\.viewport\.width\}x\$\{profile\.viewport\.height\}`/.test(headlessCode)) {
+        return false;
+      }
+      // UA 取自 STEALTH_PROFILES（INV-30 顶级 const，不从 env/config 读）
+      if (!/STEALTH_PROFILES\[this\.profileName\]/.test(headlessCode)) return false;
+
+      // ----- (e) 零裸哑 flag 形态 -----
+      // 0.3.0 时代 --disable-blink-features 作为 mcp 参数直接传（unknown-flag 哑弹）。
+      // 1.7.0 必须经 --chromeArg 包装。检查 headless spec args 内禁裸形态。
+      const argsBlock = headlessCode.match(/args:\s*\[[\s\S]*?\]/);
+      if (argsBlock) {
+        const bare = argsBlock[0].match(/"--disable-blink-features[^"]*"/g) ?? [];
+        if (bare.length > 0) return false;
+      }
+
+      return true;
+    },
+  },
 ];
+
+// v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）
+if (process.argv.includes("--selftest")) {
+  const { spawnSync } = await import("node:child_process");
+  const r = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("../../scripts/inv-selftest.mjs", import.meta.url))],
+    { stdio: "inherit" },
+  );
+  process.exit(r.status ?? 1);
+}
 
 let failed = 0;
 for (const a of assertions) {

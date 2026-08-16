@@ -231,7 +231,7 @@ export class DesktopChannel extends UiChannel {
       ],
       cross_modal: false, // INV-23 + INV-29: desktop fallback 永不跨 surface
     };
-    return this.decider.runWithFallback(plan, async (channelName) => {
+    const r = await this.decider.runWithFallback(plan, async (channelName) => {
       if (channelName === "desktop.ax") {
         return this.axProvider.act(opts);
       }
@@ -246,6 +246,78 @@ export class DesktopChannel extends UiChannel {
       }
       throw new Error(`unknown_provider:${channelName}`);
     });
+    // ------------------------------------------------------------------
+    // v1.11（round1 T15）：expect 后置条件接线 —— 消灭「schema 承诺了但没兑现」
+    // 的死字段裂缝（tools/desktop.ts zod 已声明 expect，DesktopChannel 原零消费）。
+    // 语义（pi 后置条件范式：事件送达 ≠ 语义成功）：
+    //  - act outcome=worked 且传 expect → 复用 find 轮询验后置条件
+    //  - 后置达成 → data.expect_verified=true（worked 保持）
+    //  - 后置失败 → outcome=**didnt** + expect_verified=false + expect_failed 前缀
+    //  - act 非 worked（didnt/unknown）→ 不验后置（动作没成功，后置无从谈起）
+    // ------------------------------------------------------------------
+    if (opts.expect && r.outcome === "worked" && r.data) {
+      const verdict = await this.verifyExpect(opts, opts.expect);
+      if (verdict.ok) {
+        return { ...r, data: { ...r.data, expect_verified: true } };
+      }
+      return {
+        ...r,
+        outcome: "didnt",
+        data: { ...r.data, expect_verified: false },
+        error: `expect_failed:${verdict.reason}`,
+      };
+    }
+    return r;
+  }
+
+  /**
+   * v1.11（round1 T15）：expect 后置条件验证（复用 axProvider.find 轮询，
+   * 与本类 wait() 同范式；无新状态）。
+   *
+   * 验证语义（DesktopExpect zod 契约）：
+   *  - text/role → find where 子句；轮询至命中（gone=false）或消失（gone=true）
+   *  - 只有 ref/gone 无 text/role → 不可构造 where 查询 → expect_failed
+   *    （诚实报因，不假装验证过）
+   *  - timeout_ms 默认 5000（zod default 同值）；100ms 轮询间隔（与 wait() 一致）
+   */
+  private async verifyExpect(
+    opts: DesktopOptions,
+    expect: NonNullable<DesktopOptions["expect"]>,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    if (!expect.text && !expect.role) {
+      return { ok: false, reason: "expect_needs_text_or_role" };
+    }
+    const where = {
+      ...(expect.text ? { text: expect.text } : {}),
+      ...(expect.role ? { role: expect.role } : {}),
+    };
+    const deadline = Date.now() + (expect.timeout_ms ?? 5_000);
+    while (Date.now() < deadline) {
+      try {
+        const r = await this.axProvider.find({ app: opts.app, where });
+        if (r.outcome === "worked" && r.data) {
+          const matched = r.data.count > 0;
+          if (expect.gone) {
+            if (!matched) return { ok: true };
+          } else if (matched) {
+            return { ok: true };
+          }
+        }
+      } catch (e) {
+        logger.warn({
+          evt: "desktop_expect_iter_error",
+          channel: this.name,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return {
+      ok: false,
+      reason: expect.gone
+        ? "expected_gone_still_present"
+        : "expected_condition_not_met",
+    };
   }
 
   /**

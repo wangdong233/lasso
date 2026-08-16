@@ -1,7 +1,7 @@
 /**
  * ToolManager —— 统一 tool 注册/注销（parse7 §3.2 / F3.12.9）
  *
- * 包装 SDK 1.29 的 RegisteredTool 句柄，维护 channel→tool 反向映射。
+ * 包装 SDK（v1.11 T16 起 ^1.30.0）的 RegisteredTool 句柄，维护 channel→tool 反向映射。
  *
  * SDK 已原生支持（node_modules/@modelcontextprotocol/sdk/server/mcp.d.ts 核实）：
  *  - server.tool(name, ...) 返回 RegisteredTool 实例（含 .disable()/.enable()/.update()/.remove()/.enabled）
@@ -32,6 +32,8 @@
 import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { logger } from "../util/logger.js";
 import type { ToolRecord } from "./runtime-types.js";
+// v1.11（round1 T14）：wrapHandler 可选 metrics 记录（与 FallbackDecider 同源）
+import type { MetricsCollector } from "../observ/MetricsCollector.js";
 
 /**
  * 注册新 tool 时的入参形状（registerChannelTools 数组元素同形）。
@@ -60,8 +62,22 @@ export class ToolManager {
   private tools = new Map<string, ToolRecord>();
   /** channel 名 → tool 名集合（disableChannel/enableChannel/removeChannel 用） */
   private byChannel = new Map<string, Set<string>>();
+  /**
+   * v1.11（round1 T14）：可选 MetricsCollector（wrapHandler 成败/时延入窗；
+   * 未注入 = 零行为变化）。与 FallbackDecider 的 metrics 注入同范式：
+   * 构造后 setMetrics 挂回（不允许覆盖已有）。
+   */
+  private metrics: MetricsCollector | null = null;
 
   constructor(private readonly server: McpServer) {}
+
+  /**
+   * v1.11（round1 T14）：挂 metrics 实例（装配层 index.ts 用；不覆盖已有）。
+   */
+  setMetrics(metrics: MetricsCollector): void {
+    if (this.metrics) return;
+    this.metrics = metrics;
+  }
 
   /**
    * 注册一个 tool，记录其归属 channel。
@@ -85,12 +101,17 @@ export class ToolManager {
     // annotations: ToolAnnotations + cb: ToolCallback<Args>。本 wrapper 接受任意 object 形状
     // schema（与 v0.5 既有 tools/*.ts 字节级等价 —— 它们也直接传 {} 或 z.object 字面量），
     // 在 SDK 边界做单点 cast（as never 是 TS 双向 escape hatch，运行时无开销）。
+    //
+    // v1.11（round1 T14）：handler 经 wrapHandler 单点横切（error/log/timing 三件，
+    // 边界纪律：**不演化成可插拔管道**——守简单架构红线）。v0.5 静态 17 工具不经
+    // 本方法（字节级等价承诺不动）；仅 admin/动态注册路径享受横切。
+    const wrapped = this.wrapHandler(channel, reg);
     const registered = this.server.tool(
       reg.name,
       reg.description,
       reg.schema as never,
       reg.annotations as never,
-      reg.handler as never,
+      wrapped as never,
     );
     this.tools.set(reg.name, {
       name: reg.name,
@@ -113,6 +134,61 @@ export class ToolManager {
       channel,
     });
     return registered;
+  }
+
+  /**
+   * v1.11（round1 T14）：统一 handler 包装（单点横切，非通用 middleware）。
+   *
+   * 只做三件事（边界纪律）：
+   *  1. **error**：handler 抛错 → 统一 `isError: true` envelope（不向 SDK 泄裸异常；
+   *     admin 工具自身 envelope 格式不变——handler 正常返回时 wrap 透明透传）
+   *  2. **log**：logger 结构化字段（evt/tool/channel/duration_ms/error）
+   *  3. **timing**：metrics?.record(channel, outcome, duration)（未注入 = 零行为）
+   *
+   * 不做的事（FastMCP middleware 对照，守简单架构红线）：
+   *  - 不做可插拔管道 / before-after hook / 请求上下文注入
+   *  - 不改 v0.5 静态 17 工具（不经 register 路径，字节级等价承诺）
+   */
+  private wrapHandler(
+    channel: string,
+    reg: ToolRegistration,
+  ): (...args: unknown[]) => Promise<unknown> {
+    return async (...args: unknown[]) => {
+      const t0 = Date.now();
+      try {
+        const result = await reg.handler(...args);
+        const durationMs = Date.now() - t0;
+        this.metrics?.record(channel, "worked", durationMs);
+        // 注：成功路径不打 info 日志（每调用一行太吵；metrics 入窗已够观测面）
+        return result;
+      } catch (e) {
+        const durationMs = Date.now() - t0;
+        const error = e instanceof Error ? e.message : String(e);
+        this.metrics?.record(channel, "error", durationMs);
+        logger.warn({
+          evt: "tool_handler_error",
+          tool: reg.name,
+          channel,
+          duration_ms: durationMs,
+          error,
+        });
+        // 统一 isError envelope（MCP 客户端可识别错误；不泄裸异常栈）
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                isError: true,
+                tool: reg.name,
+                channel,
+                error,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    };
   }
 
   /**

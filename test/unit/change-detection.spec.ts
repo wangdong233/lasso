@@ -102,7 +102,7 @@ describe("ChangeDetection — detectChange", () => {
     const cd = new ChangeDetection(dir);
     await cd.captureBaseline("baidu", "rust", DOM_A);
     // google 同 query 不应命中 baidu 的 baseline
-    const r = await cd.detectChange("google", "rust", DOM_A);
+    const r = await cd.detectChange("ddg", "rust", DOM_A); // v1.11 T9：google→ddg
     expect(r.changed).toBe(false); // 无 baseline，不告警
     expect(r.baseline_hash).toBeUndefined();
   });

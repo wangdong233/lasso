@@ -120,8 +120,16 @@ function makeDirectBackend(
       });
       return resp;
     }),
-    act: vi.fn(async (actions: unknown) => {
-      calls.push({ method: `${methodPrefix}_act`, params: { actions } });
+    act: vi.fn(async (
+      app: string | undefined,
+      maxDepth: number,
+      where: unknown,
+      actions: unknown,
+    ) => {
+      calls.push({
+        method: `${methodPrefix}_act`,
+        params: { app, max_depth: maxDepth, where, actions },
+      });
       return resp;
     }),
   };
@@ -369,19 +377,37 @@ describe("三 backend method 名路由 + params shape 同构", () => {
     });
   });
 
-  it("三 backend act params 都只含 actions（interface 同形）", async () => {
+  it("三 backend act params 都含 app + max_depth + where + actions（v1.11 T3 同序重编号契约）", async () => {
     const rust = makeRustWithResponse(okSnapshotResponse());
     const backends = makeThreeBackends(rust);
-    const actions = [{ type: "click", ref: "@e0" }] as never;
+    const actions = [{ kind: "click", ref: "@e0" }] as never;
+    const where = { role: "button" };
     await Promise.all([
-      backends.mac.act(actions),
-      backends.win.act(actions),
-      backends.linux.act(actions),
+      backends.mac.act("X", 5, where, actions),
+      backends.win.act("X", 5, where, actions),
+      backends.linux.act("X", 5, where, actions),
     ]);
-    // AxBackend.act interface 只接 actions（不接 app；parse11 §3.1 AxBackendKind spec）
-    expect(rust.calls[0].params).toEqual({ actions });
-    expect(rust.calls[1].params).toEqual({ actions });
-    expect(rust.calls[2].params).toEqual({ actions });
+    // v1.11（round1 T3）：act 接 app/maxDepth/where —— Rust 端「重新 walk + 同序
+    // 重编号」解析 @eN 必需（where 在 = find 命中序；缺席 = snapshot 全节点序）。
+    // 三平台同形（INV-61）。
+    expect(rust.calls[0].params).toEqual({
+      app: "X",
+      max_depth: 5,
+      where,
+      actions,
+    });
+    expect(rust.calls[1].params).toEqual({
+      app: "X",
+      max_depth: 5,
+      where,
+      actions,
+    });
+    expect(rust.calls[2].params).toEqual({
+      app: "X",
+      max_depth: 5,
+      where,
+      actions,
+    });
   });
 });
 

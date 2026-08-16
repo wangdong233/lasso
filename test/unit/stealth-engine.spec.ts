@@ -125,7 +125,7 @@ describe("StealthEngine.injectProfile — 注入 webdriver 抹除脚本", () => 
     const evalCalls = calls.filter((c) => c.name === "evaluate_script");
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
     const uaScript = String(evalCalls[0]!.args.function);
-    expect(uaScript).toContain("Firefox/130.0"); // v1.5 升 Firefox 130
+    expect(uaScript).toContain("Firefox/153.0"); // v1.11 round1 T4 升 Firefox 153
     expect(uaScript).toContain("Linux x86_64");
   });
 
@@ -202,7 +202,7 @@ describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () =
     const evalCalls = calls.filter((c) => c.name === "evaluate_script");
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);
     // evalCalls[0] = UA override（含 profile UA），evalCalls[1] = STEALTH_INJECTION_SCRIPT
-    expect(String(evalCalls[0]!.args.function)).toContain("Chrome/130");
+    expect(String(evalCalls[0]!.args.function)).toContain("Chrome/151");
     expect(evalCalls[1]!.args.function).toBe(
       toFnExpression(STEALTH_INJECTION_SCRIPT),
     );
@@ -213,7 +213,7 @@ describe("StealthEngine v1.5 — 16 路 evasion 覆盖（parse13 §3.1）", () =
 // v1.5 header 一致性（parse13 §3.2 + §5.1 UA ↔ sec-ch-ua ↔ userAgentData 三方一致）
 // ============================================================
 describe("StealthEngine v1.5 — UA ↔ sec-ch-ua 一致性（parse13 §8.2 producer 契约）", () => {
-  it("windows_chrome_120：UA Chrome 版本(130) == secChUa 版本(130)", () => {
+  it("windows_chrome_120：UA Chrome 版本 == secChUa 版本（v1.11 T4 三方一致）", () => {
     const p = STEALTH_PROFILES.windows_chrome_120;
     const uaMatch = p.userAgent.match(/Chrome\/(\d+)/);
     expect(uaMatch).toBeTruthy();
@@ -226,7 +226,7 @@ describe("StealthEngine v1.5 — UA ↔ sec-ch-ua 一致性（parse13 §8.2 prod
     const p = STEALTH_PROFILES.windows_chrome_120;
     expect(p.secChUa).toContain("Google Chrome");
     expect(p.secChUa).toContain("Chromium");
-    expect(p.secChUa).toMatch(/Not.A_Brand/); // ghost brand 变体（Not?A_Brand）
+    expect(p.secChUa).toContain("Not_A Brand"); // ghost brand 151%4=3（ua-client-hints 运行时派生规则一致）
   });
 
   it("Safari / Firefox profile secChUa 为空（浏览器原生不发 client hints）", () => {

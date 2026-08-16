@@ -201,7 +201,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.10.0";
+const LASSO_SERVER_VERSION = "1.11.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -421,7 +421,13 @@ async function runMcpServer(): Promise<void> {
   // v1.5（parse13 §3.4 P0 核心修复）：HeadlessChannel 接 StealthEngine —— 修 v1.4
   // 「browse_headless 零 stealth 注入」P0 业务缺口。stealth 实例在 headless 装配前建。
   const headlessStealth = new StealthEngine();
-  const headless = new HeadlessChannel(subproc, headlessStealth, "windows_chrome_120");
+  // v1.11（round1 T10）：LASSO_PROXY 出口代理（仅 headless 生效；logged_in 永不读）
+  const headless = new HeadlessChannel(
+    subproc,
+    headlessStealth,
+    "windows_chrome_120",
+    config.proxy || undefined,
+  );
   // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper——「用完即关」调度器。
   // 与 zombie reaper 分工：zombie 管 procs（MCP 树，HEADLESS_IDLE_MS）；本 reaper
   // 管 ledger（detached Chrome，LAUNCH_IDLE_MS 默认 60s）；致死原语 100% 复用
@@ -623,6 +629,8 @@ async function runMcpServer(): Promise<void> {
         subproc,
         cloudEnv.steelEndpoint,
         stealth,
+        // v1.11（round1 T10）：LASSO_PROXY → Steel session proxyUrl（云端 Chrome 出口一致）
+        { proxyUrl: config.proxy || undefined },
       );
       breakers.set("browse_cloud_steel", new CircuitBreaker());
       logger.info({

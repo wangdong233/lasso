@@ -1,9 +1,12 @@
 /**
- * SERP 兜底抽取（parse1 §3.13 + 10 §D.1）
+ * SERP 兜底抽取（parse1 §3.13 + 10 §D.1；v1.11 round1 T9 双引擎分流）
  *
  * search → browse_headless 的跨模态 fallback 路径（parse1 §4.4 fallback 链）：
  *  1. 智谱限流 / 空结果 → outcome=unknown → FallbackDecider 升 browse_headless
- *  2. 本模块用 browse_headless 实搜百度（GET https://www.baidu.com/s?wd=...&rn=...）
+ *  2. 本模块用 browse_headless 实搜（v1.11 T9 按 query 语言分流）：
+ *     - CJK query    → 百度（GET https://www.baidu.com/s?wd=...&rn=...）
+ *     - 非 CJK query → DuckDuckGo（GET https://html.duckduckgo.com/html/?q=...
+ *       纯 HTML 端点；社区共识零 Key 兜底——firecrawl/open-webSearch 同选）
  *  3. 从快照文本里抽链接 + 标题（v0.1 简化版：正则抽 URL，selector 级联 v0.7 加）
  *
  * **不绕过 BaseChannel 不变量 INV-2**：本模块不直接调 chrome-devtools-mcp，
@@ -45,13 +48,44 @@ export type BrowseExec = (
  *  - 注入                     → worked 分支末尾按命中数调 onResult
  *                              （>0 结果 = hit；0 结果 = miss；触发 HitRateStats 告警链）
  */
+/**
+ * v1.11（round1 T9）：query 是否含 CJK 字符（与 MultiSourceFanout.allocateLimit
+ * 同款正则——CJK 启发式双处一致，语言判定不漂移）。
+ */
+const CJK_RE = /[一-鿿぀-ヿ가-힯]/;
+
+/**
+ * v1.11（round1 T9）：按 query 语言选 SERP 引擎。
+ *  - CJK    → "baidu"（百度；现状保留）
+ *  - 非 CJK → "ddg"（DuckDuckGo html 端点；修复「英文 query 落百度」缺位）
+ */
+export function serpEngineForQuery(query: string): "baidu" | "ddg" {
+  return CJK_RE.test(query) ? "baidu" : "ddg";
+}
+
+/** 引擎 → SERP URL 构造。 */
+export function serpUrlFor(
+  engine: "baidu" | "ddg",
+  query: string,
+  limit: number,
+): string {
+  if (engine === "ddg") {
+    // html.duckduckgo.com 纯 HTML 端点（无 JS 也能渲染；browse_headless 渲染后同款快照正则抽取）
+    return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  }
+  return `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`;
+}
+
 export async function serpScrapeFallback(
   query: string,
   limit: number,
   browseExec: BrowseExec,
   serpHealth?: SerpHealthMonitor | null,
 ): Promise<InteractResult<SearchResult>> {
-  const serpUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`;
+  // v1.11（round1 T9）：CJK/非 CJK 分流（百度 / DDG）
+  const engine = serpEngineForQuery(query);
+  const serpUrl = serpUrlFor(engine, query, limit);
+  const retrievalMethod = engine === "ddg" ? "serp_scrape_ddg" : "serp_scrape_baidu";
 
   const browseResult = await browseExec(serpUrl);
 
@@ -61,7 +95,7 @@ export async function serpScrapeFallback(
       data: null,
       served_by: "browse_headless",
       fallback_used: true,
-      retrieval_method: "serp_scrape_baidu",
+      retrieval_method: retrievalMethod,
       error: browseResult.error ?? "serp_scrape_failed",
     };
   }
@@ -69,27 +103,27 @@ export async function serpScrapeFallback(
   const preview = browseResult.data?.preview ?? "";
   if (!preview) {
     // v0.7：preview 空 = miss（抽取 0 条）；通知 serpHealth（注入时）
-    serpHealth?.onResult("baidu", "v1", query, "", false);
+    serpHealth?.onResult(engine, "v1", query, "", false);
     return {
       outcome: "unknown",
       data: null,
       served_by: "browse_headless",
       fallback_used: true,
-      retrieval_method: "serp_scrape_baidu",
+      retrieval_method: retrievalMethod,
       error: "serp_scrape_empty_preview",
     };
   }
 
   const data = extractResultsFromSnapshot(preview, query);
   // v0.7：按命中数通知 serpHealth（count > 0 = hit；否则 miss）
-  serpHealth?.onResult("baidu", "v1", query, preview, data.count > 0);
+  serpHealth?.onResult(engine, "v1", query, preview, data.count > 0);
 
   return {
     outcome: "worked",
     data,
     served_by: "browse_headless",
     fallback_used: true,
-    retrieval_method: "serp_scrape_baidu",
+    retrieval_method: retrievalMethod,
   };
 }
 
@@ -108,11 +142,28 @@ export async function serpScrapeFallback(
  */
 const URL_RE = /https?:\/\/[^\s)"'<>一-鿿]+/g;
 // 搜索引擎自家链接（跳转页 / 占位）排除
+// v1.11 T9：+ duckduckgo（ddg 路径自家 /l/?uddg= 跳转链与 y.js 占位链）
 const SELF_HOST_RE =
-  /^(https?:\/\/)?(www\.)?(baidu|google|m\.baidu)\.(com|cn)\//i;
+  /^(https?:\/\/)?(www\.)?(baidu|google|m\.baidu|duckduckgo)\.(com|cn|ca)\//i;
 // 用户查询词本身防止回显成「结果」
 function isSelfLink(url: string, _query: string): boolean {
   return SELF_HOST_RE.test(url);
+}
+
+/**
+ * v1.11（round1 T9）：DDG 结果链接解包。
+ * html.duckduckgo.com 的结果链接是跳转壳 `https://duckduckgo.com/l/?uddg=<urlencoded>&rut=...`；
+ * 解 uddg 参数还原真实目标 URL（a11y 快照文本里保留的是 href 字面量）。
+ */
+export function unwrapDdgRedirect(url: string): string {
+  const m = url.match(/[?&]uddg=([^&\s]+)/);
+  if (!m) return url;
+  try {
+    const decoded = decodeURIComponent(m[1]!);
+    return /^https?:\/\//.test(decoded) ? decoded : url;
+  } catch {
+    return url;
+  }
 }
 
 export function extractResultsFromSnapshot(
@@ -124,7 +175,9 @@ export function extractResultsFromSnapshot(
   const results: SearchResult["results"] = [];
 
   for (const rawUrl of matches) {
-    const url = rawUrl.replace(/[.,;:)\]!]+$/, ""); // 去尾标点
+    // v1.11 T9：DDG 跳转壳先解包（非 DDG 链接原样返回）
+    const unwrapped = unwrapDdgRedirect(rawUrl);
+    const url = unwrapped.replace(/[.,;:)\]!]+$/, ""); // 去尾标点
     if (isSelfLink(url, query)) continue;
     if (deduped.has(url)) continue;
     deduped.add(url);
@@ -150,8 +203,10 @@ export function extractResultsFromSnapshot(
     query,
     results,
     count: results.length,
-    engine: "baidu_serp",
-    region: "cn",
+    // v1.11 T9：引擎名/region 按 query 语言标（CJK=baidu_serp/cn；非CJK=ddg_serp/us——
+    // review03 F5：英文 query 走 DDG 却回显 region=cn 是字段撒谎）
+    engine: CJK_RE.test(query) ? "baidu_serp" : "ddg_serp",
+    region: CJK_RE.test(query) ? "cn" : "us",
   };
 }
 

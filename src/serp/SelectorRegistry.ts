@@ -2,7 +2,7 @@
  * SelectorRegistry —— SERP selector 集中管理 + 版本化（parse2 §3.5.1 / F3.8.13）。
  *
  * v0.2 范围：仅骨架 + 启动时从 selectors.ts 静态表加载 + hit/miss 计数。
- *  - 启动：构造时从 BAIDU_SELECTORS / GOOGLE_SELECTORS 生成 v1 版本集
+ *  - 启动：构造时从 BAIDU_SELECTORS / DDG_SELECTORS 生成 v1 版本集（v1.11 T9：google→ddg）
  *  - 命中反馈：recordHit / recordMiss（v0.7 告警链路接入前不主动消费，仅暴露 API）
  *  - last_known_good：v1 初值 = today（构造时）；v0.7 升级后由 ChangeDetection 写回
  *
@@ -14,7 +14,7 @@
  * 借鉴：open-webSearch selector 级联；08 §3.8「SERP 是债不是资产」。
  */
 import type { SerpEngine, SerpSelectorSet } from "./selectors.js";
-import { BAIDU_SELECTORS, GOOGLE_SELECTORS } from "./selectors.js";
+import { BAIDU_SELECTORS, DDG_SELECTORS } from "./selectors.js";
 
 // ============================================================
 // 类型
@@ -42,7 +42,7 @@ export class SelectorRegistry {
 
   constructor() {
     this.sets.set("baidu", versionize(BAIDU_SELECTORS, INITIAL_VERSION));
-    this.sets.set("google", versionize(GOOGLE_SELECTORS, INITIAL_VERSION));
+    this.sets.set("ddg", versionize(DDG_SELECTORS, INITIAL_VERSION));
   }
 
   /** 取某引擎的全部版本化 selector 集（主→备顺序保留）。 */

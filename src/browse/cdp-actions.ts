@@ -26,7 +26,6 @@
  * 借鉴：BrowseChannel.ts 第 570-606 行 doNavigate / doSnapshot / doScreenshot 同档风格。
  */
 import type { McpClient } from "../subprocess/McpClient.js";
-import { parseEvalResult } from "./upstream-response.js";
 import type { BrowseOptions, BrowseResult } from "../types.js";
 
 // ============================================================
@@ -47,18 +46,35 @@ export const CDP_UPSTREAM_TOOL_NAMES = Object.freeze({
   /** chrome-devtools-mcp `pdf` 工具（CDP Page.printToPDF；Go/No-Go F1 探测点） */
   pdf: "pdf",
   /**
-   * chrome-devtools-mcp network 资源抓取工具（v0.5 MVP 走 evaluate_script 注入
-   * PerformanceObserver 兜底；上游若暴露专门工具则切换。Go/No-Go F2 探测点）。
+   * chrome-devtools-mcp network 抓取工具。
+   * v1.11（round1 T5）：0.3.0 时代走 evaluate_script 注 PerformanceObserver（F2 已知
+   * 限制：proxy/TUN 改 timing 抓不全）；1.7.0 暴露原生 list_network_requests /
+   * get_network_request（CDP Network 域）→ 直调原生工具，注入路径删除。
    */
-  network_log: "network_log",
+  network_log: "list_network_requests",
+  /** 单请求详情（响应体/头/时序；1.7.0 原生） */
+  network_get: "get_network_request",
   /**
-   * chrome-devtools-mcp console 日志工具（上游若不暴露则 doConsole 走 evaluate 注入兜底）。
-   * v0.5 M0.5b 暂不接入 console 工具实装（占位；M0.5c network 时统一上线）。
+   * chrome-devtools-mcp console 抓取工具（1.7.0 原生 list_console_messages）。
+   * v1.11（round1 T5）：从 v0.5 M0.5b 占位变实装。
    */
-  console_log: "console_log",
-  /** evaluate_script（既有 doEvaluate 在 BrowseChannel.ts；此处仅记录名用于 doConsole/doNetwork 兜底） */
+  console_log: "list_console_messages",
+  /** evaluate_script（既有 doEvaluate 在 BrowseChannel.ts；此处仅记录名用于历史探测） */
   evaluate_script: "evaluate_script",
 });
+
+/**
+ * Lasso network_filter → 上游 resourceTypes 映射（1.7.0 list_network_requests
+ * FILTERABLE_RESOURCE_TYPES：document/stylesheet/image/media/font/script/xhr/fetch/...）。
+ * "all" / "3rd-party" 不过滤（3rd-party 判定在 network.ts 工具层，host 精确匹配）。
+ */
+const FILTER_TO_RESOURCE_TYPES: Record<string, string[] | undefined> = {
+  xhr: ["xhr"],
+  fetch: ["fetch"],
+  img: ["image"],
+  "3rd-party": undefined,
+  all: undefined,
+};
 
 // ============================================================
 // SDK 返回结构类型（与 BrowseChannel.ts 同构，本文件局部复用）
@@ -134,87 +150,48 @@ export async function doPdf(
 }
 
 // ============================================================
-// doNetwork：network action handler（parse6 §3.4.2 实装）
+// doNetwork：network action handler（v1.11 round1 T5 原生化实装）
 // ============================================================
 /**
  * network action handler —— 经 BrowseChannel.actionDispatch Map 追加（INV-33）。
  *
- * 实现路径（parse6 §3.4 + §4.4 + §7.1 F2）：
- *  - v0.5 MVP 走 evaluate_script 注入 PerformanceObserver（JS-level 抓取）
- *  - 上游 chrome-devtools-mcp 若暴露专门 `network_log` 工具（doctor 探测），v0.6+ 切换
- *  - JS-level 抓取的已知限制（F2）：proxy / TUN 透明代理改 timing 时可能抓不全；
- *    network.ts 工具层会在低计数时挂 data.next_step 提示（不阻断 worked outcome）
+ * v1.11（round1 T5）：0.3.0 时代的 evaluate_script 注入 PerformanceObserver 路径
+ * **删除**，改调 1.7.0 原生 `list_network_requests`（CDP Network 域采集）：
+ *  - 数据完整度：method/status 全量（不再受 fake-ip TUN 改 timing 抓不全影响——F2 关闭）
+ *  - browse 流程 NAV_FIRST_ACTIONS 先导航 → 上游采「最近一次导航以来」的请求，
+ *    与 navigate-first 流程 1:1 契合
+ *
+ * 上游响应（1.7.0 McpResponse 文本渲染，NetworkFormatter concise 格式）：
+ *  - `## Network requests` 头 + 分页信息行 + 每请求一行
+ *    `reqid=<N> <METHOD> <url> [<status>]`（可能带 ` [selected ...]` 后缀）
+ *  - 按行正则抽取（upstream-response.ts 围栏提取同范式）。
  *
  * opts（BrowseOptions.network_*）：
- *  - network_filter       : "xhr" | "fetch" | "img" | "3rd-party" | "all"（默认 "all"；过滤在
- *                            network.ts 工具层做，doNetwork 抓全量让工具层决定）
- *  - network_include_bodies : boolean（v0.5 不实装；schema forward-compat）
- *  - network_timeout_ms   : number（默认 3000ms；PerformanceObserver 采集窗口）
+ *  - network_filter : "xhr"|"fetch"|"img"|"3rd-party"|"all" → 映射上游 resourceTypes
+ *                     （xhr→xhr / fetch→fetch / img→image；3rd-party/all 全量，
+ *                      3rd-party 判定在 network.ts 工具层）
+ *  - network_timeout_ms / network_include_bodies：不再适用（原生工具即时返回）；
+ *    字段保留（zod 契约稳定），值被忽略
  *
- * 注入脚本（与 parse6 §3.4.2 伪码逐行对齐）：
- *  - new PerformanceObserver((list) => { for (e of list.getEntries()) entries.push({
- *      name: e.name, type: e.initiatorType, duration: e.duration,
- *      ttfb: e.responseStart - e.requestStart, bytes: e.transferSize,
- *      workerStart: e.workerStart
- *    }) })
- *  - obs.observe({ type: "resource", buffered: true })  // buffered=true 拉历史 + 后续
- *  - setTimeout(() => { obs.disconnect(); resolve(JSON.stringify(entries)); }, timeout_ms)
- *
- * @returns Partial<BrowseResult>：preview 字段含 entries JSON 字符串
- *          （network.ts 工具层会把它过 applyOutputEnvelope；INV-34 同源）
+ * @returns Partial<BrowseResult>：preview = entries JSON 字符串（network.ts 工具层
+ *          filterResources + applyOutputEnvelope；INV-34 同源）
  */
 export async function doNetwork(
   c: McpClient,
   _url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  // PerformanceObserver 采集窗口（默认 3000ms；上限 30000ms 防 caller 误传巨大值）
-  const timeoutMs = Math.max(100, Math.min(opts.network_timeout_ms ?? 3000, 30_000));
-
-  // 注入表达式（与 parse6 §3.4.2 伪码逐行对齐）
-  // 注：JSON.stringify entries 数组在 page 端完成；CDP 透传 text 回来
-  // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 evaluate_script 契约，上游会 await
-  // 返回的 Promise），不再传 IIFE 语句串。
-  const expr = `() => {
-    return new Promise((resolve) => {
-      var entries = [];
-      if (typeof PerformanceObserver === "undefined") {
-        resolve("[]");
-        return;
-      }
-      try {
-        var obs = new PerformanceObserver(function(list) {
-          list.getEntries().forEach(function(e) {
-            entries.push({
-              name: e.name,
-              type: e.initiatorType,
-              duration: e.duration,
-              ttfb: e.responseStart - e.requestStart,
-              bytes: e.transferSize,
-              workerStart: e.workerStart
-            });
-          });
-        });
-        obs.observe({ type: "resource", buffered: true });
-        setTimeout(function() {
-          try { obs.disconnect(); } catch (_) {}
-          resolve(JSON.stringify(entries));
-        }, ${timeoutMs});
-      } catch (e) {
-        resolve("[]");
-      }
-    });
-  }`;
+  // filter → 上游 resourceTypes（undefined = 全量）
+  const filter = opts.network_filter ?? "all";
+  const resourceTypes = FILTER_TO_RESOURCE_TYPES[filter];
 
   let r: ContentResult;
   try {
-    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.evaluate_script, {
-      function: expr,
+    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.network_log, {
+      ...(resourceTypes ? { resourceTypes } : {}),
     })) as ContentResult;
   } catch (e) {
-    // evaluate_script 调用失败（chrome-devtools-mcp 上游协议错 / 子进程挂）
-    // → 标准化为 upstream_network_error 前缀；上层 network.ts 检测后包成
-    // outcome=didnt + retrieval_method=upstream_unsupported:network（守 F2）
+    // 上游工具缺失/协议错 → 标准化 upstream_network_error 前缀（network.ts Go/No-Go F2 识别）
     const msg = String(e).slice(0, 200);
     throw new Error(`upstream_network_error:tool_call_failed:${msg}`);
   }
@@ -224,46 +201,117 @@ export async function doNetwork(
     throw new Error(`upstream_network_error:is_error:${detail}`);
   }
 
-  // entries JSON 作为 preview 返回；network.ts 工具层会做 3rd-party 标记 + 过滤 + envelope
-  // W1-DEF-1b（v1.8）：经 parseEvalResult 解围栏（脚本 return JSON.stringify(entries)）；
-  // 无围栏/解析失败兜底 "[]"（空 entries 是合法结果，上层 JSON.parse 不炸）
-  const v = parseEvalResult(r);
-  const text =
-    v == null ? "[]" : typeof v === "string" ? v : JSON.stringify(v);
-  return { preview: text };
+  // 逐行抽 reqid=<N> <METHOD> <url> [<status>]
+  // entry.type 回填 filter 的 canonical initiatorType（工具层 filterResources 直通；
+  // 上游 resourceTypes 已过滤，回填保证 e.type 断言不被清空）
+  const canonicalType =
+    filter === "xhr" ? "xmlhttprequest" : filter === "img" ? "img" : filter;
+  const text = firstText(r) ?? "";
+  const entries = parseNetworkRequestLines(text).map((e) => ({
+    ...e,
+    ...(filter === "all" || filter === "3rd-party" ? {} : { type: canonicalType }),
+  }));
+
+  return { preview: JSON.stringify(entries) };
+}
+
+/** 1.7.0 list_network_requests 文本行 → 结构化条目（围栏提取范式）。 */
+export function parseNetworkRequestLines(text: string): Array<{
+  name: string;
+  type: string;
+  reqid: number;
+  method: string;
+  status: string;
+}> {
+  const out: Array<{
+    name: string;
+    type: string;
+    reqid: number;
+    method: string;
+    status: string;
+  }> = [];
+  for (const line of text.split("\n")) {
+    // reqid=123 GET https://example.com/ [200]（status 可能非数字：pending / failed）
+    const m = line.match(/^reqid=(-?\d+)\s+(\S+)\s+(\S+)\s+\[([^\]]*)\]/);
+    if (!m) continue;
+    out.push({
+      name: m[3],
+      type: "",
+      reqid: parseInt(m[1], 10),
+      method: m[2],
+      status: m[4],
+    });
+  }
+  return out;
 }
 
 // ============================================================
-// doConsole：console action handler（v0.5 M0.5b 占位，M0.5c 接入）
+// doConsole：console action handler（v1.11 round1 T5 实装，原 v0.5 占位废除）
 // ============================================================
 /**
  * console action handler —— 经 BrowseChannel.actionDispatch Map 追加（INV-33）。
  *
- * v0.5 M0.5b 立场：占位实装 —— parse6 §2.1 把 console entry 加入 dispatch Map（INV-33
- * 要求三 action 必在 Map），但 M0.5b 阶段不实装真正 console 日志抓取（推 M0.5c network
- * 时统一上线 evaluate_script 注入范式 + 3rd-party 过滤等）。
+ * v1.11（round1 T5）：从占位（"v0.5 M0.5b placeholder"）变实装——调 1.7.0 原生
+ * `list_console_messages`。
  *
- * 守 R-CI-02：不在本函数返回特殊形状；与既有 doEvaluate 同档 throw（无 js 时 throw）
- *            → BrowseChannel.browse() 内 classifyBrowseError → outcome=unknown
- *            → 上层（暂无 console.ts 工具）未来 console.ts 工具会包装成 outcome=didnt
- *              + retrieval_method=console_not_implemented_in_v0.5 + next_step。
+ * 上游响应（ConsoleFormatter concise 格式）：
+ *  - `## Console messages` 头 + 每消息一行
+ *    `msgid=<N> [<type>] <text> (<N> args)`（可能带 ` [N times]` 后缀）
  *
- * 设计：本占位**永不抛错**（return + preview 而非 throw），让 BrowseChannel.browse()
- *      outcome=worked + retrieval_method=chrome_devtools_mcp_console_placeholder。
- *      这样 INV-33 断言（"console" 必须在 dispatch Map）落地，且不影响任何现有调用路径
- *      （v0.5 没有 console tool 注册；只是 Map entry 预留）。
+ * @returns Partial<BrowseResult>：preview = messages JSON 字符串
  */
 export async function doConsole(
-  _c: McpClient,
+  c: McpClient,
   _url: string,
   _opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  // v0.5 M0.5b 占位：返 preview 标识 + retrieval_method 暗示未实装
-  // M0.5c network 时会改为真正的 evaluate_script 注入 + console entries 解析
-  return {
-    preview:
-      "console action: v0.5 M0.5b placeholder (M0.5c will implement evaluate_script injection)",
-  };
+  let r: ContentResult;
+  try {
+    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.console_log, {})) as ContentResult;
+  } catch (e) {
+    const msg = String(e).slice(0, 200);
+    throw new Error(`upstream_console_error:tool_call_failed:${msg}`);
+  }
+
+  if (r.isError) {
+    const detail = firstText(r) ?? "unknown";
+    throw new Error(`upstream_console_error:is_error:${detail}`);
+  }
+
+  const messages = parseConsoleMessageLines(firstText(r) ?? "");
+  return { preview: JSON.stringify(messages) };
+}
+
+/** 1.7.0 list_console_messages 文本行 → 结构化消息。 */
+export function parseConsoleMessageLines(text: string): Array<{
+  id: number;
+  type: string;
+  text: string;
+  argsCount: number;
+  count?: number;
+}> {
+  const out: Array<{
+    id: number;
+    type: string;
+    text: string;
+    argsCount: number;
+    count?: number;
+  }> = [];
+  for (const line of text.split("\n")) {
+    // msgid=1 [log] hello world (2 args) [3 times]
+    const m = line.match(
+      /^msgid=(-?\d+)\s+\[([^\]]+)\]\s+(.*)\s+\((\d+)\s+args?\)(?:\s+\[(\d+) times\])?$/,
+    );
+    if (!m) continue;
+    out.push({
+      id: parseInt(m[1], 10),
+      type: m[2],
+      text: m[3],
+      argsCount: parseInt(m[4], 10),
+      ...(m[5] ? { count: parseInt(m[5], 10) } : {}),
+    });
+  }
+  return out;
 }
 
 // ============================================================

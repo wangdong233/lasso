@@ -51,7 +51,7 @@ describe("runReplayBaseline —— 默认 fixtures 目录回归", () => {
     expect(summary.sidecar_missing).toBe(0);
     const engines = new Set(summary.results.map((r) => r.engine));
     expect(engines.has("baidu")).toBe(true);
-    expect(engines.has("google")).toBe(true);
+    expect(engines.has("google")).toBe(true); // 历史 fixture 保留（录制数据是 URL 正则抽取的有效回归基线；v1.11 T9 删的是零调用方的 GOOGLE_SELECTORS 配置）
     expect(engines.has("bing")).toBe(true);
   });
 

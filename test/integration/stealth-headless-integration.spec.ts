@@ -303,8 +303,8 @@ describe("HeadlessChannel — 16 路 evasion 覆盖（注入 script 含每路 ma
     for (const [label, marker] of expectedMarkers) {
       expect(allScripts, `端到端 marker 缺失: ${label}`).toMatch(marker);
     }
-    // 路 16 UA override —— navigator.userAgent 被改写（含 Chrome/130）
-    expect(allScripts).toMatch(/Chrome\/130/);
+    // 路 16 UA override —— navigator.userAgent 被改写（含 Chrome/151）
+    expect(allScripts).toMatch(/Chrome\/151/);
   });
 });
 
@@ -339,18 +339,18 @@ describe("HeadlessChannel — header 一致性（UA ↔ secChUa ↔ userAgentDat
     expect(p.acceptLanguage).toMatch(/en-US/);
   });
 
-  it("所有 profile 的 UA 版本 ≥ 要求基线（Chrome 130 / Firefox 130 / Safari 17）", () => {
-    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).toMatch(/Chrome\/130\./);
-    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/Firefox\/130\./);
-    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Version\/17\./);
+  it("所有 profile 的 UA 版本 ≥ 要求基线（v1.11 T4：Chrome 151 / Firefox 153 / Safari 27）", () => {
+    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).toMatch(/Chrome\/151\./);
+    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/Firefox\/153\./);
+    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Version\/27\./);
   });
 });
 
 // ============================================================
-// spec args flag 契约（parse13 §3.3 --disable-blink-features）
+// spec args flag 契约（parse13 §3.3；v1.11 round1 T1/T2 升级 chromeArg 形态）
 // ============================================================
-describe("HeadlessChannel — spec args flag 契约（parse13 §3.3）", () => {
-  it("构造时 registerSpec headless 含 --disable-blink-features=AutomationControlled", () => {
+describe("HeadlessChannel — spec args flag 契约（parse13 §3.3 + round1 T1/T2）", () => {
+  it("构造时 registerSpec headless 含 --chromeArg=--disable-blink-features=AutomationControlled（1.7.0 透传）", () => {
     const stub = makeStubClient();
     const { subproc, registerSpecCalls } = makeMockSubproc(stub.client);
     new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
@@ -358,24 +358,28 @@ describe("HeadlessChannel — spec args flag 契约（parse13 §3.3）", () => {
     const headlessSpec = registerSpecCalls.find((c) => c.name === "headless");
     expect(headlessSpec).toBeTruthy();
     const args = (headlessSpec!.spec as { args: string[] }).args;
-    // patchright flag 借鉴（parse13 §3.3）
-    expect(args).toContain("--disable-blink-features=AutomationControlled");
+    // v1.11（round1 T1）：1.7.0 有 --chromeArg 透传——flag 经包装真正到达 Chromium
+    // （0.3.0 裸传是 unknown-flag 哑弹，parse13 §8.4 L3 未验证项就此关闭）
+    expect(args).toContain("--chromeArg=--disable-blink-features=AutomationControlled");
     // 既有 flag 保留（零回归）
     expect(args).toContain("--headless");
     expect(args).toContain("--isolated");
+    expect(args).toContain("--no-usage-statistics");
     expect(args.some((a) => a.startsWith("chrome-devtools-mcp@"))).toBe(true);
   });
 
-  it("spec args 不含 v1.4 未有的 --user-agent/--window-size flag（parse13 §4.3 spike 未解项不盲加）", () => {
-    // parse13 §3.3 列了 --user-agent/--window-size，但 §4.3 spike 确认 chrome-devtools-mcp@0.3.0
-    // 无透传机制；v1.5 只加已 spike 验证安全的 --disable-blink-features（unknown flag 不报错），
-    // --user-agent/--window-size 留 deferred-Spike（acceptance 手测）。
+  it("v1.11 T2：launch 级 --chromeArg=--user-agent + --viewport 已加（0.3.0 时代「不盲加」守卫翻转）", () => {
+    // parse13 §4.3 spike 的「chrome-devtools-mcp@0.3.0 无透传机制，不盲加 --user-agent」
+    // 在 1.7.0 失效——round1 T2 经 --chromeArg 加 launch 级 UA（消除 HTTP 头 HeadlessChrome
+    // 检测点）+ --viewport（与 profile.viewport 同源）。
     const stub = makeStubClient();
     const { subproc, registerSpecCalls } = makeMockSubproc(stub.client);
     new HeadlessChannel(subproc, new StealthEngine(), "windows_chrome_120");
 
     const args = (registerSpecCalls[0]!.spec as { args: string[] }).args;
-    expect(args.some((a) => a.startsWith("--user-agent"))).toBe(false);
+    expect(args.some((a) => a.startsWith("--chromeArg=--user-agent="))).toBe(true);
+    expect(args.some((a) => a.startsWith("--viewport="))).toBe(true);
+    // --window-size 仍不用（1.7.0 语义化形态是 --viewport）
     expect(args.some((a) => a.startsWith("--window-size"))).toBe(false);
   });
 });

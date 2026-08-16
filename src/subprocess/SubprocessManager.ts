@@ -5,7 +5,7 @@
  * 不组装消息。帧解析下沉到 SDK 的 StdioClientTransport（通过 McpClient.connectStdio
  * 间接持有）。本类只管：spawn 规格 / 懒启动 / 健康探测 / 退避重启 / 僵尸回收 / 全停。
  *
- * 架构选择：SDK 1.29 的 StdioClientTransport 自带 spawn（接收 {command, args, env}），
+ * 架构选择：SDK（v1.11 T16 起 ^1.30.0）的 StdioClientTransport 自带 spawn（接收 {command, args, env}），
  * 所以本类不直接调 node:child_process.spawn。spawn 的具体动作委托给 McpClient，
  * 本类只追踪 spawn 后的元数据（pid / spawnedAt / lastUsedAt / restartCount）。
  *
@@ -34,8 +34,19 @@ import { killTreeSync } from "../util/kill-tree.js";
  * chrome-devtools-mcp 版本锁。
  * 上游工具名 / schema 漂移会直接断 BrowseChannel.actionDispatch Map。
  * 通过 package-lock + 此常量双锁；契约测试在 Phase F 拿 listTools() 快照守。
+ *
+ * v1.11（round1 T1）：0.3.0 → 1.7.0。迁移面契约复核（tarball build 逐文件白盒）：
+ *  - evaluate_script `function: string` 保持 ✓（click/fill_form uid 契约保持 ✓）
+ *  - take_screenshot format/fullPage 保持 ✓（新有 filePath，但 Lasso 维持自落盘+stat 校验）
+ *  - **wait_for.text 从 string 变 `array(string).min(1)`**（McpPage.waitForTextOnPage
+ *    对 text.flatMap）→ BrowseChannel.doWait / creepjs-probe 改传数组（INV-76 (b) 同步翻转）
+ *  - 1.7.0 默认采集使用统计 → 全部 spec 追加 --no-usage-statistics（隐私不倒退）
+ *  - 新增 --chromeArg/--proxyServer/--wsEndpoint/--wsHeaders/--viewport/--allowedUrlPattern
+ *    （T2 UA/viewport、T5 原生 network/console、T10 proxy 解锁）
+ *  - pdf 工具仍不存在（0.3.0 亦无）→ doPdf 既有 tri-state 降级路径不变
+ *  - BrowserbaseChannel 改用 --wsEndpoint（wss+自定义头才有语义保障；与 --browserUrl 互斥）
  */
-export const LOCKED_CDP_MCP_VERSION = "0.3.0";
+export const LOCKED_CDP_MCP_VERSION = "1.7.0";
 
 // ============================================================
 // 内部追踪结构

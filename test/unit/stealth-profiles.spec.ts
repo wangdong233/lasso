@@ -152,33 +152,55 @@ describe("STEALTH_INJECTION_SCRIPT — navigator.webdriver 抹除（parse5 §3.3
 });
 
 // ============================================================
-// v1.5 UA 130+ + header 集（parse13 §3.2）
+// v1.11 round1 T4：UA 值刷新（Chrome 151 / Firefox 153 / Safari 27）
+// + UA↔secChUa↔brands 三方一致断言（防未来 bump 只改一处漏其它）
 // ============================================================
-describe("STEALTH_PROFILES v1.5 — UA 升级 Chrome 130+ + header 集（parse13 §3.2）", () => {
-  it("windows_chrome_120 UA 含 Chrome/130（profile key 是稳定标识符，UA 值升 130）", () => {
-    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).toMatch(/Chrome\/130\./);
+describe("STEALTH_PROFILES v1.11 — UA 值刷新 + 三方一致（round1 T4）", () => {
+  it("windows_chrome_120 UA 含 Chrome/151（2026-08 stable 时代；key 是稳定标识符不动）", () => {
+    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).toMatch(/Chrome\/151\./);
   });
 
-  it("windows_chrome_120 UA 不含 Chrome/120（旧版必须清掉）", () => {
-    expect(STEALTH_PROFILES.windows_chrome_120.userAgent).not.toMatch(/Chrome\/120\./);
+  it("linux_firefox_121 UA 含 Firefox/153 + rv:153", () => {
+    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/Firefox\/153\./);
+    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/rv:153\./);
   });
 
-  it("linux_firefox_121 UA 含 Firefox/130", () => {
-    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/Firefox\/130\./);
-    expect(STEALTH_PROFILES.linux_firefox_121.userAgent).toMatch(/rv:130\./);
+  it("mac_safari_17 UA 含 Version/27.0 + 冻结 Safari/605.1.15（review03 F3）", () => {
+    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Version\/27\.0/);
+    // Safari/ token 冻结在 605.1.15（Apple 自 2013 全版本一致；真机从不发 Safari/27.0
+    // ——伪造组合是一行 regex 即识破的硬指纹。review03 F3 修正钉死）
+    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Safari\/605\.1\.15/);
+    expect(STEALTH_PROFILES.mac_safari_17.userAgent).not.toMatch(/Safari\/2\d\./);
   });
 
-  it("mac_safari_17 UA 含 Version/17.5", () => {
-    expect(STEALTH_PROFILES.mac_safari_17.userAgent).toMatch(/Version\/17\.5/);
+  it("全 profile 无旧时代 UA 值残留（Chrome 12x/13x / Firefox 12x/13x / Version/17）", () => {
+    for (const profile of Object.values(STEALTH_PROFILES)) {
+      const ua = profile.userAgent;
+      // UA 版本过旧本身即启发式弱信号（round1 T4 证据）
+      expect(ua).not.toMatch(/Chrome\/1[23]\d\./);
+      expect(ua).not.toMatch(/Firefox\/1[23]\d\./);
+      expect(ua).not.toMatch(/Version\/17\./);
+    }
   });
 
-  it("windows_chrome_120 含 secChUa 字段且 brands 版本与 UA 一致（= 130）", () => {
+  it("windows_chrome_120 UA↔secChUa↔brands 三方一致（UA major == secChUa major）", () => {
     const p = STEALTH_PROFILES.windows_chrome_120;
-    expect(p.secChUa).toBeTruthy();
-    expect(p.secChUa).toContain('v="130"');
-    // UA major 与 secChUa major 一致（parse13 §8.2 producer 契约核心）
     const uaMajor = p.userAgent.match(/Chrome\/(\d+)/)![1];
-    expect(p.secChUa).toContain(`v="${uaMajor}"`);
+    expect(p.secChUa).toContain(`"Google Chrome";v="${uaMajor}"`);
+    expect(p.secChUa).toContain(`"Chromium";v="${uaMajor}"`);
+  });
+
+  it("windows_chrome_120 ghost brand 按 major%4 派生（151%4=3 → Not_A Brand，与 ua-client-hints 运行时规则一致）", () => {
+    const p = STEALTH_PROFILES.windows_chrome_120;
+    const uaMajor = parseInt(p.userAgent.match(/Chrome\/(\d+)/)![1], 10);
+    const ghostBrands = ["Not.A/Brand", "Not)A;Brand", "Not?A_Brand", "Not_A Brand"];
+    const expectedGhost = ghostBrands[uaMajor % 4];
+    expect(p.secChUa).toContain(`"${expectedGhost}";v="99"`);
+  });
+
+  it("Safari/Firefox profile secChUa 为空串（原生不发 client hints）", () => {
+    expect(STEALTH_PROFILES.mac_safari_17.secChUa).toBe("");
+    expect(STEALTH_PROFILES.linux_firefox_121.secChUa).toBe("");
   });
 
   it("windows_chrome_120 含完整 sec-ch-ua 三件套（secChUa / secChUaMobile / secChUaPlatform）", () => {

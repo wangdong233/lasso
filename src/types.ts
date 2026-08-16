@@ -234,6 +234,15 @@ export interface ProviderConfig {
  */
 export type FreeTierLevel = "L1" | "L2" | "L3" | "L4";
 
+/**
+ * v1.11（round1 T6）：search 时效性过滤枚举（透传三引擎）。
+ *  - 智谱上游 `search_recency_filter`（oneDay/oneWeek/oneMonth/oneYear）
+ *  - Brave `freshness`（pd/pw/pm/py）
+ *  - Bing v7 `freshness`（Day/Week/Month；year 档 Bing 无对应粒度，不传——诚实降级）
+ * 不传 = 不限时效（byte-identical 基线行为；与 extract_mode 同款守护手法）。
+ */
+export type SearchFreshness = "day" | "week" | "month" | "year";
+
 // ============================================================
 // ChannelStatus / Health
 // ============================================================
@@ -445,7 +454,7 @@ export interface PdfResult {
  *  - 仅 URL 入参；pageRef 推 v0.6 forest 合并后（与 screenshot/pdf 同立场）
  *  - filter 维度 = xhr / fetch / img / 3rd-party / all（5 case 单维度 switch；parse6 §3.4.3）
  *  - include_bodies v0.5 接受但 doNetwork 不实装（文档化推迟 v0.6；schema forward-compat）
- *  - timeout_ms 默认 3000ms（PerformanceObserver 采集窗口）
+ *  - timeout_ms 默认 3000ms（v1.11 T5：字段保留；原生工具即时返回）
  *  - wait_until 默认 "load"（与 screenshot/pdf 同档；先 navigate 完再注入 observer）
  *
  * 设计原则：schema 接受 → doNetwork 透传 → 简化或文档化未实装字段（守 R-CI-02）。
@@ -454,7 +463,7 @@ export interface NetworkOptions {
   filter: "xhr" | "fetch" | "img" | "3rd-party" | "all";
   /** v0.5 接受但 doNetwork 不实装（schema forward-compat；落盘文档化推迟 v0.6） */
   include_bodies: boolean;
-  /** PerformanceObserver 采集窗口；默认 3000ms */
+  /** v1.11 T5：字段保留（原生工具即时返回，不再控制采集窗口）；默认 3000ms */
   timeout_ms: number;
   wait_until: "load" | "domcontentloaded" | "networkidle";
 }

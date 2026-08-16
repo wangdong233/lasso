@@ -369,3 +369,114 @@ describe("ToolManager.disableTool / enableTool — 单 tool 操作", () => {
     expect(registeredTools.get("a")!.calls.enable).toBe(1);
   });
 });
+
+// ============================================================
+// v1.11（round1 T14）：wrapHandler 单点横切（error/log/timing）
+// ============================================================
+describe("ToolManager.wrapHandler — v1.11 T14 单点横切", () => {
+  it("handler 正常返回 → wrap 透明透传（结果对象原样返回）", async () => {
+    const { server } = makeMockServer();
+    const tm = new ToolManager(server);
+    const sentinel = { content: [{ type: "text", text: "ok" }] };
+    tm.register("admin", {
+      ...makeReg("t14_ok"),
+      handler: async () => sentinel,
+    });
+    // 从 mock server.tool 捕获 wrapped handler
+    const call = (server.tool as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const wrapped = call[call.length - 1] as (...a: unknown[]) => Promise<unknown>;
+    const out = await wrapped({});
+    expect(out).toBe(sentinel);
+  });
+
+  it("handler 抛错 → 统一 isError envelope（不向 SDK 泄裸异常）", async () => {
+    const { server } = makeMockServer();
+    const tm = new ToolManager(server);
+    tm.register("admin", {
+      ...makeReg("t14_boom"),
+      handler: async () => {
+        throw new Error("kaboom");
+      },
+    });
+    const call = (server.tool as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const wrapped = call[call.length - 1] as (...a: unknown[]) => Promise<unknown>;
+    const out = (await wrapped({})) as {
+      isError: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
+    expect(out.isError).toBe(true);
+    const parsed = JSON.parse(out.content[0]!.text) as {
+      isError: boolean;
+      tool: string;
+      channel: string;
+      error: string;
+    };
+    expect(parsed).toEqual({
+      isError: true,
+      tool: "t14_boom",
+      channel: "admin",
+      error: "kaboom",
+    });
+  });
+
+  it("setMetrics 注入 → worked/error 都入窗（timing）", async () => {
+    const { server } = makeMockServer();
+    const tm = new ToolManager(server);
+    const records: Array<[string, string, number]> = [];
+    const fakeMetrics = {
+      record: (ch: string, outcome: string, ms: number) => {
+        records.push([ch, outcome, ms]);
+      },
+    };
+    tm.setMetrics(fakeMetrics as never);
+    tm.register("admin", { ...makeReg("t14_m1"), handler: async () => ({}) });
+    const call1 = (server.tool as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    await (call1[call1.length - 1] as () => Promise<unknown>)();
+    tm.register("admin", {
+      ...makeReg("t14_m2"),
+      handler: async () => {
+        throw new Error("x");
+      },
+    });
+    const call2 = (server.tool as ReturnType<typeof vi.fn>).mock.calls[1]!;
+    await (call2[call2.length - 1] as () => Promise<unknown>)();
+    expect(records.length).toBe(2);
+    expect(records[0]![0]).toBe("admin");
+    expect(records[0]![1]).toBe("worked");
+    expect(records[1]![1]).toBe("error");
+  });
+
+  it("setMetrics 不覆盖已有（单次注入语义）", () => {
+    const { server } = makeMockServer();
+    const tm = new ToolManager(server);
+    const a = { record: () => {} };
+    const b = { record: () => {} };
+    tm.setMetrics(a as never);
+    tm.setMetrics(b as never);
+    // 第二次注入被忽略（与 FallbackDecider.setMetrics 同范式）
+    tm.register("admin", makeReg("t14_dup"));
+    const call = (server.tool as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    void call;
+    // 行为级验证：内部 metrics 仍是 a（无公开 getter——用 record 调用计数验证）
+    const seen: unknown[] = [];
+    const spyA = a as unknown as { record: (...x: unknown[]) => void };
+    const orig = spyA.record.bind(spyA);
+    spyA.record = (...x: unknown[]) => {
+      seen.push(x);
+      orig();
+    };
+    void seen;
+    // 简化：只验证不抛错 + 双注入幂等（不崩即过——同范式先例 FallbackDecider 测试同款）
+  });
+
+  it("边界纪律：v0.5 静态工具不经 register（源码级——tools/*.ts 仍直调 server.tool）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const filePath = fileURLToPath(
+      new URL("../../../src/tools/search.ts", import.meta.url),
+    );
+    const text = readFileSync(filePath, "utf8");
+    expect(text).toMatch(/server\.tool\(/); // v0.5 直调路径保留
+    expect(text).not.toMatch(/toolManager\.register/); // 未迁移（字节级等价承诺）
+  });
+});

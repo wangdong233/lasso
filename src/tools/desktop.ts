@@ -43,23 +43,55 @@ const desktopSchema = {
       state_id: z.string().optional(),
       max_depth: z.number().int().positive().max(20).default(8),
       interactive_only: z.boolean().optional(),
+      // v1.11（round1 T8）：skeleton 边界计数（walk 剪枝 v2；默认关 byte-identical）
+      skeleton: z.boolean().optional(),
       actions: z
         .array(
           z.union([
+            // v0.5 原 ref 形态（ax 档语义点击）
             z.object({ kind: z.literal("click"), ref: z.string() }),
+            // v1.11（round1 T7）坐标形态（档3 cgEvent；ref/x-y 二选一）
+            z.object({
+              kind: z.literal("click"),
+              x: z.number(),
+              y: z.number(),
+              button: z.enum(["left", "right", "center"]).optional(),
+            }),
             z.object({
               kind: z.literal("type"),
               ref: z.string(),
               text: z.string(),
             }),
             z.object({ kind: z.literal("press"), key: z.string() }),
+            // v0.5 原 ref 形态（ax 档 AXScrollToVisible）
             z.object({
               kind: z.literal("scroll"),
               ref: z.string(),
               dx: z.number(),
               dy: z.number(),
             }),
+            // v1.11 T7 坐标形态（档3 cgEvent 滚轮；位置缺省 = 当前光标）
+            z.object({
+              kind: z.literal("scroll"),
+              dx: z.number(),
+              dy: z.number(),
+              x: z.number().optional(),
+              y: z.number().optional(),
+            }),
             z.object({ kind: z.literal("hotkey"), keys: z.array(z.string()) }),
+            // v1.11 T7 拖拽 + 移动（档3 cgEvent 专用路径）
+            z.object({
+              kind: z.literal("drag"),
+              from_x: z.number(),
+              from_y: z.number(),
+              to_x: z.number(),
+              to_y: z.number(),
+            }),
+            z.object({
+              kind: z.literal("move"),
+              x: z.number(),
+              y: z.number(),
+            }),
           ]),
         )
         .optional(),
