@@ -194,145 +194,116 @@ Va à l'Internet Archive (Wayback Machine) pour retrouver la dernière copie arc
 
 ## Installer
 
-**Version actuelle v1.13.0** (v1.13 : 7 ajustements de la couche d'implémentation (3ᵉ tour de revue d'optimalité) : **cohérence de l'empreinte linguistique du navigateur headless** — l'en-tête HTTP `Accept-Language` suit désormais le profil stealth (auparavant la valeur réelle de l'hôte était envoyée : sur une machine chinoise avec un profil anglais, on voyait la contradiction « en-tête zh-CN ↔ page en-US »), et `navigator.languages` devient lui aussi conscient du profil ; **correction du point d'impact des captures VLM avec région** — dans le scénario `screenshot_region`, les coordonnées déduites par le VLM sont reconverties en coordonnées plein écran (auparavant décalage systématique d'une origine de région, avec un succès déclaré à tort) ; **`desktop find` rejette les requêtes en ref pur** — `where` n'accepte que text / role, une requête ref pure renvoie honnêtement invalid_params (auparavant dégradation silencieuse en correspondance sur tout l'arbre, explosion de tokens et succès simulé) ; **sortie plus rapide et plus stable** — la libération de session Steel reçoit une borne supérieure de 3 secondes (quand un Steel auto-hébergé est à l'arrêt, la sortie de CC ne reste plus bloquée jusqu'à 5 minutes) ; en cas de permission de synthèse d'entrée macOS manquante pour le scénario VLM, message explicite « autorisation requise » au lieu d'un échec vague ; v1.12 : 14 ajustements de la couche d'implémentation (2ᵉ tour de revue d'optimalité) : **double activation de l'extraction markdown** — extracteurs dédiés par site defuddle (HN / Reddit / GitHub / Wikipedia / Substack / Medium, etc., plus de 20 sites) + conversion fidèle des structures tableaux / maths (les tables GFM ne perdent plus leur structure ; les liens relatifs deviennent absolus ; la sortie peut contenir des dialectes Obsidian comme `==surlignage==` ou les notes `[^N]`) ; **empreinte par défaut du navigateur headless alignée sur le système hôte** — sur macOS, empreinte macOS Chrome par défaut (élimine la contradiction « l'UA dit Windows, les client hints avouent macOS » ; doctor signale l'écart de version avec le Chrome installé) ; **honnêteté en bout de chaîne desktop** — l'inférence par capture VLM ne ment plus sur le succès (exécute vraiment si possible, sinon unknown honnête), `wait/expect` exige deux touches consécutives (les éléments fugaces au chargement ne donnent plus de faux succès), `snapshot` signale `truncated:true` au sommet quand il tronque, `find` attache aux nœuds trouvés la liste des actions exécutables ; **correctif des champs de saisie Electron** — pour les contrôles qui avalent AXSetValue (Slack / VSCode, etc.), type bascule automatiquement en « focus + synthèse clavier » (ASCII) ; **le glisser-déposer devient utilisable** — appui 200 ms + trajectoire interpolée en 12 points + stabilisation 100 ms (sliders et tri par glisser passent d'un échec probable à utilisable) ; **cohérence de bout en bout de freshness** — machine_mcp et le repli DuckDuckGo ne suppriment plus silencieusement le paramètre de fraîcheur ; à la sortie anormale de CC, le processus Lasso fait son ménage immédiatement (auparavant suspension jusqu'à 1 heure) ; v1.11 « la prise universelle » complète la dimension implémentation : **le bureau passe de « voir » à « cliquer »** — click / type / scroll de `desktop` atterrissent pour de vrai (clic sémantique AXAPI + vérification écriture-lecture + erreur honnête sur référence périmée), avec en plus des actions souris coordonnées (glisser / molette / déplacer, repli canvas / Electron) et l'élagage d'arbre `skeleton` (forte baisse de tokens sur les apps denses) ; **couche pilote mise à niveau chrome-devtools-mcp 0.3.0 → 1.7.0** (11 mois et 57 versions de bénéfices ; anti-détection au niveau lancement UA / viewport ; télémétrie amont désactivée par défaut) ; **search gagne le filtre temporel `freshness`** (day / week / month / year transmis à tous les moteurs — plus de dates tapées à la main dans les requêtes pour suivre actus / versions) ; le repli sans clé pour les requêtes anglaises passe de Baidu à DuckDuckGo ; nouveau `LASSO_PROXY`, proxy de sortie navigateur (n'affecte que les navigateurs headless / cloud — la sortie du Chrome connecté ne bouge pas) ; v1.10 navigateur silencieux par défaut + fermeture après usage : `launch-chrome` démarre par défaut sans fenêtre et sans déranger (adapté macOS / Windows, `--mode visible` pour revenir en arrière), toujours avec anti-throttling en arrière-plan et muet ; pendant l'exécution du serveur, fermeture automatique ~60 s après la dernière utilisation (`LASSO_LAUNCH_IDLE_MS` réglable, la sémantique 5 minutes reste disponible avec 300000) ; v1.9 rajoute la fin de vie du navigateur : recyclage automatique du navigateur headless après 5 minutes d'inactivité, `lasso chrome-stop` ferme selon le registre les Chrome lancés par Lasso, `tab_restore` restaure votre liste d'onglets d'origine — voir « Nettoyage après usage » ci-dessus ; v1.8 a corrigé les 24 défauts exposés par le test complet : adaptation au contrat amont chrome-devtools-mcp@0.3.0, captures réellement écrites sur disque, sonde de vie launch-chrome, câblage des quotas par appel, outil de pagination `read_text`, etc. — liste complète dans [doc/17-功能测试清单.md](doc/17-功能测试清单.md), section « v1.8 修复记录 ».)
+**Version actuelle v1.13.0** (journal des versions dans le bloc replié en fin de section).
 
-**Prérequis** : Node.js ≥ 20 ; Claude Code (ou tout client compatible MCP).
+Prérequis : Node.js ≥ 20 + Claude Code (ou tout client compatible MCP).
 
 ```bash
-# Claude Code (recommandé)
 claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-Redémarrez Claude Code → `/mcp` → `lasso ✓ Connected`. **C'est tout — aucune clé dans la commande d'installation.** Navigation / captures / PDF / contrôle du bureau fonctionnent immédiatement (la recherche est la seule exception — voir [Configurer](#configurer)).
+Redémarrez Claude Code → `/mcp` → `lasso ✓ Connected`. **C'est tout, une seule ligne, sans aucune clé** — aspiration de pages / captures / PDF / contrôle du bureau fonctionnent dès l'installation ; seule la recherche admet une clé en option (voir [Configurer](#configurer)).
 
-**Utilisateurs macOS voulant le contrôle du bureau** : lancez `lasso doctor` une fois et suivez les invites pour cocher `lasso-rust-helper` sous « Réglages Système → Confidentialité et sécurité » à la fois pour Accessibilité et pour Capture d'écran (`doctor` vous guide — pas besoin de chercher le chemin vous-même).
+**Contrôle du bureau sur macOS** : lancez `lasso doctor` une fois et suivez les invites pour cocher `lasso-rust-helper` sous « Accessibilité » et « Capture d'écran » — `doctor` vous guide pas à pas.
+
+<details>
+<summary>📋 Journal des versions (v1.8 → v1.13, cliquez pour voir les changements de chaque version)</summary>
+
+- **v1.13** : cohérence de l'empreinte linguistique du navigateur headless (l'en-tête HTTP `Accept-Language` suit le profil, fin de la contradiction « en-tête zh-CN ↔ page en-US ») ; correction du point d'impact des captures VLM avec région ; `desktop find` rejette les requêtes en ref pur ; la libération de session Steel reçoit une borne de 3 secondes (un Steel à l'arrêt ne bloque plus la sortie pendant 5 minutes).
+- **v1.12** : double activation de l'extraction markdown (extracteurs dédiés defuddle sur 20+ sites + fidélité tableaux / maths) ; empreinte par défaut alignée sur le système hôte sous macOS ; honnêteté en bout de chaîne desktop (VLM ne ment plus sur le succès / expect exige deux touches consécutives / signal `truncated:true`) ; dégradation automatique de type dans les champs de saisie Electron ; glisser-déposer interpolé devient utilisable ; ménage immédiat à la sortie anormale de CC.
+- **v1.11** : le bureau passe de « voir » à « cliquer » (click / type / scroll réellement implémentés + souris coordonnées + élagage `skeleton`) ; couche pilote mise à niveau chrome-devtools-mcp 1.7.0 (anti-détection au niveau lancement, télémétrie désactivée par défaut) ; filtre temporel `freshness` pour la recherche ; repli sans clé pour les requêtes anglaises passé à DuckDuckGo ; nouveau `LASSO_PROXY`, proxy de sortie.
+- **v1.10** : navigateur silencieux par défaut + fermeture après usage (`launch-chrome` démarre sans fenêtre, fermeture auto ~60 s, `--mode visible` pour revenir en arrière).
+- **v1.9** : fin de vie du navigateur (recyclage automatique du headless après 5 minutes d'inactivité, `lasso chrome-stop`, `tab_restore` restaure la liste d'onglets d'origine).
+- **v1.8** : correction des 24 défauts exposés par le test complet (adaptation au contrat amont, captures réellement écrites sur disque, pagination `read_text`, etc.) — liste complète dans [doc/17-功能测试清单.md](doc/17-功能测试清单.md), section « v1.8 修复记录 ».
+
+</details>
 
 ---
 
 ## Configurer
 
-**L'installation est zéro config** — la commande d'installation ci-dessus active déjà navigation / récupération / captures / PDF / inspection des ressources tierces / contrôle du bureau. **Seule la recherche nécessite une clé.**
+**Seule la recherche nécessite une clé — tout le reste fonctionne dès l'installation.** Consultez selon votre besoin :
 
-### Cherchez par ce que vous voulez faire
+| Ce que vous voulez faire | Ce qu'il faut configurer |
+|---|---|
+| Aspirer des pages publiques / captures / PDF / voir les traceurs / octets bruts / piloter le bureau | **Rien du tout** |
+| Rechercher | Une clé Zhipu (gratuite à demander ; si le MCP Zhipu est déjà configuré sur la machine, même pas besoin) |
+| Une recherche qui tombe rarement en panne | Ajouter des clés Brave / Bing (les deux ont des paliers gratuits) |
+| Aspirer des pages connectées | Lancer `lasso launch-chrome` une fois |
+| Piloter le bureau macOS | Lancer `lasso doctor` une fois pour l'autorisation |
+| Aspirer des sites sous Cloudflare | Interrupteur maître + Steel (auto-hébergé gratuit) / browserbase (payant) |
 
-| Ce que vous voulez | Ce qu'il faut configurer | Ce que ça débloque |
-|---|---|---|
-| Aspirer des pages publiques / captures / PDF / voir les traceurs / récupérer des octets bruts / piloter le bureau | **Rien** | Fonctionne dès l'installation |
-| Recherche | Une clé Zhipu (gratuite à demander) | L'entrée de recherche principale |
-| Quasi-zéro échec de recherche (multi-source) | Ajouter des clés Brave / Bing (les deux ont des paliers gratuits) | Bascule auto si l'un tombe — vous ne sentez rien |
-| Aspirer des pages connectées | Lancer `lasso launch-chrome` une fois | Réutilise votre session Chrome locale |
-| Piloter le bureau macOS | Lancer `lasso doctor` une fois | Piloter les applications natives |
-| Aspirer des sites protégés par Cloudflare | Double confirmation + un canal navigateur cloud (Steel auto-hébergé gratuit / hébergé payant) | Désactivé par défaut ; nécessite votre opt-in explicite |
+Ci-dessous, chacun des quatre modules avec la config « minimale qui marche » ; les détails se déplient.
 
-Ci-dessous, chacun des quatre modules est détaillé avec le chemin le plus court vers « ça marche, juste ».
+### 1. Recherche (✅ Gratuit · le seul module qui demande une clé)
 
-### 1. Recherche (✅ Gratuit · palier gratuit ; une clé pour démarrer, trois pour quasi-zéro échec)
+**Vérifiez d'abord si vous devez configurer** : si le MCP `web-search-prime` de Zhipu est déjà configuré sur votre machine, **Lasso détecte et réutilise automatiquement sa clé** — rien à remplir. Lancez `lasso doctor` : `#36 machine_search_mcp` à `pass` = c'est votre cas.
 
-**Ce que ça fait** : Cherche n'importe quoi, renvoie des résultats structurés (titre, extrait, lien).
-
-**Clé nécessaire** : Oui — mais si votre machine a déjà le MCP `web-search-prime` de Zhipu configuré (dans le `mcpServers` du `~/.claude.json` local, type=http + Authorization), **Lasso le détecte au démarrage et réutilise sa clé comme première source — pas besoin de ZHIPU_API_KEY séparé**. Si le MCP machine est limité ou en échec, repli automatique sur la clé propre de Lasso (à remplir ci-dessous). Lancez `lasso doctor` : `#36 machine_search_mcp` affiche `pass` (host=open.bigmodel.cn) ou `warn` (non détecté).
-
-> Ordre de priorité zéro config : réutilisation du MCP machine → `ZHIPU_API_KEY` de Lasso → Brave → Bing → repli `browse_headless`. Le premier qui échoue cède la place au suivant — vous ne sentez rien.
-
-**Comment configurer** (utile seulement si le MCP machine n'existe pas / pour une clé indépendante) :
+**Si vous devez configurer, trois étapes** :
 
 ```bash
-lasso config init        # crée le modèle ~/.lasso/config.json
-lasso --version          # affiche le numéro de version (dès la v1.8)
-lasso --help             # usage de toutes les sous-commandes
+lasso config init        # crée ~/.lasso/config.json
 ```
-
-> Depuis la v1.8, la ligne de commande suit les conventions habituelles : sous-commande ou paramètre inconnu → affiche l'usage et sort avec un code non nul ; fini le mode serveur MCP silencieux qui se met à attendre une entrée.
-
-Ouvrez `~/.lasso/config.json` et remplissez :
 
 ```json
-{
-  "ZHIPU_API_KEY": "your_zhipu_key"
-}
+{ "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-**Vous voulez plus de robustesse** (hautement recommandé) : ajoutez Brave et Bing aussi — les deux ont des paliers gratuits. Si une source atteint sa limite ou tombe, bascule automatique sur la suivante et vous ne sentez rien :
+Enregistrez et c'est actif. **Pour plus de robustesse**, ajoutez Brave et Bing (les deux ont des paliers gratuits ; si l'un tombe, bascule automatique — vous ne sentez rien ; plusieurs clés séparées par des virgules = N× le quota en rotation automatique) :
 
 ```json
 {
   "ZHIPU_API_KEY": "your_zhipu_key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
-  "BING_API_KEYS": "bingkey1,bingkey2"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2",
+  "BING_API_KEYS": "bingkey1"
 }
 ```
 
-> Séparez plusieurs clés par des virgules — N clés vous donnent N× le quota gratuit, rotation automatique.
+> Ordre de repli : réutilisation du MCP machine → Zhipu → Brave → Bing → repli `browse_headless`. Le premier qui échoue cède la place au suivant.
 
-Les noms de clé correspondent à ce qui est écrit dans le tableau ci-dessus — remplissez-les simplement. Enregistrez le fichier ; Lasso le prend en compte au prochain démarrage.
+Comment demander une clé, tailles des paliers gratuits → [Guide de configuration des clés · Recherche](./doc/KEY-GUIDE.md#a-搜索). Commandes utiles : `lasso --version` / `lasso --help` (depuis la v1.8, une commande inconnue affiche l'usage et sort avec un code non nul — fini le blocage silencieux).
 
-**Comment demander des clés, quotas des paliers gratuits, détails de rotation multi-clés** → voir le [Guide de configuration des clés · Recherche](./doc/KEY-GUIDE.md#a-搜索).
-
-### 2. Aspirer des pages connectées (✅ Gratuit · pas de clé, une seule commande à lancer)
-
-**Ce que ça fait** : Aspire les pages auxquelles vous êtes connecté — à-faire Jira, dépôts GitHub privés, intranets d'entreprise, contenu sur abonnement payant.
-
-**Clé nécessaire** : Non.
-
-**Comment configurer** : Lancez la commande ci-dessous une fois. Elle trouve automatiquement votre Chrome local et le démarre avec un port de débogage. Depuis la v1.8, Lasso utilise par défaut son **profil dédié** (Chrome 136+ interdit le port de débogage sur le profil par défaut — l'ancienne méthode se fermait aussitôt) ; connectez vos comptes une première fois dans cette fenêtre (2FA à votre charge), ensuite **la session de ce profil est réutilisée en continu** :
+### 2. Aspirer des pages connectées (✅ Gratuit · une seule commande, pas de clé)
 
 ```bash
 lasso launch-chrome
 ```
 
-Au démarrage, Lasso sonde le port de débogage (vérification de type `curl /json/version`) : Chrome absent / port occupé → **erreur explicite**, fini le « succès annoncé mais connexion impossible ». Pour réutiliser un dossier de profil existant : `lasso launch-chrome --profile <dossier>`.
+Connectez vos comptes une première fois dans cette fenêtre (2FA à votre charge), **la session est ensuite réutilisée en continu**. Par la suite, dites simplement à Claude « ouvre mon Jira connecté ».
 
-**Depuis la v1.10, « travail silencieux » par défaut** : ce Chrome démarre **sans fenêtre, sans voler votre clavier / focus, toujours muet** — vous codez au premier plan, il aspire en arrière-plan, sans se gêner (la seule trace perceptible est une icône Chrome en plus dans le Dock / la barre des tâches, impossible à retirer au niveau de l'OS). Pour le voir travailler : `lasso launch-chrome --mode visible` (ou `"LASSO_LAUNCH_MODE": "visible"` dans `~/.lasso/config.json`).
+- Par défaut il travaille **en silence, sans fenêtre**, ne vole pas le focus, toujours muet ; pour le voir travailler, ajoutez `--mode visible`
+- Il **se ferme automatiquement ~60 s après usage** — rien à retenir ; fermeture manuelle à tout moment avec `lasso chrome-stop`
+- Les onglets qu'il ouvre dans votre Chrome : après la tâche, dites `admin {action:"tab_restore", reason:"terminé"}` pour restaurer la liste d'origine (fait aussi automatiquement à la sortie du serveur)
 
-Ensuite, dites « ouvre mon Jira connecté » à Claude et il se connectera automatiquement.
+> 🔴 **Ligne rouge** : 2FA / codes SMS / CAPTCHA — Lasso ne les résout pas pour vous ; passez-les vous-même une fois dans la fenêtre.
 
-> 🔴 **Ligne rouge** : 2FA / codes SMS / CAPTCHA / liens magiques — Lasso ne les résout jamais pour vous. Vous devez les passer vous-même une fois dans votre Chrome local.
+<details>
+<summary>Détails : réutilisation de profil / port occupé / réglages / frontière du silence</summary>
 
-**Nettoyage après usage (depuis la v1.10, presque plus rien à gérer)** : pendant que le serveur tourne, ce Chrome **se ferme automatiquement ~60 s après sa dernière utilisation** (fermé quand plus utilisé — rien à attendre, rien à retenir). Pour régler le seuil : `LASSO_LAUNCH_IDLE_MS=300000` pour revenir à 5 minutes, `=1000` pour du quasi-instantané (au prix d'un redémarrage à froid de ~11 s pour des opérations espacées), `=0` pour désactiver la fermeture auto. Pour une longue tâche ponctuelle : `lasso launch-chrome --idle-ms 3600000`. Fermeture manuelle possible à tout moment (seulement les Chrome lancés par Lasso, propriété vérifiée — jamais vos navigateurs ouverts à la main) :
+- Depuis la v1.8, Lasso utilise par défaut son profil dédié (Chrome 136+ interdit le port de débogage sur le profil par défaut — l'ancienne méthode se fermait aussitôt) ; pour réutiliser un profil existant : `lasso launch-chrome --profile <dossier>`.
+- Après le lancement, le port de débogage est automatiquement sondé : Chrome absent / port occupé → erreur explicite, pas de faux succès.
+- Seuil de fermeture auto : `LASSO_LAUNCH_IDLE_MS` (60000 par défaut ; `300000` pour revenir à 5 minutes ; `0` pour désactiver). Longue tâche ponctuelle : `--idle-ms 3600000`.
+- Le navigateur headless est recyclé automatiquement après 5 minutes d'inactivité (`LASSO_HEADLESS_IDLE_MS` réglable / désactivable).
+- Frontière honnête : `lasso launch-chrome` lancé seul (hors serveur) n'a pas de fermeture idle automatique — la sortie reste `chrome-stop` ; `browse_logged_in` connecté à **votre Chrome visible ouvert par vous-même** est « peu intrusif, pas zéro intrusion » (limitation de la plateforme macOS — certaines actions peuvent prendre le focus une fois) — pour du purement silencieux, utilisez le mode hidden ou `browse_headless` ; le canal `desktop` simule clavier / souris réels, occupe par conception le clavier et la souris physiques — pas de forme silencieuse.
+- `chrome-stop` ne ferme que les Chrome lancés par Lasso (propriété vérifiée) — jamais vos navigateurs ouverts à la main.
 
-```bash
-lasso chrome-stop          # ferme tous les Chrome lancés par Lasso (registre)
-lasso chrome-stop --port 9222   # ferme uniquement celui du port indiqué
-```
+</details>
 
-> Frontière honnête : `lasso launch-chrome` lancé seul (hors serveur) n'a pas de fermeture idle automatique — la sortie reste `chrome-stop` ; `browse_logged_in` connecté à **votre Chrome visible ouvert par vous-même** est « peu intrusif, pas zéro intrusion » (limitation amont de la plateforme macOS — certaines actions peuvent prendre le focus une fois) — pour du purement silencieux, utilisez le mode hidden lancé par lasso ou `browse_headless` ; le canal `desktop` simule clavier / souris réels, **il occupe par conception le clavier et la souris physiques**, pas de forme silencieuse.
+**Voir aussi** → [Guide de configuration des clés · Navigation connectée](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
-Les onglets ouverts par `browse_logged_in` dans votre Chrome : à la fin de la tâche, dites `admin {action:"tab_restore", reason:"tâche terminée"}` — les onglets ouverts par Lasso se ferment et votre liste d'onglets d'origine est restaurée (fait aussi automatiquement à la sortie du serveur). Le navigateur headless, lui, est **recyclé automatiquement après 5 minutes sans usage** — il ne reste pas en mémoire ; pour économiser les démarrages à froid en usage intensif, `LASSO_HEADLESS_IDLE_MS=3600000` (1 heure) ; `0` désactive complètement.
+### 3. Piloter le bureau (✅ Gratuit · autoriser une fois, pas de clé)
 
-**Détails** → [Guide de configuration des clés · Navigation connectée](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
+- **macOS** : lancez `lasso doctor` et suivez les invites pour cocher `lasso-rust-helper` sous **Accessibilité** + **Capture d'écran**
+- **Windows** : à la première action de bureau, le système affiche une invite d'autorisation — cliquez « Autoriser »
+- **Linux** : installez l'interface d'accessibilité (GNOME / MATE l'ont par défaut ; sinon `sudo apt install at-spi2-core`)
 
-### 3. Piloter le bureau (✅ Gratuit · pas de clé, autoriser une fois dans votre OS)
+> Frontière honnête : macOS est vérifié sur du vrai matériel ; Windows / Linux passent les auto-tests à la compilation et au niveau contrat, les tests manuels complets sur machine réelle sont en cours — nous ne prétendons pas « entièrement vérifié » à tort.
 
-**Ce que ça fait** : Pilote les applications natives sur macOS / Windows / Linux (clic, frappe, lecture du contenu des fenêtres, raccourcis clavier).
+**Voir aussi** → [Guide de configuration des clés · Contrôle du bureau](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
-**Clé nécessaire** : Non.
+### 4. Navigateur cloud (désactivé par défaut · seulement pour l'anti-bot lourd)
 
-**Comment configurer** (choisissez votre OS) :
-
-- **macOS** : Lancez `lasso doctor` une fois et suivez les invites pour cocher `lasso-rust-helper` sous « Réglages Système → Confidentialité et sécurité » à la fois pour **Accessibilité** et pour **Capture d'écran**. `doctor` vous guide — pas besoin de chercher le chemin.
-- **Windows** : La première fois que vous demandez à Claude une action de bureau, le système affiche une invite d'autorisation — cliquez « Autoriser » (équivalent à l'Accessibilité macOS).
-- **Linux** : Assurez-vous que l'interface d'accessibilité est installée (la plupart des bureaux GNOME / MATE l'ont par défaut ; sinon, `sudo apt install at-spi2-core`).
-
-> **Frontière honnête** : macOS est vérifié sur du vrai matériel ; Windows / Linux passent les auto-tests à la compilation et au niveau contrat, mais les tests manuels complets sur machine réelle sont encore en cours. **Nous ne prétendons pas « entièrement vérifié sur Win/Linux » à tort.**
-
-**Détails** → [Guide de configuration des clés · Contrôle du bureau](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
-
-### 4. Navigateur cloud : auto-hébergé ou hébergé (auto-hébergé gratuit / hébergé payant, désactivé par défaut · double confirmation requise)
-
-**Ce que ça fait** : Aspire les sites bloqués par Cloudflare ou un anti-bot lourd (l'anti-bot léger passe déjà avec l'anti-détection intégrée de `browse_headless` — ceci ne concerne que le lourd).
-
-**Clé nécessaire** : Ça dépend du chemin. Trois canaux cloud au choix — **seul le chemin hébergé demande une clé** :
-
-- **(a) Steel auto-hébergé (recommandé · gratuit)** : un navigateur cloud open source dans un Docker local — **zéro coût par session + cookies qui ne quittent jamais votre machine**. Aucune clé à demander ; lancez simplement Docker.
-- **(b) browserbase hébergé (payant)** : 100 minutes d'essai, puis facturation à l'usage.
-- **(c) stagehand hébergé (payant)** : observation de page adaptée à l'IA, plutôt pour l'essai. ⚠️ **Canal expérimental programmatique** — même avec une clé, **aucun outil MCP n'est exposé** (contrat REST non vérifié à l'exécution, `lasso doctor` #39 teste spécifiquement cela) ; pour franchir réellement l'anti-bot, préférez Steel ou browserbase.
-
-**Comment configurer** : Les deux conditions doivent être réunies en même temps :
-
-1. Interrupteur maître : mettre `LASSO_ALLOW_CLOUD_BROWSER` à `true`
-2. Au moins un canal cloud — Steel (définir `STEEL_ENDPOINT`) ou browserbase (la clé correspondante) ; une clé stagehand n'assemble que le canal expérimental interne, sans exposer d'outil
-
-**Config minimale · Steel auto-hébergé (gratuit, recommandé)** :
+L'anti-bot léger passe déjà avec l'anti-détection intégrée de `browse_headless` — **ne configurez rien si vous n'en avez pas besoin**. Pour franchir l'anti-bot de niveau Cloudflare, il faut à la fois l'interrupteur maître et un canal :
 
 ```json
 {
@@ -341,20 +312,11 @@ Les onglets ouverts par `browse_logged_in` dans votre Chrome : à la fin de la t
 }
 ```
 
-Steel démarre en une commande Docker : `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`. Étapes complètes d'ouverture dans [Guide de configuration des clés · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **Steel auto-hébergé (recommandé · gratuit)** : une commande Docker `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser` — zéro coût par session, cookies qui ne quittent pas votre machine
+- **browserbase hébergé (payant)** : remplacez par `"BROWSERBASE_API_KEY": "votre_clé"` — l'alternative sans Docker
+- ⚠️ stagehand : canal expérimental programmatique, sans outil MCP — ne comptez pas dessus pour aspirer des pages
 
-**Config minimale · browserbase hébergé (payant)** :
-
-```json
-{
-  "LASSO_ALLOW_CLOUD_BROWSER": true,
-  "BROWSERBASE_API_KEY": "your_browserbase_key"
-}
-```
-
-> Désactivé par défaut — pas de config, pas de telle capacité. Vous n'en avez pas besoin pour les pages normales, **et elle ne s'active que lorsque vous optez explicitement**. L'anti-bot léger n'a nullement besoin du navigateur cloud — l'anti-détection intégrée de `browse_headless` suffit.
-
-**Comment demander des clés hébergées, comment ouvrir Steel Docker** → voir le [Guide de configuration des clés · Navigateur cloud](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+**Comment demander une clé, étapes complètes d'ouverture de Steel** → [Guide de configuration des clés · Navigateur cloud](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>Réglages avancés (facultatif — les utilisateurs ordinaires peuvent ignorer)</b></summary>

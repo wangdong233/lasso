@@ -104,13 +104,13 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 > 「抓一下 example.com 的文字，转成 markdown」
 
-### 想要更多？在配置文件里加（第二档）
+### 想要更多？（都在[配置详解](#配置详解)）
 
-- **搜东西** → 跑 `lasso config init` 创建 `~/.lasso/config.json`，填一个智谱 key（见 [配置详解](#配置详解)）
-- **抓登录态页面**（Jira / GitHub 私有 / 公司内网）→ 跑一次 `lasso launch-chrome`
-- **控制 macOS 桌面** → 跑一次 `lasso doctor` 引导授权
+- **搜东西** → 填一个智谱 key（机器已配智谱 MCP 则不用）
+- **抓登录态页** → 跑一次 `lasso launch-chrome`
+- **控 macOS 桌面** → 跑一次 `lasso doctor` 授权
 
-每个 key 怎么申请、有哪些免费额度，看 [**Key 配置指南**](./doc/KEY-GUIDE.md)。
+key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/KEY-GUIDE.md)。
 
 ---
 
@@ -194,145 +194,116 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.13.0**（v1.13 实施层调优 7 项（最优性审查第 3 轮）：**无头浏览器语言指纹一致**——HTTP `Accept-Language` 头现随 stealth 档案下发（此前发宿主真值，中文机器上配英文档案会露出「头 zh-CN ↔ 页面 en-US」的自相矛盾）；`navigator.languages` 同步改为档案感知；**VLM 截图带区域时的落点修复**——`screenshot_region` 场景下 VLM 推断坐标自动换算回全屏坐标（此前系统性偏移一个区域原点的距离、还报成功）；**`desktop find` 拒绝纯 ref 查询**——`where` 只认 text/role，纯 ref 查询诚实报 invalid_params（此前静默退化成全树命中，token 爆炸还装成功）；**退出更快更稳**——Steel 会话释放加 3 秒上界（自托管 Steel 停摆时 CC 退出不再最长卡 5 分钟）；VLM 档遇 macOS 输入合成权限缺失时明确报「需要授权」而非含糊失败；v1.12 实施层调优 14 项（最优性审查第 2 轮）：**markdown 抽取双激活**——defuddle 站点专用抽取器（HN/Reddit/GitHub/Wikipedia/Substack/Medium 等 20 余站）+ 表格/数学结构保真转换（GFM 表格不再丢结构；相对链接自动绝对化；输出可能含 Obsidian 方言如 `==高亮==`、`[^N]` 脚注）；**无头浏览器默认指纹与宿主系统对齐**——macOS 上默认 macOS Chrome 指纹（消除「UA 说 Windows、client hints 招供 macOS」的矛盾，doctor 会提示与已装 Chrome 的版本偏差）；**桌面链尾诚实化**——VLM 截图推断不再谎报成功（能执行则真执行、不能则诚实 unknown）、`wait/expect` 需连续两次命中才算（加载闪现元素不再假成功）、`snapshot` 截断时顶层 `truncated:true`、`find` 命中节点附可执行动作清单；**Electron 输入框修复**——吞 AXSetValue 的控件（Slack/VSCode 等）type 自动降级为「聚焦 + 键盘合成」（ASCII）；**拖拽变可用**——按下 200ms + 12 点插值轨迹 + 沉淀 100ms（滑条/拖拽排序从大概率失败变可用）；**freshness 全链一致**——machine_mcp 与 DuckDuckGo 兜底不再静默丢弃时效参数；CC 异常退出时 Lasso 进程即时收尾（此前最长悬挂 1 小时）；v1.11「全交互抓手」实施维度补齐：**桌面从「能看」变「能点」**——`desktop` 的 click/type/scroll 真正落地（AXAPI 语义点击 + 写后读回验证 + 过期引用诚实报错），并新增坐标鼠标动作（拖拽/滚轮/移动，canvas/Electron 兜底）和 `skeleton` 树剪枝（密集应用 token 大幅下降）；**驱动层升级 chrome-devtools-mcp 0.3.0 → 1.7.0**（11 个月 57 版红利；启动级反检测 UA/视口；已默认关闭上游遥测）；**search 新增 `freshness` 时效过滤**（day/week/month/year 透传全部引擎，查新闻/版本动向不再往查询词里手写日期）；英文查询的零 Key 兜底从百度换成 DuckDuckGo；新增 `LASSO_PROXY` 浏览器出口代理（只影响无头/云浏览器，登录态 Chrome 出口不动）；v1.10 浏览器默认静默 + 用完即关：`launch-chrome` 默认零窗口零打扰启动（macOS/Windows 适配，`--mode visible` 可回退）、恒带后台反节流与静音、server 运行期最后使用后 ~60 秒自动关闭（`LASSO_LAUNCH_IDLE_MS` 可调，5 分钟语义配 300000 保留）；v1.9 补上浏览器生命周期收尾：无头浏览器空闲 5 分钟自动回收、`lasso chrome-stop` 按台账关闭 Lasso 起的 Chrome、`tab_restore` 恢复你原来的 tab 列表——见上文「用完怎么收尾」；v1.8 修复了全量实测暴露的 24 条缺陷：上游 chrome-devtools-mcp@0.3.0 契约适配、截图真实落盘、launch-chrome 探活、调用方配额接线、`read_text` 续页工具等——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」）。
+**当前版本 v1.13.0**（更新日志见本节末尾折叠块）。
 
-**前提**：Node.js ≥ 20；Claude Code（或任何支持 MCP 的客户端）。
+前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
 ```bash
-# Claude Code（推荐）
 claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-重启 Claude Code → `/mcp` → `lasso ✓ Connected`。**就这一行——安装命令不带任何 key**，装完 browse / 截图 / PDF / 控桌面立即可用（搜索除外，见 [配置详解](#配置详解)）。
+重启 Claude Code → `/mcp` → `lasso ✓ Connected`。**就这一行，不带任何 key**——装完抓页 / 截图 / PDF / 控桌面立即可用，只有搜索可选配 key（见[配置详解](#配置详解)）。
 
-**macOS 用户想控桌面**：跑一次 `lasso doctor`，按提示在「系统设置 → 隐私与安全」里给 `lasso-rust-helper` 勾上辅助功能和屏幕录制权限即可（`doctor` 会引导你，不用自己找路径）。
+**macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
+
+<details>
+<summary>📋 更新日志（v1.8 → v1.13，点开看每版改了什么）</summary>
+
+- **v1.13**：无头浏览器语言指纹一致（HTTP `Accept-Language` 随档案下发，消除「头 zh-CN ↔ 页面 en-US」矛盾）；VLM 截图区域坐标落点修复；`desktop find` 拒绝纯 ref 查询；Steel 会话释放加 3 秒上界（Steel 停摆不再卡退出 5 分钟）。
+- **v1.12**：markdown 抽取双激活（defuddle 20 余站专用抽取器 + 表格/数学保真）；macOS 默认指纹与宿主系统对齐；桌面链尾诚实化（VLM 不谎报成功 / expect 需连续两次命中 / `truncated:true` 信号）；Electron 输入框 type 自动降级；拖拽插值变可用；CC 异常退出即时收尾。
+- **v1.11**：桌面从「能看」变「能点」（click/type/scroll 真实现 + 坐标鼠标 + `skeleton` 剪枝）；驱动层升 chrome-devtools-mcp 1.7.0（反检测启动级生效、默认关遥测）；搜索新增 `freshness` 时效过滤；英文查询零 Key 兜底换 DuckDuckGo；新增 `LASSO_PROXY` 出口代理。
+- **v1.10**：浏览器默认静默 + 用完即关（`launch-chrome` 零窗口启动、~60 秒自动关，`--mode visible` 可回退）。
+- **v1.9**：浏览器生命周期收尾（无头空闲 5 分钟自动回收、`lasso chrome-stop`、`tab_restore` 恢复原 tab 列表）。
+- **v1.8**：修复全量实测暴露的 24 条缺陷（上游契约适配、截图真实落盘、`read_text` 续页等）——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」。
+
+</details>
 
 ---
 
 ## 配置详解
 
-**安装零配置**——上面的安装命令已经能让 browse / fetch / 截图 / PDF / 看第三方资源 / 控桌面全部跑起来。**只有搜索需要 key。**
+**只有搜索需要 key，其余全部装完即用。** 按需查表：
 
-### 按「我想干什么」查配置
+| 你想干什么 | 要配什么 |
+|---|---|
+| 抓公开页 / 截图 / PDF / 看第三方资源 / 抓原始字节 / 控桌面 | **什么都不用配** |
+| 搜东西 | 一个智谱 key（免费申请；机器已配智谱 MCP 则连这都不用） |
+| 搜索几乎不挂 | 再加 Brave / Bing key（都有免费额度） |
+| 抓登录态页面 | 跑一次 `lasso launch-chrome` |
+| 控 macOS 桌面 | 跑一次 `lasso doctor` 授权 |
+| 抓有 Cloudflare 的站 | 总开关 + Steel（免费自托管）/ browserbase（付费） |
 
-| 你想干什么 | 要配什么 | 配了立刻能用 |
-|---|---|---|
-| 抓公开页 / 截图 / PDF / 看第三方资源 / 抓原始字节 / 控桌面 | **什么都不用配** | 装完即用 |
-| 搜东西 | 一个智谱 key（免费申请） | 搜索主入口 |
-| 搜索几乎不挂 | 再加 Brave / Bing key（都有免费额度） | 任一家挂了自动切，你无感 |
-| 抓登录态页面 | 跑一次 `lasso launch-chrome` | 复用本机 Chrome 登录态 |
-| 控 macOS 桌面 | 跑一次 `lasso doctor` | 控原生 app |
-| 抓有 Cloudflare 的站 | 双重确认 + 云浏览器通道（自托管 Steel 免费 / 托管型付费） | 默认关，要你明确要开才开 |
+下面四个模块各给「最短能跑通」的配法，细节折叠可展开。
 
-下面按四个模块拆开讲，每个都给「最短能跑通」的配法。
+### 一、搜索（✅ 免费 · 唯一要 key 的模块）
 
-### 一、搜索（✅ 免费 · 有免费额度，一个 key 起步，配三家几乎永不挂）
+**先看要不要配**：如果你机器已经配过智谱 `web-search-prime` MCP，Lasso 会**自动检测复用它的 key**，什么都不用填。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass` 就是这种情况。
 
-**能干什么**：搜任何东西，返回结构化结果（标题、摘要、链接）。
-
-**要不要 key**：要——但如果你机器已经配过智谱 `web-search-prime` MCP（写在本机 `~/.claude.json` 的 `mcpServers` 里，type=http + Authorization），**Lasso 启动时自动检测复用它的 key 作搜索首选源，连 ZHIPU_API_KEY 都不用单独配**。机器 MCP 临时限流或失败，自动降级到 Lasso 自己配的 key（按下面填）。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）就知道。
-
-> 零配置优先顺序：机器 MCP 复用 → Lasso `ZHIPU_API_KEY` → Brave → Bing → `browse_headless` 兜底。前一个挂了自动切下一个，你无感。
-
-**怎么配**（只在机器没配智谱 MCP / 想要独立 key 时需要）：
+**要配就三步**：
 
 ```bash
-lasso config init        # 创建 ~/.lasso/config.json 模板
-lasso --version          # 查看版本号（v1.8 起）
-lasso --help             # 查看全部子命令用法
+lasso config init        # 创建 ~/.lasso/config.json
 ```
-
-> v1.8 起命令行符合常规惯例：未知子命令 / 未知参数会打印用法并以非零码退出，不再静默落入 MCP server 模式挂起等输入。
-
-打开 `~/.lasso/config.json`，照着填：
 
 ```json
-{
-  "ZHIPU_API_KEY": "你的智谱key"
-}
+{ "ZHIPU_API_KEY": "你的智谱key" }
 ```
 
-**想更稳**（强烈推荐）：再加 Brave、Bing 两家，都有免费额度。任一家临时限流或挂掉，自动切下一家，你无感：
+存盘即生效。**想更稳**再加 Brave、Bing（都有免费额度，任一家挂了自动切，你无感；多个 key 逗号隔开 = N 倍额度自动轮用）：
 
 ```json
 {
   "ZHIPU_API_KEY": "你的智谱key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
-  "BING_API_KEYS": "bingkey1,bingkey2"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2",
+  "BING_API_KEYS": "bingkey1"
 }
 ```
 
-> 多个 key 之间用逗号隔开就行——N 个 key 拼成 N 倍免费额度，自动轮流用。
+> 降级顺序：机器 MCP 复用 → 智谱 → Brave → Bing → 无头浏览器实搜兜底。前一个挂了自动切下一个。
 
-key 名和上面表格里写的一样，照着填即可，存盘后下次启动 Lasso 自动读。
+key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/KEY-GUIDE.md#a-搜索)。常用命令：`lasso --version` / `lasso --help`（v1.8 起未知命令打印用法非零退出，不再静默挂起）。
 
-**怎么申请 key、免费额度多少、多 key 轮询细节** → 见 [Key 配置指南 · 搜索](./doc/KEY-GUIDE.md#a-搜索)。
-
-### 二、抓登录态页面（✅ 免费 · 不用 key，跑一行命令）
-
-**能干什么**：抓你已登录的页面——Jira 待办、GitHub 私有仓库、公司内网、付费订阅内容。
-
-**要不要 key**：不用。
-
-**怎么配**：跑一次下面的命令，它会自动找你本机的 Chrome 并带调试端口启动。v1.8 起默认用 Lasso 自己的**独立 profile**（Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退）；第一次在这个窗口里登录你的账号（2FA 自己解），之后**这个 profile 的登录态会被一直复用**：
+### 二、抓登录态页面（✅ 免费 · 一行命令，不用 key）
 
 ```bash
 lasso launch-chrome
 ```
 
-启动后 Lasso 会自动探活调试端口（`curl /json/version` 级验证）：Chrome 没起来 / 端口被占会**明确报错**，不再「返回成功但其实连不上」。想复用某个已有 profile 目录可以 `lasso launch-chrome --profile <目录>`。
+第一次在这个窗口登录你的账号（2FA 自己解），**登录态之后一直复用**。以后对 Claude说「打开我已登录的 Jira」就行。
 
-**v1.10 起默认「静默干活」**：这个 Chrome **零窗口启动、不抢你的键盘/窗口焦点、永远静音**——你在前台写代码，它在后台抓页面，互不打扰（唯一可感知的残留是 Dock / 任务栏多一个 Chrome 图标，这是操作系统层面去不掉的）。想看着它干活用 `lasso launch-chrome --mode visible`（或在 `~/.lasso/config.json` 配 `"LASSO_LAUNCH_MODE": "visible"`）。
+- 默认**零窗口静默**干活、不抢焦点、永远静音；想看着它干加 `--mode visible`
+- 用完**约 60 秒自动关**，不用记着收尾；手动关随时 `lasso chrome-stop`
+- 它在你 Chrome 里开的 tab，任务后说 `admin {action:"tab_restore", reason:"完成"}` 恢复原列表（server 退出也会自动做）
 
-之后对 Claude 说「打开我已登录的 Jira」就会自动连上。
+> 🔴 **红线**：2FA / 验证码 / CAPTCHA——Lasso 不替你解，你在窗口里手动过一次。
 
-> 🔴 **红线**：2FA / 短信验证码 / CAPTCHA / 邮件魔法链接——Lasso 不替你解，必须你在本机 Chrome 里手动过一次。
+<details>
+<summary>细节：profile 复用 / 端口被占 / 调参 / 静默边界</summary>
 
-**用完怎么收尾（v1.10 起基本不用你管）**：server 运行期间，这个 Chrome **最后一次被使用后约 60 秒内自动关闭**（用完即关，不用等、不用记着关）。想调阈值：`LASSO_LAUNCH_IDLE_MS=300000` 回退 5 分钟、`=1000` 逼近瞬时（代价是间隔稍长的操作要付 ~11 秒重冷启动）、`=0` 禁用自动关。单次长任务放行用 `lasso launch-chrome --idle-ms 3600000`。任何时候也可以手动关（只关 Lasso 自己起的、验证过归属的那个，不会误伤你手动开的浏览器）：
+- v1.8 起默认用 Lasso 独立 profile（Chrome 136+ 禁止对默认 profile 开调试端口，老办法会秒退）；复用已有 profile 用 `lasso launch-chrome --profile <目录>`。
+- 启动后自动探活调试端口，Chrome 没起来 / 端口被占会明确报错，不假报成功。
+- 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。
+- 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
+- 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；`browse_logged_in` 连**你自己开的可见 Chrome** 是「低打扰非零打扰」（macOS 平台级限制，个别操作可能抢一次焦点）——要纯静默用 hidden 档或 `browse_headless`；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
+- chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
 
-```bash
-lasso chrome-stop          # 关台账里所有 Lasso 起的 Chrome
-lasso chrome-stop --port 9222   # 只关指定端口的那个
-```
-
-> 诚实边界：单独跑 `lasso launch-chrome`（不经 server）时没有 idle 自动关，出口仍是 `chrome-stop`；`browse_logged_in` 连**你自己开的可见 Chrome** 是「低打扰，非零打扰」（macOS 上游平台级限制，个别操作可能抢一次焦点）——要纯静默就用 lasso 自己起的 hidden 档或 `browse_headless`；`desktop` 通道模拟真人键鼠，**设计上就占用物理键鼠**，没有静默形态。
-
-`browse_logged_in` 在你的 Chrome 里新开的 tab，任务结束后说一句 `admin {action:"tab_restore", reason:"任务完成"}` 就会关掉 Lasso 开的 tab、恢复你原来的 tab 列表（server 退出时也会自动做）。无头浏览器则默认 **5 分钟没人用就自动回收**，不再常驻占内存——高频连用想省冷启动，配 `LASSO_HEADLESS_IDLE_MS=3600000`（1 小时）；配 `0` 完全禁用。
+</details>
 
 **详见** → [Key 配置指南 · 登录态浏览](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
 
-### 三、控桌面（✅ 免费 · 不用 key，系统授权一次）
+### 三、控桌面（✅ 免费 · 授权一次，不用 key）
 
-**能干什么**：在 macOS / Windows / Linux 上控制 Finder、Mail、Safari、系统设置等原生 app（点击、输入、读窗口内容、跑快捷键）。
+- **macOS**：跑 `lasso doctor`，按提示给 `lasso-rust-helper` 勾「辅助功能」+「屏幕录制」
+- **Windows**：第一次桌面操作时系统弹授权窗，点「允许」
+- **Linux**：装辅助功能接口（GNOME/MATE 默认有；没有就 `sudo apt install at-spi2-core`）
 
-**要不要 key**：不用。
-
-**怎么配**（按系统选一个）：
-
-- **macOS**：跑一次 `lasso doctor`，按提示在「系统设置 → 隐私与安全」里给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」即可。`doctor` 会一步步引导，不用自己找路径。
-- **Windows**：第一次对 Claude说一个桌面操作时，系统会弹一个授权窗，点「允许」就行（和 macOS 的辅助功能等效）。
-- **Linux**：确保系统装了辅助功能接口（大多数 GNOME / MATE 桌面默认就有，没有的话 `sudo apt install at-spi2-core` 装一下）。
-
-> **诚实边界**：macOS 经真实环境验证；Windows / Linux 编译和契约层都通过自检，但真机完整手测仍在推进中。**不伪造「已在 Win/Linux 上完整验证」**。
+> 诚实边界：macOS 经真实环境验证；Windows / Linux 编译和契约层过自检，真机完整手测推进中，不伪造「已完整验证」。
 
 **详见** → [Key 配置指南 · 桌面控制](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key)。
 
-### 四、云浏览器：自托管或托管（自托管免费 / 托管付费，默认关 · 双重确认才开）
+### 四、云浏览器（默认关 · 只有重度反爬才需要）
 
-**能干什么**：抓被 Cloudflare、重度反爬挡住的站（轻度反爬 `browse_headless` 自带反检测就能过，这里只针对重度）。
-
-**要不要 key**：取决于走哪条路。三种云通道任选其一，**只有走托管型才要 key**：
-
-- **(a) Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，**零 per-session 费 + cookie 不出本地**。无需申请 key，自己跑 Docker 即可。
-- **(b) browserbase 托管（付费）**：100 分钟试用，之后按量付费。
-- **(c) stagehand 托管（付费）**：AI 友好的页面观察，试用为主。⚠️ **程序化实验通道**——配了 key 也**没有 MCP 工具入口**（REST 契约未经运行时验证，`lasso doctor` #39 专测此项）；要实际过反爬请选 Steel 或 browserbase。
-
-**怎么配**：需要两个条件同时满足——
-
-1. 总开关：`LASSO_ALLOW_CLOUD_BROWSER` 设为 `true`
-2. 至少一个云通道——Steel（设 `STEEL_ENDPOINT`）或 browserbase（设对应 key）；stagehand key 只装配内部实验通道，不暴露工具
-
-**最短配置 · Steel 自托管（免费推荐）**：
+轻度反爬 `browse_headless` 自带反检测就能过——**用不上就别配**。要过 Cloudflare 级反爬才开，需同时满足总开关 + 一条通道：
 
 ```json
 {
@@ -341,20 +312,11 @@ lasso chrome-stop --port 9222   # 只关指定端口的那个
 }
 ```
 
-Steel 用 Docker 一行启动：`docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`。完整开通步骤见 [Key 配置指南 · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
+- **Steel 自托管（推荐 · 免费）**：Docker 一行启动 `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`，零 per-session 费、cookie 不出本地
+- **browserbase 托管（付费）**：换配 `"BROWSERBASE_API_KEY": "你的key"`，不想跑 Docker 的备选
+- ⚠️ stagehand：程序化实验通道，无 MCP 工具入口，别指望它抓页面
 
-**最短配置 · browserbase 托管（付费）**：
-
-```json
-{
-  "LASSO_ALLOW_CLOUD_BROWSER": true,
-  "BROWSERBASE_API_KEY": "你的browserbasekey"
-}
-```
-
-> 默认完全关闭——没配就等于没这个能力。普通页面用不上，**只有你明确要开才会启用**。轻度反爬根本不需要云浏览器，`browse_headless` 自带反检测就能过。
-
-**怎么申请托管 key、Steel Docker 怎么开通** → 见 [Key 配置指南 · 云浏览器](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**怎么申请 key、Steel 完整开通步骤** → [Key 配置指南 · 云浏览器](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>高级调优（可选，普通用户不用展开）</b></summary>

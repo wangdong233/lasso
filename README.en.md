@@ -194,145 +194,116 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.13.0** (v1.13 — 7 implementation-layer refinements (optimality review round 3): **consistent language fingerprint for the headless browser** — the HTTP `Accept-Language` header now follows the stealth profile (previously it sent the host's real value, so an English profile on a Chinese machine exposed a "header zh-CN ↔ page en-US" contradiction); `navigator.languages` is now profile-aware too; **fixed VLM landing point for region screenshots** — in `screenshot_region` scenarios, VLM-inferred coordinates are converted back to full-screen coordinates (previously they were systematically offset by the region's origin — while still reporting success); **`desktop find` rejects pure-ref queries** — `where` only accepts text/role; a pure-ref query now honestly reports `invalid_params` (previously it silently degraded into matching the whole tree — a token explosion disguised as success); **faster, steadier exit** — Steel session release now has a 3-second cap (when self-hosted Steel stalls, Claude Code's exit no longer hangs for up to 5 minutes); when macOS input-synthesis permission is missing, the VLM tier now clearly reports "authorization required" instead of failing vaguely. v1.12 — 14 implementation-layer refinements (optimality review round 2): **dual-activation markdown extraction** — defuddle site-specific extractors (HN/Reddit/GitHub/Wikipedia/Substack/Medium, 20+ sites in all) + structure-faithful table/math conversion (GFM tables no longer lose their structure; relative links auto-absolutized; output may contain Obsidian dialects like `==highlights==` and `[^N]` footnotes); **the headless browser's default fingerprint now aligns with the host system** — on macOS the default is a macOS Chrome fingerprint (eliminating the "UA says Windows, client hints give away macOS" contradiction; `doctor` flags version drift against your installed Chrome); **honest desktop tail chain** — VLM screenshot inference no longer fakes success (executes when it can, honestly reports unknown when it can't), `wait/expect` require two consecutive hits (loading-flicker elements no longer count as success), `snapshot` reports top-level `truncated:true` when cut off, `find` attaches a list of executable actions to matched nodes; **Electron input-field fix** — controls that swallow AXSetValue (Slack/VSCode etc.) auto-degrade `type` to "focus + synthesized keyboard" (ASCII); **drag now actually works** — 200 ms press + 12-point interpolated trajectory + 100 ms settle (sliders and drag-to-reorder went from mostly failing to usable); **freshness consistent across the chain** — machine_mcp and the DuckDuckGo fallback no longer silently drop the time filter; when Claude Code exits abnormally, Lasso processes wind down immediately (previously they could dangle for up to an hour). v1.11 — the "everything grab handle" implementation gap closed: **desktop goes from observe to act** — `desktop` click/type/scroll now really execute (AXAPI semantic clicks + write-then-read-back verification + honest stale-reference errors), plus coordinate mouse actions (drag/wheel/move as the canvas/Electron fallback) and `skeleton` tree pruning (big token savings on dense apps); **driver layer upgraded chrome-devtools-mcp 0.3.0 → 1.7.0** (11 months / 57 releases of fixes; launch-level stealth UA/viewport; upstream telemetry disabled by default); **search gained a `freshness` time filter** (day/week/month/year passed through to all engines — no more hand-writing dates into queries for news/release tracking); the zero-key English fallback switched from Baidu to DuckDuckGo; new `LASSO_PROXY` browser egress proxy (affects headless/cloud browsers only — your logged-in Chrome's egress stays untouched). v1.10 — browsers silent by default and closed when done: `launch-chrome` starts with zero window and zero disturbance by default (adapted for macOS/Windows; `--mode visible` restores the old behavior), always runs with background anti-throttling and muting, and while the server is running closes itself ~60 s after its last use (tunable via `LASSO_LAUNCH_IDLE_MS`; the 5-minute behavior remains available as `300000`). v1.9 — browser lifecycle cleanup: the headless browser auto-recycles after 5 minutes idle, `lasso chrome-stop` closes the Chromes Lasso launched (per its own ledger), `tab_restore` brings back your original tab list — see "closing up when done" above. v1.8 — fixed the 24 defects exposed by the full field test: upstream chrome-devtools-mcp@0.3.0 contract adaptation, screenshots actually landing on disk, launch-chrome liveness probing, per-caller quota wiring, the `read_text` pagination tool and more — full list in the "v1.8 fix record" of [doc/17-功能测试清单.md](doc/17-功能测试清单.md).)
+**Current version v1.13.0** (changelog in the collapsed block at the end of this section).
 
-**Prerequisites**: Node.js ≥ 20; Claude Code (or any MCP-capable client).
+Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
 ```bash
-# Claude Code (recommended)
 claude mcp add lasso -- npx -y lasso-mcp
 ```
 
-Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's it — no keys in the install command.** Browsing / screenshots / PDF / desktop control work immediately (search is the only exception — see [Configure](#configure)).
+Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line — no keys in it.** Scraping / screenshots / PDF / desktop control work right after install; only search takes an optional key (see [Configure](#configure)).
 
-**macOS users wanting desktop control**: run `lasso doctor` once and follow the prompts to tick `lasso-rust-helper` under "System Settings → Privacy & Security" for both Accessibility and Screen Recording (`doctor` guides you — no need to hunt for the path yourself).
+**macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
+
+<details>
+<summary>📋 Changelog (v1.8 → v1.13 — click to see what each version changed)</summary>
+
+- **v1.13**: consistent language fingerprint for the headless browser (HTTP `Accept-Language` issued with the profile, removing the "header zh-CN ↔ page en-US" contradiction); fixed the VLM landing point for region screenshots; `desktop find` rejects pure-ref queries; Steel session release capped at 3 seconds (a stalled Steel no longer hangs exit for 5 minutes).
+- **v1.12**: dual-activation markdown extraction (defuddle dedicated extractors for 20+ sites + table/math fidelity); macOS default fingerprint aligned with the host system; honest desktop tail chain (VLM never fakes success / expect requires two consecutive hits / `truncated:true` signal); Electron input fields auto-degrade `type`; drag interpolation now usable; immediate wind-down on abnormal Claude Code exit.
+- **v1.11**: desktop goes from "can watch" to "can click" (click/type/scroll really implemented + coordinate mouse + `skeleton` pruning); driver layer upgraded to chrome-devtools-mcp 1.7.0 (launch-level stealth, telemetry off by default); search gained the `freshness` time filter; zero-key English fallback switched to DuckDuckGo; new `LASSO_PROXY` egress proxy.
+- **v1.10**: browsers silent by default + closed when done (`launch-chrome` zero-window launch, ~60 s auto-close, `--mode visible` to revert).
+- **v1.9**: browser lifecycle wind-down (headless auto-recycled after 5 minutes idle, `lasso chrome-stop`, `tab_restore` restores the original tab list).
+- **v1.8**: fixed the 24 defects exposed by the full field test (upstream contract adaptation, screenshots actually landing on disk, `read_text` pagination, etc.) — full list in the "v1.8 fix record" of [doc/17-功能测试清单.md](doc/17-功能测试清单.md).
+
+</details>
 
 ---
 
 ## Configure
 
-**Install is zero-config** — the install command above already enables browsing / fetching / screenshots / PDF / third-party resource inspection / desktop control. **Only search requires a key.**
+**Only search needs a key — everything else works right after install.** Look up what you need by task:
 
-### Look up by what you want to do
+| What you want to do | What to configure |
+|---|---|
+| Scrape public pages / screenshots / PDF / see third-party resources / fetch raw bytes / drive the desktop | **Nothing at all** |
+| Search | One Zhipu key (free to apply; not even that if the machine already has the Zhipu MCP) |
+| Near-zero search failures | Add Brave / Bing keys (both have free tiers) |
+| Scrape logged-in pages | Run `lasso launch-chrome` once |
+| Drive the macOS desktop | Run `lasso doctor` once to authorize |
+| Scrape Cloudflare-protected sites | Master switch + Steel (free self-hosted) / browserbase (paid) |
 
-| What you want | What to configure | What it unlocks |
-|---|---|---|
-| Scrape public pages / screenshots / PDF / see trackers / fetch raw bytes / drive desktop | **Nothing** | Works right after install |
-| Search | One Zhipu key (free to apply) | The main search entry |
-| Near-zero search failures (multi-source) | Add Brave / Bing keys (both have free tiers) | Auto-fails-over if one is down — you don't feel a thing |
-| Scrape logged-in pages | Run `lasso launch-chrome` once | Reuses your local Chrome session |
-| Drive the macOS desktop | Run `lasso doctor` once | Drive native apps |
-| Scrape Cloudflare-protected sites | Double confirmation + a cloud browser channel (self-hosted Steel free / hosted paid) | Off by default; needs your explicit opt-in |
+The four modules below each give the shortest path to "it just runs"; details are collapsed and expandable.
 
-Below, each of the four modules is broken out with the shortest path to "it just works".
+### 1. Search (✅ Free · the only module that needs a key)
 
-### 1. Search (✅ Free · free tier; one key to start, three for near-zero failures)
+**First check whether you need to configure it**: if your machine already has the Zhipu `web-search-prime` MCP configured, Lasso **auto-detects and reuses its key** — nothing to fill in. Run `lasso doctor`: if `#36 machine_search_mcp` is `pass`, that's this case.
 
-**What it does**: Searches anything, returns structured results (title, snippet, link).
-
-**Does it need a key**: Yes — but if your machine already has Zhipu's `web-search-prime` MCP configured (in your local `~/.claude.json` under `mcpServers` with type=http + Authorization), **Lasso auto-detects and reuses that key as the first-choice source at startup — no need to set a separate ZHIPU_API_KEY**. If the machine MCP is rate-limited or fails, Lasso falls back to its own configured key (fill it in below). Run `lasso doctor` and check whether `#36 machine_search_mcp` is `pass` (host=open.bigmodel.cn) or `warn` (not detected).
-
-> Zero-config priority order: machine MCP reuse → Lasso's own `ZHIPU_API_KEY` → Brave → Bing → `browse_headless` fallback. The first one that fails auto-switches to the next; you don't feel a thing.
-
-**How to configure** (only needed if you don't have the machine MCP / want an independent key):
+**To configure, three steps**:
 
 ```bash
-lasso config init        # creates the ~/.lasso/config.json template
-lasso --version          # print the version (since v1.8)
-lasso --help             # usage for all subcommands
+lasso config init        # creates ~/.lasso/config.json
 ```
-
-> Since v1.8 the command line follows normal CLI conventions: unknown subcommands / unknown arguments print usage and exit with a non-zero code — no more silently dropping into MCP-server mode and hanging on stdin.
-
-Open `~/.lasso/config.json` and fill in:
 
 ```json
-{
-  "ZHIPU_API_KEY": "your_zhipu_key"
-}
+{ "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-**Want it more robust** (highly recommended): add Brave and Bing too — both have free tiers. If any single source is rate-limited or down, it auto-switches to the next and you don't feel a thing:
+Takes effect on save. **For more stability**, add Brave and Bing too (both have free tiers; if one is down it auto-switches to the next and you don't feel a thing; multiple keys comma-separated = N× the quota, auto-rotated):
 
 ```json
 {
   "ZHIPU_API_KEY": "your_zhipu_key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
-  "BING_API_KEYS": "bingkey1,bingkey2"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2",
+  "BING_API_KEYS": "bingkey1"
 }
 ```
 
-> Separate multiple keys with commas — N keys give you N× the free quota, auto-rotated.
+> Fallback order: machine MCP reuse → Zhipu → Brave → Bing → live search in the headless browser as the last resort. If the one ahead fails, it auto-switches to the next.
 
-Key names match what's written in the table above — just fill them in. Save the file; Lasso picks it up on next start.
+How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 
-**How to apply for keys, free-tier quotas, multi-key rotation details** → see the [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索).
-
-### 2. Scrape Logged-in Pages (✅ Free · no key, run one command)
-
-**What it does**: Scrapes pages you're logged into — Jira to-dos, private GitHub repos, company intranets, paid-subscription content.
-
-**Does it need a key**: No.
-
-**How to configure**: Run the command below once. It auto-detects your local Chrome and starts it with a debug port. Since v1.8 it uses Lasso's own **dedicated profile** by default (Chrome 136+ forbids opening a debug port on the default profile — the old way would exit instantly); log in to your accounts once in that window (2FA yourself), and **that profile's logins are reused from then on**:
+### 2. Scrape Logged-in Pages (✅ Free · one command, no key)
 
 ```bash
 lasso launch-chrome
 ```
 
-After launch, Lasso probes the debug port (a `curl /json/version`-grade check): if Chrome didn't come up or the port is taken, it **fails loudly** instead of "returns success but can't connect". To reuse an existing profile directory, use `lasso launch-chrome --profile <dir>`.
+The first time, log in to your accounts in that window (handle 2FA yourself) — **the login state is reused from then on**. Afterwards, just say "open my logged-in Jira" to Claude.
 
-**As of v1.10, this Chrome "works silently" by default**: it launches **with zero window, never steals your keyboard/window focus, and is always muted** — you keep coding in the foreground while it scrapes in the background (the only visible trace is one extra Chrome icon in the Dock / taskbar, which the OS won't let you remove). Want to watch it work? Use `lasso launch-chrome --mode visible` (or set `"LASSO_LAUNCH_MODE": "visible"` in `~/.lasso/config.json`).
+- Works **silently with zero window** by default — never steals focus, always muted; add `--mode visible` to watch it work
+- **Auto-closes ~60 s after its last use** — nothing to remember to clean up; `lasso chrome-stop` closes it manually at any time
+- Tabs it opens in your Chrome are restored to the original list when you say `admin {action:"tab_restore", reason:"done"}` after a task (the same happens automatically on server exit)
 
-After that, say "open my logged-in Jira" to Claude and it'll connect automatically.
+> 🔴 **Red line**: 2FA / verification codes / CAPTCHA — Lasso doesn't solve these for you; pass them manually once in the window.
 
-> 🔴 **Red line**: 2FA / SMS codes / CAPTCHA / magic links — Lasso never solves these for you. You must manually pass them once in your local Chrome.
+<details>
+<summary>Details: profile reuse / port taken / tuning / silence boundaries</summary>
 
-**Closing up when done (since v1.10, mostly automatic)**: while the server is running, this Chrome **closes itself within ~60 s of its last use** (done-when-used-up — nothing to wait for, nothing to remember). To tune the threshold: `LASSO_LAUNCH_IDLE_MS=300000` restores the 5-minute behavior, `=1000` gets close to instant (at the cost of a ~11 s re-cold-start for operations with slightly longer gaps), `=0` disables auto-close. For a single long task, use `lasso launch-chrome --idle-ms 3600000`. You can also close it manually at any time (only the ones Lasso itself launched, with verified ownership — never your manually-opened browsers):
+- Since v1.8, a dedicated Lasso profile is used by default (Chrome 136+ forbids opening a debug port on the default profile — the old way would exit instantly); to reuse an existing profile, use `lasso launch-chrome --profile <dir>`.
+- After launch, the debug port is probed automatically; if Chrome didn't come up or the port is taken, it fails loudly instead of faking success.
+- Auto-close threshold: `LASSO_LAUNCH_IDLE_MS` (default 60000; `300000` reverts to 5 minutes; `0` disables). To let a single long task through: `--idle-ms 3600000`.
+- The headless browser auto-recycles after 5 minutes idle (`LASSO_HEADLESS_IDLE_MS` to tune or disable).
+- Honest boundary: running `lasso launch-chrome` standalone (outside the server) has no idle auto-close — the exit is `chrome-stop`; `browse_logged_in` connecting to **your own visible Chrome** is "low-disturbance, not zero-disturbance" (a macOS platform-level limitation — occasional operations may steal focus once) — for pure silence use the hidden tier or `browse_headless`; `desktop` simulates a real human's keyboard and mouse, so it occupies the physical keyboard/mouse by design — there is no silent form.
+- chrome-stop only closes the Chromes Lasso itself launched, with verified ownership — it never touches your manually-opened browsers.
 
-```bash
-lasso chrome-stop          # closes all Chromes Lasso launched, per its ledger
-lasso chrome-stop --port 9222   # closes only the one on the given port
-```
-
-> Honest boundary: running `lasso launch-chrome` standalone (outside the server) has no idle auto-close — the exit is still `chrome-stop`. `browse_logged_in` connecting to **your own visible Chrome** is "low-disturbance, not zero-disturbance" (an upstream macOS platform limitation — occasional operations may steal focus once) — for pure silence use Lasso's own hidden tier or `browse_headless`; the `desktop` channel simulates a real human's keyboard and mouse, so it **occupies the physical keyboard/mouse by design** — there is no silent form.
-
-Tabs that `browse_logged_in` opens in your Chrome are closed and your original tab list restored when you say `admin {action:"tab_restore", reason:"task done"}` at the end of a task (the same happens automatically on server exit). The headless browser, in turn, **auto-recycles after 5 minutes idle** by default instead of squatting on memory — for frequent back-to-back use, set `LASSO_HEADLESS_IDLE_MS=3600000` (1 hour) to save cold starts; set `0` to disable entirely.
+</details>
 
 **Details** → [Key Configuration Guide · Logged-in Browsing](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
-### 3. Drive the Desktop (✅ Free · no key, authorize once in your OS)
+### 3. Drive the Desktop (✅ Free · authorize once, no key)
 
-**What it does**: Drives native apps on macOS / Windows / Linux (click, type, read window contents, run hotkeys).
+- **macOS**: run `lasso doctor` and tick `lasso-rust-helper` for "Accessibility" + "Screen Recording" as prompted
+- **Windows**: on the first desktop action, the system pops an authorization dialog — click "Allow"
+- **Linux**: install the accessibility interface (GNOME/MATE have it by default; if not, `sudo apt install at-spi2-core`)
 
-**Does it need a key**: No.
-
-**How to configure** (pick your OS):
-
-- **macOS**: Run `lasso doctor` once and follow the prompts to tick `lasso-rust-helper` under "System Settings → Privacy & Security" for both **Accessibility** and **Screen Recording**. `doctor` walks you through it — no need to hunt for the path.
-- **Windows**: The first time you ask Claude to do a desktop action, the system pops an authorization prompt — click "Allow" (equivalent to macOS Accessibility).
-- **Linux**: Make sure the accessibility interface is installed (most GNOME / MATE desktops have it by default; if not, `sudo apt install at-spi2-core`).
-
-> **Honest boundary**: macOS is verified on real hardware; Windows / Linux pass compile-time and contract-level self-checks, but full real-machine manual testing is still in progress. **We don't fake "fully verified on Win/Linux".**
+> Honest boundary: macOS is verified in real environments; Windows / Linux pass compile-time and contract-level self-checks, while full real-machine manual testing is still in progress — no faking "fully verified".
 
 **Details** → [Key Configuration Guide · Desktop Control](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
-### 4. Cloud Browser: Self-Hosted or Hosted (self-hosted free / hosted paid, off by default · needs double confirmation)
+### 4. Cloud Browser (off by default · only needed for heavy anti-bot)
 
-**What it does**: Scrapes sites guarded by Cloudflare or heavy anti-bot protection (light anti-bot is already handled by `browse_headless`'s built-in anti-detection — this section is only for the heavy stuff).
-
-**Does it need a key**: Depends on which path you take. Pick one of three cloud channels — **only the hosted path needs a key**:
-
-- **(a) Steel self-hosted (recommended · free)**: run an open-source cloud browser in local Docker — **zero per-session cost + cookies never leave your machine**. No key to apply for; just run Docker yourself.
-- **(b) browserbase hosted (paid)**: 100-minute trial, then pay-as-you-go.
-- **(c) stagehand hosted (paid)**: AI-friendly page observation; trial-oriented. ⚠️ **A programmatic experimental channel** — even with a key configured there is **no MCP tool entry** (the REST contract is unverified at runtime; `lasso doctor` #39 tests exactly this); to actually get past anti-bot, pick Steel or browserbase.
-
-**How to configure**: Both conditions must be met at the same time:
-
-1. Master switch: set `LASSO_ALLOW_CLOUD_BROWSER` to `true`
-2. At least one cloud channel — Steel (set `STEEL_ENDPOINT`) or browserbase (set its key); a stagehand key only assembles the internal experimental channel and exposes no tools
-
-**Shortest config · Steel self-hosted (free, recommended)**:
+Light anti-bot is already handled by `browse_headless`'s built-in anti-detection — **don't configure this if you don't need it**. Turn it on only for Cloudflare-grade anti-bot; it needs the master switch plus one channel at the same time:
 
 ```json
 {
@@ -341,20 +312,11 @@ Tabs that `browse_logged_in` opens in your Chrome are closed and your original t
 }
 ```
 
-Start Steel with one Docker command: `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`. Full setup steps in [Key Guide · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **Steel self-hosted (recommended · free)**: one Docker command — `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`; zero per-session cost, cookies never leave your machine
+- **browserbase hosted (paid)**: swap in `"BROWSERBASE_API_KEY": "your_key"` — the fallback when you don't want to run Docker
+- ⚠️ stagehand: a programmatic experimental channel with no MCP tool entry — don't count on it for scraping pages
 
-**Shortest config · browserbase hosted (paid)**:
-
-```json
-{
-  "LASSO_ALLOW_CLOUD_BROWSER": true,
-  "BROWSERBASE_API_KEY": "your_browserbase_key"
-}
-```
-
-> Off by default — no config means no such capability. You don't need it for normal pages, **and it only activates when you explicitly opt in**. Light anti-bot doesn't need the cloud browser at all — `browse_headless`'s built-in anti-detection handles it.
-
-**How to apply for hosted keys, how to set up Steel Docker** → see the [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+**How to apply for keys, full Steel setup steps** → [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
 
 <details>
 <summary><b>Advanced tuning (optional — ordinary users can skip)</b></summary>
