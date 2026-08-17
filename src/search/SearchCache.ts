@@ -35,6 +35,28 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 const DEFAULT_MAX_ENTRIES = 1000; // LRU 上限
 const GC_EVICT_RATIO = 0.1; // 超 MAX 时删最旧 10%
 
+/**
+ * ZB-3（doc/24 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合。
+ *
+ * 修复前：TTL_MS 是常量 7 天，freshness 只入 cache key 不入 TTL —— freshness=day
+ * 的查询在第 6 天命中缓存时，返回的是 6 天前筛的「过去一天」结果且无陈旧标记
+ * （「day 新鲜」被缓存成「7 天陈货」）。
+ *
+ * 修复：有效 TTL = min(7 天, freshness 窗口)。窗口映射：
+ *  - day   → 24h（缓存最多存 1 天；第 2 天起必须重新搜）
+ *  - week  → 7 天（与 TTL_MS 恰好重合，行为不变）
+ *  - month → 30 天 > 7 天 → 仍按 7 天封顶（不变）
+ *  - year  → 同上封顶（不变）
+ * 即：只有 day 档行为收紧，其余档 byte-identical（零回归原则）。
+ */
+function effectiveTtlMs(freshness?: string): number {
+  if (freshness === "day") {
+    return 24 * 60 * 60 * 1000;
+  }
+  // week(7d)/month(30d)/year 窗口 ≥ TTL_MS，仍按 7 天封顶（行为与基线一致）
+  return TTL_MS;
+}
+
 export class SearchCache {
   private readonly maxEntries: number;
 
@@ -63,7 +85,8 @@ export class SearchCache {
     const file = this._file(key);
     try {
       const stat = await fs.stat(file);
-      if (Date.now() - stat.mtimeMs > TTL_MS) {
+      // ZB-3：TTL 按 freshness 分档（day→24h，其余 7 天）——「day 新鲜」不再被缓存成 7 天陈货
+      if (Date.now() - stat.mtimeMs > effectiveTtlMs(freshness)) {
         await fs.unlink(file).catch(() => {});
         return null;
       }

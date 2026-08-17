@@ -734,3 +734,52 @@ export const ADMIN_DESCRIPTION = [
   "",
   "Returns: structured JSON per action (capability_list → CapabilityState[], etc.).",
 ].join("\n");
+
+// ============================================================
+// FETCH_FEED（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）
+// ============================================================
+/**
+ * fetch_feed tool 描述（zero-base §3-I3 / scan-edge §4：freshness 推模型原语）。
+ *
+ * 设计立场：
+ *  - **无状态纯原语**：拉一个 RSS/Atom/JSON-Feed URL → 结构化条目列表。
+ *    不轮询、不聚合、不落盘、零守护进程。
+ *  - **独立 tool**，不进 search 降级链（与 wayback_lookup 同范式）：
+ *    「最新动态」类查询由 CC 显式调本 tool；feed 发现（页头 <link rel=alternate>）
+ *    由 browse/fetch_url 承担。
+ *  - 为什么：SERP 索引滞后小时~天级；RSS/Atom 是推模型——发布即推送，
+ *    唯一确定性 freshness 解。适合「X 什么时候退役 / 最新版本号 / 官方最新公告」。
+ *  - L-COST：~200-500ms / $0 / 输出条目列表（summary 截 500 字符）。
+ *
+ * 返回形状（FeedResult）：{ url, format: rss|atom|json, title?, updated?,
+ *   count, entries: [{title, url, published, summary?}], truncated_input }
+ *   truncated_input=true 表示源 feed >48KiB、仅解析了前 16KiB（条目可能不全）。
+ *
+ * 借鉴：wayback.ts（独立 tool + doFetchUrl 复用范式）。
+ */
+export const FETCH_FEED_DESCRIPTION = [
+  "Fetch and parse a single RSS / Atom / JSON Feed URL into structured entries.",
+  "STATELESS primitive: one HTTP GET per call — no polling, no aggregation,",
+  "no daemon, nothing persisted.",
+  "",
+  "Use for freshness-sensitive queries ('latest release of X', 'official",
+  "announcement on Y', 'when was Z deprecated'): feeds are PUSH — published",
+  "instantly, zero search-index lag. Typical latency 200-500ms, $0.",
+  "Feed discovery is the caller's job: official blog/release pages usually",
+  "expose <link rel=alternate> in their HTML head (fetch_url can see it).",
+  "",
+  "Returns: { url, format: rss|atom|json, title?, site_url?, updated?,",
+  "  count, entries: [{ title?, url?, published?, summary? }], truncated_input }",
+  "  - published is the RAW date string (RFC822 for RSS, ISO for Atom/JSON).",
+  "  - summary is trimmed to 500 chars (token economy).",
+  "  - truncated_input=true means the source feed exceeded the 48KiB bounded",
+  "    fetch and only the first 16KiB were parsed (entries may be partial).",
+  "",
+  "DOES NOT:",
+  "  - subscribe or monitor (call it again when you want a fresh look)",
+  "  - run JS (plain HTTP fetch; feeds are static XML/JSON)",
+  "  - enter the search fallback chain (explicit tool, like wayback_lookup)",
+  "",
+  "Args: url (string, required) — feed URL",
+  "      limit (int, optional, default 10, max 50) — max entries to return",
+].join("\n");

@@ -100,6 +100,10 @@ import { registerNetworkTool } from "./tools/network.js";
 // INV-56 守：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）
 // INV-58 守：本 tool 是独立 tool，不在 search 主路径里自动调
 import { registerWaybackTool } from "./tools/wayback.js";
+// doc/24 颠覆性调研 verdict D-GO-2（2026-08-18）：fetch_feed 无状态 RSS/Atom 原语
+// （freshness 推模型——发布即推送，零索引滞后）。INV-56 家族守：必经 ssrfGuard +
+// doFetchUrl；独立 tool 不进 search 降级链（与 wayback_lookup 同范式）
+import { registerFetchFeedTool } from "./tools/fetch-feed.js";
 // v1.8 Phase D（D1）：read_text 续页工具注册（read-text.ts v0.3 已写好但从未装配——
 // browse/StepEngine 超 48KiB spill 后 continue_hint 指向的工具经 MCP 不可达，
 // wave1 T-TOOLS-13/T-TOOLS-08 采证 6 处 description 指向 + continue_hint 落空）
@@ -207,7 +211,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.15.0";
+const LASSO_SERVER_VERSION = "1.16.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -787,6 +791,9 @@ async function runMcpServer(): Promise<void> {
   // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
   // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
   registerWaybackTool(server, subproc, ssrfConfig);
+  // doc/24 verdict D-GO-2（2026-08-18）：fetch_feed 独立 tool（RSS/Atom/JSON Feed 原语）
+  // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56 家族）
+  registerFetchFeedTool(server, subproc, ssrfConfig);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
   // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：
   // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
@@ -889,6 +896,9 @@ async function runMcpServer(): Promise<void> {
     // v0.9 Phase B（parse10 §3.3）：wayback_lookup 归到 "wayback" channel（独立 caller-tier）。
     // bag.disable("wayback") 仅停 wayback_lookup tool；不影响 search 主路径（INV-58 守）。
     wayback_lookup: "wayback",
+    // doc/24 verdict D-GO-2：fetch_feed 归到独立虚拟 channel（与 read_text 同范式——
+    // 无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
+    fetch_feed: "fetch_feed",
     // v1.8 Phase D（D1）：read_text 归到独立虚拟 channel（与 fetch/screenshot/pdf/network
     // 同范式——无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
     read_text: "read_text",

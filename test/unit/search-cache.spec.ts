@@ -218,6 +218,99 @@ describe("SearchCache — 7 天 TTL（mtime）", () => {
 });
 
 // ============================================================
+// ZB-3（doc/24 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合
+// ============================================================
+describe("SearchCache — ZB-3 TTL×freshness 耦合（day 档 24h，其余 7 天不变）", () => {
+  /** 把指定 (query, freshness) 缓存文件的 mtime 拨回到 ageMs 前 */
+  async function ageCacheFile(
+    cache: SearchCache,
+    query: string,
+    freshness: string | undefined,
+    ageMs: number,
+  ): Promise<void> {
+    const key = cache.computeKey(query, "auto", "cn", 5, freshness);
+    const file = path.join(
+      cacheDir,
+      key.slice(0, 2),
+      key.slice(2, 4),
+      `${key}.json`,
+    );
+    const t = new Date(Date.now() - ageMs);
+    await fs.utimes(file, t, t);
+  }
+
+  it("freshness=day：2 天前的缓存 → 过期返 null（修复前会命中陈货）", async () => {
+    const cache = new SearchCache(cacheDir);
+    await cache.set(
+      "zb3-day",
+      "auto",
+      "cn",
+      5,
+      workedResult("x", []),
+      "day",
+    );
+    await ageCacheFile(cache, "zb3-day", "day", 2 * 24 * 60 * 60 * 1000);
+    expect(await cache.get("zb3-day", "auto", "cn", 5, "day")).toBeNull();
+  });
+
+  it("freshness=day：12 小时前的缓存 → 仍命中（24h 窗口内）", async () => {
+    const cache = new SearchCache(cacheDir);
+    await cache.set(
+      "zb3-day-fresh",
+      "auto",
+      "cn",
+      5,
+      workedResult("x", []),
+      "day",
+    );
+    await ageCacheFile(
+      cache,
+      "zb3-day-fresh",
+      "day",
+      12 * 60 * 60 * 1000,
+    );
+    expect(await cache.get("zb3-day-fresh", "auto", "cn", 5, "day")).not.toBeNull();
+  });
+
+  it("freshness=week：6 天前的缓存 → 仍命中（7 天窗口，行为与基线一致）", async () => {
+    const cache = new SearchCache(cacheDir);
+    await cache.set(
+      "zb3-week",
+      "auto",
+      "cn",
+      5,
+      workedResult("x", []),
+      "week",
+    );
+    await ageCacheFile(cache, "zb3-week", "week", 6 * 24 * 60 * 60 * 1000);
+    expect(await cache.get("zb3-week", "auto", "cn", 5, "week")).not.toBeNull();
+  });
+
+  it("freshness=month：6 天前的缓存 → 仍命中（7 天封顶不变）", async () => {
+    const cache = new SearchCache(cacheDir);
+    await cache.set(
+      "zb3-month",
+      "auto",
+      "cn",
+      5,
+      workedResult("x", []),
+      "month",
+    );
+    await ageCacheFile(cache, "zb3-month", "month", 6 * 24 * 60 * 60 * 1000);
+    expect(
+      await cache.get("zb3-month", "auto", "cn", 5, "month"),
+    ).not.toBeNull();
+  });
+
+  it("不传 freshness：2 天前的缓存 → 仍命中（无 freshness 档零回归）", async () => {
+    const cache = new SearchCache(cacheDir);
+    await cache.set("zb3-none", "auto", "cn", 5, workedResult("x", []));
+    await ageCacheFile(cache, "zb3-none", undefined, 2 * 24 * 60 * 60 * 1000);
+    expect(await cache.get("zb3-none", "auto", "cn", 5)).not.toBeNull();
+  });
+});
+
+// ============================================================
 // 分片路径
 // ============================================================
 describe("SearchCache — 分片目录结构", () => {

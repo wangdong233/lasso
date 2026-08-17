@@ -276,3 +276,24 @@ export const waybackAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: true,
 };
+
+// ============================================================
+// fetch_feed（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）
+// ============================================================
+/**
+ * fetch_feed tool annotations。
+ *
+ * 四象限归属：
+ *   |  tool        | readOnly | openWorld | 含义                              |
+ *   |  ----------- | -------- | --------- | --------------------------------- |
+ *   |  fetch_feed  |   true   |   true    | 只读拉取 feed（无副作用）；触外网  |
+ *
+ * 与 fetch_url / wayback_lookup 同档（caller-tier 只读 HTTP 工具）。
+ *
+ * 守 INV-56 家族：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）。
+ * 无状态纯原语：不轮询、不聚合、不落盘（守简单架构红线）。
+ */
+export const fetchFeedAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: true,
+};

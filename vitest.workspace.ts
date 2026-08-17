@@ -15,6 +15,7 @@ import { defineWorkspace } from "vitest/config";
 const SLOW_SPECS = [
   // 真实 spawn 子进程（node dist / rust-helper / Chrome 探测）
   "test/integration/cli-conventions.spec.ts",
+  "test/unit/doctor-deep-probe.spec.ts",
   "test/integration/doctor-cli-config-file.spec.ts",
   "test/integration/stdin-eof-shutdown.spec.ts",
   "test/unit/launch-chrome.spec.ts",

@@ -740,7 +740,33 @@ export async function runFallbackChainEngine(
   if (fbResult.outcome !== "worked" && recordingStore) {
     try {
       const replayResult = await recordingStore.replay("fallback_chain", query);
-      if (replayResult.outcome === "worked" && replayResult.snapshot) {
+      // ZB-3b（doc/24 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
+      // replay 键只有 (engine, query)，不含 freshness —— 不设门则 freshness=day 的查询
+      // 在全源熔断时会拿到数月前录的 fixture 标 worked（freshness 倒挂：链尾是最陈源）。
+      // 门规则：fixture 年龄 > freshness 窗口 → 视为 replay_miss（返原 fbResult，诚实 didnt/unknown）。
+      // day→24h / week→7d / month→30d；year 与不传 freshness 不过门（基线语义不受影响）。
+      const freshnessWindowMs =
+        freshness === "day"
+          ? 24 * 60 * 60 * 1000
+          : freshness === "week"
+            ? 7 * 24 * 60 * 60 * 1000
+            : freshness === "month"
+              ? 30 * 24 * 60 * 60 * 1000
+              : 0; // year / 未传：不过门
+      const replayAgeMs =
+        replayResult.recorded_at !== undefined
+          ? Date.now() - replayResult.recorded_at
+          : 0;
+      const replayStale =
+        freshnessWindowMs > 0 && replayAgeMs > freshnessWindowMs;
+      if (replayStale) {
+        logger.info({
+          evt: "fallback_chain_replay_stale_rejected",
+          freshness,
+          age_ms: replayAgeMs,
+          window_ms: freshnessWindowMs,
+        });
+      } else if (replayResult.outcome === "worked" && replayResult.snapshot) {
         // 命中录制 → 解析回 SearchResult 形状，标 served_by="recording_replay"
         // 解析失败仍透传原 didnt（不伪造；tri-state 诚实）
         try {

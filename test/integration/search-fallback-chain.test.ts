@@ -473,6 +473,141 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     expect(result.actions_and_results!.length).toBeGreaterThanOrEqual(3);
   });
 
+  // ============================================================
+  // ZB-3b（doc/24 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
+  // replay 键只有 (engine, query)——不设门则 freshness=day 会拿到陈年 fixture 标 worked。
+  // ============================================================
+  it("V4b-ZB3：freshness=day + fixture 录于 3 天前 → 拒回放（返原 didnt/unknown，不运陈货）", async () => {
+    const recordingStore = new RecordingStore(recordingsDir);
+    const pastResult = workedSearch("search.brave");
+    await recordingStore.save(
+      "fallback_chain",
+      "stale freshness query",
+      JSON.stringify(pastResult.data),
+    );
+    // 把 fixture mtime 拨回 3 天前（> day 窗口 24h）
+    const file = recordingStore.pathOf("fallback_chain", "stale freshness query");
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    await fs.utimes(file, threeDaysAgo, threeDaysAgo);
+
+    const search = makeStubSearch({
+      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    });
+    const brave = makeStubBrave({
+      search: vi.fn(async () => unknownSearch("search.brave", "429")),
+      isAvailable: async () => true,
+    });
+    const headless = makeStubHeadless({
+      browse: vi.fn(async () => ({
+        outcome: "unknown" as const,
+        data: null,
+        served_by: "browse_headless",
+        fallback_used: false,
+        retrieval_method: "chrome_devtools_mcp",
+        error: "empty",
+      })),
+    });
+    const decider = new FallbackDecider(
+      new Map([
+        ["search.zhipu", new CircuitBreaker()],
+        ["search.brave", new CircuitBreaker()],
+        ["browse_headless", new CircuitBreaker()],
+      ]),
+    );
+    const browseHeadlessExec = async (url: string) => {
+      const r = await headless.browse(url, "snapshot", {});
+      return {
+        outcome: r.outcome,
+        data: r.data ? { preview: r.data.preview } : null,
+        error: r.error,
+      };
+    };
+
+    const result = await runFallbackChainEngine(
+      "stale freshness query",
+      10,
+      "cn",
+      false,
+      /* freshness=day */ "day",
+      search,
+      brave,
+      browseHeadlessExec,
+      decider,
+      recordingStore,
+      true,
+      true,
+    );
+
+    // 陈旧 fixture 被新鲜度门拒绝：不是 worked/recording_replay，而是透传原熔断结果
+    expect(result.served_by).not.toBe("recording_replay");
+    expect(result.outcome).not.toBe("worked");
+  });
+
+  it("V4b-ZB3b：freshness=day + fixture 录于 2 小时前 → 正常回放（窗内不受影响）", async () => {
+    const recordingStore = new RecordingStore(recordingsDir);
+    const pastResult = workedSearch("search.brave");
+    await recordingStore.save(
+      "fallback_chain",
+      "fresh replay within window",
+      JSON.stringify(pastResult.data),
+    );
+    const file = recordingStore.pathOf("fallback_chain", "fresh replay within window");
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await fs.utimes(file, twoHoursAgo, twoHoursAgo);
+
+    const search = makeStubSearch({
+      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    });
+    const brave = makeStubBrave({
+      search: vi.fn(async () => unknownSearch("search.brave", "429")),
+      isAvailable: async () => true,
+    });
+    const headless = makeStubHeadless({
+      browse: vi.fn(async () => ({
+        outcome: "unknown" as const,
+        data: null,
+        served_by: "browse_headless",
+        fallback_used: false,
+        retrieval_method: "chrome_devtools_mcp",
+        error: "empty",
+      })),
+    });
+    const decider = new FallbackDecider(
+      new Map([
+        ["search.zhipu", new CircuitBreaker()],
+        ["search.brave", new CircuitBreaker()],
+        ["browse_headless", new CircuitBreaker()],
+      ]),
+    );
+    const browseHeadlessExec = async (url: string) => {
+      const r = await headless.browse(url, "snapshot", {});
+      return {
+        outcome: r.outcome,
+        data: r.data ? { preview: r.data.preview } : null,
+        error: r.error,
+      };
+    };
+
+    const result = await runFallbackChainEngine(
+      "fresh replay within window",
+      10,
+      "cn",
+      false,
+      /* freshness=day */ "day",
+      search,
+      brave,
+      browseHeadlessExec,
+      decider,
+      recordingStore,
+      true,
+      true,
+    );
+
+    // 窗内 fixture 正常回放
+    expect(result.outcome).toBe("worked");
+    expect(result.served_by).toBe("recording_replay");
+  });
+
   it("V4c：全源熔断 + recordingStore 注入但**未**命中 fixture → 仍返 didnt（不伪造）", async () => {
     const recordingStore = new RecordingStore(recordingsDir);
     // 故意不录任何 fixture
