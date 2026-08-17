@@ -66,7 +66,7 @@ Lasso itself is **completely free + MIT open source**. Here's what each capabili
 | Capability | Cost | Notes |
 |---|---|---|
 | Lasso itself (MCP server + all core capabilities) | ✅ Free | MIT open source, free forever |
-| Search (Zhipu + Brave + Bing) | ✅ Free tier available | Zhipu billed by token; Brave **2,000 queries/mo free**, Bing **1,000 queries/mo free** — usable without paying. **Already configured Zhipu's `web-search-prime` MCP on your machine? Lasso auto-detects and reuses it — no need to configure a separate ZHIPU_API_KEY** |
+| Search (Zhipu + Brave) | ✅ Free to start with Zhipu | Zhipu is billed by token (new users get free credits), and if the Zhipu MCP is already configured on the machine it works with zero setup; Brave is now a paid plan that includes a \$5/month credit (the free tier was discontinued as of 2026-02); Lasso also ships a free live-search fallback, so you still have search even without configuring any provider |
 | Scrape public pages / screenshots / PDF / network audit / raw bytes | ✅ Free | Runs locally, no key, no payment |
 | Scrape logged-in pages (reuse local Chrome) | ✅ Free | Runs locally, no key, no payment |
 | Drive desktop (macOS / Windows / Linux) | ✅ Free | Built and run locally, only OS authorization needed; **optional** Apple Developer account \$99/yr for signed persistent authorization (works without signing too — just re-authorize each time) |
@@ -122,9 +122,9 @@ Grouped by **what you want to do**, not by tool name. Each is one sentence in, o
 
 > You: "Search for X" → structured search results
 
-Defaults to Zhipu (strong for Chinese); you can add Brave and Bing for multi-source. **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
+Defaults to Zhipu (strong for Chinese); you can add Brave as a second source (the Bing upstream has been shut down; the config key is kept and auto-skipped). **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
 
-For time-sensitive content like **news and release tracking**, just say "search for X from the last week / last month" — a time filter is applied automatically (day / week / month / year, works across all engines — Bing alone has no year granularity and skips it, v1.11), no hand-written dates in your query.
+For time-sensitive content like **news and release tracking**, just say "search for X from the last week / last month" — a time filter is applied automatically (day / week / month / year, v1.11), no hand-written dates in your query.
 
 ### Scrape Public Pages (no login)
 
@@ -228,7 +228,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 |---|---|
 | Scrape public pages / screenshots / PDF / see third-party resources / fetch raw bytes / drive the desktop | **Nothing at all** |
 | Search | One Zhipu key (free to apply; not even that if the machine already has the Zhipu MCP) |
-| Near-zero search failures | Add Brave / Bing keys (both have free tiers) |
+| Near-zero search failures | Add a Brave key (paid plan that includes a \$5/month credit; even without it there's a free live-search fallback) |
 | Scrape logged-in pages | Run `lasso launch-chrome` once |
 | Drive the macOS desktop | Run `lasso doctor` once to authorize |
 | Scrape Cloudflare-protected sites | Master switch + Steel (free self-hosted) / browserbase (paid) |
@@ -249,7 +249,7 @@ lasso config init        # creates ~/.lasso/config.json
 { "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-Takes effect on save. **For more stability**, add Brave and Bing too (both have free tiers; if one is down it auto-switches to the next and you don't feel a thing; multiple keys comma-separated = N× the quota, auto-rotated):
+Takes effect on save. **For more stability**, add Brave too (a paid plan that includes a \$5/month credit ≈ 1,000 queries, credit card required — the free tier was discontinued as of 2026-02; if any configured provider goes down it auto-switches to the next; multiple keys comma-separated, each with its own quota):
 
 ```json
 {
@@ -259,7 +259,7 @@ Takes effect on save. **For more stability**, add Brave and Bing too (both have 
 }
 ```
 
-> Fallback order: machine MCP reuse → Zhipu → Brave → Bing → live search in the headless browser as the last resort. If the one ahead fails, it auto-switches to the next.
+> Fallback order: machine MCP reuse → Zhipu → Brave → (Bing shut down, auto-skipped) → live search in the headless browser as the last resort. If the one ahead fails, it auto-switches to the next.
 
 How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 
@@ -364,7 +364,7 @@ Your data is yours.
 | macOS desktop control doesn't work | Tick `lasso-rust-helper` under "System Settings → Privacy & Security → Accessibility / Screen Recording" (`lasso doctor` guides you) |
 | Logged-in page scrape fails | Log in once manually in your local Chrome (handle 2FA too), then say "open my logged-in X" |
 | Save-as-PDF fails | Say "take a full-page screenshot of this page" instead |
-| Search keeps returning nothing | Check whether the key expired / quota is exhausted; adding multiple providers (Zhipu + Brave + Bing) dramatically lowers the failure rate |
+| Search keeps returning nothing | Check whether the key expired / quota is exhausted; adding multiple providers (Zhipu + Brave) dramatically lowers the failure rate |
 | A link won't open | Say "this link is dead, find an archive" to check the Internet Archive |
 | Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
 | Want to verify the anti-detection effect | Run `lasso doctor --stealth-check` — it drives the creepjs detection page and compares against a baseline (optional, doesn't affect daily use) |

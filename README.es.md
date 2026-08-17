@@ -66,7 +66,7 @@ Lasso en sí es **completamente gratis + open source MIT**. Esto es lo que realm
 | Capacidad | Costo | Notas |
 |---|---|---|
 | Lasso en sí (servidor MCP + todas las capacidades centrales) | ✅ Gratis | Open source MIT, gratis para siempre |
-| Búsqueda (Zhipu + Brave + Bing) | ✅ Tier gratis disponible | Zhipu se factura por token; Brave **2.000 consultas/mes gratis**, Bing **1.000 consultas/mes gratis** — se puede usar sin pagar. **¿Ya tienes configurado el MCP `web-search-prime` de Zhipu en tu máquina? Lasso lo detecta y lo reutiliza automáticamente — ni siquiera necesitas configurar un ZHIPU_API_KEY aparte** |
+| Búsqueda (Zhipu + Brave) | ✅ Gratis para empezar con Zhipu | Zhipu se factura por token (los usuarios nuevos tienen crédito de regalo); si la máquina ya tiene configurado el MCP de Zhipu, funciona sin configuración alguna; Brave es ahora un plan de pago que incluye \$5/mes de crédito (el tier gratis se eliminó desde 2026-02); Lasso además trae un fallback de búsqueda real gratuito, así que tienes búsqueda aunque no configures ninguno |
 | Extraer páginas públicas / capturas de pantalla / PDF / auditoría de red / bytes crudos | ✅ Gratis | Se ejecuta en local, sin key, sin pago |
 | Extraer páginas con sesión iniciada (reutiliza Chrome local) | ✅ Gratis | Se ejecuta en local, sin key, sin pago |
 | Controlar el escritorio (macOS / Windows / Linux) | ✅ Gratis | Construido y ejecutado en local, solo necesita autorización del SO; **opcional** cuenta Apple Developer de \$99/año para autorización firmada persistente (también funciona sin firmar — solo hay que reautorizar cada vez) |
@@ -122,9 +122,9 @@ Agrupado por **lo que quieres hacer**, no por nombre de herramienta. Cada uno: u
 
 > Tú: "Busca X" → resultados estructurados de búsqueda
 
-Por defecto Zhipu (fuerte para chino); puedes añadir Brave y Bing para multi-fuente. **Si una fuente está con rate-limit o caída, cambia automáticamente a la siguiente — no te enteras.** Agotar la cuota gratis de un proveedor no rompe todo el conjunto.
+Por defecto Zhipu (fuerte para chino); puedes añadir Brave además como multi-fuente (el upstream de Bing ya está cerrado; la clave de configuración se conserva y se salta automáticamente). **Si una fuente está con rate-limit o caída, cambia automáticamente a la siguiente — no te enteras.** Agotar la cuota gratis de un proveedor no rompe todo el conjunto.
 
-Para contenido sensible al tiempo como **noticias y seguimiento de versiones**, di directamente "busca X de la última semana / del último mes" — el filtro de frescura (day / week / month / year, en todos los motores — solo Bing no tiene granularidad de «año» y la omite, v1.11) se aplica automáticamente, sin fechas escritas a mano en la consulta.
+Para contenido sensible al tiempo como **noticias y seguimiento de versiones**, di directamente "busca X de la última semana / del último mes" — el filtro de frescura (day / week / month / year, v1.11) se aplica automáticamente, sin fechas escritas a mano en la consulta.
 
 ### Extraer páginas públicas (sin login)
 
@@ -228,7 +228,7 @@ Reinicia Claude Code → `/mcp` → `lasso ✓ Connected`. **Solo esta línea, s
 |---|---|
 | Extraer páginas públicas / capturas / PDF / ver recursos de terceros / obtener bytes crudos / controlar el escritorio | **Nada en absoluto** |
 | Buscar | Una key de Zhipu (gratis de solicitar; si la máquina ya tiene el MCP de Zhipu, ni eso) |
-| Búsqueda casi sin fallos | Añadir keys de Brave / Bing (ambas con tier gratis) |
+| Búsqueda casi sin fallos | Añadir una key de Brave (plan de pago con \$5/mes de crédito; sin configurarla también hay búsqueda real gratuita de respaldo) |
 | Extraer páginas con sesión iniciada | Ejecutar `lasso launch-chrome` una vez |
 | Controlar el escritorio de macOS | Ejecutar `lasso doctor` una vez para autorizar |
 | Extraer sitios con Cloudflare | Interruptor maestro + Steel (autoalojado gratis) / browserbase (de pago) |
@@ -249,7 +249,7 @@ lasso config init        # crea ~/.lasso/config.json
 { "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-Al guardar surte efecto. **¿Más estabilidad?** Añade también Brave y Bing (ambas con tier gratis; si una cae, cambia automáticamente a la siguiente y no te enteras; varias keys separadas por comas = N× la cuota, rotadas automáticamente):
+Al guardar surte efecto. **¿Más estabilidad?** Añade también Brave (plan de pago con \$5/mes de crédito ≈ 1000 consultas; requiere tarjeta de crédito — el tier gratis se eliminó desde 2026-02; si un proveedor configurado cae, pasa automáticamente al siguiente; varias keys separadas por comas, cada una con su cuota):
 
 ```json
 {
@@ -259,7 +259,7 @@ Al guardar surte efecto. **¿Más estabilidad?** Añade también Brave y Bing (a
 }
 ```
 
-> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → Bing → búsqueda real en el navegador headless como remate. Si falla el anterior, pasa automáticamente al siguiente.
+> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → (Bing cerrado, se salta automáticamente) → búsqueda real en el navegador headless como remate. Si falla el anterior, pasa automáticamente al siguiente.
 
 Cómo solicitar keys, cuánta cuota gratis hay → [Guía de configuración de keys · Búsqueda](./doc/KEY-GUIDE.md#a-搜索). Comandos habituales: `lasso --version` / `lasso --help` (desde v1.8, los comandos desconocidos imprimen el uso y terminan con código distinto de cero, en vez de colgarse en silencio).
 
@@ -364,7 +364,7 @@ Tus datos son tuyos.
 | El control del escritorio en macOS no funciona | Marca `lasso-rust-helper` bajo "System Settings → Privacy & Security → Accessibility / Screen Recording" (`lasso doctor` te guía) |
 | La extracción de página con sesión falla | Inicia sesión una vez manualmente en tu Chrome local (también el 2FA), luego di "abre mi X con sesión iniciada" |
 | Guardar como PDF falla | Di mejor "haz una captura de pantalla de página completa de esta página" |
-| La búsqueda no devuelve nada | Comprueba si la key caducó / la cuota se agotó; añadir varios proveedores (Zhipu + Brave + Bing) reduce drásticamente la tasa de fallo |
+| La búsqueda no devuelve nada | Comprueba si la key caducó / la cuota se agotó; añadir varios proveedores (Zhipu + Brave) reduce drásticamente la tasa de fallo |
 | Un enlace no abre | Di "este enlace está caído, busca un archivo" para consultar el Internet Archive |
 | Aparece que el acceso a la red interna fue bloqueado | Revisa la URL; las redes proxy TUN están permitidas por defecto, otras redes internas necesitan permiso explícito |
 | Verificar el efecto de la anti-detección | Ejecuta `lasso doctor --stealth-check` — maneja la página de detección creepjs y compara contra una línea base (opcional, no afecta el uso diario) |

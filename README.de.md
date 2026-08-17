@@ -66,7 +66,7 @@ Lasso selbst ist **komplett kostenlos + MIT-Open-Source**. Hier ist, was jede F�
 | Fähigkeit | Kosten | Hinweise |
 |---|---|---|
 | Lasso selbst (MCP-Server + alle Kernfähigkeiten) | ✅ Kostenlos | MIT-Open-Source, für immer kostenlos |
-| Suche (Zhipu + Brave + Bing) | ✅ Kostenlose Kontingente verfügbar | Zhipu wird pro Token abgerechnet; Brave **2.000 Anfragen/Mo. kostenlos**, Bing **1.000 Anfragen/Mo. kostenlos** — ohne Zahlung nutzbar. **Auf deiner Maschine schon Zhipus `web-search-prime` MCP konfiguriert? Lasso erkennt und nutzt es automatisch — du musst nicht mal einen separaten ZHIPU_API_KEY anlegen** |
+| Suche (Zhipu + Brave) | ✅ Kostenloser Start mit Zhipu | Zhipu wird pro Token abgerechnet (Neukunden erhalten Startguthaben); ist auf der Maschine schon das Zhipu-MCP konfiguriert, ist es ohne jede Konfiguration nutzbar. Brave ist inzwischen ein bezahlter Plan mit \$5/Monat Guthaben (das kostenlose Kontingent entfiel ab 2026-02); Lasso bringt außerdem einen kostenlosen Live-Such-Fallback mit — auch ganz ohne konfigurierten Anbieter hast du Suche |
 | Öffentliche Seiten scrapen / Screenshots / PDF / Netzwerk-Audit / rohe Bytes | ✅ Kostenlos | Läuft lokal, kein Key, keine Zahlung |
 | Eingeloggte Seiten scrapen (lokales Chrome wiederverwenden) | ✅ Kostenlos | Läuft lokal, kein Key, keine Zahlung |
 | Desktop steuern (macOS / Windows / Linux) | ✅ Kostenlos | Lokal gebaut und ausgeführt, nur OS-Autorisierung nötig; **optionaler** Apple Developer Account 99 $/Jahr für signierte dauerhafte Autorisierung (funktioniert auch ohne Signierung — dann einfach jedes Mal neu autorisieren) |
@@ -122,9 +122,9 @@ Gruppiert nach **dem, was du tun willst**, nicht nach Werkzeugname. Jedes ist ei
 
 > Du: „Suche nach X" → strukturierte Suchergebnisse
 
-Standard ist Zhipu (stark für Chinesisch); du kannst Brave und Bing für Multiple-Quellen hinzufügen. **Wenn eine einzelne Quelle rate-limitiert oder down ist, wird automatisch zur nächsten gewechselt — du merkst nichts davon.** Das Ausschöpfen des kostenlosen Kontingents eines Anbieters bringt nicht das Ganze zum Absturz.
+Standard ist Zhipu (stark für Chinesisch); für Multiple-Quellen kannst du zusätzlich Brave konfigurieren (der Bing-Upstream ist eingestellt — der Konfigurationsschlüssel bleibt erhalten und wird automatisch übersprungen). **Wenn eine einzelne Quelle rate-limitiert oder down ist, wird automatisch zur nächsten gewechselt — du merkst nichts davon.** Das Ausschöpfen des kostenlosen Kontingents eines Anbieters bringt nicht das Ganze zum Absturz.
 
-Für zeitkritisches Material wie **Nachrichten und Release-Tracking** sag einfach „suche nach X der letzten Woche / des letzten Monats" — der Zeitfilter (day / week / month / year, bei allen Engines — nur Bing kennt keine „Jahr“-Granularität und überspringt sie, v1.11) wird automatisch mitgegeben, ohne handgeschriebene Daten in der Anfrage.
+Für zeitkritisches Material wie **Nachrichten und Release-Tracking** sag einfach „suche nach X der letzten Woche / des letzten Monats" — der Zeitfilter (day / week / month / year, v1.11) wird automatisch mitgegeben, ohne handgeschriebene Daten in der Anfrage.
 
 ### Öffentliche Seiten scrapen (ohne Login)
 
@@ -228,7 +228,7 @@ Claude Code neu starten → `/mcp` → `lasso ✓ Connected`. **Genau diese eine
 |---|---|
 | Öffentliche Seiten scrapen / Screenshots / PDF / Drittanbieter-Ressourcen ansehen / rohe Bytes holen / Desktop steuern | **Gar nichts** |
 | Suchen | Ein Zhipu-Key (kostenlos zu beantragen; hat die Maschine das Zhipu-MCP schon, nicht einmal das) |
-| Suche fällt fast nie aus | Brave-/Bing-Keys zusätzlich (beide mit kostenlosem Kontingent) |
+| Suche fällt fast nie aus | Zusätzlich einen Brave-Key (bezahlter Plan mit \$5/Monat Guthaben; auch ohne ihn gibt es einen kostenlosen Live-Such-Fallback) |
 | Eingeloggte Seiten scrapen | Einmal `lasso launch-chrome` ausführen |
 | Den macOS-Desktop steuern | Einmal `lasso doctor` zur Autorisierung ausführen |
 | Cloudflare-geschützte Seiten scrapen | Master-Schalter + Steel (kostenlos selbst gehostet) / browserbase (kostenpflichtig) |
@@ -249,7 +249,7 @@ lasso config init        # erstellt ~/.lasso/config.json
 { "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-Speichern genügt, dann greift es. **Stabiler gewollt**: füge Brave und Bing hinzu (beide mit kostenlosem Kontingent; fällt eine Quelle aus, wird automatisch zur nächsten gewechselt — du merkst nichts; mehrere Keys kommagetrennt = N-faches Kontingent, automatisch rotiert):
+Speichern genügt, dann greift es. **Stabiler gewollt**: füge zusätzlich Brave hinzu (bezahlter Plan mit \$5/Monat Guthaben ≈ 1.000 Anfragen, Kreditkarte erforderlich — das kostenlose Kontingent entfiel ab 2026-02; fällt eine konfigurierte Quelle aus, wird automatisch zur nächsten gewechselt; mehrere Keys kommagetrennt, jeder mit eigenem Kontingent):
 
 ```json
 {
@@ -259,7 +259,7 @@ Speichern genügt, dann greift es. **Stabiler gewollt**: füge Brave und Bing hi
 }
 ```
 
-> Degradationsreihenfolge: Maschinen-MCP-Wiederverwendung → Zhipu → Brave → Bing → Live-Suche im Headless-Browser als Schluss-Fallback. Fällt der vordere aus, wird automatisch zum nächsten gewechselt.
+> Degradationsreihenfolge: Maschinen-MCP-Wiederverwendung → Zhipu → Brave → (Bing eingestellt, wird automatisch übersprungen) → Live-Suche im Headless-Browser als Schluss-Fallback. Fällt der vordere aus, wird automatisch zum nächsten gewechselt.
 
 Wie du Keys beantragst, wie hoch die kostenlosen Kontingente sind → [Key-Konfigurationsleitfaden · Suche](./doc/KEY-GUIDE.md#a-搜索). Häufige Befehle: `lasso --version` / `lasso --help` (seit v1.8 drucken unbekannte Befehle die Nutzung und beenden mit Nonzero-Code, statt stumm zu hängen).
 
@@ -364,7 +364,7 @@ Deine Daten gehören dir.
 | macOS-Desktop-Steuerung funktioniert nicht | Setze einen Haken bei `lasso-rust-helper` unter „Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen / Bildschirmaufnahme" (`lasso doctor` führt dich) |
 | Scrapen der eingeloggten Seite schlägt fehl | Einmal manuell in deinem lokalen Chrome einloggen (auch 2FA machen), dann „öffne mein eingeloggt X" sagen |
 | Als-PDF-speichern schlägt fehl | Sag stattdessen „mach einen Ganzseiten-Screenshot von dieser Seite" |
-| Suche liefert immer wieder nichts | Prüfe, ob der Key abgelaufen / das Kontingent erschöpft ist; mehrere Anbieter hinzufügen (Zhipu + Brave + Bing) senkt die Fehlerrate drastisch |
+| Suche liefert immer wieder nichts | Prüfe, ob der Key abgelaufen / das Kontingent erschöpft ist; mehrere Anbieter hinzufügen (Zhipu + Brave) senkt die Fehlerrate drastisch |
 | Ein Link lässt sich nicht öffnen | Sag „dieser Link ist tot, find ein Archiv", um das Internet Archive zu prüfen |
 | Meldung, dass der Zugriff auf das interne Netzwerk blockiert wurde | URL doppelt prüfen; TUN-Proxy-Netzwerke sind standardmäßig erlaubt, andere interne Netzwerke brauchen explizite Erlaubnis |
 | Die Wirkung der Anti-Erkennung verifizieren | `lasso doctor --stealth-check` ausführen — treibt die creepjs-Erkennungsseite an und vergleicht mit einer Baseline (optional, beeinflusst den Alltag nicht) |

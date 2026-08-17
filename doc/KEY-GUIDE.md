@@ -23,15 +23,15 @@
 | key / 变量 | 用途 | 哪里获取 | 必填 | 免费额度 |
 |---|---|---|---|---|
 | `ZHIPU_API_KEY` | 搜索（默认引擎，中文主力） | [智谱开放平台](https://open.bigmodel.cn/console/apikey) | 要用搜索就**必填** | 按 token 计费（有新用户额度） |
-| `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 否 | **2000 次/月**（Free 计划） |
-| `BING_API_KEYS` | 搜索第三源（再兜底） | [Azure 门户](https://portal.azure.com/) | 否 | **1000 次/月**（F0 免费层） |
+| `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 需信用卡 | **~1000 次/月**（$5/月额度，2026-02 起免费档取消） |
+| `BING_API_KEYS` | （已关停）配置键保留 | ~~Azure 门户~~ 2025-08-11 退役 | 否 | 不可用 |
 | `LASSO_ALLOW_CLOUD_BROWSER` | 云浏览器总开关（值设 `true`） | 无需申请 | 启用云浏览器时**必填** | — |
 | `STEEL_ENDPOINT` | 自托管云浏览器端点（v1.6 新·推荐） | 无需申请（自己跑 Docker） | 启用 Steel 时**必填** | —（零 per-session 费，自托管） |
 | `BROWSERBASE_API_KEY` | 云端反爬 Chrome | [browserbase.com](https://www.browserbase.com/) | 启用 browserbase 时**必填** | **100 分钟试用**（之后付费） |
 | `STAGEHAND_API_KEY` | AI 友好的页面观察 | [api.stagehand.dev](https://api.stagehand.dev) | 启用 stagehand 时**必填** | 试用（付费为主） |
 | `LASSO_COOKIE_PASSPHRASE` | 登录 cookie 加密口令 | 自己设一串足够长的密码即可 | 否 | — |
 
-> **多 key 轮询**：`BRAVE_API_KEYS` / `BING_API_KEYS` 都支持 **CSV 多 key**（`k1,k2,k3`）。N 个 key = N 倍免费额度，自动轮询、单 key 失败自动换下一个。
+> **多 key 轮询**：`BRAVE_API_KEYS` 支持 **CSV 多 key**（`k1,k2`）。每个 key 各带一份月度额度，自动轮询、单 key 失败自动换下一个。
 
 ---
 
@@ -39,7 +39,7 @@
 
 ### 1. 智谱（`ZHIPU_API_KEY`）—— 默认引擎，中文主力
 
-> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave → Bing → `browse_headless` 兜底。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
+> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave →（Bing 层已关停自动跳过）→ `browse_headless` 兜底。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
 
 **去哪申请**：<https://open.bigmodel.cn/console/apikey>
 
@@ -81,14 +81,17 @@
 
 ---
 
-### 2. Brave Search（`BRAVE_API_KEYS`）—— 可选，第二源
+### 2. Brave Search（`BRAVE_API_KEYS`）—— 可选，第二源（现为付费计划 + 每月 $5 免费额度）
+
+> **⚠️ 2026-02 起免费档已取消**：Brave 原先的「Free 计划 2000 次/月免信用卡」已下架。现在所有计划都是付费制，每计划附带 **$5/月免费额度**（Search 计划 $5/千次，约 **1000 次/月**）；超出额度后绑定的信用卡**自动按量扣费、无消费上限**。免费搜索主力请用智谱（见上文），Brave 作为可选增强。
 
 **去哪申请**：<https://brave.com/search/api/>
 
-**步骤**：
-1. 打开 [Brave Search API](https://brave.com/search/api/)，注册账号。
-2. 选择 **Free** 计划（每月 2000 次查询，无需信用卡）。
-3. 在 Dashboard 复制你的 API key。
+**步骤**（新账号注册后）：
+1. 登录 [API 控制台](https://api-dashboard.search.brave.com/)，**绑定信用卡**（必须，官方称反欺诈用途——注意：这就是超额后自动扣费的那张卡）。
+2. 订阅 **Search** 计划（$5 / 千次查询，含每月 $5 免费额度 ≈ 1000 次）。
+3. **加上 Attribution 才有免费额度**：在你的项目网站 / 关于页标注 "Powered by Brave Search API"——不加的话连每月 $5 额度都没有。
+4. 在控制台拿到 API key。
 
 **怎么配**：
 
@@ -101,49 +104,21 @@
 }
 ```
 
-多 key 轮询（推荐，3 个 key = 6000 次/月）用 CSV 字符串：
+多 key 轮询用 CSV 字符串（`"BRAVE_API_KEYS": "k1,k2"`，每个 key 各自带一份月度额度）。
 
-```json
-{
-  "BRAVE_API_KEYS": "k1,k2,k3"
-}
-```
+（env 覆盖同样支持：`export BRAVE_API_KEYS=k1,k2`，优先级高于配置文件。）
 
-（env 覆盖同样支持：`export BRAVE_API_KEYS=k1,k2,k3`，优先级高于配置文件。）
-
-**免费额度**：**2000 次查询/月**（Free 计划）；多 key 线性叠加。
+**费用提醒**：想只花免费额度的话，月查询量控制在 ~1000 次以内；要绝对不被扣费就别绑卡、不配 Brave——智谱 + 免费兜底已覆盖日常搜索。
 
 ---
 
-### 3. Bing / Azure（`BING_API_KEYS`）—— 可选，第三源
+### 3. Bing / Azure（`BING_API_KEYS`）—— 🔴 已关停，无法新开通
 
-**去哪申请**：<https://portal.azure.com/>
+> **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留（配了会自动跳过、不影响主流程），但没有可用的 key 来源了。
 
-**步骤**：
-1. 登录 [Azure 门户](https://portal.azure.com/)（需微软账号）。
-2. 「创建资源」→ 搜索 **「Bing Search v7」** → 创建。
-3. 定价层选 **F0 Free**（每月 1000 次）。
-4. 创建完成后，在「密钥和终结点」页复制 `Ocp-Apim-Subscription-Key`（这就是 `BING_API_KEYS` 的值）。
+第二源请选 Brave（上文）；免费搜索靠智谱 + 兜底实搜（Lasso 自带 DuckDuckGo 兜底，无需配置）。
 
-**怎么配**：
-
-**写进 `~/.lasso/config.json`**：
-
-```json
-{
-  "ZHIPU_API_KEY": "你的智谱key",
-  "BRAVE_API_KEYS": "你的bravekey",
-  "BING_API_KEYS": "你的bingkey"
-}
-```
-
-（env 覆盖：`export BING_API_KEYS=...`，优先级高于配置文件。）
-
-**免费额度**：**1000 次/月**（F0 免费层）。新订阅可用性受限，配了不用也不影响主流程。
-
-> 配齐智谱 + Brave + Bing 三家后，搜索「≈永不失败」——任一家临时限流/挂掉，自动切下一家，你无感。
-
-> 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），智谱 / Brave / Bing 全引擎通用（仅 Bing 无「年」档粒度，该档自动跳过过滤）——不用往查询词里手写日期，也不用配任何 key。
+> 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），智谱 / Brave 通用（Bing 已关停）——不用往查询词里手写日期，也不用配任何 key。
 
 ---
 

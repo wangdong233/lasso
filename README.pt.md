@@ -66,7 +66,7 @@ O Lasso em si é **completamente grátis + MIT open source**. Veja quanto cada c
 | Capacidade | Custo | Observações |
 |---|---|---|
 | O próprio Lasso (servidor MCP + todas as capacidades principais) | ✅ Grátis | MIT open source, grátis para sempre |
-| Busca (Zhipu + Brave + Bing) | ✅ Plano grátis disponível | Zhipu cobrado por token; Brave **2.000 consultas/mês grátis**, Bing **1.000 consultas/mês grátis** — usável sem pagar. **Já configurou o MCP `web-search-prime` da Zhipu na sua máquina? O Lasso detecta e reutiliza automaticamente — nem precisa configurar um ZHIPU_API_KEY separado** |
+| Busca (Zhipu + Brave) | ✅ Grátis para começar com a Zhipu | A Zhipu cobra por token (usuários novos têm crédito de cortesia); se a máquina já tem o MCP da Zhipu configurado, funciona com configuração zero; a Brave agora é um plano pago com \$5/mês de crédito (o plano grátis foi descontinuado a partir de 2026-02); o Lasso ainda traz um fallback de busca real gratuito — você tem busca mesmo sem configurar nenhum |
 | Extrair páginas públicas / screenshots / PDF / auditoria de rede / bytes brutos | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Extrair páginas com login (reutiliza o Chrome local) | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Controlar o desktop (macOS / Windows / Linux) | ✅ Grátis | Construído e executado localmente, só precisa de autorização do SO; conta Apple Developer de \$99/ano **opcional** para autorização persistente assinada (também funciona sem assinar — basta autorizar de novo a cada vez) |
@@ -122,9 +122,9 @@ Agrupado por **o que você quer fazer**, não pelo nome da ferramenta. Cada item
 
 > Você: "Pesquise por X" → resultados estruturados de busca
 
-Usa a Zhipu por padrão (forte em chinês); você pode adicionar Brave e Bing para múltiplas fontes. **Se uma fonte qualquer for limitada por taxa ou estiver fora do ar, ele alterna automaticamente para a próxima — você nem percebe.** Esgotar a cota grátis de um provedor não derruba o conjunto.
+Usa a Zhipu por padrão (forte em chinês); você pode adicionar a Brave como segunda fonte (o upstream do Bing já foi desligado; a chave de configuração continua valendo, mas é pulada automaticamente). **Se uma fonte qualquer for limitada por taxa ou estiver fora do ar, ele alterna automaticamente para a próxima — você nem percebe.** Esgotar a cota grátis de um provedor não derruba o conjunto.
 
-Para conteúdo **de atualidade — notícias, movimentos de versão**, basta dizer "pesquise o X da última semana / do último mês" — o filtro de temporalidade se aplica automaticamente (day / week / month / year, em todos os motores — só o Bing não tem granularidade de "ano" e a ignora, v1.11), sem escrever datas à mão na query.
+Para conteúdo **de atualidade — notícias, movimentos de versão**, basta dizer "pesquise o X da última semana / do último mês" — o filtro de temporalidade se aplica automaticamente (day / week / month / year, v1.11), sem escrever datas à mão na query.
 
 ### Extrair Páginas Públicas (sem login)
 
@@ -228,7 +228,7 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só essa linha
 |---|---|
 | Extrair páginas públicas / screenshots / PDF / ver rastreadores / bytes brutos / controlar desktop | **Nada** |
 | Buscar | Uma key da Zhipu (grátis para solicitar; se a máquina já tem o MCP da Zhipu, nem isso) |
-| Busca quase sem falhas | Adicionar keys da Brave / Bing (ambas com planos grátis) |
+| Busca quase sem falhas | Adicionar uma key da Brave (plano pago com \$5/mês de crédito; sem configurar também há fallback de busca real gratuito) |
 | Extrair páginas com login | Executar `lasso launch-chrome` uma vez |
 | Controlar o desktop do macOS | Executar `lasso doctor` uma vez para autorizar |
 | Extrair sites com Cloudflare | Interruptor master + Steel (auto-hospedado grátis) / browserbase (pago) |
@@ -249,7 +249,7 @@ lasso config init        # cria ~/.lasso/config.json
 { "ZHIPU_API_KEY": "your_zhipu_key" }
 ```
 
-Salve e já vale. **Quer mais robustez**: adicione Brave e Bing (ambas têm planos grátis; se uma cair, alterna automaticamente — você nem percebe; várias keys separadas por vírgula = N× a cota com rotação automática):
+Salve e já vale. **Quer mais robustez**: adicione também a Brave (plano pago com \$5/mês de crédito ≈ 1000 consultas; exige cartão de crédito — o plano grátis acabou a partir de 2026-02; com qualquer um configurado, se um cair alterna automaticamente para o próximo; várias keys separadas por vírgula, cada uma com sua cota):
 
 ```json
 {
@@ -259,7 +259,7 @@ Salve e já vale. **Quer mais robustez**: adicione Brave e Bing (ambas têm plan
 }
 ```
 
-> Ordem de fallback: reuso do MCP da máquina → Zhipu → Brave → Bing → fallback `browse_headless`. O primeiro que falha passa para o próximo.
+> Ordem de fallback: reuso do MCP da máquina → Zhipu → Brave → (Bing desligado, pulado automaticamente) → fallback de busca real no navegador headless. O primeiro que falha passa para o próximo.
 
 Como solicitar keys, cotas dos planos grátis → [Guia de Configuração de Keys · Busca](./doc/KEY-GUIDE.md#a-搜索). Comandos úteis: `lasso --version` / `lasso --help` (desde a v1.8, comando desconhecido imprime o uso e sai com código não zero — não trava mais em silêncio).
 
@@ -364,7 +364,7 @@ Seus dados são seus.
 | Controle do desktop no macOS não funciona | Marque `lasso-rust-helper` em "System Settings → Privacy & Security → Accessibility / Screen Recording" (o `lasso doctor` te guia) |
 | Extração de página com login falha | Faça login uma vez manualmente no seu Chrome local (resolva o 2FA também), depois diga "abra meu X logado" |
 | Salvar como PDF falha | Diga "tire um screenshot de página inteira desta página" no lugar |
-| Busca insiste em não retornar nada | Verifique se a key expirou / a cota se esgotou; adicionar vários provedores (Zhipu + Brave + Bing) reduz drasticamente a taxa de falha |
+| Busca insiste em não retornar nada | Verifique se a key expirou / a cota se esgotou; adicionar vários provedores (Zhipu + Brave) reduz drasticamente a taxa de falha |
 | Um link não abre | Diga "este link está morto, ache um archive" para consultar a Internet Archive |
 | Aviso de que acesso à rede interna foi bloqueado | Confira a URL; redes proxy TUN são permitidas por padrão, outras redes internas precisam de permissão explícita |
 | Quer verificar a antidetecção | Rode `lasso doctor --stealth-check` — ele dirige a página de detecção creepjs e compara com a baseline (opcional, não afeta o uso diário) |
