@@ -3,8 +3,9 @@
  *
  * 真源（优先级低→高）：
  *   1. config 文件 ~/.lasso/config.json（v1.3 新增；扁平 JSON，key 名同 env；user-friendly 默认层）
- *   2. env (ZHIPU_API_KEY / BRAVE_API_KEYS / BING_API_KEYS / LASSO_CDP_PORT /
- *           LASSO_CACHE_DIR / LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*) —— 覆盖 config 文件（向后兼容）
+ *   2. env (ZHIPU_API_KEY / BRAVE_API_KEYS / LASSO_CDP_PORT / LASSO_CACHE_DIR /
+ *           LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*；BING_API_KEYS 容忍读但已退役不消费——见
+ *           底部 v1.15 Phase A 注） —— 覆盖 config 文件（向后兼容）
  *
  * v1.3 Phase A（本提交）：config 文件机制落地。
  *   - DONE v1.3：读 ~/.lasso/config.json 扁平 JSON（LASSO_CONFIG_PATH 可覆盖路径）；
@@ -20,20 +21,17 @@
  *  - ProviderRegistry 装配（CapabilityBag 自动生成）
  *  - searchCacheDir（~/.cache/lasso/search-cache/，F3.1.4 cache 落盘根）
  *
- * v0.9 Phase B 新增（parse10 §3 + §1 决策 6 + INV-54）：
- *  - BING_API_KEYS / BING_API_KEY CSV 多 Key 解析 → conditionally add BING provider
- *  - **零回归承诺**：BING_API_KEYS 未配 → keys=[] → BING provider 不进 providers map
- *    → ProviderRegistry byCap("search") 不含 bing → 行为完全等价 v0.8。
- *  - 配 BING_API_KEYS → SEARCH_FALLBACK_PROVIDERS[0] (BING) 加进 providers map；
- *    ProviderRegistry 构造时 keys.length>0 → 创建 QuotaLedger → byCap("search") 含 bing。
- *  - BING 不进 BUILTIN_PROVIDERS（parse10 §3.1 + providers.ts 注释），保 v0.8 测试断言
- *    「byCap("search") 不含 bing」在 BING_API_KEYS 未配时仍绿。
+ * v1.15 Phase A（Bing 死层清除）：
+ *  - BING_API_KEYS / BING_API_KEY env / config 文件键**容忍读但不消费**（静默忽略）：
+ *    Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，2026-08-17 核实），
+ *    bing provider 永不注册进 providers map（存量用户 config 不炸；doctor #11c
+ *    bing_keys_retired 检测到非空键 → warn 建议删除）。INV-54 墓碑守卫防回潮。
  */
 import * as os from "node:os";
 import * as path from "node:path";
 import { readFileSync } from "node:fs";
 import type { FreeTierLevel, ProviderConfig } from "../types.js";
-import { BUILTIN_PROVIDERS, SEARCH_FALLBACK_PROVIDERS } from "./providers.js";
+import { BUILTIN_PROVIDERS } from "./providers.js";
 import { ProviderRegistry } from "./provider-registry.js";
 import { logger } from "../util/logger.js";
 
@@ -348,24 +346,9 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     if (brave) brave.keys = braveKeys;
   }
 
-  // v0.9 Phase B 新增（parse10 §3 + §1 决策 6 + INV-54）：Bing 多 Key CSV
-  // BING_API_KEYS="key1,key2" 优先；兼容单值 BING_API_KEY。
-  // **零回归守**：keys=[] 时**不**把 BING 加进 providers map（让 ProviderRegistry
-  //   byCap("search") 不含 bing，行为完全等价 v0.8）。
-  // BING 来自 SEARCH_FALLBACK_PROVIDERS[0]（providers.ts 单独导出，不进 BUILTIN_PROVIDERS）。
-  const bingKeysCsv = env.BING_API_KEYS ?? env.BING_API_KEY ?? "";
-  const bingKeys = bingKeysCsv
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (bingKeys.length > 0) {
-    // 浅拷贝 SEARCH_FALLBACK_PROVIDERS[0] (BING) 避免污染模块级常量
-    const bingConfig: ProviderConfig = {
-      ...SEARCH_FALLBACK_PROVIDERS[0]!,
-      keys: bingKeys,
-    };
-    providers.set("bing", bingConfig);
-  }
+  // v1.15 Phase A（Bing 死层清除）：BING_API_KEYS / BING_API_KEY 键容忍但**不注册**
+  // bing provider（Bing Search APIs 2025-08-11 全量退役；静默忽略存量配置，
+  // doctor #11c bing_keys_retired 提示删除；INV-54 墓碑守卫禁 providers.set("bing")）。
 
   const zhipuEndpoint =
     env.ZHIPU_ENDPOINT ?? providers.get("zhipu")?.endpoint_url ?? "";

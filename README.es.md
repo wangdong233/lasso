@@ -122,7 +122,7 @@ Agrupado por **lo que quieres hacer**, no por nombre de herramienta. Cada uno: u
 
 > Tú: "Busca X" → resultados estructurados de búsqueda
 
-Por defecto Zhipu (fuerte para chino); puedes añadir Brave además como multi-fuente (el upstream de Bing ya está cerrado; la clave de configuración se conserva y se salta automáticamente). **Si una fuente está con rate-limit o caída, cambia automáticamente a la siguiente — no te enteras.** Agotar la cuota gratis de un proveedor no rompe todo el conjunto.
+Por defecto Zhipu (fuerte para chino); puedes añadir Brave además como multi-fuente (el upstream de Bing ya está cerrado y su capa muerta eliminada; la clave de configuración se tolera pero se ignora silenciosamente). **Si una fuente está con rate-limit o caída, cambia automáticamente a la siguiente — no te enteras.** Agotar la cuota gratis de un proveedor no rompe todo el conjunto.
 
 Para contenido sensible al tiempo como **noticias y seguimiento de versiones**, di directamente "busca X de la última semana / del último mes" — el filtro de frescura (day / week / month / year, v1.11) se aplica automáticamente, sin fechas escritas a mano en la consulta.
 
@@ -194,7 +194,7 @@ Acude al Internet Archive (Wayback Machine) para encontrar la última copia arch
 
 ## Instalar
 
-**Versión actual v1.14.0** (changelog en el bloque plegado al final de esta sección).
+**Versión actual v1.15.0** (changelog en el bloque plegado al final de esta sección).
 
 Requisitos previos: Node.js ≥ 20 + Claude Code (o cualquier cliente compatible con MCP).
 
@@ -207,7 +207,9 @@ Reinicia Claude Code → `/mcp` → `lasso ✓ Connected`. **Solo esta línea, s
 **Usuarios de macOS que quieren controlar el escritorio**: ejecuta `lasso doctor` una vez y marca `lasso-rust-helper` en "Accessibility" y "Screen Recording" siguiendo las indicaciones — `doctor` te guía paso a paso.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.14 — despliega para ver qué cambió en cada versión)</summary>
+<summary>📋 Changelog (v1.8 → v1.15 — despliega para ver qué cambió en cada versión)</summary>
+
+- **v1.15**: capa muerta de Bing eliminada por completo (Bing Search APIs retirado por completo el 2025-08-11 — código borrado, no solo documentado; un `BING_API_KEYS` residual se ignora silenciosamente y `lasso doctor` sugiere eliminarlo) + **sonda rápida de HTTP puro** antes del navegador headless (si todas las capas de API caen, primero se descarga la página de resultados sin navegador en ~1s; solo si sale vacía arranca la ruta lenta — prueba real: 20 resultados en 1,9s frente a 5,3s de la ruta headless con captcha y cero resultados; las páginas de bloqueo blando como el captcha/portada de Baidu nunca falsifican éxito y escalan al navegador).
 
 - **v1.14**: deuda de hechos operativos de búsqueda saldada (libro de cuotas de Brave alineado al crédito mensual de $5 ≈1000 consultas/mes; `free_only=L2` ya no enruta el Brave medido como nivel gratuito; cuota de Bing a cero) + fallback inglés sin key de doble motor (fallo/vacío de DDG cascada a un intento Brave SERP); `lasso doctor --deep` (sonda de nivel de plan de Brave, consume 1 unidad de cuota) + aviso estático de retiro de Bing; sistema de fechado de frescura en KEY-GUIDE (cada afirmación de key lleva fecha de "última verificación" y disparador de reverificación a 90 días).
 - **v1.13**: huella de idioma consistente en el navegador headless (el HTTP `Accept-Language` se emite con el perfil; eliminada la contradicción "cabecera zh-CN ↔ página en-US"); corregido el punto de aterrizaje del VLM en capturas por región; `desktop find` rechaza consultas de solo ref; liberación de sesiones Steel con tope de 3 segundos (Steel colgado ya no bloquea la salida 5 minutos).
@@ -255,12 +257,11 @@ Al guardar surte efecto. **¿Más estabilidad?** Añade también Brave (plan de 
 ```json
 {
   "ZHIPU_API_KEY": "your_zhipu_key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2",
-  "BING_API_KEYS": "bingkey1"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2"
 }
 ```
 
-> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → (Bing cerrado, se salta automáticamente) → búsqueda real en el navegador headless como remate (v1.14: fallback inglés de doble motor — un fallo o vacío de DDG reintenta automáticamente una vez con búsqueda real de Brave). Si falla el anterior, pasa automáticamente al siguiente.
+> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → búsqueda real en el navegador headless como remate (v1.14: fallback inglés de doble motor — un fallo o vacío de DDG reintenta automáticamente una vez con búsqueda real de Brave; v1.15 añade antes una **sonda rápida de HTTP puro** (~1s, descarga la página de resultados sin ningún navegador — en pruebas reales algunos motores desconfían menos de clientes sin navegador); solo si no encuentra nada arranca la ruta lenta del navegador). Si falla el anterior, pasa automáticamente al siguiente. (La fuente Bing se eliminó por completo tras el retiro del upstream el 2025-08-11; un `BING_API_KEYS` residual se ignora silenciosamente y `lasso doctor` sugiere eliminarlo.)
 
 Cómo solicitar keys, cuánta cuota gratis hay → [Guía de configuración de keys · Búsqueda](./doc/KEY-GUIDE.md#a-搜索). Comandos habituales: `lasso --version` / `lasso --help` (desde v1.8, los comandos desconocidos imprimen el uso y terminan con código distinto de cero, en vez de colgarse en silencio).
 

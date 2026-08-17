@@ -1,15 +1,19 @@
 /**
- * engine="fallback_chain" 集成测（parse10 §3 + §5 + §6 V1-V4 CI 验收）。
+ * engine="fallback_chain" 集成测（parse10 §3 + §5 + §6 V1-V4 CI 验收；
+ * v1.15 Phase A 修订：Bing 死层清除后链 = machine_mcp → zhipu → brave → browse_headless；
+ * v1.15 Phase B 修订：browse_headless 之前插入 serp_http 裸 HTTP 快探层（parse22），
+ * 链 = machine_mcp → zhipu → brave → serp_http → browse_headless → recording_replay）。
  *
  * 守护要点（parse10 §1 决策 4 + §3.2 + §3.4 + §1 边界表 7 场景）：
  *  1. **零回归**：engine="auto" 默认路径 byte-identical v0.8（不进 fallback_chain 分支）。
  *  2. **plan 构造器**：FallbackChain 构造 plan 后交 FallbackDecider.runWithFallback 执行
  *     （INV-55 单一 fallback 引擎；本测试 grep 验 runFallbackChain 内不循环）。
- *  3. **三层降级**：zhipu unknown → brave unknown → bing unknown → browse_headless。
- *     每档单独验（不一次性把三档都 unknown，便于排查哪档熔断逻辑出错）。
- *  4. **全源熔断 + replay 兜底**：三源 + browse_headless 全失败 + recordingStore 命中
+ *  3. **降级链**：zhipu unknown → brave unknown → browse_headless。
+ *     每档单独验（不一次性把各档都 unknown，便于排查哪档熔断逻辑出错）。
+ *  4. **全源熔断 + replay 兜底**：两源 + browse_headless 全失败 + recordingStore 命中
  *     → served_by="recording_replay"；未命中 → tri-state didnt（诚实不伪造）。
- *  5. **Bing key=[] 时跳过**：bing 不注入 → fallback_chain 仍走 zhipu → brave → browse_headless。
+ *  5. **INV-54 墓碑守卫**：runFallbackChainEngine 已无 bing 参数——装配层永不出
+ *     bing channel（Bing Search APIs 2025-08-11 全量退役，死层清除）。
  *  6. **INV-57 录制默认 OFF**：未注入 recordingStore 时全源熔断返 didnt 不 replay。
  *
  * 测试策略：与 fallback.spec.ts 同范式 ——
@@ -32,16 +36,14 @@ import {
   runFallbackChainEngine,
 } from "../../src/tools/search.js";
 import type {
-  BingChannel,
-  BingOpts,
-} from "../../src/channels/BingChannel.js";
-import type {
   BraveChannel,
   BraveOpts,
 } from "../../src/channels/BraveChannel.js";
 import type { SearchChannel } from "../../src/channels/SearchChannel.js";
 import type { BrowseResult, InteractResult, SearchResult } from "../../src/types.js";
 import type { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
+// v1.15 Phase B（parse22 §5.2）：serp_http 快探层链序断言
+import type { HttpSerpExec } from "../../src/serp/http-serp.js";
 
 // ============================================================
 // stub channel factories
@@ -72,19 +74,6 @@ function makeStubBrave(impl: {
     status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
     healthCheck: vi.fn(async () => "healthy" as const),
   } as unknown as BraveChannel;
-}
-
-function makeStubBing(impl: {
-  search: (q: string, opts: BingOpts) => Promise<InteractResult<SearchResult>>;
-  isAvailable: () => Promise<boolean>;
-}): BingChannel {
-  return {
-    name: "search.bing",
-    search: vi.fn(impl.search),
-    isAvailable: vi.fn(impl.isAvailable),
-    status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
-    healthCheck: vi.fn(async () => "healthy" as const),
-  } as unknown as BingChannel;
 }
 
 function makeStubHeadless(impl: {
@@ -163,7 +152,7 @@ afterEach(async () => {
 // ============================================================
 // runFallbackChainEngine 直调测（不经 MCP server.tool 装配）
 // ============================================================
-describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
+describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
   it("V1：zhipu worked → 直接返回 served_by=search.zhipu + fallback_used=false", async () => {
     const search = makeStubSearch({
       search: vi.fn(async () => workedSearch("search.zhipu")),
@@ -171,12 +160,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     const brave = makeStubBrave({
       search: vi.fn(async () => {
         throw new Error("brave should not be called when zhipu works");
-      }),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => {
-        throw new Error("bing should not be called when zhipu works");
       }),
       isAvailable: async () => true,
     });
@@ -190,7 +173,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -213,13 +195,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       recordingStore,
       /* braveAllowedByFreeTier */ true,
       /* zhipuAllowedByFreeTier */ true,
-      /* allowedSearchProviders */ null,
     );
 
     expect(result.outcome).toBe("worked");
@@ -228,7 +208,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     expect(result.data).not.toBeNull();
     expect(result.data!.results).toHaveLength(2);
     expect(brave.search).not.toHaveBeenCalled();
-    expect(bing.search).not.toHaveBeenCalled();
   });
 
   it("V2：zhipu unknown → brave worked（fallback_used=true + served_by=search.brave）", async () => {
@@ -237,12 +216,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => workedSearch("search.brave")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => {
-        throw new Error("bing should not be called when brave works");
-      }),
       isAvailable: async () => true,
     });
     const headless = makeStubHeadless({
@@ -255,7 +228,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -277,13 +249,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       null,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("worked");
@@ -294,82 +264,14 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       "search.zhipu",
       "search.brave",
     ]);
-    expect(bing.search).not.toHaveBeenCalled();
   });
 
-  it("V3：zhipu + brave 全 unknown → bing worked（fallback_used=true + served_by=search.bing）", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "HTTP 429")),
-    });
-    const brave = makeStubBrave({
-      search: vi.fn(async () => unknownSearch("search.brave", "HTTP 429")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => workedSearch("search.bing")),
-      isAvailable: async () => true,
-    });
-    const headless = makeStubHeadless({
-      browse: vi.fn(async () => {
-        throw new Error("browse_headless should not be called when bing works");
-      }),
-    });
-
-    const decider = new FallbackDecider(
-      new Map([
-        ["search.zhipu", new CircuitBreaker()],
-        ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
-        ["browse_headless", new CircuitBreaker()],
-      ]),
-    );
-
-    const browseHeadlessExec = async (url: string) => {
-      const r = await headless.browse(url, "snapshot", {});
-      return {
-        outcome: r.outcome,
-        data: r.data ? { preview: r.data.preview } : null,
-        error: r.error,
-      };
-    };
-
-    const result = await runFallbackChainEngine(
-      "test query",
-      10,
-      "cn",
-      false,
-      /* freshness (v1.11 T6) */ undefined,
-      search,
-      brave,
-      bing,
-      browseHeadlessExec,
-      decider,
-      null,
-      true,
-      true,
-      null,
-    );
-
-    expect(result.outcome).toBe("worked");
-    expect(result.served_by).toBe("search.bing");
-    expect(result.fallback_used).toBe(true);
-    expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
-      "search.brave",
-      "search.bing",
-    ]);
-  });
-
-  it("V4a：zhipu + brave + bing 全 unknown → browse_headless SERP scrape 兜底 worked", async () => {
+  it("V3：zhipu + brave 全 unknown → browse_headless SERP scrape 兜底 worked", async () => {
     const search = makeStubSearch({
       search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => unknownSearch("search.bing", "429")),
       isAvailable: async () => true,
     });
     // browse_headless SERP scrape 抽到 URL（serpScrapeFallback 走 SERP 抽取路径）
@@ -394,7 +296,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -416,13 +317,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       null,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("worked");
@@ -431,18 +330,18 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     // v1.11 T9：CJK query → baidu 兜底（英文 query 走 ddg——见 serp-ddg.spec.ts）
     expect(result.data!.engine).toBe("baidu_serp");
     expect(result.data!.results.length).toBeGreaterThan(0);
+    // v1.15 Phase A（INV-54 墓碑守卫）：审计链无 search.bing 档（死层清除）
+    expect(
+      result.actions_and_results!.map((a) => a.channel),
+    ).toEqual(["search.zhipu", "search.brave", "browse_headless"]);
   });
 
-  it("V4b：全源 + browse_headless 全熔断 + 无 recordingStore → tri-state didnt（诚实不伪造）", async () => {
+  it("V4a：全源 + browse_headless 全熔断 + 无 recordingStore → tri-state didnt（诚实不伪造）", async () => {
     const search = makeStubSearch({
       search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => unknownSearch("search.bing", "429")),
       isAvailable: async () => true,
     });
     // browse_headless 也返 unknown（SERP 抽不到 URL）
@@ -461,7 +360,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -484,29 +382,26 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       null,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("didnt");
     expect(result.retrieval_method).toBe("fallback_exhausted");
     expect(result.data).toBeNull();
     expect(result.served_by).toBe("browse_headless");
-    // 审计链完整（4 channel 都试过）
+    // 审计链完整（3 channel 都试过：zhipu → brave → browse_headless）
     expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
       "search.zhipu",
       "search.brave",
-      "search.bing",
       "browse_headless",
     ]);
   });
 
-  it("V4c：全源熔断 + recordingStore 命中过去录制的 fixture → served_by=recording_replay", async () => {
+  it("V4b：全源熔断 + recordingStore 命中过去录制的 fixture → served_by=recording_replay", async () => {
     // 先准备一个过去录制的 fixture（直接调 RecordingStore.save 模拟过去某次成功录制）
     const recordingStore = new RecordingStore(recordingsDir);
     const pastResult = workedSearch("search.brave");
@@ -524,10 +419,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
       isAvailable: async () => true,
     });
-    const bing = makeStubBing({
-      search: vi.fn(async () => unknownSearch("search.bing", "429")),
-      isAvailable: async () => true,
-    });
     const headless = makeStubHeadless({
       browse: vi.fn(async () => ({
         outcome: "unknown" as const,
@@ -543,7 +434,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -565,13 +455,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
       true,
-      null,
     );
 
     // 命中 replay：outcome=worked + served_by=recording_replay
@@ -582,10 +470,10 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     expect(result.data).not.toBeNull();
     expect(result.data!.results).toHaveLength(2);
     // 审计链保留原 fallback 全源熔断链（让 caller 看到实际所有 source 都失败了）
-    expect(result.actions_and_results!.length).toBeGreaterThanOrEqual(4);
+    expect(result.actions_and_results!.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("V4d：全源熔断 + recordingStore 注入但**未**命中 fixture → 仍返 didnt（不伪造）", async () => {
+  it("V4c：全源熔断 + recordingStore 注入但**未**命中 fixture → 仍返 didnt（不伪造）", async () => {
     const recordingStore = new RecordingStore(recordingsDir);
     // 故意不录任何 fixture
 
@@ -594,10 +482,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => unknownSearch("search.bing", "429")),
       isAvailable: async () => true,
     });
     const headless = makeStubHeadless({
@@ -615,7 +499,6 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -637,13 +520,11 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("didnt");
@@ -653,77 +534,15 @@ describe("runFallbackChainEngine —— plan 构造 + 三层降级", () => {
 });
 
 // ============================================================
-// Bing key=[] 跳过 + free_only 过滤
+// free_only 过滤（v1.15 Phase A：Bing key=[] 跳过场景已随死层清除删除）
 // ============================================================
-describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤", () => {
-  it("bing=null → fallback_chain 仍走 zhipu → brave → browse_headless（不调 bing）", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
-    });
-    const brave = makeStubBrave({
-      search: vi.fn(async () => workedSearch("search.brave")),
-      isAvailable: async () => true,
-    });
-    const headless = makeStubHeadless({
-      browse: vi.fn(async () => {
-        throw new Error("browse_headless not reached when brave works");
-      }),
-    });
-
-    const decider = new FallbackDecider(
-      new Map([
-        ["search.zhipu", new CircuitBreaker()],
-        ["search.brave", new CircuitBreaker()],
-        ["browse_headless", new CircuitBreaker()],
-      ]),
-    );
-
-    const browseHeadlessExec = async (url: string) => {
-      const r = await headless.browse(url, "snapshot", {});
-      return {
-        outcome: r.outcome,
-        data: r.data ? { preview: r.data.preview } : null,
-        error: r.error,
-      };
-    };
-
-    // bing=null（BING_API_KEYS 未配）；verify bing 兜底层不存在但 zhipu → brave 仍工作
-    const result = await runFallbackChainEngine(
-      "test query",
-      10,
-      "cn",
-      false,
-      /* freshness (v1.11 T6) */ undefined,
-      search,
-      brave,
-      /* bing */ null,
-      browseHeadlessExec,
-      decider,
-      null,
-      true,
-      true,
-      null,
-    );
-
-    expect(result.outcome).toBe("worked");
-    expect(result.served_by).toBe("search.brave");
-    // 审计链不含 search.bing（bing=null 时被剔除）
-    expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
-      "search.brave",
-    ]);
-  });
-
+describe("engine=fallback_chain —— free_only 过滤", () => {
   it("free_only=L1 排除所有 search provider → channelOrder 仅含 browse_headless → 全源熔断返 didnt", async () => {
     const search = makeStubSearch({
       search: vi.fn(async () => workedSearch("search.zhipu")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => workedSearch("search.brave")),
-      isAvailable: async () => true,
-    });
-    const bing = makeStubBing({
-      search: vi.fn(async () => workedSearch("search.bing")),
       isAvailable: async () => true,
     });
     const headless = makeStubHeadless({
@@ -741,7 +560,6 @@ describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤"
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -755,8 +573,8 @@ describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤"
       };
     };
 
-    // 模拟 L1 过滤：所有 search provider 都不在允许集；allowedSearchProviders=[]
-    // → zhipu/brave/bing 全 false → channelOrder 仅含 browse_headless
+    // 模拟 L1 过滤：所有 search provider 都不在允许集
+    // → zhipu/brave 全 false → channelOrder 仅含 browse_headless
     const result = await runFallbackChainEngine(
       "test query",
       10,
@@ -765,21 +583,18 @@ describe("engine=fallback_chain —— Bing key=[] 时跳过 + free_only 过滤"
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       null,
       /* braveAllowed */ false,
       /* zhipuAllowed */ false,
-      /* allowedSearchProviders */ [],
     );
 
     // browse_headless 兜底也失败 → didnt
     expect(result.outcome).toBe("didnt");
-    // 三源 search 都未被调用（free_only 过滤掉）
+    // 两源 search 都未被调用（free_only 过滤掉）
     expect(search.search).not.toHaveBeenCalled();
     expect(brave.search).not.toHaveBeenCalled();
-    expect(bing.search).not.toHaveBeenCalled();
     // browse_headless 被调（cross_modal 兜底不受 free_only 影响）
     expect(headless.browse).toHaveBeenCalled();
   });
@@ -803,12 +618,6 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       }),
       isAvailable: async () => true,
     });
-    const bing = makeStubBing({
-      search: vi.fn(async () => {
-        throw new Error("bing not called");
-      }),
-      isAvailable: async () => true,
-    });
     const headless = makeStubHeadless({
       browse: vi.fn(async () => {
         throw new Error("not called");
@@ -819,7 +628,6 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -841,13 +649,11 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("worked");
@@ -874,12 +680,6 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       }),
       isAvailable: async () => true,
     });
-    const bing = makeStubBing({
-      search: vi.fn(async () => {
-        throw new Error("not called");
-      }),
-      isAvailable: async () => true,
-    });
     const headless = makeStubHeadless({
       browse: vi.fn(async () => {
         throw new Error("not called");
@@ -890,7 +690,6 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       new Map([
         ["search.zhipu", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
-        ["search.bing", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -912,13 +711,11 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       /* freshness (v1.11 T6) */ undefined,
       search,
       brave,
-      bing,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
       true,
-      null,
     );
 
     expect(result.outcome).toBe("worked");
@@ -931,5 +728,201 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       "query not recorded",
     );
     expect(hasFile).toBe(false);
+  });
+});
+
+// ============================================================
+// v1.15 Phase B（parse22 §5.2）：serp_http 裸 HTTP 快探层链序
+// ============================================================
+describe("runFallbackChainEngine —— serp_http 快探层（browse_headless 之前）", () => {
+  /** httpSerp stub：worked（模拟裸 HTTP 探到结果）。 */
+  function httpSerpWorked(): { exec: HttpSerpExec; calls: string[] } {
+    const calls: string[] = [];
+    const exec: HttpSerpExec = async (query) => {
+      calls.push(query);
+      return {
+        outcome: "worked",
+        data: {
+          query,
+          results: [
+            {
+              title: "serp_http result 1",
+              url: "https://serp-http.test/r1",
+              snippet: "serp_http snippet 1",
+            },
+          ],
+          count: 1,
+          engine: "serp_http_ddg",
+          region: "us",
+        },
+        served_by: "serp_http:ddg",
+        fallback_used: true,
+        retrieval_method: "serp_http_ddg",
+      };
+    };
+    return { exec, calls };
+  }
+
+  /** httpSerp stub：unknown（模拟被挡/空/超时——escalation-safe error）。 */
+  function httpSerpUnknown(error = "serp_http_challenge"): HttpSerpExec {
+    return async (query) => ({
+      outcome: "unknown",
+      data: null,
+      served_by: "serp_http:ddg",
+      fallback_used: true,
+      retrieval_method: "serp_http_ddg",
+      error,
+    });
+  }
+
+  function makeChainFixtures(
+    headlessImpl: () => Promise<InteractResult<BrowseResult>>,
+  ) {
+    const search = makeStubSearch({
+      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    });
+    const brave = makeStubBrave({
+      search: vi.fn(async () => unknownSearch("search.brave", "429")),
+      isAvailable: async () => true,
+    });
+    const headless = makeStubHeadless({ browse: vi.fn(headlessImpl) });
+    const decider = new FallbackDecider(
+      new Map([
+        ["search.zhipu", new CircuitBreaker()],
+        ["search.brave", new CircuitBreaker()],
+        ["serp_http", new CircuitBreaker()],
+        ["browse_headless", new CircuitBreaker()],
+      ]),
+    );
+    const browseHeadlessExec = async (url: string) => {
+      const r = await headless.browse(url, "snapshot", {});
+      return {
+        outcome: r.outcome,
+        data: r.data ? { preview: r.data.preview } : null,
+        error: r.error,
+      };
+    };
+    return { search, brave, headless, decider, browseHeadlessExec };
+  }
+
+  it("PB-1：zhipu → brave 全 unknown → serp_http worked → browse_headless 不被调（快探短路）", async () => {
+    const fx = makeChainFixtures(async () => {
+      throw new Error("browse_headless should not be called when serp_http works");
+    });
+    const { exec, calls } = httpSerpWorked();
+
+    const result = await runFallbackChainEngine(
+      "test query",
+      10,
+      "cn",
+      false,
+      undefined,
+      fx.search,
+      fx.brave,
+      fx.browseHeadlessExec,
+      fx.decider,
+      null,
+      true,
+      true,
+      /* machineMcp */ null,
+      /* httpSerp (v1.15 Phase B) */ exec,
+    );
+
+    expect(result.outcome).toBe("worked");
+    expect(result.served_by).toBe("serp_http:ddg");
+    expect(calls).toEqual(["test query"]);
+    // 审计链：zhipu → brave → serp_http（browse_headless 未进链）
+    expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
+      "search.zhipu",
+      "search.brave",
+      "serp_http",
+    ]);
+  });
+
+  it("PB-2：serp_http unknown（被挡）→ browse_headless 被调且终态由慢路径服务；链序 serp_http 在 browse_headless 前", async () => {
+    const fx = makeChainFixtures(async () => ({
+      outcome: "worked" as const,
+      data: {
+        url: "https://html.duckduckgo.com/html/?q=test",
+        action: "snapshot",
+        preview:
+          "Result A https://example.com/slow-path deeper snippet\nResult B https://other.org/x",
+      } as unknown as BrowseResult,
+      served_by: "browse_headless",
+      fallback_used: true,
+      retrieval_method: "chrome_devtools_mcp",
+    }));
+
+    const result = await runFallbackChainEngine(
+      "test query",
+      10,
+      "cn",
+      false,
+      undefined,
+      fx.search,
+      fx.brave,
+      fx.browseHeadlessExec,
+      fx.decider,
+      null,
+      true,
+      true,
+      null,
+      httpSerpUnknown("serp_http_challenge"),
+    );
+
+    expect(result.outcome).toBe("worked");
+    expect(result.served_by).toBe("browse_headless");
+    // 链序断言：serp_http 条目存在且在 browse_headless 之前
+    const channels = result.actions_and_results!.map((a) => a.channel);
+    expect(channels).toEqual([
+      "search.zhipu",
+      "search.brave",
+      "serp_http",
+      "browse_headless",
+    ]);
+    expect(channels.indexOf("serp_http")).toBeLessThan(
+      channels.indexOf("browse_headless"),
+    );
+    // serp_http 的 unknown 条目带 escalation-safe error
+    const serpEntry = result.actions_and_results!.find((a) => a.channel === "serp_http");
+    expect(serpEntry?.error).toBe("serp_http_challenge");
+  });
+
+  it("PB-3（零回归）：httpSerp 未注入（缺省 null）→ channelOrder 不含 serp_http，直达 browse_headless", async () => {
+    const fx = makeChainFixtures(async () => ({
+      outcome: "worked" as const,
+      data: {
+        url: "https://html.duckduckgo.com/html/?q=test",
+        action: "snapshot",
+        preview: "Result A https://example.com/direct",
+      } as unknown as BrowseResult,
+      served_by: "browse_headless",
+      fallback_used: true,
+      retrieval_method: "chrome_devtools_mcp",
+    }));
+
+    const result = await runFallbackChainEngine(
+      "test query",
+      10,
+      "cn",
+      false,
+      undefined,
+      fx.search,
+      fx.brave,
+      fx.browseHeadlessExec,
+      fx.decider,
+      null,
+      true,
+      true,
+      // 不传 httpSerp（缺省 null）——Phase A 基线行为 byte-identical
+    );
+
+    expect(result.outcome).toBe("worked");
+    expect(result.served_by).toBe("browse_headless");
+    expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
+      "search.zhipu",
+      "search.brave",
+      "browse_headless",
+    ]);
   });
 });

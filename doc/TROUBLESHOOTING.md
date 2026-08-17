@@ -71,7 +71,7 @@ lasso doctor
 
 ### 2.5 `recording_replay_miss`
 
-**症状**：`search` 全源熔断（智谱 / Brave / Bing / Wayback 都失败），返 `outcome=didnt` + `error_kind="recording_replay_miss"`。
+**症状**：`search` 全源熔断（智谱 / Brave / 兜底实搜都失败），返 `outcome=didnt` + `error_kind="recording_replay_miss"`。
 
 **根因**：所有上游 search 引擎都失败（如配额耗尽 / 网络），且本地无录制基线可兜底。
 
@@ -212,7 +212,7 @@ CI 基线（签入仓库）在 `fixtures/serp-baseline/`；运行时录制（用
 ### Q7：search 引擎配额耗尽怎么办？
 
 Lasso 自动 fallback 到下一源：
-- 智谱耗尽 → Brave → Bing → Wayback → RecordingStore replay
+- 智谱耗尽 → Brave → browse_headless 实搜兜底 → RecordingStore replay（Bing 源已移除：上游 2025-08-11 退役）
 - 全源耗尽 → `recording_replay_miss`（见 [§2.5](#25-recording_replay_miss)）
 
 配额监控经 `QuotaLedger`（INV-10 守：Brave 必经 ledger，不裸读 env）。可 `admin({action:"channel_health"})` 看各源剩余配额。

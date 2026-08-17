@@ -9,7 +9,8 @@
  *                     + parse6 §1.5 v0.5 M0.5a 加 INV-31/32 fetch_url SSRF + 连接池守门）
  *                     + parse6 §1.5 v0.5 M0.5b 加 INV-33/34 pdf/console/network actionDispatch + 二进制 envelope）
  *                     + parse9 §2.2 v0.8 加 INV-48..53 cookie AES-256-GCM 隐私红线）
- *                     + parse10 §1 v0.9 Phase A 加 INV-54..59 search 兜底层增量 + Bing 第三源 + wayback 独立 tool）
+ *                     + parse10 §1 v0.9 Phase A 加 INV-54..59 search 兜底层增量 + wayback 独立 tool；
+ *                     v1.15 Phase A 改写 INV-54 为「Bing 死层清除墓碑守卫」（Bing Search APIs 2025-08-11 全量退役））
  *                     + parse11 §3.1 + §7.2 Phase A v1.0 加 INV-60 AxBackendFactory 单一真源（跨平台 desktop）
  *                     + parse11 §3.1 + §7.2 Phase B v1.0 加 INV-61 OutlineMapper 三平台共享（INV-21 衍生）
  *                     + parse11 §3.2 + §3.3 + §7.2 Phase C/D v1.0 加 INV-62 录制源禁 logged_in（cookie=身份红线）
@@ -1866,59 +1867,79 @@ const assertions = [
   // v0.9 Phase A 新增（parse10 §1 + §3.x + §5 —— INV-54..59 search 兜底层增量）
   // ============================================================
   // parse10 §1 关键设计决策钉死（守简单性 02 §5 R-CI-02 / §5.5 R-ABS-01）：
-  //  INV-54  BingChannel 必经 QuotaLedger（INV-10 衍生；grep BingChannel.ts 经 pickKey，禁直读 env）
+  //  INV-54  Bing 死层清除墓碑守卫（v1.15 Phase A 改写；原「BingChannel 必经 QuotaLedger」随死层删除作废）
   //  INV-55  fallback_chain 复用 FallbackDecider（INV-4 衍生；grep FallbackChain.ts 调 runWithFallback，禁自造串行循环）
   //  INV-56  wayback_lookup 经 doFetchUrl + ssrfGuard（INV-31 同源；grep wayback.ts 调 ssrfGuard + doFetchUrl）
   //  INV-57  录制回放必显式 opt-in（grep RecordingStore 检查 LASSO_RECORD_SEARCH env，默认 OFF）
   //  INV-58  禁自动探测死链（grep search 主路径无自动 wayback 调用；wayback 是独立 tool）
   //  INV-59  RecordingStore.save 异步不阻塞（grep saveIfRecording 非 async + 内部不 await）
   {
-    id: "INV-54-bing-keys-via-ledger",
-    desc: "v0.9 Phase A：BingChannel 禁直接读 process.env.BING_API_KEYS / BING_API_KEY，必须经 QuotaLedger（parse10 §3.1；INV-10 衍生 INV-54）",
+    id: "INV-54-bing-dead-layer-removed",
+    desc:
+      "v1.15 Phase A（改写，原「BingChannel 必经 QuotaLedger」随死层删除作废）：Bing Search APIs 已于 2025-08-11 全量退役" +
+      "（微软 lifecycle 公告，2026-08-17 核实）——死层彻底清除且禁回潮：channels/BingChannel.ts 不存在；" +
+      "src/ 全树无 BingChannel import、无 \"search.bing\" channel 字面量；FallbackChain DEFAULT_FALLBACK_ORDER " +
+      "不含 search.bing；providers.ts 无 BING ProviderConfig / SEARCH_FALLBACK_PROVIDERS；" +
+      "config.ts 不注册 bing provider（BING_API_KEYS 键容忍读但不消费，doctor #11c 提示退役）",
     check: () => {
+      // 必要条件 1：channels/BingChannel.ts 必须不存在（v1.15 前要求存在——语义反转为墓碑）
       const bing = SRC.find((s) =>
         /channels\/BingChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
-      if (!bing) return false; // v0.9 起必须存在
-      const code = bing.text;
+      if (bing) return false;
 
-      // 必要条件 1：禁直接读 process.env.BING_API_KEYS / BING_API_KEY
-      if (/process\.env\.BING_API_KEYS|process\.env\.BING_API_KEY/.test(code)) {
-        return false;
+      // 注：以下条件全部用 stripComments 后的**代码本体**匹配——墓碑注释
+      // （providers.ts / index.ts 等「已删」说明）合法保留字面量，不算回潮。
+
+      // 必要条件 2：src/ 全树禁 import BingChannel（防装配层回潮）
+      for (const s of SRC) {
+        if (
+          /from\s+["'][^"']*channels\/BingChannel(\.js)?["']/.test(
+            stripComments(s.text),
+          )
+        ) {
+          return false;
+        }
       }
 
-      // 必要条件 2：必须 import QuotaLedger 类型（与 BraveChannel 同范式）
-      if (!/from\s+["'][^"']*config\/quota-ledger(\.js)?["']/.test(code)) {
-        return false;
+      // 必要条件 3：src/ 全树禁出现 "search.bing" channel 字面量
+      //   （index.ts 装配 / search.ts channelOrder+executor / FallbackChain / descriptions 零残留；
+      //     doctor 的 bing_keys_retired 检查名与 serp replay-baseline 的 bing SERP engine
+      //     不含该字面量，不受影响）
+      for (const s of SRC) {
+        if (/["']search\.bing["']/.test(stripComments(s.text))) {
+          return false;
+        }
       }
 
-      // 必要条件 3：代码本体（去注释）必须调 ledger.pickKey()（INV-54 真落地）
-      const codeStripped = stripComments(code);
-      if (!/ledger\.pickKey\s*\(\s*\)/.test(codeStripped)) return false;
+      // 必要条件 4：FallbackChain.ts 必须存在且 DEFAULT_FALLBACK_ORDER 禁含 search.bing
+      const fc = SRC.find((s) =>
+        /search\/FallbackChain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fc) return false;
+      const fcCode = stripComments(fc.text);
+      const fallbackOrderBlock = fcCode.match(
+        /DEFAULT_FALLBACK_ORDER\s*:[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/["']search\.bing["']/.test(fallbackOrderBlock)) return false;
 
-      // 必要条件 4：429 路径必须调 ledger.markExhausted（与 BraveChannel 同范式）
-      if (!/ledger\.markExhausted\s*\(/.test(codeStripped)) return false;
-
-      // 必要条件 5：providers.ts 必须导出 BING ProviderConfig（INV-54 配套 schema）
-      //   grep `const BING: ProviderConfig` 字面量
+      // 必要条件 5：providers.ts 禁导出 BING ProviderConfig / SEARCH_FALLBACK_PROVIDERS
       const prov = SRC.find((s) =>
         /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
       if (!prov) return false;
-      if (!/const\s+BING\s*:\s*ProviderConfig/.test(prov.text)) return false;
+      const provCode = stripComments(prov.text);
+      if (/const\s+BING\s*:\s*ProviderConfig/.test(provCode)) return false;
+      if (/SEARCH_FALLBACK_PROVIDERS/.test(provCode)) return false;
 
-      // 必要条件 6：BING 必须单独导出，不进 BUILTIN_PROVIDERS（保零回归范式）
-      //   BUILTIN_PROVIDERS 数组字面量里禁出现 BING 标识符
-      const builtinBlock = prov.text.match(
-        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
-      )?.[1] ?? "";
-      if (/\bBING\b/.test(builtinBlock)) return false;
-
-      // 必要条件 7：BING 必须配 policy_risk（parse10 §3.1；watched）
-      const bingBlock = prov.text.match(
-        /const\s+BING\s*:\s*ProviderConfig\s*=\s*\{([\s\S]*?)\};/,
-      )?.[1] ?? "";
-      if (!/policy_risk\s*:/.test(bingBlock)) return false;
+      // 必要条件 6：config.ts 禁注册 bing provider（providers.set("bing", ...)）
+      const cfg = SRC.find((s) =>
+        /config\/config\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cfg) return false;
+      if (/providers\.set\(\s*["']bing["']/.test(stripComments(cfg.text))) {
+        return false;
+      }
 
       return true;
     },
@@ -1974,11 +1995,12 @@ const assertions = [
 
       // 必要条件 5：必须导出 DEFAULT_FALLBACK_ORDER 常量（parse10 §1 决策 6 + §3.2）
       if (!/export\s+const\s+DEFAULT_FALLBACK_ORDER\b/.test(code)) return false;
-      // DEFAULT_FALLBACK_ORDER 必须含 search.bing 字面量（v0.9 第三源）
+      // DEFAULT_FALLBACK_ORDER 禁含 search.bing 字面量
+      //   （v1.15 Phase A：Bing 死层清除——原「必须含」断言反转为墓碑守卫，与 INV-54 同源）
       const fallbackOrderBlock = code.match(
         /DEFAULT_FALLBACK_ORDER\s*:[^=]*=\s*\[([\s\S]*?)\]/,
       )?.[1] ?? "";
-      if (!/["']search\.bing["']/.test(fallbackOrderBlock)) return false;
+      if (/["']search\.bing["']/.test(fallbackOrderBlock)) return false;
 
       return true;
     },
@@ -2136,8 +2158,9 @@ const assertions = [
         if (/\bdoWaybackLookup\s*\(/.test(fcCode)) return false;
       }
 
-      // 必要条件 6：BingChannel.ts / BraveChannel.ts 不调 wayback（search 主路径的源层也不自动调）
-      for (const f of ["BingChannel", "BraveChannel"]) {
+      // 必要条件 6：BraveChannel.ts 不调 wayback（search 主路径的源层也不自动调）
+      //   （v1.15 Phase A：BingChannel.ts 已删除，从扫描列表移除）
+      for (const f of ["BraveChannel"]) {
         const ch = SRC.find((s) =>
           new RegExp(`channels/${f}\\.ts$`).test(s.f.replace(/\\/g, "/")),
         );

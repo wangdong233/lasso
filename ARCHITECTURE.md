@@ -53,7 +53,7 @@ Lasso 是 Claude Code 的**全交互**对外抓手 MCP（浏览器 + 桌面）�
 └──────────────────────────────┬─────────────────────────────────┘
        ┌───────────────────────┼───────────────────────┐
        ▼                       ▼                       ▼
- chrome-devtools-mcp      智谱/Brave/Bing/SERP      lasso-rust-helper
+ chrome-devtools-mcp      智谱/Brave/SERP 兜底       lasso-rust-helper
  @1.7.0（--headless /     兜底（search 多引擎        （macOS AXAPI +
  --browser-url / Steel    经 HTTP；machine_mcp      cgEvent；Windows UIA；
  CDP / --wsEndpoint）     复用打头）                 Linux AT-SPI）
@@ -237,7 +237,7 @@ Lasso 明确**不做**以下事情：
 CC → search("rust async 最新动态", freshness="week")
    → SearchChannel.run()
       → FallbackChain: machine_mcp（本机已配智谱 MCP 自动复用，最高优先）
-        → 智谱 → Brave → Bing
+        → 智谱 → Brave（Bing 源已随上游 2025-08-11 退役移除，v1.15 Phase A）
         → SERP 实搜兜底（query 语言分流：CJK→百度，非 CJK→DuckDuckGo 纯 HTML 端点，零 Key；
           DDG 跳转壳 uddg= 自动解包）
         → Wayback → RecordingStore replay
@@ -295,7 +295,7 @@ $ lasso launch-chrome
 | markdown 抽取 | src/browse/markdown-extractor.ts（defuddle 双激活 + turndown 降级保底） | — |
 | desktop 四档 | src/desktop/{AxProvider,AxBackend,AxBackendFactory,OutlineMapper,CGEventProvider,ScreenshotVlmProvider}.ts | AxProvider ~330 |
 | FallbackDecider | src/fallback/FallbackDecider.ts | ~280 |
-| 搜索 | src/search/{SearchCache,MultiSourceFanout}.ts；src/channels/{ZhipuChannel,BraveChannel,BingChannel}.ts；src/serp/extract.ts（DDG→Brave 级联/百度兜底，v1.14 S-4） | — |
+| 搜索 | src/search/{SearchCache,MultiSourceFanout}.ts；src/channels/{SearchChannel,BraveChannel}.ts（BingChannel 已删：Bing API 2025-08-11 退役，v1.15 Phase A 死层清除）；src/serp/extract.ts（DDG→Brave 级联/百度兜底，v1.14 S-4） | — |
 | Launcher | src/launcher/{launch-chrome,chrome-paths}.ts（INV-64 不引新 npm dep） | ~200 |
 | Doctor | src/doctor/doctor.ts（39 项 check；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / proxy_config） | ~2900 |
 | Invariants | src/invariants/check-invariants.mjs（79 条 INV） | ~4200 |

@@ -122,7 +122,7 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/KEY-GUIDE
 
 > 你：「搜一下 X」 → 结构化搜索结果
 
-默认走智谱（中文主力），可再配 Brave 做多源（Bing 上游已关停，配置键保留自动跳过）。**任一家临时限流或挂掉，自动切下一家，你无感**。某家免费额度用完也不影响整体。
+默认走智谱（中文主力），可再配 Brave 做多源（Bing 上游已关停且死层已移除，配置键保留但会被静默忽略）。**任一家临时限流或挂掉，自动切下一家，你无感**。某家免费额度用完也不影响整体。
 
 要查**新闻、版本动向**这类时效内容，直接说「搜最近一周 / 最近一个月的 X」——自动带时效过滤（day / week / month / year，v1.11），不用往查询词里手写日期。
 
@@ -194,7 +194,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.14.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.15.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -207,8 +207,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.14，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.15，点开看每版改了什么）</summary>
 
+- **v1.15**：Bing 死层彻底清除（Bing Search APIs 2025-08-11 全量退役——删代码非标注；历史 `BING_API_KEYS` 静默忽略、`lasso doctor` 提示删除）+ 无头浏览器之前新增**裸 HTTP 快探层**（API 层全挂时先用无浏览器直连抓一次搜索结果页，约 1 秒，探不到再启动无头浏览器慢路径；真机实测英文命中 20 条结果仅 1.9 秒，而无头浏览器路径 5.3 秒且被验证码挡成 0 条；百度验证码/首页壳等软挡页不伪造成功，自动升级浏览器复核）。
 - **v1.14**：搜索运营事实清偿（Brave 配额账本对齐 $5 赠送额度 ≈1000 次/月、`free_only=L2` 不再把计量计费的 Brave 当免费层；Bing 配额归零）+ 英文零 Key 兜底双引擎（DDG 失败/空结果自动级联 Brave 实搜）；`lasso doctor --deep`（Brave 计划级探测，消耗 1 次额度）+ Bing 退役静态提示；KEY-GUIDE 时效标注制度（每条 key 声明自带「最后核实」日期与 90 天重核触发）。
 - **v1.13**：无头浏览器语言指纹一致（HTTP `Accept-Language` 随档案下发，消除「头 zh-CN ↔ 页面 en-US」矛盾）；VLM 截图区域坐标落点修复；`desktop find` 拒绝纯 ref 查询；Steel 会话释放加 3 秒上界（Steel 停摆不再卡退出 5 分钟）。
 - **v1.12**：markdown 抽取双激活（defuddle 20 余站专用抽取器 + 表格/数学保真）；macOS 默认指纹与宿主系统对齐；桌面链尾诚实化（VLM 不谎报成功 / expect 需连续两次命中 / `truncated:true` 信号）；Electron 输入框 type 自动降级；拖拽插值变可用；CC 异常退出即时收尾。
@@ -255,12 +256,11 @@ lasso config init        # 创建 ~/.lasso/config.json
 ```json
 {
   "ZHIPU_API_KEY": "你的智谱key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2",
-  "BING_API_KEYS": "bingkey1"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2"
 }
 ```
 
-> 降级顺序：机器 MCP 复用 → 智谱 → Brave →（Bing 已关停自动跳过）→ 无头浏览器实搜兜底（v1.14 起英文兜底双引擎：DuckDuckGo 失败/空结果自动再试一次 Brave 实搜）。前一个挂了自动切下一个。
+> 降级顺序：机器 MCP 复用 → 智谱 → Brave → 无头浏览器实搜兜底（v1.14 起英文兜底双引擎：DuckDuckGo 失败/空结果自动再试一次 Brave 实搜；v1.15 起无头浏览器之前先加一层**裸 HTTP 快探**（约 1 秒，无浏览器直接抓搜索结果页——实测部分搜索引擎对「无浏览器」反而更不设防），探不到再启动无头浏览器慢路径）。前一个挂了自动切下一个。（Bing 源已随上游 2025-08-11 退役整层移除；历史配置里的 `BING_API_KEYS` 会被静默忽略，`lasso doctor` 会提示删除。）
 
 key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/KEY-GUIDE.md#a-搜索)。常用命令：`lasso --version` / `lasso --help`（v1.8 起未知命令打印用法非零退出，不再静默挂起）。
 

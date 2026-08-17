@@ -3,7 +3,8 @@
  *
  * 用户需求：零配置优先——如果机器已配过 web-search-prime MCP（CC 全局 ~/.claude.json），
  * Lasso 直接复用它的 Authorization Bearer key 先搜；额度不足/失败 → fallback 链自动
- * 降级到 search.zhipu（Lasso 自己 key）→ brave → bing → browse_headless。
+ * 降级到 search.zhipu（Lasso 自己 key）→ brave → browse_headless。
+ * （v1.15 Phase A：bing 档已死层清除——Bing Search APIs 2025-08-11 全量退役。）
  *
  * **安全红线（INV-72）**：
  *  - 只读 ~/.claude.json（永不写；永不 rename / unlink）

@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { loadConfig } from "../../src/config/config.js";
 import { ProviderRegistry } from "../../src/config/provider-registry.js";
-import { BUILTIN_PROVIDERS, BING } from "../../src/config/providers.js";
+import { BUILTIN_PROVIDERS } from "../../src/config/providers.js";
 import type { ProviderConfig } from "../../src/types.js";
 
 // ============================================================
@@ -225,7 +225,7 @@ describe("ProviderRegistry — 开闭（验收 #6）", () => {
 });
 
 // ============================================================
-// S-1（21-搜索方案重审）：运营事实回归锁 —— Brave/Bing 配额与层级
+// S-1（21-搜索方案重审）：运营事实回归锁 —— Brave 配额与层级 + Bing 死层清除
 // 防止「文档修了、运行时仍旧」的失实再次回归（d3d1b24 补全）。
 // ============================================================
 describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () => {
@@ -236,10 +236,21 @@ describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () =
     expect(brave!.free_tier_level).toBe("L4");
   });
 
-  it("BING：free_quota_per_month=0 且 L4（API 2025-08-11 全量退役）", () => {
-    // BING 不在 BUILTIN_PROVIDERS（SEARCH_FALLBACK_PROVIDERS 单独导出）
-    expect(BING.free_quota_per_month).toBe(0);
-    expect(BING.free_tier_level).toBe("L4");
+  it("BING 死层清除（v1.15 Phase A）：配 BING_API_KEYS → provider 永不注册（存量 config 不炸但静默忽略）", () => {
+    // Bing Search APIs 2025-08-11 全量退役——loadConfig 容忍读 BING_API_KEYS
+    // 但 providers 表不再注册 bing（doctor #11c bing_keys_retired 提示删除；INV-54 墓碑守卫）
+    const cfg = loadConfig({
+      runId: "s1-bing-dead-layer",
+      env: {
+        ...process.env,
+        ZHIPU_API_KEY: ZHIPU_KEY,
+        BING_API_KEYS: "dead-key-1,dead-key-2",
+      },
+    });
+    expect(cfg.registry.get("bing")).toBeUndefined();
+    expect(
+      cfg.registry.byCap("search").map((p) => p.config.name),
+    ).not.toContain("bing");
   });
 
   it("QuotaLedger 记账不高估：3 Key Brave 池 totalRemaining=3000（非旧 2000/Key）", () => {

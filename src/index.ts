@@ -43,8 +43,8 @@ import { SubprocessManager } from "./subprocess/SubprocessManager.js";
 import { RustBridge } from "./subprocess/RustBridge.js";
 import { SearchChannel } from "./channels/SearchChannel.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
-// v0.9 Phase B（parse10 §3.1）：BingChannel 第三源
-import { BingChannel } from "./channels/BingChannel.js";
+// v1.15 Phase A（Bing 死层清除）：BingChannel 第三源已删（Bing Search APIs
+// 2025-08-11 全量退役；INV-54 墓碑守卫禁回潮，见 providers.ts 墓碑说明）。
 // v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
 // 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时实例化；否则不注册保零回归
 import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
@@ -131,6 +131,9 @@ import { HitRateStats } from "./serp/HitRateStats.js";
 import { ChangeDetection } from "./serp/ChangeDetection.js";
 import { RecordingStore } from "./serp/RecordingStore.js";
 import { SerpHealthMonitor } from "./serp/SerpHealthMonitor.js";
+// v1.15 Phase B（parse22）：serp_http 裸 HTTP 快探层（browse_headless 之前 ~1s 探针）
+import { rawSerpSearch, SERP_HTTP_ALLOWED_HOSTS } from "./serp/http-serp.js";
+import type { HttpSerpExec } from "./serp/http-serp.js";
 // v0.8 M0.8 接线（parse9 §3 + §2.2 + §7.2 Phase B）—— logged_in 持久化层
 // 守 INV-48：cookie 落盘 AES-256-GCM（CookieStore 实装）
 // 守 INV-49：加密包文件 mode 0o600 + 目录 mode 0o700
@@ -180,10 +183,10 @@ const DEFAULT_RUST_HELPER_PATH =
  *   + ResourceMonitor + SerpHealthMonitor + admin 3 只读 action → 0.7.0-dev
  * v0.8（parse9 §1.1 + §6 验收）：logged_in 持久化层 —— cookie AES-256-GCM 落盘 +
  *   多 profile + tab LRU + admin 3 action（profile_list / profile_switch / cookie_restore）→ 0.8.0-dev
- * v0.9（parse10 §1.1 + §6 验收）：search ≈永不失败兜底层 —— BingChannel 第三源 +
- *   FallbackChain plan 构造器 + wayback_lookup 独立 tool + RecordingStore replay 最后兜底 +
+ * v0.9（parse10 §1.1 + §6 验收）：search ≈永不失败兜底层 —— FallbackChain plan 构造器
+ *   + wayback_lookup 独立 tool + RecordingStore replay 最后兜底 +
  *   engine="fallback_chain" 显式 opt-in（INV-54..59；engine="auto" 默认 byte-identical v0.8）
- *   → 0.9.0-dev
+ *   → 0.9.0-dev（v0.9 的 BingChannel 第三源已于 v1.15 Phase A 死层清除）
  * v1.0（parse11 §1.1 + §6 验收）：稳定发布 —— desktop 跨平台 AxBackend 契约（mac/Win UIA/Linux AT-SPI
  *   三平台同构 OutlineNode）+ 录制回放回归（replay-baseline）+ 跨平台 launcher（launch-chrome）+
  *   doctor #31/#32 + 文档完整化（README/ARCHITECTURE/TROUBLESHOOTING/SELECTOR-MAINTENANCE）+
@@ -204,7 +207,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.14.0";
+const LASSO_SERVER_VERSION = "1.15.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -496,31 +499,10 @@ async function runMcpServer(): Promise<void> {
   }
   const searchCache = new SearchCache(config.searchCacheDir);
 
-  // ----- v0.9 Phase B 装配 BingChannel（parse10 §3.1 + §1 决策 6 + INV-54）-----
-  // **零回归承诺**（parse10 §1 决策 6 + §4 未明点）：
-  //  - BING_API_KEYS 未配 → registry.get("bing") 返 undefined → bing 保持 undefined
-  //    → registerSearchTool 第 9 参传 undefined → engine="fallback_chain" 路径 bing 兜底层
-  //      不可用（仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链）。
-  //  - BING_API_KEYS 配 → BingChannel 实例化 + isAvailable 经 ledger.hasAvailableKey 判定；
-  //    engine="fallback_chain" 时 bing 作 search.bing 兜底层。
-  // Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，2026-08-17 核实）：
-  // key=[] 时 ProviderRegistry 已在 config.ts 跳过 bing（keys.length===0），
-  // 此处 braveProvider 的同范式判定也会跳过 —— 行为完全等价 v0.8。占位保留见 doc/21 R-5。
-  let bing: BingChannel | undefined;
-  const bingProvider = config.registry.get("bing");
-  if (bingProvider && bingProvider.config.endpoint_url && bingProvider.ledger) {
-    bing = new BingChannel(
-      bingProvider.config.endpoint_url,
-      bingProvider.ledger,
-      subproc.acquireHttpClient("https://api.bing.microsoft.com"),
-    );
-    logger.info({
-      evt: "bing_channel_wired",
-      keys: bingProvider.ledger.keyCount,
-    });
-  } else {
-    logger.info({ evt: "bing_channel_skipped", reason: "no_keys_or_endpoint" });
-  }
+  // v1.15 Phase A（Bing 死层清除）：v0.9 的 BingChannel 装配段已删（Bing Search APIs
+  // 2025-08-11 全量退役，微软 lifecycle 公告，2026-08-17 核实）。providers 表不再注册
+  // bing（config.ts 静默忽略 BING_API_KEYS；doctor #11c bing_keys_retired 提示删除）；
+  // fallback_chain 链变为 machine_mcp → zhipu → brave → browse_headless。
 
   // ----- v0.9 Phase B 装配 search-recordings RecordingStore（parse10 §3.4 + INV-57）-----
   // engine="fallback_chain" 全源熔断时 replay 最后兜底（命中返 worked + served_by="recording_replay"）。
@@ -578,14 +560,16 @@ async function runMcpServer(): Promise<void> {
   const breakers = new Map<string, CircuitBreaker>([
     ["search.zhipu", new CircuitBreaker()],
     ["search.brave", new CircuitBreaker()],
-    // v0.9 Phase B（parse10 §3.2）：search.bing 第三源 breaker（key=[] 时仍创建，
-    // decider 内部 channel 不可用会经 FallbackChain 过滤；breaker 仅在 bing 注入后被记录）
-    ["search.bing", new CircuitBreaker()],
+    // v1.15 Phase A：search.bing breaker 已删（Bing 死层清除；INV-54 墓碑守卫）
     // v1.4 Phase A（parse-v1.4 §Phase A）：search.machine_mcp breaker
     // **零回归**：detector 未命中 → machineMcpSearch=undefined → 此 breaker 仍创建但不被任何
     // channel 引用（FallbackChain 跳过 search.machine_mcp；行为等价 v1.3）。
     ["search.machine_mcp", new CircuitBreaker()],
     ["fanout", new CircuitBreaker()],
+    // v1.15 Phase B（parse22 §3）：serp_http 裸 HTTP 快探层 60s 短熔断
+    // （browse_headless 之前 ~1s 级探针；runtime_state/doctor 经 breakers 表自动可见，
+    //   无需新 doctor check——内部层非配置项）
+    ["serp_http", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
     ["desktop.ax", new CircuitBreaker()],
@@ -730,6 +714,24 @@ async function runMcpServer(): Promise<void> {
     version: LASSO_SERVER_VERSION,
   });
 
+  // ----- v1.15 Phase B（parse22 §3）：serp_http 裸 HTTP 快探层装配 -----
+  // browse_headless（冷启动 ~11s + Chromium 树）之前的 ~1s 级探针。
+  // 白盒依据（doc/21 + v1.14 实测）：裸 curl 打 search.brave.com 返 200+22 条，
+  // 真 Chrome 反吃验证码——API 全挂时先裸 HTTP 探一次，探不到再升真浏览器。
+  // fetch 经 SubprocessManager.httpAgents 池（per-origin 懒建；单一真源不 new Agent）；
+  // SSRF 纵深与 browse/fetch_url 共用同一 ssrfConfig；serpHealth 复用改版检测链。
+  const serpHttpExec: HttpSerpExec = (query, o) =>
+    rawSerpSearch(query, {
+      region: o.region,
+      freshness: o.freshness,
+      limit: o.limit,
+      fetchImpl: ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+        subproc.acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
+      ssrfConfig,
+      serpHealth,
+    });
+  logger.info({ evt: "serp_http_layer_wired", hosts: SERP_HTTP_ALLOWED_HOSTS.length });
+
   registerSearchTool(
     server,
     search,
@@ -739,10 +741,9 @@ async function runMcpServer(): Promise<void> {
     config.registry,
     searchCache,
     serpHealth,
-    // v0.9 Phase B（parse10 §3）：bing + searchRecordings 注入
-    // bing undefined 时（BING_API_KEYS 未配）→ fallback_chain 路径 bing 兜底层不可用，
-    // 仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链。
-    bing,
+    // v0.9 Phase B（parse10 §3）：searchRecordings 注入
+    // v1.15 Phase A：bing 参数已删（Bing 死层清除；fallback_chain 走
+    // machine_mcp → zhipu → brave → serp_http → browse_headless）
     searchRecordings,
     // v1.4 Phase A（parse-v1.4 §Phase A）：machineMcpSearch 机器 MCP 复用注入
     // detector 未命中 → undefined → fallback_chain channelOrder 不含 search.machine_mcp
@@ -752,6 +753,9 @@ async function runMcpServer(): Promise<void> {
     callerTier,
     // v1.8 Phase E（D6）：fanout rpmOptions 接线（F3.1.12 设计落地）
     searchRpmLimiter,
+    // v1.15 Phase B（parse22 §2.1）：serp_http 快探注入（fallbacks 变
+    // [serp_http, browse_headless]；未注入则零回归）
+    serpHttpExec,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig, callerTier);
   registerDesktopTool(server, desktop, decider);
@@ -927,11 +931,7 @@ async function runMcpServer(): Promise<void> {
   if (brave) {
     initialCapabilities.push("search.brave");
   }
-  // v0.9 Phase B（parse10 §3.1）：search.bing 仅在 bing 实例化时加入
-  // （key=[] 时 bing=undefined → 不进 initialCapabilities → bag.disable 无副作用）
-  if (bing) {
-    initialCapabilities.push("search.bing");
-  }
+  // v1.15 Phase A：search.bing 条件加入段已删（Bing 死层清除；装配层永不出 bing channel）
   // desktop providers（ProviderConfig.name 已是 "desktop.<tier>" 形式）
   initialCapabilities.push(
     "desktop.ax",
@@ -1015,9 +1015,7 @@ async function runMcpServer(): Promise<void> {
   for (const name of [
     "search.zhipu",
     "search.brave",
-    // v0.9 Phase B（parse10 §3）：search.bing 长熔断（key=[] 时仍创建；onOpen 经 bag.disable
-    // 联动，bing 未在 initialCapabilities 内 → bag.disable 返 false 不影响其他通道）
-    "search.bing",
+    // v1.15 Phase A：search.bing 长熔断已删（Bing 死层清除；INV-54 墓碑守卫）
     "browse_headless",
     "browse_logged_in",
     "browse_cloud_browserbase",

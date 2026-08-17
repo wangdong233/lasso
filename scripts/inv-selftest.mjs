@@ -151,6 +151,16 @@ const VIOLATION_SAMPLES = [
       replace: ["{ ...fileEnv, ...envSource }", "{ ...envSource }"],
     },
   },
+  {
+    // v1.15 Phase A：INV-54 改语义为「Bing 死层清除墓碑守卫」——样本验回潮：
+    // channels/BingChannel.ts 重建（哪怕最小骨架）→ 墓碑条件 1 红。
+    inv: "INV-54",
+    desc: "Bing 死层回潮：channels/BingChannel.ts 重建（v1.15 Phase A 墓碑守卫）",
+    file: "channels/BingChannel.ts",
+    mutation: {
+      append: 'export class BingChannel {\n  name = "search.bing";\n}\n',
+    },
+  },
 ];
 
 // ============================================================

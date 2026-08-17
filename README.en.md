@@ -122,7 +122,7 @@ Grouped by **what you want to do**, not by tool name. Each is one sentence in, o
 
 > You: "Search for X" → structured search results
 
-Defaults to Zhipu (strong for Chinese); you can add Brave as a second source (the Bing upstream has been shut down; the config key is kept and auto-skipped). **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
+Defaults to Zhipu (strong for Chinese); you can add Brave as a second source (the Bing upstream has been shut down and its dead layer removed; the config key is tolerated but silently ignored). **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
 
 For time-sensitive content like **news and release tracking**, just say "search for X from the last week / last month" — a time filter is applied automatically (day / week / month / year, v1.11), no hand-written dates in your query.
 
@@ -194,7 +194,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.14.0** (changelog in the collapsed block at the end of this section).
+**Current version v1.15.0** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -207,7 +207,9 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.14 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.15 — click to see what each version changed)</summary>
+
+- **v1.15**: Bing dead layer removed outright (Bing Search APIs fully retired 2025-08-11 — code deleted, not just documented; leftover `BING_API_KEYS` silently ignored, `lasso doctor` suggests removal) + a **bare-HTTP quick probe** before the headless browser (when all API layers are down, a browserless fetch of the results page runs first in ~1s; only if it comes up empty does the slow headless path start — real-machine test: 20 results in 1.9s vs the headless path's 5.3s with a captcha and zero results; soft-block pages such as Baidu's captcha/homepage shell never fake success and escalate to the browser).
 
 - **v1.14**: search operational-facts debt cleared (Brave quota ledger aligned to the $5 monthly credit ≈1000 queries/month; `free_only=L2` no longer routes metered Brave as a free tier; Bing quota zeroed) + dual-engine zero-key English fallback (DDG failure/empty cascades to a Brave SERP attempt); `lasso doctor --deep` (Brave plan-level probe, consumes 1 unit of quota) + static Bing-retirement notice; KEY-GUIDE freshness-dating system (every key claim carries a "last verified" date and a 90-day recheck trigger).
 - **v1.13**: consistent language fingerprint for the headless browser (HTTP `Accept-Language` issued with the profile, removing the "header zh-CN ↔ page en-US" contradiction); fixed the VLM landing point for region screenshots; `desktop find` rejects pure-ref queries; Steel session release capped at 3 seconds (a stalled Steel no longer hangs exit for 5 minutes).
@@ -255,12 +257,11 @@ Takes effect on save. **For more stability**, add Brave too (a paid plan that in
 ```json
 {
   "ZHIPU_API_KEY": "your_zhipu_key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2",
-  "BING_API_KEYS": "bingkey1"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2"
 }
 ```
 
-> Fallback order: machine MCP reuse → Zhipu → Brave → (Bing shut down, auto-skipped) → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search). If the one ahead fails, it auto-switches to the next.
+> Fallback order: machine MCP reuse → Zhipu → Brave → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search; v1.15 adds a **bare-HTTP quick probe** (~1s, fetches the results page with no browser at all — in real-machine tests some engines are less suspicious of browserless clients) before the slow headless path). If the one ahead fails, it auto-switches to the next. (The Bing source was removed outright after the upstream retired it on 2025-08-11; leftover `BING_API_KEYS` is silently ignored and `lasso doctor` will suggest removing it.)
 
 How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 

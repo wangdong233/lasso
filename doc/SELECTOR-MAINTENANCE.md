@@ -6,7 +6,7 @@
 
 ## 1. 为什么说 selector 是债
 
-主路径走结构化 API（智谱 / Brave / Bing）；selector 只是 search → browse_headless 跨模态 fallback 时的**兜底抽链**。上游搜索引擎改 HTML 结构时，selector 就会失效——这是**必然会发生的债**（10 §D.1）。
+主路径走结构化 API（智谱 / Brave；Bing 源已随上游 2025-08-11 退役移除）；selector 只是 search → browse_headless 跨模态 fallback 时的**兜底抽链**。上游搜索引擎改 HTML 结构时，selector 就会失效——这是**必然会发生的债**（10 §D.1）。
 
 Lasso 不把 selector 当核心竞争力，而是**显式承认它是债 + 自动检测改版 + CI 守门**。
 

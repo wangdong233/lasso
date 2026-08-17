@@ -53,7 +53,7 @@
 
 > 📅 **本节数额事实最后核实：2026-08-17**（方式：智谱开放平台控制台注册亲历 + 官网 pricing 页亲取；「新用户赠送额度」的具体数值未公开精确值，以平台公示为准）。
 
-> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave →（Bing 层已关停自动跳过）→ `browse_headless` 兜底。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
+> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave → 裸 HTTP 快探（`serp_http`，v1.15 新：约 1 秒、不起浏览器直接抓搜索结果页——实测部分引擎对无浏览器客户端反而更不设防）→ `browse_headless` 无头浏览器实搜兜底（Bing 层已整层移除：上游 2025-08-11 退役）。快探与实搜都不需要任何 key。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
 
 **去哪申请**：<https://open.bigmodel.cn/console/apikey>
 
@@ -132,7 +132,7 @@
 
 > 📅 **本节数额事实最后核实：2026-08-17**（方式：微软 Learn lifecycle 公告页亲取——「Bing Search APIs Retiring on August 11, 2025」，带日期+URL 的 L-OP 级证据）。
 >
-> **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留（配了会自动跳过、不影响主流程；`lasso doctor` 会提示建议删除），但没有可用的 key 来源了。
+> **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留但会被静默忽略（v1.15 起 Bing 死层整层移除——provider 不再注册，存量 config 不报错；`lasso doctor` 会提示建议删除），且没有可用的 key 来源了。
 
 第二源请选 Brave（上文）；免费搜索靠智谱 + 兜底实搜（Lasso 自带 DuckDuckGo → Brave 双引擎兜底，无需配置）。
 

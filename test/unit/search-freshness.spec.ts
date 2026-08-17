@@ -1,13 +1,14 @@
 /**
- * search-freshness.spec.ts（v1.11 round1 T6 —— search 时效性过滤透传三引擎）
+ * search-freshness.spec.ts（v1.11 round1 T6 —— search 时效性过滤透传各引擎）
  *
  * 验收（round1-verdict T6）：
  *  1. cache-key 单测：同 query 不同 freshness → 不同 key；不传 freshness → 与基线
  *     byte-identical（可选参数零回归）
- *  2. 三 channel 透传各有单测：
+ *  2. 各 channel 透传各有单测：
  *     - 智谱：search_recency_filter=oneDay/oneWeek/oneMonth/oneYear；不传不出现
  *     - Brave：freshness=pd/pw/pm/py query 参数；不传不出现
- *     - Bing：freshness=Day/Week/Month；year 档不传（诚实降级）
+ *     - （v1.15 Phase A：Bing 源 freshness=Day/Week/Month 契约测已随死层清除删除——
+ *       Bing Search APIs 2025-08-11 全量退役，INV-54 墓碑守卫。）
  */
 import { describe, it, expect } from "vitest";
 import { SearchCache } from "../../src/search/SearchCache.js";
@@ -47,28 +48,14 @@ describe("T6 — SearchCache key 纳入 freshness", () => {
 });
 
 // ============================================================
-// 2. 三引擎透传映射（纯映射表断言 + 契约形状）
+// 2. 各引擎透传映射（纯映射表断言 + 契约形状）
 // ============================================================
-describe("T6 — 三引擎 freshness 映射", () => {
+describe("T6 — 各引擎 freshness 映射", () => {
   it("Brave：day/week/month/year → pd/pw/pm/py（Brave Web Search API 契约）", () => {
     expect(BRAVE_FRESHNESS_MAP.day).toBe("pd");
     expect(BRAVE_FRESHNESS_MAP.week).toBe("pw");
     expect(BRAVE_FRESHNESS_MAP.month).toBe("pm");
     expect(BRAVE_FRESHNESS_MAP.year).toBe("py");
-  });
-
-  it("Bing：v7 契约只支持 Day/Week/Month（year 档不传 = 源码无 year 分支）", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { fileURLToPath } = await import("node:url");
-    const filePath = fileURLToPath(
-      new URL("../../src/channels/BingChannel.ts", import.meta.url),
-    );
-    const text = readFileSync(filePath, "utf8");
-    expect(text).toMatch(/freshness === "day"\).*"Day"/s);
-    expect(text).toMatch(/freshness === "week"\).*"Week"/s);
-    expect(text).toMatch(/freshness === "month"\).*"Month"/s);
-    // year 无分支（诚实降级：Bing 无 year 粒度）
-    expect(text).not.toMatch(/freshness === "year"/);
   });
 
   it("智谱：search_recency_filter 映射 oneDay/oneWeek/oneMonth/oneYear", async () => {

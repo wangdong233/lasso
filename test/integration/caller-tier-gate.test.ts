@@ -162,8 +162,7 @@ function registerSearch(server: McpServer, search: SearchChannel, callerTier?: C
     undefined,
     null,
     null,
-    null,
-    undefined,
+    undefined, // machineMcp（v1.15 Phase A：bing 参数已删，后续参数左移一位）
     callerTier,
   );
 }

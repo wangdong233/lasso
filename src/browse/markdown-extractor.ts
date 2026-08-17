@@ -71,6 +71,29 @@ export const MARKDOWN_ENGINE = Object.freeze({
 });
 
 // ============================================================
+// v1.15 Phase B（parse22 §1.2 实施修订）：turndown 实例工厂
+// ============================================================
+/**
+ * 以本项目统一配置构造一个 turndown 实例（extractMarkdown 内部与
+ * serp/http-serp.ts 全页转换共用同一工厂——引擎与配置单一真源，INV-68 同精神）。
+ *
+ * 为什么 http-serp 不走 extractMarkdown：defuddle 正文抽取对 **SERP 页有害**
+ * （2026-08-17 实测：把结果标题 <a> 升格为 heading 丢 href、丢摘要 div）——
+ * SERP 需要保住**全部** <a href> 的全页转换（即本模块的 turndown-only 降级路径）。
+ * 缺省 headingStyle/bulletMarker 与 extractMarkdown 内部缺省一致（byte-identical）。
+ */
+export function createTurndownService(opts?: {
+  headingStyle?: "atx" | "setext";
+  bulletMarker?: "-" | "*" | "+";
+}): TurndownService {
+  return new TurndownService({
+    headingStyle: opts?.headingStyle ?? "atx",
+    bulletListMarker: opts?.bulletMarker ?? "-",
+    codeBlockStyle: "fenced",
+  });
+}
+
+// ============================================================
 // 主 API：extractMarkdown（纯函数，无副作用，可单测）
 // ============================================================
 /**
@@ -134,11 +157,6 @@ export async function extractMarkdown(
   }
 
   // ---------- 2. HTML→markdown（T2-4：defuddle 转换优先，turndown 降级保底） ----------
-  const turndown = new TurndownService({
-    headingStyle: opts.headingStyle ?? "atx",
-    bulletListMarker: opts.bulletMarker ?? "-",
-    codeBlockStyle: "fenced",
-  });
 
   const inputHtml = articleHtml ?? html; // defuddle 失败时降级转全页
   const servedBy = articleHtml ? MARKDOWN_ENGINE.pipeline : "turndown-only";
@@ -152,7 +170,10 @@ export async function extractMarkdown(
     markdown = articleMarkdown;
   } else {
     try {
-      markdown = turndown.turndown(inputHtml);
+      markdown = createTurndownService({
+        headingStyle: opts.headingStyle,
+        bulletMarker: opts.bulletMarker,
+      }).turndown(inputHtml);
     } catch (e) {
       // turndown 失败 = 引擎彻底挂，抛错让调用方走 outcome=unknown
       throw new Error(`[markdown-extractor] turndown failed: ${String(e).slice(0, 200)}`);

@@ -155,7 +155,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.14.0";
+export const LASSO_VERSION = "1.15.0";
 
 // ============================================================
 // 类型
@@ -1277,7 +1277,8 @@ async function checkBraveDeepProbe(braveKeysCsv: string): Promise<DoctorCheck> {
  *
  * BING_API_KEYS 非空 → warn：Bing Search APIs 已于 2025-08-11 全量退役
  * （微软 lifecycle 公告，2026-08-17 核实），该配置永远不可用，建议删除；
- * 主链已自动跳过（key 无效不产生功能影响）。空 → pass（无需配置的常态）。
+ * v1.15 Phase A 起 Bing 死层整层移除（provider 不注册，配置被静默忽略）。
+ * 空 → pass（无需配置的常态）。
  */
 function checkBingKeysRetired(bingKeysCsv: string): DoctorCheck {
   const keys = bingKeysCsv
@@ -1295,7 +1296,7 @@ function checkBingKeysRetired(bingKeysCsv: string): DoctorCheck {
     name: "bing_keys_retired",
     status: "warn",
     detail: `${keys.length} 个 BING_API_KEYS 已配置，但 Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告），该配置永远不可用`,
-    next_step: "建议删除 BING_API_KEYS 配置；主链已自动跳过，无功能影响（免费第二源选 Brave，见 doc/KEY-GUIDE.md）",
+    next_step: "建议删除 BING_API_KEYS 配置；主链已不含 Bing 源（v1.15 起死层移除，该配置被静默忽略、无功能影响；免费第二源选 Brave，见 doc/KEY-GUIDE.md）",
   };
 }
 

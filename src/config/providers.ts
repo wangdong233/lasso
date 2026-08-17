@@ -281,62 +281,27 @@ export const CLOUD_BROWSER_PROVIDERS: readonly ProviderConfig[] = [
 export { BROWSERBASE, STAGEHAND };
 
 // ============================================================
-// v0.9 Phase A 新增（parse10 §3.1 第三源 Bing Web Search API v7）
+// v1.15 Phase A：Bing 死层清除（墓碑说明，替换 v0.9 的 BING provider 段）
 // ============================================================
 /**
- * Bing Web Search —— 第三源 search provider（parse10 §3.1 / §1 决策 6）。
+ * Bing Web Search —— **已删除**（v1.15 Phase A 死层清除）。
  *
- * **v0.9 立场（parse10 §4 未明点）**：
- *  - Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告；2026-08-17 核实）。
- *    v0.9 接入结构本就**不强依赖免费层** —— key=[] 时 ProviderRegistry 跳过 bing，
- *    行为完全等价 v0.8（零回归承诺）；配了 key 也只会收到 401/404（doctor 静态退役提示见 S-3）。
- *  - fallback_order=4：在 search.bing 配置位置上（brave=3 之后，tavily=99 之前）。
- *  - 与 ZHIPU/BRAVE 同结构（api_key + monthly quota），但 policy_risk="watched"
- *    （Azure 商用条款观察期 —— Azure 商用 ToS 较严格，doctor warn 提醒）。
+ * Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，
+ * learn.microsoft.com/lifecycle/announcements/bing-search-apis-retiring；
+ * 2026-08-17 核实）。doc/21-搜索方案重审 verdict R-5 曾裁决「占位保留」，
+ * v1.15 Phase A 推翻该裁决：占位 provider + BingChannel 装配是死代码，
+ * 清除成本 < 维护成本（配置面/描述/INV/测试五处缠绕）。
  *
- * INV-54（parse10 §1）：BingChannel 禁直接读 process.env.BING_API_KEYS，必须经 QuotaLedger。
+ * 清除范围（INV-54 改语义为墓碑守卫，防回潮）：
+ *  - channels/BingChannel.ts 已删；index.ts 不再装配 search.bing；
+ *  - providers.ts 不再导出 BING / SEARCH_FALLBACK_PROVIDERS；
+ *  - config.ts 不再注册 bing provider（BING_API_KEYS 键容忍读但不消费）；
+ *  - FallbackChain DEFAULT_FALLBACK_ORDER 不含 search.bing。
  *
- * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS 范式，保零回归）：
- *  - v0.8 ProviderRegistry byCap("search") 测试断言不含 bing 仍绿（只有 zhipu / brave）
- *  - M（v0.9+）实装时在 index.ts 条件装配 BingChannel（BING_API_KEYS 注入时）
- *  - 用户配 BING_API_KEYS env → config.ts 注入 keys → registry 自动 byCap 含 bing
- *  - 用户不配 → keys=[] → ProviderRegistry 因 c.keys.length===0 不创 QuotaLedger（同 brave）
- *
- * Endpoint: https://api.bing.microsoft.com/v7.0/search（parse10 §3.1）
- * Auth: Ocp-Apim-Subscription-Key header（BingChannel.ts 实装）
- *  - free_quota_per_month=0：Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，
- *    learn.microsoft.com/lifecycle/announcements/bing-search-apis-retiring；
- *    2026-08-17 核实）——该配置永远不可用，占位保留见 doc/21-搜索方案重审/verdict.md
- *    R-5（删除成本 > 收益；doctor 有静态退役提示，S-3）。
+ * 配置兼容（存量用户 config 不炸）：
+ *  - BING_API_KEYS env / config 文件键仍可存在（loadConfig 静默忽略，不报错）；
+ *  - doctor #11c bing_keys_retired 检测到该键非空 → warn 建议删除（零触网）。
  */
-const BING: ProviderConfig = {
-  name: "bing",
-  type: "api_key",
-  endpoint_url: "https://api.bing.microsoft.com/v7.0/search",
-  keys: [], // config.ts 从 BING_API_KEYS CSV 注入
-  free_quota_per_month: 0, // Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告）；永远不可用
-  quota_model: "monthly",
-  fallback_order: 4, // 第三源兜底（zhipu=0 主力，brave=3 英文，bing=4 兜底）
-  free_tier_level: "L4", // 已退役服务（2026-08-17 起从 L2 改判；无免费层可言）
-  policy_risk: "watched", // Azure 商用 ToS 观察期（manual-switch，doctor warn）
-  licence: "commercial", // Azure 商用服务
-  commercial_safe: false, // 付费商用（与 browserbase/stagehand 同档）
-  tags: ["search"],
-  enabled: true,
-};
-
-/**
- * v0.9 Phase A Bing provider（parse10 §3.1）。
- *
- * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS 范式）：
- *  - v0.8 ProviderRegistry 测试断言 byCap("search") 不含 bing 仍绿（零回归承诺）
- *  - INV-54 grep BING 字面量在 providers.ts 即合规（不要求进 BUILTIN_PROVIDERS）
- *  - M（v0.9+）实装时在 index.ts 条件装配：BING_API_KEYS 注入时 new BingChannel
- */
-export const SEARCH_FALLBACK_PROVIDERS: readonly ProviderConfig[] = [BING];
-
-/** 单独导出便于 INV-54 grep + 测试断言（policy_risk=watched + fallback_order=4）。 */
-export { BING };
 
 // ============================================================
 // v1.4 Phase A 新增（parse-v1.4 §Phase A —— 机器 MCP 复用 provider）
@@ -354,7 +319,7 @@ export { BING };
  *  - index.ts 装配段调 detectMachineSearchMcp()：
  *      - 命中 → 实例化 MachineMcpSearchChannel + 注册到 registry（临时 enabled=true）
  *      - 未命中 → skip（链路降级到 search.zhipu，byte-identical v1.3）
- *  - 用户 key 在 headers.Authorization（非 env）—— 与 ZHIPU/BRAVE/BING 三源的本质差异：
+ *  - 用户 key 在 headers.Authorization（非 env）—— 与 ZHIPU/BRAVE 两源的本质差异：
  *    本 provider 不走 QuotaLedger（机器 key 不在 Lasso 计费域内；失败就 fallback）
  *
  * **安全红线（INV-72）**：
@@ -383,8 +348,8 @@ const MACHINE_MCP: ProviderConfig = {
 /**
  * v1.4 Phase A 机器 MCP provider（parse-v1.4 §Phase A）。
  *
- * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS /
- * SEARCH_FALLBACK_PROVIDERS 范式，保 v1.3 零回归）：
+ * 单独导出，**不进 BUILTIN_PROVIDERS**（参照 DESKTOP_PROVIDERS / CLOUD_BROWSER_PROVIDERS
+ * 范式，保 v1.3 零回归）：
  *  - v1.3 ProviderRegistry 测试断言 byCap("search") 不含 machine_mcp 仍绿
  *  - INV-72 grep MACHINE_MCP 字面量在 providers.ts 即合规（不要求进 BUILTIN_PROVIDERS）
  *  - index.ts 装配段：detectMachineSearchMcp() 命中时 new MachineMcpSearchChannel
@@ -414,7 +379,7 @@ export { MACHINE_MCP };
  *  - tags=["browse","cloud","self_hosted"]（cloud 前缀触发 PolicyGate INV-25 守）
  *
  * INV-74（parse14 §8.1）：Steel cloud 通道零回归守护：
- *  - STEEL 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归范式，参照 DESKTOP/CLOUD/BING/MACHINE_MCP）
+ *  - STEEL 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归范式，参照 DESKTOP/CLOUD/MACHINE_MCP）
  *  - SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）
  *  - 双重解锁：LASSO_ALLOW_CLOUD_BROWSER=true + STEEL_ENDPOINT 存在
  *

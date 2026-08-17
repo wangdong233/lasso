@@ -487,14 +487,14 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
     expect(names).toContain("stagehand_rest_contract_probe");
   });
 
-  it("lasso_version === 1.14.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+  it("lasso_version === 1.15.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
     const r = await runDoctor({
       zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.14.0");
-    expect(LASSO_VERSION).toBe("1.14.0");
+    expect(r.lasso_version).toBe("1.15.0");
+    expect(LASSO_VERSION).toBe("1.15.0");
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {

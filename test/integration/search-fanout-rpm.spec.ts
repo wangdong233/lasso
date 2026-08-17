@@ -198,8 +198,7 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
         undefined, // cache：不注入（隔离）
         null,
         null,
-        null,
-        undefined, // machineMcp
+        undefined, // machineMcp（v1.15 Phase A：bing 参数已删，后续参数左移一位）
         undefined, // callerTier
         limiter, // ← D6 接线点
       );
@@ -241,7 +240,6 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
         brave,
         makeRegistry(),
         undefined,
-        null,
         null,
         null,
         undefined,

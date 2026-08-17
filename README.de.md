@@ -122,7 +122,7 @@ Gruppiert nach **dem, was du tun willst**, nicht nach Werkzeugname. Jedes ist ei
 
 > Du: „Suche nach X" → strukturierte Suchergebnisse
 
-Standard ist Zhipu (stark für Chinesisch); für Multiple-Quellen kannst du zusätzlich Brave konfigurieren (der Bing-Upstream ist eingestellt — der Konfigurationsschlüssel bleibt erhalten und wird automatisch übersprungen). **Wenn eine einzelne Quelle rate-limitiert oder down ist, wird automatisch zur nächsten gewechselt — du merkst nichts davon.** Das Ausschöpfen des kostenlosen Kontingents eines Anbieters bringt nicht das Ganze zum Absturz.
+Standard ist Zhipu (stark für Chinesisch); für Multiple-Quellen kannst du zusätzlich Brave konfigurieren (der Bing-Upstream ist eingestellt und die tote Schicht entfernt; der Konfigurationsschlüssel wird toleriert, aber stillschweigend ignoriert). **Wenn eine einzelne Quelle rate-limitiert oder down ist, wird automatisch zur nächsten gewechselt — du merkst nichts davon.** Das Ausschöpfen des kostenlosen Kontingents eines Anbieters bringt nicht das Ganze zum Absturz.
 
 Für zeitkritisches Material wie **Nachrichten und Release-Tracking** sag einfach „suche nach X der letzten Woche / des letzten Monats" — der Zeitfilter (day / week / month / year, v1.11) wird automatisch mitgegeben, ohne handgeschriebene Daten in der Anfrage.
 
@@ -194,7 +194,7 @@ Geht zum Internet Archive (Wayback Machine), um die zuletzt archivierte Kopie di
 
 ## Installation
 
-**Aktuelle Version v1.14.0** (Changelog im eingeklappten Block am Ende dieses Abschnitts).
+**Aktuelle Version v1.15.0** (Changelog im eingeklappten Block am Ende dieses Abschnitts).
 
 Voraussetzungen: Node.js ≥ 20 + Claude Code (oder jeder MCP-fähige Client).
 
@@ -207,7 +207,9 @@ Claude Code neu starten → `/mcp` → `lasso ✓ Connected`. **Genau diese eine
 **macOS-Nutzer, die den Desktop steuern wollen**: führ einmal `lasso doctor` aus und setze `lasso-rust-helper` nach Anweisung die Haken bei „Bedienungshilfen" und „Bildschirmaufnahme" — `doctor` führt dich Schritt für Schritt.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.14 — aufklappen, um zu sehen, was jede Version geändert hat)</summary>
+<summary>📋 Changelog (v1.8 → v1.15 — aufklappen, um zu sehen, was jede Version geändert hat)</summary>
+
+- **v1.15**: Bing-Totschicht komplett entfernt (Bing Search APIs zum 2025-08-11 vollständig eingestellt — Code gelöscht, nicht nur dokumentiert; restliches `BING_API_KEYS` wird stillschweigend ignoriert, `lasso doctor` rät zum Entfernen) + **bare-HTTP-Schnellsonde** vor dem Headless-Browser (fallen alle API-Ebenen aus, wird zuerst ~1s lang ohne Browser die Ergebnisseite geholt; erst bei Leerfund startet der langsame Headless-Pfad — Realmaschine: 20 Treffer in 1,9s gegenüber 5,3s im Headless-Pfad mit Captcha und null Treffern; weiche Blockseiten wie Baidus Captcha/Homepage-Hülle fälschen keinen Erfolg und eskalieren zum Browser).
 
 - **v1.14**: Betriebsfakten-Schuldensuche beglichen (Brave-Quotenbuch auf das $5-Monatsguthaben ≈1000 Anfragen/Monat ausgerichtet; `free_only=L2` behandelt volumenabgerechnetes Brave nicht mehr als Free-Tier; Bing-Quote auf null) + zweimotoriger Zero-Key-English-Fallback (DDG-Fehler/Leer kaskadiert zu einem Brave-SERP-Versuch); `lasso doctor --deep` (Brave-Plan-Level-Sonde, verbraucht 1 Quoteneinheit) + statischer Bing-Einstellungshinweis; KEY-GUIDE-Frischedatierung (jede Key-Angabe trägt „zuletzt verifiziert"-Datum und 90-Tage-Recheck-Trigger).
 - **v1.13**: konsistenter Sprach-Fingerabdruck des Headless-Browsers (HTTP-`Accept-Language` wird mit dem Profil mitgegeben; der Widerspruch „Header zh-CN ↔ Seite en-US" ist beseitigt); korrigierter VLM-Landepunkt bei Regions-Screenshots; `desktop find` lehnt reine ref-Abfragen ab; Freigeben von Steel-Sessions mit 3-Sekunden-Grenze (hängendes Steel blockiert den Exit nicht mehr 5 Minuten lang).
@@ -255,12 +257,11 @@ Speichern genügt, dann greift es. **Stabiler gewollt**: füge zusätzlich Brave
 ```json
 {
   "ZHIPU_API_KEY": "your_zhipu_key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2",
-  "BING_API_KEYS": "bingkey1"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2"
 }
 ```
 
-> Degradationsreihenfolge: Maschinen-MCP-Wiederverwendung → Zhipu → Brave → (Bing eingestellt, wird automatisch übersprungen) → Live-Suche im Headless-Browser als Schluss-Fallback (v1.14: zweimotoriger englischer Fallback — bei DDG-Fehler/Leertreffer wird automatisch einmal per Brave-Live-Suche erneut versucht). Fällt der vordere aus, wird automatisch zum nächsten gewechselt.
+> Degradationsreihenfolge: Maschinen-MCP-Wiederverwendung → Zhipu → Brave → Live-Suche im Headless-Browser als Schluss-Fallback (v1.14: zweimotoriger englischer Fallback — bei DDG-Fehler/Leertreffer wird automatisch einmal per Brave-Live-Suche erneut versucht; v1.15 schaltet davor eine **bare-HTTP-Schnellsonde** (~1s, holt die Ergebnisseite ganz ohne Browser — in Realmaschine-Tests sind manche Engines gegenüber browserlosen Clients weniger misstrauisch); erst wenn sie nichts liefert, startet der langsame Headless-Pfad). Fällt der vordere aus, wird automatisch zum nächsten gewechselt. (Die Bing-Quelle wurde nach der Upstream-Einstellung am 2025-08-11 komplett entfernt; ein restliches `BING_API_KEYS` wird stillschweigend ignoriert, `lasso doctor` schlägt das Entfernen vor.)
 
 Wie du Keys beantragst, wie hoch die kostenlosen Kontingente sind → [Key-Konfigurationsleitfaden · Suche](./doc/KEY-GUIDE.md#a-搜索). Häufige Befehle: `lasso --version` / `lasso --help` (seit v1.8 drucken unbekannte Befehle die Nutzung und beenden mit Nonzero-Code, statt stumm zu hängen).
 

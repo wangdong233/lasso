@@ -228,18 +228,20 @@ export interface ProviderConfig {
  *  - L1=完全免费零Key（DDG/SearXNG 自建）
  *  - L2=免费层需Key（智谱、Tavily 1000、Jina）
  *  - L3=远程 URL 免Key（Exa、Jina read_url）
- *  - L4=付费（Perplexity/Serper/Google CSE；Brave 2026-02 免费档取消后改判 L4、
- *    Bing 已于 2025-08-11 退役归 L4——2026-08-17 核实，见 doc/KEY-GUIDE.md）
+ *  - L4=付费（Perplexity/Serper/Google CSE；Brave 2026-02 免费档取消后改判 L4；
+ *    Bing 已于 2025-08-11 退役——2026-08-17 核实，v1.15 Phase A 死层已清除，
+ *    见 doc/KEY-GUIDE.md）
  *
  * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Exa 有免费层）。
  */
 export type FreeTierLevel = "L1" | "L2" | "L3" | "L4";
 
 /**
- * v1.11（round1 T6）：search 时效性过滤枚举（透传三引擎）。
+ * v1.11（round1 T6）：search 时效性过滤枚举（透传各引擎）。
  *  - 智谱上游 `search_recency_filter`（oneDay/oneWeek/oneMonth/oneYear）
  *  - Brave `freshness`（pd/pw/pm/py）
- *  - Bing v7 `freshness`（Day/Week/Month；year 档 Bing 无对应粒度，不传——诚实降级）
+ *  - browse_headless SERP 兜底走 ddg `df=`（v1.12 round2 T2-5）
+ *  - （v1.15 Phase A：Bing 源已死层清除，freshness Day/Week/Month 分支随之移除。）
  * 不传 = 不限时效（byte-identical 基线行为；与 extract_mode 同款守护手法）。
  */
 export type SearchFreshness = "day" | "week" | "month" | "year";
