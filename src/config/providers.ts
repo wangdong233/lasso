@@ -80,11 +80,14 @@ const BROWSE_LOGGED_IN: ProviderConfig = {
 /**
  * Brave Search —— 结构化 REST API 第二源（parse2 §3.1.2 / §4.1）。
  *
- * 仅引三项硬数据（10 §4.3）：669ms / 14.89 Agent Score / 2000 query/月。
- * 不写「最优」（05 §0-3 否决因果延伸 AIMultiple 单一来源）；
- * 是否真主力由 in-house A/B 实测决定（benchmark/run-ab-benchmark.ts，验收 #1）。
+ * 运营事实（2026-08-17 官网 pricing 页 + 控制台口径核实，见 doc/KEY-GUIDE.md「最后核实」列）：
+ *  - 2026-02 起免费档取消，改为计量计费（metered）：$5/千次查询。
+ *  - 各付费计划附 $5/月赠送额度 ≈ 1000 次/月；注册需绑信用卡 + attribution 要求。
+ *  - 因此 free_tier_level="L4"（付费）：L2 保留给无条件免费层；
+ *    显式 free_only=L1/L2 路由不得再放行 Brave（诚实性错路由，21-搜索方案重审 S-1）。
+ *  - 默认路径零变化：search.ts 默认 freeOnly ?? "L4" = 全允许。
  *
- * Key 池：config.ts 从 BRAVE_API_KEYS CSV 注入到 keys[]，QuotaLedger 多 Key 合并 = N×2000/月。
+ * Key 池：config.ts 从 BRAVE_API_KEYS CSV 注入到 keys[]，QuotaLedger 多 Key 合并 = N×1000/月（赠送额度口径）。
  * 不变量 INV-10：BraveChannel 禁直接读 process.env.BRAVE_API_KEYS，必须经 QuotaLedger。
  */
 const BRAVE: ProviderConfig = {
@@ -92,10 +95,10 @@ const BRAVE: ProviderConfig = {
   type: "api_key",
   endpoint_url: "https://api.search.brave.com/res/v1/web/search",
   keys: [], // config.ts 从 BRAVE_API_KEYS CSV 注入
-  free_quota_per_month: 2000, // 10 §4.3 硬数据
+  free_quota_per_month: 1000, // $5/月赠送额度 ÷ $5/千次 ≈1000 次/月（2026-08-17 核实；免费档 2026-02 已取消）
   quota_model: "monthly",
   fallback_order: 3, // 英文/质量层（zhipu=0 主力，brave=3 兜底英文）
-  free_tier_level: "L2",
+  free_tier_level: "L4", // 付费计量计费 + 需绑卡（2026-02 免费档取消；L2 只留给无条件免费层）
   policy_risk: "safe", // 无收购风险（对照 Tavily=Nebius 2026-02）
   licence: "apache2",
   commercial_safe: true,
@@ -284,9 +287,9 @@ export { BROWSERBASE, STAGEHAND };
  * Bing Web Search —— 第三源 search provider（parse10 §3.1 / §1 决策 6）。
  *
  * **v0.9 立场（parse10 §4 未明点）**：
- *  - Bing Azure F0 免费层对新订阅的可用性基于既有知识（2023-08 调整后多 region 受限），
- *    v0.9 接入结构**不强依赖 F0 必可用** —— key=[] 时 ProviderRegistry 跳过 bing，
- *    行为完全等价 v0.8（零回归承诺）。
+ *  - Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告；2026-08-17 核实）。
+ *    v0.9 接入结构本就**不强依赖免费层** —— key=[] 时 ProviderRegistry 跳过 bing，
+ *    行为完全等价 v0.8（零回归承诺）；配了 key 也只会收到 401/404（doctor 静态退役提示见 S-3）。
  *  - fallback_order=4：在 search.bing 配置位置上（brave=3 之后，tavily=99 之前）。
  *  - 与 ZHIPU/BRAVE 同结构（api_key + monthly quota），但 policy_risk="watched"
  *    （Azure 商用条款观察期 —— Azure 商用 ToS 较严格，doctor warn 提醒）。
@@ -301,16 +304,20 @@ export { BROWSERBASE, STAGEHAND };
  *
  * Endpoint: https://api.bing.microsoft.com/v7.0/search（parse10 §3.1）
  * Auth: Ocp-Apim-Subscription-Key header（BingChannel.ts 实装）
+ *  - free_quota_per_month=0：Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，
+ *    learn.microsoft.com/lifecycle/announcements/bing-search-apis-retiring；
+ *    2026-08-17 核实）——该配置永远不可用，占位保留见 doc/21-搜索方案重审/verdict.md
+ *    R-5（删除成本 > 收益；doctor 有静态退役提示，S-3）。
  */
 const BING: ProviderConfig = {
   name: "bing",
   type: "api_key",
   endpoint_url: "https://api.bing.microsoft.com/v7.0/search",
   keys: [], // config.ts 从 BING_API_KEYS CSV 注入
-  free_quota_per_month: 1000, // Azure F0 免费层（transient availability，parse10 §4）
+  free_quota_per_month: 0, // Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告）；永远不可用
   quota_model: "monthly",
   fallback_order: 4, // 第三源兜底（zhipu=0 主力，brave=3 英文，bing=4 兜底）
-  free_tier_level: "L2",
+  free_tier_level: "L4", // 已退役服务（2026-08-17 起从 L2 改判；无免费层可言）
   policy_risk: "watched", // Azure 商用 ToS 观察期（manual-switch，doctor warn）
   licence: "commercial", // Azure 商用服务
   commercial_safe: false, // 付费商用（与 browserbase/stagehand 同档）

@@ -14,9 +14,10 @@
  *  - token     → v0.2 退化成 monthly（按请求计数，近似）；v0.3 升级 token 精确计
  *  - request   → 同 monthly（按请求计）
  *
- * 多 Key 配额合并（10 §4.2 / 验收 #2）：2 Key × 2000/月 = 4000/月
+ * 多 Key 配额合并（10 §4.2 / 验收 #2）：合并 = N × provider.free_quota_per_month
  *  - channel 内部按 Key 轮转（pickKey 贪心）
  *  - doctor 报告合并视图：search.brave 总余量 = totalRemaining() = Σ(key.remaining)
+ *  - 数额口径见 providers.ts（Brave 2026-02 免费档取消，现为 $5 赠送额度 ≈1000/月，2026-08-17 核实）
  *
  * 持久化：v0.2 内存态（进程重启清零，免费层配额足够）；v0.6+ 可选落盘 ~/.cache/lasso/quota/。
  *

@@ -10,7 +10,8 @@
  * Key 池注入（INV-10 + parse2 §3.2.1 / §4.2）：
  *  - 每次 search 前 `ledger.pickKey()` 选余量最多且未 exhausted 的 Key（贪心）。
  *  - 429 / quota exceeded → `ledger.markExhausted(key, retryAfter)` 短期禁用该 Key；
- *    其他 Key 仍可用（多 Key 合并 = N×2000/月，验收 #2）。
+ *    其他 Key 仍可用（多 Key 合并 = N×free_quota_per_month，数额口径见 providers.ts，
+ *    2026-08-17 起 ≈1000/月——Brave 2026-02 免费档取消，21-搜索方案重审 S-1）。
  *  - 全部 Key exhausted → pickKey 返 null → isAvailable() 返 false → fallback 链触发。
  *
  * 不变量 INV-10：**禁止** 直接读 BRAVE_API_KEYS env 变量，必须经 QuotaLedger。
@@ -27,7 +28,8 @@
  *  - 4xx（非 429）           → didnt（definitive negative）
  *  - timeout / network       → unknown（catch 兜底）
  *
- * Brave 引用仅三项硬数据（10 §4.3）：669ms / 14.89 Agent Score / 2000/月。
+ * Brave 引用硬数据（10 §4.3）：669ms / 14.89 Agent Score。
+ * 配额现况：免费档 2026-02 取消，付费计划含 $5/月赠送额度 ≈1000 次/月（2026-08-17 核实）。
  * 是否真主力由 in-house A/B 实测决定（benchmark/run-ab-benchmark.ts）。
  */
 import { BaseChannel } from "./BaseChannel.js";

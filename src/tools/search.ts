@@ -120,6 +120,21 @@ export const searchSchema = {
  * @param recordingStore      v0.9 可选：RecordingStore（全源熔断时 replay 最后兜底；
  *                            engine="auto" 默认路径不注入 → byte-identical v0.8）
  */
+/**
+ * F-1（v1.14.0 收尾）：free_only 最终生效值——args 显式传参 > LASSO_SEARCH_FREE_ONLY env
+ * （loadConfig 启动期已把 config 文件合并进 process.env，故 config 文件同路径生效）>
+ * undefined（缺省 L4 全允许，由下游 `freeOnly ?? "L4"` 兜底）。导出供单测。
+ */
+export function resolveFreeOnly(
+  argFreeOnly: FreeTierLevel | undefined,
+): FreeTierLevel | undefined {
+  if (argFreeOnly) return argFreeOnly;
+  const env = process.env.LASSO_SEARCH_FREE_ONLY;
+  return env === "L1" || env === "L2" || env === "L3" || env === "L4"
+    ? env
+    : undefined;
+}
+
 export function registerSearchTool(
   server: McpServer,
   search: SearchChannel,
@@ -210,7 +225,10 @@ export function registerSearchTool(
       const region: string = args.region;
       const noCache: boolean = args.no_cache;
       const attributed: boolean = args.attributed;
-      const freeOnly: FreeTierLevel | undefined = args.free_only;
+      // F-1（v1.14.0 收尾修复）：LASSO_SEARCH_FREE_ONLY env 此前是死配置——
+      // config.ts 解析了但零消费者，KEY-GUIDE 承诺的「env 排 Brave」运行时不兑现。
+      // 现为 args.free_only 的默认回退（per-call 显式传参仍最高优先）。
+      const freeOnly: FreeTierLevel | undefined = resolveFreeOnly(args.free_only);
       // v1.11（round1 T6）：时效性过滤（透传三引擎 + 入 cache key）
       const freshness: SearchFreshness | undefined = args.freshness;
 
@@ -251,7 +269,8 @@ export function registerSearchTool(
 
       // free_only 过滤（v0.2 §3.3.3）：L1/L2/L3/L4 四级。
       // 取 registry 中所有 search providers 过滤后判定 brave / zhipu 是否在允许集。
-      // 默认 L4 = 全允许（zhipu=L2, brave=L2，都属于免费层）。
+      // 默认 L4 = 全允许（zhipu=L2 免费层；brave=L4 计量计费——2026-02 免费档取消，
+      // 21-搜索方案重审 S-1 改判；默认路径 Brave 仍参与扇出）。
       // L1 → 都禁（无 provider 满足），返回 empty 结果（不让 zhipu 偷偷走）。
       // 未注入 registry（v0.1 兼容模式）→ 跳过过滤，视为全允许。
       const freeTierFilter: FreeTierLevel = freeOnly ?? "L4";
@@ -375,20 +394,24 @@ export function registerSearchTool(
 
       if (canFanout) {
         // ---------- 多源扇出 ----------
+        // S-1（21-搜索方案重审）：配额 hint 缺省 0（registry 未装配该 provider 时
+        // allocateLimit 视为无配额信息，不再用无据字面量 1000/2000 高估 Brave）。
         const sources = allocateLimit(
           limit,
           [
             {
               name: "search.zhipu",
-              quotaRemaining: registry.get("zhipu")?.ledger?.totalRemaining() ?? 1000,
+              quotaRemaining:
+                registry.get("zhipu")?.ledger?.totalRemaining() ?? 0,
               quotaPerMonth:
-                registry.get("zhipu")?.config.free_quota_per_month || 1000,
+                registry.get("zhipu")?.config.free_quota_per_month || 0,
             },
             {
               name: "search.brave",
-              quotaRemaining: registry.get("brave")?.ledger?.totalRemaining() ?? 2000,
+              quotaRemaining:
+                registry.get("brave")?.ledger?.totalRemaining() ?? 0,
               quotaPerMonth:
-                registry.get("brave")?.config.free_quota_per_month || 2000,
+                registry.get("brave")?.config.free_quota_per_month || 0,
             },
           ],
           query,

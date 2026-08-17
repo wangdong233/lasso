@@ -532,7 +532,7 @@ describe("SearchCache 命中（同 query 第二次走 cache）", () => {
 });
 
 describe("free_only 过滤", () => {
-  it("free_only=L1 + zhipu/brave 都 L2 → empty didnt 结果", async () => {
+  it("free_only=L1 + zhipu=L2/brave=L4 → empty didnt 结果", async () => {
     const search = makeStubSearch({
       search: vi.fn(async () => {
         throw new Error("should not be called");

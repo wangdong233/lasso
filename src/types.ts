@@ -226,11 +226,12 @@ export interface ProviderConfig {
 // ============================================================
 /**
  *  - L1=完全免费零Key（DDG/SearXNG 自建）
- *  - L2=免费层需Key（Brave 2000/月、智谱、Tavily 1000、Jina）
+ *  - L2=免费层需Key（智谱、Tavily 1000、Jina）
  *  - L3=远程 URL 免Key（Exa、Jina read_url）
- *  - L4=付费（Perplexity/Serper/Google CSE/Bing）
+ *  - L4=付费（Perplexity/Serper/Google CSE；Brave 2026-02 免费档取消后改判 L4、
+ *    Bing 已于 2025-08-11 退役归 L4——2026-08-17 核实，见 doc/KEY-GUIDE.md）
  *
- * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Brave/Exa 有免费层）。
+ * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Exa 有免费层）。
  */
 export type FreeTierLevel = "L1" | "L2" | "L3" | "L4";
 

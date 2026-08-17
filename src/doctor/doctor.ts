@@ -18,6 +18,10 @@
  *   9. serp_selectors             — 百度/Google selector 表非空
  *  10. invariants                 — 11 条架构不变量脚本 exit 0
  *  11. brave_keys                 — v0.2：BRAVE_API_KEYS / BRAVE_API_KEY 配置（无则 warn 不阻塞）
+ *  11b. brave_deep_probe          — v1.14 S-3：--deep / LASSO_DOCTOR_DEEP=1 显式 opt-in 的 Brave
+ *                                     active probe（消耗 1 次额度；200/401/403+plan/429 四分类；
+ *                                     默认关——checks 形状与零网络承诺零回归）
+ *  11c. bing_keys_retired         — v1.14 S-3：BING_API_KEYS 非空 → warn 静态退役提示（零触网）
  *  12. provider_registry_loadable — v0.2：ProviderRegistry + BUILTIN_PROVIDERS 能加载
  *  13. quota_ledger_initialized   — v0.2：已配置的 api_key provider 都生成了非空 QuotaLedger
  *  14. search_cache_dir_writable  — v0.2：~/.cache/lasso/search-cache/ 可写
@@ -151,7 +155,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.13.0";
+export const LASSO_VERSION = "1.14.0";
 
 // ============================================================
 // 类型
@@ -272,6 +276,24 @@ export interface DoctorOptions {
   cacheDir?: string;
   /** v0.2：覆盖 BRAVE_API_KEYS（默认读 process.env.BRAVE_API_KEYS / BRAVE_API_KEY）。 */
   braveKeysCsv?: string;
+  /**
+   * v1.14（21-搜索方案重审 S-3）：deep probe 显式开关，**默认 false**。
+   *  - false（默认）→ 零网络副作用承诺不破：#11b brave_deep_probe 不出现，
+   *    checks 形状与 v1.13 byte-identical（零回归）。
+   *  - true → checkBraveKeys 池非空时对 Brave API 发**一次**最小真实请求
+   *    （GET /res/v1/web/search?q=test&count=1，消耗 1 次额度，输出中明示），
+   *    四分类：200=pass / 401=fail key 无效 / 403 或 plan 语义=fail 计划层级异常 /
+   *    429=warn 限流。等价 env：LASSO_DOCTOR_DEEP=1。
+   *  - 红线：doctor 职责是可见性不是决策——探测结果**不**自动禁用 channel、
+   *    **不**改写 KEY-GUIDE（R-8）。
+   */
+  deep?: boolean;
+  /**
+   * v1.14（S-3）：覆盖 BING_API_KEYS（默认读 process.env.BING_API_KEYS / BING_API_KEY）。
+   * Bing Search APIs 已于 2025-08-11 全量退役；#11c bing_keys_retired 是**零触网**
+   * 静态检查：配了 → warn 建议删除（主链已自动跳过，无功能影响）。
+   */
+  bingKeysCsv?: string;
   /**
    * 跳过 invariants spawn（测试环境/无源码场景）。
    * 注：此 check 改为 warn，不算 blocker。
@@ -554,6 +576,22 @@ export async function runDoctor(
 
   // 11. brave_keys
   checks.push(checkBraveKeys(braveKeysCsv));
+
+  // 11b. brave_deep_probe（v1.14 S-3）：--deep / LASSO_DOCTOR_DEEP=1 显式 opt-in。
+  // 默认关——doctor「零网络副作用」承诺不破（不触网、checks 形状零回归）；
+  // skipNetwork=true 时同样跳过（deep 是「允许触网」不是「强制触网」）。
+  const deep = opts.deep ?? process.env.LASSO_DOCTOR_DEEP === "1";
+  if (deep && !opts.skipNetwork) {
+    checks.push(await checkBraveDeepProbe(braveKeysCsv));
+  }
+
+  // 11c. bing_keys_retired（v1.14 S-3）：零触网静态检查（BING_API_KEYS 非空 → warn）。
+  const bingKeysCsv =
+    opts.bingKeysCsv ??
+    process.env.BING_API_KEYS ??
+    process.env.BING_API_KEY ??
+    "";
+  checks.push(checkBingKeysRetired(bingKeysCsv));
 
   // 12. provider_registry_loadable
   checks.push(checkProviderRegistry());
@@ -1088,11 +1126,18 @@ async function checkInvariants(): Promise<DoctorCheck> {
  *
  *  - 无 Key → status="warn"（不阻塞 ready，Lasso 仍可用智谱 + browse_headless）
  *  - 有 Key（≥1 个非空） → status="pass"，detail 报 Key 数量（不打全 Key，安全）
- *  - 多 Key 配额合并 = N × 2000/月（10 §4.2 / 验收 #2）
+ *  - 多 Key 配额合并 = N × BRAVE.free_quota_per_month（从 providers.ts 读数，
+ *    2026-08-17 起为 1000/月——Brave 免费档 2026-02 取消，付费计划含 $5/月赠送额度；
+ *    21-搜索方案重审 S-1 消灭硬编码 2000）
  *
  * 注：不验证 Key 有效性（doctor 不触网），仅查 env 存在性。
+ *    deep=true（S-3，显式 opt-in）时另发一次最小真实请求探测计划级失效。
  */
 function checkBraveKeys(braveKeysCsv: string): DoctorCheck {
+  // S-1：配额读数从 provider 配置取（单一真源 providers.ts），消灭无据字面量。
+  const braveQuota =
+    BUILTIN_PROVIDERS.find((p) => p.name === "brave")?.free_quota_per_month ??
+    0;
   const keys = braveKeysCsv
     .split(",")
     .map((s) => s.trim())
@@ -1103,13 +1148,154 @@ function checkBraveKeys(braveKeysCsv: string): DoctorCheck {
       status: "warn",
       detail: "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 多源扇出退化为单源 zhipu）",
       next_step:
-        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ 获取免费 2000/月",
+        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径用智谱 + 实搜兜底即可，详见 doc/KEY-GUIDE.md",
     };
   }
   return {
     name: "brave_keys",
     status: "pass",
-    detail: `${keys.length} Key 已配置（合并配额 = ${keys.length * 2000}/月）`,
+    detail: `${keys.length} Key 已配置（合并配额 ≈ ${keys.length * braveQuota}/月，付费计划 $5 赠送额度口径）`,
+  };
+}
+
+/**
+ * 11b. brave_deep_probe（v1.14，21-搜索方案重审 S-3）：Brave active probe。
+ *
+ * **显式 opt-in**（deep=true 经 --deep / LASSO_DOCTOR_DEEP=1）：对 Brave API 发一次
+ * 最小真实请求（GET /res/v1/web/search?q=test&count=1，**消耗 1 次额度**，输出明示），
+ * 把「用户注册撞付费墙才发现」变成「doctor --deep 一跑就知道」。
+ *
+ * 四分类（人话，借 exa-mcp handleRateLimitError 的 actionable-error 范式）：
+ *  - 200                      → pass  「计划有效（key + 计划层都健康）」
+ *  - 401                      → fail  「key 无效」（凭证被拒，检查 key 抄写/是否已删）
+ *  - 403 / 响应体含 plan|subscription 语义
+ *                             → fail  「计划层级异常——Brave 2026-02 起无免费档，核查
+ *                                      KEY-GUIDE『最后核实』列 + pricing 页」
+ *  - 429                      → warn  「限流（key 本身有效）」
+ *  - 5xx / 网络错             → warn  「网络/服务端异常，计划状态不可判定」
+ *
+ * 红线：不自动禁用 channel、不自动改写 KEY-GUIDE（决策留给用户，R-8）；
+ *       只用第一个 key 探测（探测目标=计划层失效，非 key 池逐一验证）。
+ */
+async function checkBraveDeepProbe(braveKeysCsv: string): Promise<DoctorCheck> {
+  const keys = braveKeysCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const name = "brave_deep_probe";
+  if (keys.length === 0) {
+    return {
+      name,
+      status: "warn",
+      detail:
+        "BRAVE_API_KEYS 未配置，无 key 可探测（--deep 对 Brave 无事可做；零 key 免费路径=智谱+实搜兜底）",
+    };
+  }
+  const brave = BUILTIN_PROVIDERS.find((p) => p.name === "brave");
+  const endpoint = brave?.endpoint_url ?? "https://api.search.brave.com/res/v1/web/search";
+  const url = `${endpoint}?q=test&count=1`;
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        // Brave 认证走 X-Subscription-Token（与 BraveChannel 同款，非 Bearer）
+        "X-Subscription-Token": keys[0],
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    // 消耗 1 次额度的事实必须明示（S-3 改法原文）
+    const spent = "（本探测消耗 1 次额度）";
+    if (resp.status === 200) {
+      return {
+        name,
+        status: "pass",
+        detail: `Brave API 200：key + 计划层均健康${spent}`,
+      };
+    }
+    if (resp.status === 401) {
+      return {
+        name,
+        status: "fail",
+        detail: `Brave API 401：key 无效（凭证被拒）${spent}`,
+        next_step: "检查 key 是否抄写完整 / 是否已在控制台被删除，重新复制后更新配置",
+      };
+    }
+    // 403 或响应体含 plan/subscription 语义 → 计划层级失效（非凭证问题）
+    let body = "";
+    try {
+      body = (await resp.text()).slice(0, 2000);
+    } catch {
+      // 读体失败不影响分类（状态码已足够定性）
+    }
+    // F-2（v1.14.0 收尾修复）：Brave 真实契约里 key 无效返 422 SUBSCRIPTION_TOKEN_INVALID
+    // （body 含 "subscription" 字样）——先于 plan 语义判 key 无效，否则被吸进「计划层级」桶。
+    const tokenInvalid = /token[_ -]?invalid|invalid[_ -]?token|SUBSCRIPTION_TOKEN_INVALID/i.test(body);
+    if (tokenInvalid) {
+      return {
+        name,
+        status: "fail",
+        detail: `Brave API ${resp.status}（SUBSCRIPTION_TOKEN_INVALID）：key 无效（凭证被拒）${spent}`,
+        next_step: "检查 key 是否抄写完整 / 是否已在控制台被删除，重新复制后更新配置",
+      };
+    }
+    const planSemantics = /plan|subscription/i.test(body);
+    if (resp.status === 403 || planSemantics) {
+      return {
+        name,
+        status: "fail",
+        detail: `Brave API ${resp.status}${planSemantics ? "（响应体含 plan/subscription 语义）" : ""}：计划层级异常——Brave 2026-02 起无免费档，核查 KEY-GUIDE『最后核实』列 + brave.com/search/api pricing 页${spent}`,
+        next_step:
+          "到 API 控制台确认订阅计划是否在有效期 / 是否绑卡 + attribution 齐备；口径以控制台亲历为准（见 doc/KEY-GUIDE.md 维护规则）",
+      };
+    }
+    if (resp.status === 429) {
+      return {
+        name,
+        status: "warn",
+        detail: `Brave API 429：限流（key 本身有效，计划状态健康）${spent}`,
+        next_step: "稍后重试；配额见 KEY-GUIDE（$5/月赠送额度 ≈1000 次/月口径）",
+      };
+    }
+    return {
+      name,
+      status: "warn",
+      detail: `Brave API ${resp.status}：服务端/网络异常，计划状态不可判定${spent}`,
+    };
+  } catch (e) {
+    return {
+      name,
+      status: "warn",
+      detail: `Brave API 探测失败（网络异常，计划状态不可判定）：${String(e)}`,
+      next_step: "检查网络 / 代理出口后重跑 lasso doctor --deep",
+    };
+  }
+}
+
+/**
+ * 11c. bing_keys_retired（v1.14 S-3）：Bing 静态退役提示（**零触网**）。
+ *
+ * BING_API_KEYS 非空 → warn：Bing Search APIs 已于 2025-08-11 全量退役
+ * （微软 lifecycle 公告，2026-08-17 核实），该配置永远不可用，建议删除；
+ * 主链已自动跳过（key 无效不产生功能影响）。空 → pass（无需配置的常态）。
+ */
+function checkBingKeysRetired(bingKeysCsv: string): DoctorCheck {
+  const keys = bingKeysCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (keys.length === 0) {
+    return {
+      name: "bing_keys_retired",
+      status: "pass",
+      detail: "BING_API_KEYS 未配置（常态：Bing Search APIs 已于 2025-08-11 退役，无需配置）",
+    };
+  }
+  return {
+    name: "bing_keys_retired",
+    status: "warn",
+    detail: `${keys.length} 个 BING_API_KEYS 已配置，但 Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告），该配置永远不可用`,
+    next_step: "建议删除 BING_API_KEYS 配置；主链已自动跳过，无功能影响（免费第二源选 Brave，见 doc/KEY-GUIDE.md）",
   };
 }
 

@@ -2,6 +2,18 @@
 
 这份手册讲清楚：**每个 key 用在哪、去哪申请、有没有免费额度、配在哪里**。
 
+> **维护规则（时效标注制度，v1.14 起）**
+>
+> 本手册所有涉及**数额 / 计费 / 存续**的运营事实（免费额度、定价、服务是否退役）都自带「最后核实」日期。这类事实会过期——**marketing 页口径有效期 ≤90 天**。遇到以下任一情况必须重核后再引用：
+>
+> 1. **距最后核实 >90 天**，且该条目将被引用作决策（发版、README 同步、审查轮引用、定价相关 issue）；
+> 2. **`lasso doctor --deep` 探测到计划级异常**（如 Brave 403 plan/subscription 语义——上游商业层已变，与本手册口径冲突）；
+> 3. **上游发布 lifecycle / pricing 公告**（Brave blog changelog、Microsoft Learn lifecycle、智谱开放平台公告页——这些公告页应进静默 surveillance 锚点清单定期扫一遍）。
+>
+> 重核方式优先级：**控制台亲历 > 官方公告页（带日期+URL）> 官网 pricing 页**（marketing 页只作 L0 线索，不作定论）。
+>
+> **首期重核清单**（下次重核时优先处理）：Brave 官网 FAQ 现挂「For free plans, the card … will not be charged」，与本手册「超额后自动按量扣费」（控制台亲历 + openclaw #16629 + Implicator 报道）存在口径张力——下次重核走**控制台亲历**确认免费计划超额到底扣不扣卡。
+
 > **配置位置说明（重要，先读）**
 >
 > Lasso 支持两种 key 配置方式，**任选其一**：
@@ -20,16 +32,16 @@
 
 ## 快速对照表
 
-| key / 变量 | 用途 | 哪里获取 | 必填 | 免费额度 |
-|---|---|---|---|---|
-| `ZHIPU_API_KEY` | 搜索（默认引擎，中文主力） | [智谱开放平台](https://open.bigmodel.cn/console/apikey) | 要用搜索就**必填** | 按 token 计费（有新用户额度） |
-| `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 需信用卡 | **~1000 次/月**（$5/月额度，2026-02 起免费档取消） |
-| `BING_API_KEYS` | （已关停）配置键保留 | ~~Azure 门户~~ 2025-08-11 退役 | 否 | 不可用 |
-| `LASSO_ALLOW_CLOUD_BROWSER` | 云浏览器总开关（值设 `true`） | 无需申请 | 启用云浏览器时**必填** | — |
-| `STEEL_ENDPOINT` | 自托管云浏览器端点（v1.6 新·推荐） | 无需申请（自己跑 Docker） | 启用 Steel 时**必填** | —（零 per-session 费，自托管） |
-| `BROWSERBASE_API_KEY` | 云端反爬 Chrome | [browserbase.com](https://www.browserbase.com/) | 启用 browserbase 时**必填** | **100 分钟试用**（之后付费） |
-| `STAGEHAND_API_KEY` | AI 友好的页面观察 | [api.stagehand.dev](https://api.stagehand.dev) | 启用 stagehand 时**必填** | 试用（付费为主） |
-| `LASSO_COOKIE_PASSPHRASE` | 登录 cookie 加密口令 | 自己设一串足够长的密码即可 | 否 | — |
+| key / 变量 | 用途 | 哪里获取 | 必填 | 免费额度 | 最后核实 |
+|---|---|---|---|---|---|
+| `ZHIPU_API_KEY` | 搜索（默认引擎，中文主力） | [智谱开放平台](https://open.bigmodel.cn/console/apikey) | 要用搜索就**必填** | 按 token 计费（有新用户额度） | 2026-08-17 |
+| `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 需信用卡 | **~1000 次/月**（$5/月额度，2026-02 起免费档取消） | 2026-08-17 |
+| `BING_API_KEYS` | （已关停）配置键保留 | ~~Azure 门户~~ 2025-08-11 退役 | 否 | 不可用 | 2026-08-17 |
+| `LASSO_ALLOW_CLOUD_BROWSER` | 云浏览器总开关（值设 `true`） | 无需申请 | 启用云浏览器时**必填** | — | — |
+| `STEEL_ENDPOINT` | 自托管云浏览器端点（v1.6 新·推荐） | 无需申请（自己跑 Docker） | 启用 Steel 时**必填** | —（零 per-session 费，自托管） | — |
+| `BROWSERBASE_API_KEY` | 云端反爬 Chrome | [browserbase.com](https://www.browserbase.com/) | 启用 browserbase 时**必填** | **100 分钟试用**（之后付费） | 2026-08-17 |
+| `STAGEHAND_API_KEY` | AI 友好的页面观察 | [api.stagehand.dev](https://api.stagehand.dev) | 启用 stagehand 时**必填** | 试用（付费为主） | 2026-08-17 |
+| `LASSO_COOKIE_PASSPHRASE` | 登录 cookie 加密口令 | 自己设一串足够长的密码即可 | 否 | — | — |
 
 > **多 key 轮询**：`BRAVE_API_KEYS` 支持 **CSV 多 key**（`k1,k2`）。每个 key 各带一份月度额度，自动轮询、单 key 失败自动换下一个。
 
@@ -38,6 +50,8 @@
 ## A. 搜索
 
 ### 1. 智谱（`ZHIPU_API_KEY`）—— 默认引擎，中文主力
+
+> 📅 **本节数额事实最后核实：2026-08-17**（方式：智谱开放平台控制台注册亲历 + 官网 pricing 页亲取；「新用户赠送额度」的具体数值未公开精确值，以平台公示为准）。
 
 > 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave →（Bing 层已关停自动跳过）→ `browse_headless` 兜底。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
 
@@ -83,7 +97,9 @@
 
 ### 2. Brave Search（`BRAVE_API_KEYS`）—— 可选，第二源（现为付费计划 + 每月 $5 免费额度）
 
-> **⚠️ 2026-02 起免费档已取消**：Brave 原先的「Free 计划 2000 次/月免信用卡」已下架。现在所有计划都是付费制，每计划附带 **$5/月免费额度**（Search 计划 $5/千次，约 **1000 次/月**）；超出额度后绑定的信用卡**自动按量扣费、无消费上限**。免费搜索主力请用智谱（见上文），Brave 作为可选增强。
+> 📅 **本节数额事实最后核实：2026-08-17**（方式：brave.com/search/api 官网 pricing 页亲取 + API 控制台亲历 + Attribution 要求核对）。
+>
+> **⚠️ 2026-02 起免费档已取消**：Brave 原先的「Free 计划 2000 次/月免信用卡」已下架。现在所有计划都是付费制，每计划附带 **$5/月免费额度**（Search 计划 $5/千次，约 **1000 次/月**）；超出额度后绑定的信用卡**自动按量扣费、无消费上限**。免费搜索主力请用智谱（见上文），Brave 作为可选增强。（官网 FAQ 的「free plans … will not be charged」措辞与此处口径存在张力，已登记进本手册首期重核清单，见顶部维护规则。）
 
 **去哪申请**：<https://brave.com/search/api/>
 
@@ -114,9 +130,11 @@
 
 ### 3. Bing / Azure（`BING_API_KEYS`）—— 🔴 已关停，无法新开通
 
-> **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留（配了会自动跳过、不影响主流程），但没有可用的 key 来源了。
+> 📅 **本节数额事实最后核实：2026-08-17**（方式：微软 Learn lifecycle 公告页亲取——「Bing Search APIs Retiring on August 11, 2025」，带日期+URL 的 L-OP 级证据）。
+>
+> **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留（配了会自动跳过、不影响主流程；`lasso doctor` 会提示建议删除），但没有可用的 key 来源了。
 
-第二源请选 Brave（上文）；免费搜索靠智谱 + 兜底实搜（Lasso 自带 DuckDuckGo 兜底，无需配置）。
+第二源请选 Brave（上文）；免费搜索靠智谱 + 兜底实搜（Lasso 自带 DuckDuckGo → Brave 双引擎兜底，无需配置）。
 
 > 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），智谱 / Brave 通用（Bing 已关停）——不用往查询词里手写日期，也不用配任何 key。
 
@@ -283,7 +301,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 |---|---|---|---|
 | `LASSO_CDP_PORT` | 登录态 Chrome 的调试端口 | `9222` | 端口被其他程序占用 |
 | `LASSO_CACHE_DIR` | 缓存 / 状态文件根目录 | `~/.cache/lasso` | 想换存储位置（如放外置盘） |
-| `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源 |
+| `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源（Brave 计量计费属 L4，会被排除；智谱属 L2 保留） |
 | `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
@@ -349,7 +367,7 @@ lasso doctor
 - 桌面授权是否通过
 - 缓存目录是否可写
 
-doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为准**，不在这里背数字），其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）、`#21 tcc_event_synthesizing`（macOS 15+ 事件合成授权，坐标鼠标用，v1.11 新）；另有 `proxy_config` 回显（`LASSO_PROXY` 配没配、只影响无头/Steel，v1.11 新）。
+doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为准**，不在这里背数字），其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）、`#21 tcc_event_synthesizing`（macOS 15+ 事件合成授权，坐标鼠标用，v1.11 新）；另有 `proxy_config` 回显（`LASSO_PROXY` 配没配、只影响无头/Steel，v1.11 新）。v1.14 起还有两项：`lasso doctor --deep`（或 `LASSO_DOCTOR_DEEP=1`）会对 Brave 发**一次**最小真实请求（消耗 1 次额度）探测 key 有效性 + 计划层级——200/401/403/429 四分类人话输出，注册撞墙前先跑它；`bing_keys_retired` 静态提示（配了已退役的 `BING_API_KEYS` 会建议删除）。
 
 `ready: true` 就可以正常用了。**遇到任何错误，第一步永远是 `lasso doctor`。**
 
@@ -362,10 +380,11 @@ doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为�
 ```json
 {
   "ZHIPU_API_KEY": "你的智谱key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3",
-  "BING_API_KEYS": "bingkey1,bingkey2"
+  "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3"
 }
 ```
+
+（`BING_API_KEYS` 已随 Bing Search APIs 退役而无可用来源，示例不再包含；若历史配置里还留着，`lasso doctor` 会提示删除。）
 
 然后跑一次自检：
 

@@ -1,5 +1,5 @@
 /**
- * SERP 兜底抽取（parse1 §3.13 + 10 §D.1；v1.11 round1 T9 双引擎分流）
+ * SERP 兜底抽取（parse1 §3.13 + 10 §D.1；v1.11 round1 T9 双引擎分流；v1.14 S-4 非 CJK 双引擎级联）
  *
  * search → browse_headless 的跨模态 fallback 路径（parse1 §4.4 fallback 链）：
  *  1. 智谱限流 / 空结果 → outcome=unknown → FallbackDecider 升 browse_headless
@@ -9,14 +9,27 @@
  *       纯 HTML 端点；社区共识零 Key 兜底——firecrawl/open-webSearch 同选）
  *  3. 从快照文本里抽链接 + 标题（v0.1 简化版：正则抽 URL，selector 级联 v0.7 加）
  *
+ * v1.14（21-搜索方案重审 S-4）：非 CJK 双引擎级联。
+ *  - 白盒证据：DDG html/lite 端点 2026-08-17 两次实测持续 202 挑战（IP 级 flag）；
+ *    search.brave.com SERP 同日两次不同 query 实测 200 各 ~20 条结果
+ *    （open-webSearch 生产级先例：axios+cheerio 抓 #results .snippet）。
+ *  - 级联判据：ddg `outcome !== "worked" || data.count === 0`（202 挑战页 /
+ *    改版 / 空结果都落入）→ 用 brave URL 再调一次 browseExec；brave 有结果 →
+ *    返 brave 结果；brave 也无 → **原样返回 ddg 结果**（失败语义与级联前完全一致）。
+ *  - CJK 路径（百度）不动。
+ *  - 红线守护：级联在本函数内部、单一 bail-out 重试一次，非新 FallbackDecider
+ *    （INV-4 单一 fallback 引擎不受触；INV-55 断言域在 FallbackChain.ts 不涉 serp）；
+ *    仅在兜底层生效（主路径智谱/Brave API 不变）——「SERP 是债不是资产」立场不变。
+ *
  * **不绕过 BaseChannel 不变量 INV-2**：本模块不直接调 chrome-devtools-mcp，
  * 而是接受一个注入的 browseExec（HeadlessChannel.browse 的 thin wrapper），
  * 由 tools/search.ts 在注册时拼好。这样 serp 模块对 channel 无硬依赖，单测可注入 mock。
  *
  * 借鉴：08 §3.8 F3.8.1-8（百度/Google selector + 级联）；
- * open-webSearch selector 级联风格；10 §D.1「SERP 是债不是资产」。
+ * open-webSearch selector 级联风格 + brave SERP 引擎范式；10 §D.1「SERP 是债不是资产」。
  */
 import type { InteractResult, Outcome, SearchResult } from "../types.js";
+import type { SerpEngine } from "./selectors.js";
 import type { SerpHealthMonitor } from "./SerpHealthMonitor.js";
 
 // ============================================================
@@ -76,12 +89,14 @@ const DDG_FRESHNESS_DF: Record<string, string> = {
 
 /** 引擎 → SERP URL 构造。 */
 export function serpUrlFor(
-  engine: "baidu" | "ddg",
+  engine: SerpEngine,
   query: string,
   limit: number,
   /**
    * v1.12（round2 T2-5）：可选时效过滤。ddg 分支拼原生 `&df=`（d/w/m/y）；
    * baidu 无对应参数不拼（诚实降级）。不传 = v1.11 URL byte-identical。
+   * v1.14（S-4）：brave 分支同 baidu——freshness 无原生参数不拼（诚实降级，
+   * 不猜私有参数）。
    */
   freshness?: "day" | "week" | "month" | "year",
 ): string {
@@ -93,24 +108,35 @@ export function serpUrlFor(
       (df ? `&df=${df}` : "")
     );
   }
+  if (engine === "brave") {
+    // v1.14 S-4：search.brave.com SERP（SvelteKit SSR 渲染；a11y 快照正则天然兼容）。
+    // 2026-08-17 两次实测 200 各 ~20 条（DDG html 同日持续 202 挑战）。
+    return `https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`;
+  }
   return `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`;
 }
 
-export async function serpScrapeFallback(
+/** 引擎 → retrieval_method 标签（S-4：brave 级联结果显式标 serp_scrape_brave）。 */
+const SERP_RETRIEVAL_METHOD: Record<SerpEngine, string> = {
+  baidu: "serp_scrape_baidu",
+  ddg: "serp_scrape_ddg",
+  brave: "serp_scrape_brave",
+};
+
+/**
+ * 单引擎一次实搜 + 抽取（v1.14 S-4 从 serpScrapeFallback 抽出，级联复用）。
+ * 行为与 v1.13 的 serpScrapeFallback 主体逐分支一致（零语义漂移）。
+ */
+async function scrapeEngineOnce(
+  engine: SerpEngine,
   query: string,
   limit: number,
   browseExec: BrowseExec,
-  serpHealth?: SerpHealthMonitor | null,
-  /**
-   * v1.12（round2 T2-5）：可选时效过滤（兜底路径此前静默丢显式参数）。
-   * 不传 = v1.11 行为（URL 不拼 df=）。
-   */
-  freshness?: "day" | "week" | "month" | "year",
+  serpHealth: SerpHealthMonitor | null | undefined,
+  freshness: "day" | "week" | "month" | "year" | undefined,
 ): Promise<InteractResult<SearchResult>> {
-  // v1.11（round1 T9）：CJK/非 CJK 分流（百度 / DDG）
-  const engine = serpEngineForQuery(query);
   const serpUrl = serpUrlFor(engine, query, limit, freshness);
-  const retrievalMethod = engine === "ddg" ? "serp_scrape_ddg" : "serp_scrape_baidu";
+  const retrievalMethod = SERP_RETRIEVAL_METHOD[engine];
 
   const browseResult = await browseExec(serpUrl);
 
@@ -140,6 +166,12 @@ export async function serpScrapeFallback(
   }
 
   const data = extractResultsFromSnapshot(preview, query);
+  // v1.14 S-4：brave 级联结果显式标 engine/region（extract 默认按 CJK 判
+  // ddg_serp——brave 尝试必须覆盖，字段不许撒谎）
+  if (engine === "brave") {
+    data.engine = "brave_serp";
+    data.region = "us";
+  }
   // v0.7：按命中数通知 serpHealth（count > 0 = hit；否则 miss）
   serpHealth?.onResult(engine, "v1", query, preview, data.count > 0);
 
@@ -150,6 +182,42 @@ export async function serpScrapeFallback(
     fallback_used: true,
     retrieval_method: retrievalMethod,
   };
+}
+
+export async function serpScrapeFallback(
+  query: string,
+  limit: number,
+  browseExec: BrowseExec,
+  serpHealth?: SerpHealthMonitor | null,
+  /**
+   * v1.12（round2 T2-5）：可选时效过滤（兜底路径此前静默丢显式参数）。
+   * 不传 = v1.11 行为（URL 不拼 df=）。
+   */
+  freshness?: "day" | "week" | "month" | "year",
+): Promise<InteractResult<SearchResult>> {
+  // v1.11（round1 T9）：CJK/非 CJK 分流（百度 / DDG）
+  const engine = serpEngineForQuery(query);
+
+  // CJK 路径（百度）不动（S-4 红线）
+  if (engine === "baidu") {
+    return scrapeEngineOnce("baidu", query, limit, browseExec, serpHealth, freshness);
+  }
+
+  // ---------- 非 CJK：DDG → 失败/0 结果时 Brave 一次级联（v1.14 S-4） ----------
+  const ddgResult = await scrapeEngineOnce("ddg", query, limit, browseExec, serpHealth, freshness);
+
+  // 级联判据：outcome 非 worked（含 202 挑战页→unknown / didnt）或 0 结果
+  const ddgEmpty =
+    ddgResult.outcome !== "worked" || (ddgResult.data?.count ?? 0) === 0;
+  if (!ddgEmpty) {
+    return ddgResult; // 默认行为 byte-identical（ddg 成功 → 不级联）
+  }
+
+  const braveResult = await scrapeEngineOnce("brave", query, limit, browseExec, serpHealth, freshness);
+  const braveHasResults =
+    braveResult.outcome === "worked" && (braveResult.data?.count ?? 0) > 0;
+  // brave 也无 → 原样返回 ddg 结果（失败语义与级联前完全一致，单一 bail-out）
+  return braveHasResults ? braveResult : ddgResult;
 }
 
 // ============================================================
@@ -168,8 +236,9 @@ export async function serpScrapeFallback(
 const URL_RE = /https?:\/\/[^\s)"'<>一-鿿]+/g;
 // 搜索引擎自家链接（跳转页 / 占位）排除
 // v1.11 T9：+ duckduckgo（ddg 路径自家 /l/?uddg= 跳转链与 y.js 占位链）
+// v1.14 S-4：+ search.brave（brave 级联路径自家 search.brave.com 链）
 const SELF_HOST_RE =
-  /^(https?:\/\/)?(www\.)?(baidu|google|m\.baidu|duckduckgo)\.(com|cn|ca)\//i;
+  /^(https?:\/\/)?(www\.)?(baidu|google|m\.baidu|duckduckgo|search\.brave)\.(com|cn|ca)\//i;
 // 用户查询词本身防止回显成「结果」
 function isSelfLink(url: string, _query: string): boolean {
   return SELF_HOST_RE.test(url);

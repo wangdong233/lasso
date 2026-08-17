@@ -326,6 +326,12 @@ export abstract class BrowseChannel extends UiChannel {
           ...(partial.markdown_engine
             ? { markdown_engine: partial.markdown_engine }
             : {}),
+          // v1.14.0：markdown 档正文别名字段——文档语义一直是 data.markdown，但实现只给
+          // preview（搜索方案重审 verify 时两拨人先后读错字段误判「markdown 空」）。
+          // 纯增量：raw 档无此字段（byte-identical 不变），markdown* 档=preview 同值。
+          ...(partial.markdown_engine
+            ? { markdown: truncatePreview(partial.preview ?? "") }
+            : {}),
         },
         served_by: this.name,
         fallback_used: false,

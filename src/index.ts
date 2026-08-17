@@ -204,7 +204,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.13.0";
+const LASSO_SERVER_VERSION = "1.14.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -503,8 +503,9 @@ async function runMcpServer(): Promise<void> {
   //      不可用（仍走 zhipu → brave → browse_headless；byte-identical v0.8 fallback 链）。
   //  - BING_API_KEYS 配 → BingChannel 实例化 + isAvailable 经 ledger.hasAvailableKey 判定；
   //    engine="fallback_chain" 时 bing 作 search.bing 兜底层。
-  // Azure F0 免费层不强依赖：key=[] 时 ProviderRegistry 已在 config.ts 跳过 bing（keys.length===0），
-  // 此处 braveProvider 的同范式判定也会跳过 —— 行为完全等价 v0.8。
+  // Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，2026-08-17 核实）：
+  // key=[] 时 ProviderRegistry 已在 config.ts 跳过 bing（keys.length===0），
+  // 此处 braveProvider 的同范式判定也会跳过 —— 行为完全等价 v0.8。占位保留见 doc/21 R-5。
   let bing: BingChannel | undefined;
   const bingProvider = config.registry.get("bing");
   if (bingProvider && bingProvider.config.endpoint_url && bingProvider.ledger) {
@@ -1290,7 +1291,7 @@ const CLI_USAGE = [
   "Usage:",
   "  lasso-mcp                                    Start MCP stdio server (default mode; used by",
   "                                               `claude mcp add lasso -- npx -y lasso-mcp`)",
-  "  lasso-mcp doctor [--stealth-check]           Run environment/health checks, print JSON report",
+  "  lasso-mcp doctor [--stealth-check] [--deep]    Run environment/health checks, print JSON report",
   "  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json",
   "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
   "                                               [--mode hidden|visible] [--idle-ms N]",
@@ -1305,6 +1306,9 @@ const CLI_USAGE = [
   "Flags:",
   "  --stealth-check   (doctor) opt in to the creepjs stealth regression gate",
   "                    (opens a headless browser and touches the network)",
+  "  --deep            (doctor) opt in to the Brave plan-level active probe",
+  "                    (sends ONE minimal real request, consuming 1 unit of quota;",
+  "                    env equivalent: LASSO_DOCTOR_DEEP=1)",
 ].join("\n");
 
 /**
@@ -1344,7 +1348,7 @@ async function main(): Promise<void> {
     process.exit(0);
     return;
   }
-  // CLI: `lasso doctor [--stealth-check]`
+  // CLI: `lasso doctor [--stealth-check] [--deep]`（v1.14 S-3 加 --deep：Brave 计划级探测）
   if (process.argv[2] === "doctor") {
     await runDoctorCli(process.argv.slice(3));
     return;

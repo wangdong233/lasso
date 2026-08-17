@@ -33,7 +33,7 @@ function makeProvider(
 }
 
 describe("filterByFreeTier — 四级分级", () => {
-  it("L1：只允许 L1 provider（zhipu=L2 / brave=L2 都被过滤）", () => {
+  it("L1：只允许 L1 provider（zhipu=L2 / brave=L4 都被过滤）", () => {
     const providers = [
       makeProvider("ddg", "L1"),
       makeProvider("zhipu", "L2"),
@@ -111,13 +111,16 @@ describe("filterByFreeTier — 四级分级", () => {
     expect(filterByFreeTier([], "L4")).toEqual([]);
   });
 
-  it("实际 v0.2 内置：zhipu + brave 都是 L2 → L2 都通过", () => {
-    const v02builtins = [
+  it("实际内置层级（S-1 后）：zhipu=L2 / brave=L4 → L2 只放 zhipu，L4 都通过", () => {
+    // 2026-02 起 Brave 免费档取消（计量计费 + 绑卡）→ 改判 L4；
+    // 显式 free_only=L2 不得再放行 Brave（21-搜索方案重审 S-1）。
+    const builtins = [
       makeProvider("zhipu", "L2"),
-      makeProvider("brave", "L2"),
+      makeProvider("brave", "L4"),
     ];
-    expect(filterByFreeTier(v02builtins, "L2")).toHaveLength(2);
-    expect(filterByFreeTier(v02builtins, "L1")).toHaveLength(0);
+    expect(filterByFreeTier(builtins, "L4")).toHaveLength(2);
+    expect(filterByFreeTier(builtins, "L2").map((p) => p.name)).toEqual(["zhipu"]);
+    expect(filterByFreeTier(builtins, "L1")).toHaveLength(0);
   });
 });
 

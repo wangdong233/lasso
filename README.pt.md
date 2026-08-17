@@ -194,7 +194,7 @@ Recorre à Internet Archive (Wayback Machine) para encontrar a última cópia ar
 
 ## Instalação
 
-**Versão atual v1.13.0** (changelog no bloco recolhido no fim desta seção).
+**Versão atual v1.14.0** (changelog no bloco recolhido no fim desta seção).
 
 Pré-requisitos: Node.js ≥ 20 + Claude Code (ou qualquer cliente compatível com MCP).
 
@@ -207,8 +207,9 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só essa linha
 **Controle do desktop no macOS**: rode `lasso doctor` uma vez e siga as instruções para marcar `lasso-rust-helper` em "Accessibility" e "Screen Recording" — o `doctor` guia você passo a passo.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.13, clique para ver o que mudou em cada versão)</summary>
+<summary>📋 Changelog (v1.8 → v1.14, clique para ver o que mudou em cada versão)</summary>
 
+- **v1.14**: dívida de fatos operacionais de busca saldada (razão de cota do Brave alinhada ao crédito mensal de $5 ≈1000 consultas/mês; `free_only=L2` não roteia mais o Brave medido como nível gratuito; cota do Bing zerada) + fallback inglês sem key de dois motores (falha/vazio do DDG faz cascata para uma tentativa Brave SERP); `lasso doctor --deep` (sonda de nível de plano do Brave, consome 1 unidade de cota) + aviso estático de aposentadoria do Bing; sistema de datação de frescor no KEY-GUIDE (cada afirmação de key traz data de "última verificação" e gatilho de reverificação de 90 dias).
 - **v1.13**: consistência da impressão de idioma do navegador headless (o cabeçalho HTTP `Accept-Language` segue o perfil, eliminando a contradição "cabeçalho zh-CN ↔ página en-US"); correção do ponto de impacto das capturas VLM com região; `desktop find` rejeita queries puramente por ref; liberação de sessão Steel ganha teto de 3 segundos (um Steel parado não trava mais a saída por 5 minutos).
 - **v1.12**: dupla ativação da extração markdown (extratores dedicados defuddle em 20+ sites + fidelidade de tabelas / fórmulas); impressão digital padrão alinhada ao sistema host no macOS; honestização do fim da cadeia desktop (VLM não mente sobre sucesso / expect exige dois acertos consecutivos / sinal `truncated:true`); degradação automática de type em campos de entrada Electron; drag-and-drop interpolado fica utilizável; limpeza imediata na saída anormal do CC.
 - **v1.11**: o desktop passa de "enxergar" para "clicar" (click / type / scroll realmente implementados + mouse por coordenadas + poda `skeleton`); camada de driver atualizada para chrome-devtools-mcp 1.7.0 (antidetecção em nível de lançamento, telemetria desligada por padrão); filtro de tempo `freshness` na busca; fallback sem key para queries em inglês trocado para DuckDuckGo; novo `LASSO_PROXY`, proxy de saída.
@@ -259,7 +260,7 @@ Salve e já vale. **Quer mais robustez**: adicione também a Brave (plano pago c
 }
 ```
 
-> Ordem de fallback: reuso do MCP da máquina → Zhipu → Brave → (Bing desligado, pulado automaticamente) → fallback de busca real no navegador headless. O primeiro que falha passa para o próximo.
+> Ordem de fallback: reuso do MCP da máquina → Zhipu → Brave → (Bing desligado, pulado automaticamente) → fallback de busca real no navegador headless (v1.14: fallback inglês de dois motores — falha/vazio do DDG tenta automaticamente mais uma vez com busca real do Brave). O primeiro que falha passa para o próximo.
 
 Como solicitar keys, cotas dos planos grátis → [Guia de Configuração de Keys · Busca](./doc/KEY-GUIDE.md#a-搜索). Comandos úteis: `lasso --version` / `lasso --help` (desde a v1.8, comando desconhecido imprime o uso e sai com código não zero — não trava mais em silêncio).
 

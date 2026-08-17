@@ -18,8 +18,8 @@
  *   - 中文 N + 英文 N（来自 scripts/ab-queries.json；v0.2 验收只要求 ≥5+5）
  *   - 每组每 provider × 每 query 跑 `rounds` 遍取中位（默认 3，消单次抖动）
  *   - p50 / p95 latency + outcome 分布 + 配额消耗（QuotaLedger.totalRemaining）
- *   - **强制 in-house**：不引用 AIMultiple "最优"结论，只引 Brave 外部三项硬数据
- *     （669ms / 14.89 Agent Score / 2000/月，见 §4.3）。
+ *   - **强制 in-house**：不引用 AIMultiple "最优"结论，只引 Brave 外部硬数据
+ *     （669ms / 14.89 Agent Score；配额口径 = $5/月赠送额度 ≈1000 次，2026-08-17 核实）。
  *
  * 简单性铁律（01）：
  *   - 本文件不引 MCP server / FallbackDecider，直接 stub 两个 channel.search 的合成本
@@ -126,7 +126,7 @@ interface BenchReport {
   external_citations: {
     brave_aimultiple_p95_ms: 669;
     brave_aimultiple_agent_score: 14.89;
-    brave_free_quota_per_month: 2000;
+    brave_free_quota_per_month: 1000;
     note: string;
   };
 }
@@ -194,7 +194,8 @@ async function makeRealChannel(
   const keysCsv = process.env.BRAVE_API_KEYS ?? process.env.BRAVE_API_KEY ?? "";
   const keys = keysCsv.split(",").map((s) => s.trim()).filter(Boolean);
   if (keys.length === 0) throw new Error("BRAVE_API_KEYS missing for --real mode");
-  const ledger = new QuotaLedger("brave", keys, 2000, "monthly");
+  // 2026-02 免费档取消：$5/月赠送额度 ÷ $5/千次 ≈1000 次/月（2026-08-17 核实，S-1）
+  const ledger = new QuotaLedger("brave", keys, 1000, "monthly");
   const ch = new BraveChannel(
     "https://api.search.brave.com/res/v1/web/search",
     ledger,
@@ -325,7 +326,7 @@ function renderMarkdown(report: BenchReport): string {
   lines.push("");
   lines.push("- Brave AIMultiple p95（外部基准）：669 ms");
   lines.push("- Brave AIMultiple Agent Score：14.89");
-  lines.push("- Brave 免费层配额：2000 query/月");
+  lines.push("- Brave 配额口径：付费计划 $5/月赠送额度 ≈1000 query/月（2026-02 免费档取消，2026-08-17 核实）");
   lines.push("");
   lines.push("> 本表是 in-house 实测，不引用 AIMultiple 「全场最优」结论（05 §0-3 否决因果延伸）。");
   lines.push("> 生产决策请以 `LASSO_BENCH_REAL=1` 重跑本工具的真实模式结果为准。");
@@ -393,7 +394,7 @@ async function main(): Promise<void> {
     external_citations: {
       brave_aimultiple_p95_ms: 669,
       brave_aimultiple_agent_score: 14.89,
-      brave_free_quota_per_month: 2000,
+      brave_free_quota_per_month: 1000,
       note: "外部硬数据引用，非「最优」归因（parse2 §3.7 / 05 §0-3 否决）",
     },
   };

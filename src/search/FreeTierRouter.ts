@@ -3,11 +3,12 @@
  *
  * 用户在 tool args 或 env LASSO_SEARCH_FREE_ONLY 传：
  *  - L1：只允许完全免费零 Key（DDG/SearXNG 自建）— v0.2 暂无 L1 provider，返回空
- *  - L2：允许免费层需 Key（Brave 2000/月、智谱、Tavily）
+ *  - L2：允许免费层需 Key（智谱、Tavily）— Brave 2026-02 免费档取消后是 L4，
+ *        显式 free_only=L2 不再放行 Brave（2026-08-17 核实，21-搜索方案重审 S-1）
  *  - L3：再加远程 URL 免 Key（Exa、Jina read_url）— v0.2 暂无
- *  - L4：再加付费（默认，全允许）
+ *  - L4：再加付费（默认，全允许；Brave 计量计费在此层）
  *
- * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Brave/Exa 有免费层）。
+ * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Exa 有免费层）。
  *
  * 设计：与 ProviderRegistry.filterByFreeTier 平行——后者是注册表实例方法（含已排序的
  * byCapability），本函数是纯函数版（接受任意 ProviderConfig[]）。这样 tools/search.ts

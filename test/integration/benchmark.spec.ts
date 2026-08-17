@@ -197,7 +197,7 @@ describe("renderMarkdown", () => {
       external_citations: {
         brave_aimultiple_p95_ms: 669,
         brave_aimultiple_agent_score: 14.89,
-        brave_free_quota_per_month: 2000,
+        brave_free_quota_per_month: 1000,
         note: "外部硬数据引用，非「最优」归因",
       },
     };
@@ -206,7 +206,8 @@ describe("renderMarkdown", () => {
     expect(md).toContain("| provider | mode |");
     expect(md).toContain("669 ms");
     expect(md).toContain("14.89");
-    expect(md).toContain("2000 query/月");
+    // S-1：配额口径改为 $5 赠送额度 ≈1000/月（2026-02 免费档取消，2026-08-17 核实）
+    expect(md).toContain("≈1000 query/月");
   });
 
   it("禁止「最优」/「全场最优」结论字眼（05 §0-3 否决）", () => {

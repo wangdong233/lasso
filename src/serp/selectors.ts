@@ -12,6 +12,14 @@
  *    社区共识引擎（firecrawl/open-webSearch 同选）；CJK query 走百度（现状）、
  *    非 CJK query 走 DDG（修复「英文 query 落百度」的免费层英文兜底缺位）
  *
+ * v1.14（21-搜索方案重审 S-4）：
+ *  - SerpEngine 扩 "brave"：search.brave.com SERP 作为非 CJK 兜底的**第二引擎**
+ *    （ddg 失败/0 结果时一次级联）。白盒证据：DDG html/lite 端点 2026-08-17 两次
+ *    实测持续 202 挑战（IP 级）；search.brave.com SERP 同日两次实测 200 各 ~20 条。
+ *  - BRAVE_SERP_SELECTORS 锚点与 open-webSearch（Aas-ee）src/engines/brave/brave.ts
+ *    同款（SvelteKit SSR `#results .snippet`）；当前抽取仍走 a11y 正则（R-7：
+ *    selector 集是遗产备胎占位，不为切换）。
+ *
  * 设计注记（10 §D.1）：**SERP 是债不是资产**——主路径走结构化 API（智谱），
  * 这里只是 search → browse_headless 跨模态 fallback 时的兜底抽链接。
  * v0.7 会加改版检测；v0.1 用宽松正则保底（见 extract.ts）。
@@ -19,7 +27,7 @@
  * 借鉴：open-webSearch selector 级联风格；08 §3.8。
  */
 
-export type SerpEngine = "baidu" | "ddg";
+export type SerpEngine = "baidu" | "ddg" | "brave";
 
 export interface SerpSelectorSet {
   engine: SerpEngine;
@@ -74,13 +82,29 @@ export const DDG_SELECTORS: SerpSelectorSet[] = [
 ];
 
 // ============================================================
+// Brave SERP（v1.14 S-4：非 CJK 兜底第二引擎；ddg 失败/0 结果时一次级联）
+// ============================================================
+export const BRAVE_SERP_SELECTORS: SerpSelectorSet[] = [
+  {
+    engine: "brave",
+    result_container: ".snippet",
+    title: ".search-snippet-title",
+    link: ".result-content > a",
+    snippet: ".generic-snippet",
+  },
+];
+
+// ============================================================
 // 工具
 // ============================================================
 /**
  * 选引擎对应的 selector 集（按优先级）。
  * 默认走 baidu（CJK query / fake-ip 国内网络更稳）；
- * 非 CJK query 由 extract.ts 分流到 ddg（v1.11 T9）。
+ * 非 CJK query 由 extract.ts 分流到 ddg（v1.11 T9），
+ * ddg 失败时级联 brave（v1.14 S-4）。
  */
 export function selectorsFor(engine: SerpEngine = "baidu"): SerpSelectorSet[] {
-  return engine === "ddg" ? DDG_SELECTORS : BAIDU_SELECTORS;
+  if (engine === "ddg") return DDG_SELECTORS;
+  if (engine === "brave") return BRAVE_SERP_SELECTORS;
+  return BAIDU_SELECTORS;
 }

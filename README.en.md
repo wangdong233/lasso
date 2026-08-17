@@ -194,7 +194,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.13.0** (changelog in the collapsed block at the end of this section).
+**Current version v1.14.0** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -207,8 +207,9 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.13 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.14 — click to see what each version changed)</summary>
 
+- **v1.14**: search operational-facts debt cleared (Brave quota ledger aligned to the $5 monthly credit ≈1000 queries/month; `free_only=L2` no longer routes metered Brave as a free tier; Bing quota zeroed) + dual-engine zero-key English fallback (DDG failure/empty cascades to a Brave SERP attempt); `lasso doctor --deep` (Brave plan-level probe, consumes 1 unit of quota) + static Bing-retirement notice; KEY-GUIDE freshness-dating system (every key claim carries a "last verified" date and a 90-day recheck trigger).
 - **v1.13**: consistent language fingerprint for the headless browser (HTTP `Accept-Language` issued with the profile, removing the "header zh-CN ↔ page en-US" contradiction); fixed the VLM landing point for region screenshots; `desktop find` rejects pure-ref queries; Steel session release capped at 3 seconds (a stalled Steel no longer hangs exit for 5 minutes).
 - **v1.12**: dual-activation markdown extraction (defuddle dedicated extractors for 20+ sites + table/math fidelity); macOS default fingerprint aligned with the host system; honest desktop tail chain (VLM never fakes success / expect requires two consecutive hits / `truncated:true` signal); Electron input fields auto-degrade `type`; drag interpolation now usable; immediate wind-down on abnormal Claude Code exit.
 - **v1.11**: desktop goes from "can watch" to "can click" (click/type/scroll really implemented + coordinate mouse + `skeleton` pruning); driver layer upgraded to chrome-devtools-mcp 1.7.0 (launch-level stealth, telemetry off by default); search gained the `freshness` time filter; zero-key English fallback switched to DuckDuckGo; new `LASSO_PROXY` egress proxy.
@@ -259,7 +260,7 @@ Takes effect on save. **For more stability**, add Brave too (a paid plan that in
 }
 ```
 
-> Fallback order: machine MCP reuse → Zhipu → Brave → (Bing shut down, auto-skipped) → live search in the headless browser as the last resort. If the one ahead fails, it auto-switches to the next.
+> Fallback order: machine MCP reuse → Zhipu → Brave → (Bing shut down, auto-skipped) → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search). If the one ahead fails, it auto-switches to the next.
 
 How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 

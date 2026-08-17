@@ -220,7 +220,7 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     expect(r.blockers).not.toContain("brave_keys");
   });
 
-  it("11. brave_keys 配置 → pass + 含合并配额（N × 2000）", async () => {
+  it("11. brave_keys 配置 → pass + 含合并配额（N × 1000，S-1：2026-02 免费档取消）", async () => {
     const r = await runDoctor({
       zhipuKey: "fake-key",
       cacheDir: tempCache,
@@ -231,7 +231,7 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     const c = findCheck(r, "brave_keys");
     expect(c.status).toBe("pass");
     expect(c.detail).toContain("2 Key");
-    expect(c.detail).toContain("4000/月"); // 2 × 2000
+    expect(c.detail).toContain("2000/月"); // 2 × 1000（$5 赠送额度口径）
   });
 
   it("12. provider_registry_loadable 永远 pass（BUILTIN_PROVIDERS 加载）", async () => {

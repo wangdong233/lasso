@@ -17,7 +17,8 @@
  * Key 池注入（INV-54 = INV-10 衍生）：每次 search 前 ledger.pickKey() 选余量最多且未 exhausted 的 Key。
  *  - 429 / quota exceeded → ledger.markExhausted(key, retryAfter)（与 BraveChannel 同范式）。
  *  - key=[] 时构造不抛（QuotaLedger 容忍空 keys 数组），isAvailable() 返 false
- *    （Azure F0 免费层不强依赖；fallback_order 仍配但 ProviderRegistry 行为等价 v0.8）。
+ *    （Bing Search APIs 已于 2025-08-11 全量退役——微软 lifecycle 公告，2026-08-17 核实；
+ *    fallback_order 仍配但 ProviderRegistry 行为等价 v0.8；占位保留理由见 doc/21 R-5）。
  *
  * outcome 分类（parse10 §3.1，与 BraveChannel 同源 10 §D.1）：
  *  - 200 + 非空 webPages.value → worked

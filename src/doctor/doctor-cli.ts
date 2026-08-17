@@ -58,10 +58,15 @@ export interface BuildDoctorCliOptionsDeps {
 }
 
 export interface DoctorCliOptionsResult {
-  /** 合并进 runDoctor 的 opts 片段（stealthCheck / stealthCheckClientProvider）。 */
-  doctorOpts: Pick<DoctorOptions, "stealthCheck" | "stealthCheckClientProvider">;
+  /** 合并进 runDoctor 的 opts 片段（stealthCheck / stealthCheckClientProvider / deep）。 */
+  doctorOpts: Pick<
+    DoctorOptions,
+    "stealthCheck" | "stealthCheckClientProvider" | "deep"
+  >;
   /** flag 是否出现（供 CLI 层日志 / 测试断言）。 */
   stealthCheck: boolean;
+  /** v1.14 S-3：--deep 是否出现（Brave active probe 显式 opt-in）。 */
+  deep: boolean;
   /** doctor 跑完后清理 stealth-check 专用子进程；未启用时为 null。 */
   shutdown: (() => Promise<void>) | null;
 }
@@ -69,18 +74,28 @@ export interface DoctorCliOptionsResult {
 /**
  * 解析 doctor 子命令参数（argv = process.argv.slice(3)）。
  *
- *  - 无 --stealth-check → { doctorOpts: {}, stealthCheck: false, shutdown: null }
- *    （零回归：runDoctor 默认 #38 warn-skip，不开浏览器）
+ *  - 无 --stealth-check → stealthCheck 段省略（零回归：runDoctor 默认 #38 warn-skip，
+ *    不开浏览器）
  *  - 有 --stealth-check → stealthCheck=true + provider（懒启动 headless
  *    chrome-devtools-mcp；ensureRunning 抛错 → 返 null → #38 warn 不 fail）
+ *  - v1.14 S-3：--deep → deep=true（#11b brave_deep_probe 显式 opt-in：对 Brave API
+ *    发一次最小真实请求消耗 1 次额度；默认关，doctor 零网络副作用承诺不破。
+ *    等价 env：LASSO_DOCTOR_DEEP=1）
  */
 export function buildDoctorCliOptions(
   argv: string[],
   deps: BuildDoctorCliOptionsDeps = {},
 ): DoctorCliOptionsResult {
   const stealthCheck = argv.includes("--stealth-check");
+  // v1.14 S-3：--deep 显式 opt-in（与 --stealth-check 同款独立 flag，可叠加）
+  const deep = argv.includes("--deep");
   if (!stealthCheck) {
-    return { doctorOpts: {}, stealthCheck: false, shutdown: null };
+    return {
+      doctorOpts: deep ? { deep: true } : {},
+      stealthCheck: false,
+      deep,
+      shutdown: null,
+    };
   }
   const handle = deps.headless
     ? deps.headless()
@@ -101,8 +116,10 @@ export function buildDoctorCliOptions(
           return null;
         }
       },
+      ...(deep ? { deep: true } : {}),
     },
     stealthCheck: true,
+    deep,
     shutdown: () => handle.shutdown(),
   };
 }

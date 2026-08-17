@@ -295,7 +295,7 @@ $ lasso launch-chrome
 | markdown 抽取 | src/browse/markdown-extractor.ts（defuddle 双激活 + turndown 降级保底） | — |
 | desktop 四档 | src/desktop/{AxProvider,AxBackend,AxBackendFactory,OutlineMapper,CGEventProvider,ScreenshotVlmProvider}.ts | AxProvider ~330 |
 | FallbackDecider | src/fallback/FallbackDecider.ts | ~280 |
-| 搜索 | src/search/{SearchCache,MultiSourceFanout}.ts；src/channels/{ZhipuChannel,BraveChannel,BingChannel}.ts；src/serp/extract.ts（DDG/百度兜底） | — |
+| 搜索 | src/search/{SearchCache,MultiSourceFanout}.ts；src/channels/{ZhipuChannel,BraveChannel,BingChannel}.ts；src/serp/extract.ts（DDG→Brave 级联/百度兜底，v1.14 S-4） | — |
 | Launcher | src/launcher/{launch-chrome,chrome-paths}.ts（INV-64 不引新 npm dep） | ~200 |
 | Doctor | src/doctor/doctor.ts（39 项 check；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / proxy_config） | ~2900 |
 | Invariants | src/invariants/check-invariants.mjs（79 条 INV） | ~4200 |

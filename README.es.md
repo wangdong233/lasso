@@ -194,7 +194,7 @@ Acude al Internet Archive (Wayback Machine) para encontrar la última copia arch
 
 ## Instalar
 
-**Versión actual v1.13.0** (changelog en el bloque plegado al final de esta sección).
+**Versión actual v1.14.0** (changelog en el bloque plegado al final de esta sección).
 
 Requisitos previos: Node.js ≥ 20 + Claude Code (o cualquier cliente compatible con MCP).
 
@@ -207,8 +207,9 @@ Reinicia Claude Code → `/mcp` → `lasso ✓ Connected`. **Solo esta línea, s
 **Usuarios de macOS que quieren controlar el escritorio**: ejecuta `lasso doctor` una vez y marca `lasso-rust-helper` en "Accessibility" y "Screen Recording" siguiendo las indicaciones — `doctor` te guía paso a paso.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.13 — despliega para ver qué cambió en cada versión)</summary>
+<summary>📋 Changelog (v1.8 → v1.14 — despliega para ver qué cambió en cada versión)</summary>
 
+- **v1.14**: deuda de hechos operativos de búsqueda saldada (libro de cuotas de Brave alineado al crédito mensual de $5 ≈1000 consultas/mes; `free_only=L2` ya no enruta el Brave medido como nivel gratuito; cuota de Bing a cero) + fallback inglés sin key de doble motor (fallo/vacío de DDG cascada a un intento Brave SERP); `lasso doctor --deep` (sonda de nivel de plan de Brave, consume 1 unidad de cuota) + aviso estático de retiro de Bing; sistema de fechado de frescura en KEY-GUIDE (cada afirmación de key lleva fecha de "última verificación" y disparador de reverificación a 90 días).
 - **v1.13**: huella de idioma consistente en el navegador headless (el HTTP `Accept-Language` se emite con el perfil; eliminada la contradicción "cabecera zh-CN ↔ página en-US"); corregido el punto de aterrizaje del VLM en capturas por región; `desktop find` rechaza consultas de solo ref; liberación de sesiones Steel con tope de 3 segundos (Steel colgado ya no bloquea la salida 5 minutos).
 - **v1.12**: extracción markdown de doble activación (extractores dedicados de defuddle para 20+ sitios + fidelidad de tablas/matemáticas); huella por defecto en macOS alineada con el sistema anfitrión; cola del escritorio honesta (el VLM no finge éxito / expect exige dos aciertos consecutivos / señal `truncated:true`); degradación automática de `type` en campos de entrada de Electron; la interpolación de arrastre pasa a ser utilizable; cierre inmediato si Claude Code termina de forma anómala.
 - **v1.11**: el escritorio pasa de "poder mirar" a "poder clicar" (click/type/scroll implementados de verdad + ratón por coordenadas + poda `skeleton`); capa driver actualizada a chrome-devtools-mcp 1.7.0 (stealth a nivel de arranque, telemetría desactivada por defecto); la búsqueda gana el filtro temporal `freshness`; el fallback sin key para inglés pasa a DuckDuckGo; nuevo proxy de salida `LASSO_PROXY`.
@@ -259,7 +260,7 @@ Al guardar surte efecto. **¿Más estabilidad?** Añade también Brave (plan de 
 }
 ```
 
-> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → (Bing cerrado, se salta automáticamente) → búsqueda real en el navegador headless como remate. Si falla el anterior, pasa automáticamente al siguiente.
+> Orden de degradación: reutilización del MCP de la máquina → Zhipu → Brave → (Bing cerrado, se salta automáticamente) → búsqueda real en el navegador headless como remate (v1.14: fallback inglés de doble motor — un fallo o vacío de DDG reintenta automáticamente una vez con búsqueda real de Brave). Si falla el anterior, pasa automáticamente al siguiente.
 
 Cómo solicitar keys, cuánta cuota gratis hay → [Guía de configuración de keys · Búsqueda](./doc/KEY-GUIDE.md#a-搜索). Comandos habituales: `lasso --version` / `lasso --help` (desde v1.8, los comandos desconocidos imprimen el uso y terminan con código distinto de cero, en vez de colgarse en silencio).
 

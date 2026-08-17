@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { loadConfig } from "../../src/config/config.js";
 import { ProviderRegistry } from "../../src/config/provider-registry.js";
-import { BUILTIN_PROVIDERS } from "../../src/config/providers.js";
+import { BUILTIN_PROVIDERS, BING } from "../../src/config/providers.js";
 import type { ProviderConfig } from "../../src/types.js";
 
 // ============================================================
@@ -135,8 +135,8 @@ describe("ProviderRegistry — get + ledger", () => {
     expect(b).toBeDefined();
     expect(b!.ledger).not.toBeNull();
     expect(b!.ledger!.keyCount).toBe(3);
-    // 3 Key × 2000/月 = 6000
-    expect(b!.ledger!.totalRemaining()).toBe(6000);
+    // 3 Key × 1000/月 = 3000（S-1：Brave 2026-02 免费档取消，$5 赠送额度 ≈1000/月）
+    expect(b!.ledger!.totalRemaining()).toBe(3000);
   });
 
   it("self_hosted provider（browse_headless）→ ledger=null", () => {
@@ -177,13 +177,13 @@ describe("ProviderRegistry — filterByFreeTier", () => {
     expect(filtered).toEqual(["brave", "zhipu"]);
   });
 
-  it("L2 → zhipu + brave 都通过（两者都是 L2）", () => {
+  it("L2 → 只 zhipu 通过（brave 2026-02 免费档取消后是 L4 计量计费，S-1 改判）", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS], {
       zhipuKey: ZHIPU_KEY,
       braveKeys: BRAVE_KEYS,
     });
     const filtered = r.filterByFreeTier("L2").map((p) => p.name).sort();
-    expect(filtered).toEqual(["brave", "zhipu"]);
+    expect(filtered).toEqual(["zhipu"]);
   });
 
   it("L1 → 都不过滤通过（v0.2 无 L1 search provider）", () => {
@@ -221,5 +221,29 @@ describe("ProviderRegistry — 开闭（验收 #6）", () => {
     expect(r.get("exa")?.ledger).not.toBeNull();
     // filterByFreeTier L3 仍能查到
     expect(r.filterByFreeTier("L3").map((p) => p.name)).toContain("exa");
+  });
+});
+
+// ============================================================
+// S-1（21-搜索方案重审）：运营事实回归锁 —— Brave/Bing 配额与层级
+// 防止「文档修了、运行时仍旧」的失实再次回归（d3d1b24 补全）。
+// ============================================================
+describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () => {
+  it("BRAVE：free_quota_per_month=1000（$5 赠送额度口径）且 free_tier_level=L4（2026-02 免费档取消）", () => {
+    const brave = BUILTIN_PROVIDERS.find((p) => p.name === "brave");
+    expect(brave).toBeDefined();
+    expect(brave!.free_quota_per_month).toBe(1000);
+    expect(brave!.free_tier_level).toBe("L4");
+  });
+
+  it("BING：free_quota_per_month=0 且 L4（API 2025-08-11 全量退役）", () => {
+    // BING 不在 BUILTIN_PROVIDERS（SEARCH_FALLBACK_PROVIDERS 单独导出）
+    expect(BING.free_quota_per_month).toBe(0);
+    expect(BING.free_tier_level).toBe("L4");
+  });
+
+  it("QuotaLedger 记账不高估：3 Key Brave 池 totalRemaining=3000（非旧 2000/Key）", () => {
+    const r = makeRegistry([...BUILTIN_PROVIDERS], { braveKeys: BRAVE_KEYS });
+    expect(r.get("brave")!.ledger!.totalRemaining()).toBe(3000);
   });
 });
