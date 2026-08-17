@@ -40,16 +40,19 @@ Estrela gêmea do [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) 
 | Você diz …… | Você obtém |
 |---|---|
 | "Pesquise o mais recente sobre o ecossistema async do rust" | Resultados estruturados de busca (alterna automaticamente para o próximo motor se um cair — você nem percebe) |
-| "Pegue o texto da homepage do github.com" | Texto limpo do artigo (barras de navegação / anúncios / sujeira removidos — economiza 30–70% em tokens) |
+| "Pesquise as atualizações do Claude Code da última semana" (v1.11) | Resultados filtrados por tempo via `freshness=week` — sem escrever datas à mão na query |
+| "Pegue o texto da homepage do github.com" | Texto limpo do artigo (barras de navegação / anúncios / sujeira removidos — economiza 30–70% em tokens; 20+ sites de alto tráfego usam extratores dedicados e as tabelas não perdem a estrutura — v1.12) |
 | "Abra meu Jira logado e mostre minhas tarefas" | Um snapshot da página com login (reutiliza seu Chrome local; você resolve o 2FA) |
 | "Este link está morto, ache um archive" | O snapshot mais recente da Internet Archive |
-| "Liste os arquivos da minha janela atual do Finder" | Uma lista de janelas e controles do desktop (uma árvore semântica, não um screenshot) |
+| "Liste os arquivos da minha janela atual do Finder" | Uma lista de janelas e controles do desktop (uma árvore semântica, não um screenshot; se a árvore for truncada, ele avisa claramente `truncated:true` — v1.12) |
+| "Clique naquele botão de nova pasta" / "Digite XX no campo de busca" (v1.11) | Ação de desktop executada de verdade (clique / digitação semântica AXAPI + verificação do resultado; fallback automático para clique por coordenadas em canvas / Electron) |
 | "Tire um screenshot de página inteira desta página" / "Salve como PDF" | Um caminho de arquivo no disco (nada de blob gigante de imagem despejado no chat) |
 | "Quais rastreadores de terceiros esta página carregou?" | Uma lista de recursos com contagem por domínio de rastreador |
 | "Liste tudo que eu posso controlar agora" | Uma lista unificada (páginas web e janelas do desktop, tudo nela) |
 | "Desligue o dark mode" | Clique / digitação / hotkey automáticos (com verificação de resultado — ele confirma que realmente aconteceu) |
 | "Só faz fetch deste JSON endpoint" | Bytes brutos (mais rápido, mais barato) |
-| "Este site tem Cloudflare, não consigo extrair" | Bypass anti-bot do Chrome na nuvem (desativado por padrão; você dá opt-in explícito) |
+| "Este site parece ter um anti-bot, tenta aí" | O `browse_headless` tem antidetecção embutida (passa checagens básicas de bot) — muitos sites são extraídos direto, sem config |
+| "Este site tem Cloudflare, não consigo extrair" | Anti-bot via Chrome na nuvem — **Steel auto-hospedado (grátis)** ou browserbase / stagehand (pago, desativado por padrão) |
 | "O Lasso está configurado corretamente?" | Um relatório de health-check (te diz o que falta) |
 
 > Você não precisa memorizar nenhum nome de capacidade. Basta dizer o que quer — o Claude escolhe o jeito certo de fazer.
@@ -63,13 +66,15 @@ O Lasso em si é **completamente grátis + MIT open source**. Veja quanto cada c
 | Capacidade | Custo | Observações |
 |---|---|---|
 | O próprio Lasso (servidor MCP + todas as capacidades principais) | ✅ Grátis | MIT open source, grátis para sempre |
-| Busca (Zhipu + Brave + Bing) | ✅ Plano grátis disponível | Zhipu cobrado por token; Brave **2.000 consultas/mês grátis**, Bing **1.000 consultas/mês grátis** — usável sem pagar |
+| Busca (Zhipu + Brave + Bing) | ✅ Plano grátis disponível | Zhipu cobrado por token; Brave **2.000 consultas/mês grátis**, Bing **1.000 consultas/mês grátis** — usável sem pagar. **Já configurou o MCP `web-search-prime` da Zhipu na sua máquina? O Lasso detecta e reutiliza automaticamente — nem precisa configurar um ZHIPU_API_KEY separado** |
 | Extrair páginas públicas / screenshots / PDF / auditoria de rede / bytes brutos | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Extrair páginas com login (reutiliza o Chrome local) | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Controlar o desktop (macOS / Windows / Linux) | ✅ Grátis | Construído e executado localmente, só precisa de autorização do SO; conta Apple Developer de \$99/ano **opcional** para autorização persistente assinada (também funciona sem assinar — basta autorizar de novo a cada vez) |
-| Navegador na nuvem (browserbase / stagehand) | ⚠️ Pago, desativado por padrão | Pago após o trial; **não custa nada se você não configurar** — único item pago do Lasso |
+| Navegador na nuvem · Steel auto-hospedado (novo na v1.6) | ✅ Grátis | Rode o Steel (Apache-2.0 open source) em Docker local — **custo zero por sessão + os cookies nunca saem da sua máquina**; precisa de `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
+| Navegador na nuvem · hospedado (browserbase / stagehand) | ⚠️ Pago, desativado por padrão | browserbase paga por uso após o trial; stagehand é um canal experimental programático (sem entrada de ferramenta MCP); **não custa nada se você não configurar** |
+| Antidetecção do `browse_headless` (novo na v1.5) | ✅ Grátis | Injeta 16 camadas de antidetecção por padrão (UA / webdriver / webgl etc.) — passa muitas checagens básicas de bot de cara |
 
-> Em uma frase: **enquanto você não ligar o navegador na nuvem, o Lasso custa zero** — a busca tem planos grátis suficientes para o uso diário, e todo o resto é completamente grátis.
+> Em uma frase: **enquanto você não ligar o navegador na nuvem hospedado (browserbase / stagehand), o Lasso custa zero** — a busca tem planos grátis suficientes para o uso diário, e o Steel auto-hospedado também é grátis.
 
 ---
 
@@ -92,6 +97,8 @@ Sem keys logo após instalar (este é o **Nível 1: zero config**):
 - Ver **quais rastreadores de terceiros uma página carrega**
 - Buscar bytes brutos diretamente de uma JSON API ou arquivo
 - Controlar apps nativos do macOS (Finder / Mail / System Settings, etc. — exige uma marcação única em System Settings)
+
+> 💡 **A busca também pode funcionar com zero config**: se o `~/.claude.json` da sua máquina já tem o MCP `web-search-prime` da Zhipu configurado, o Lasso detecta e reutiliza na inicialização — sem precisar configurar um `ZHIPU_API_KEY` separado, a busca simplesmente funciona. Rode `lasso doctor` e veja se `#36 machine_search_mcp` está `pass`.
 
 Seu primeiro resultado — basta dizer ao Claude:
 
@@ -117,11 +124,15 @@ Agrupado por **o que você quer fazer**, não pelo nome da ferramenta. Cada item
 
 Usa a Zhipu por padrão (forte em chinês); você pode adicionar Brave e Bing para múltiplas fontes. **Se uma fonte qualquer for limitada por taxa ou estiver fora do ar, ele alterna automaticamente para a próxima — você nem percebe.** Esgotar a cota grátis de um provedor não derruba o conjunto.
 
+Para conteúdo **de atualidade — notícias, movimentos de versão**, basta dizer "pesquise o X da última semana / do último mês" — o filtro de temporalidade se aplica automaticamente (day / week / month / year, em todos os motores — só o Bing não tem granularidade de "ano" e a ignora, v1.11), sem escrever datas à mão na query.
+
 ### Extrair Páginas Públicas (sem login)
 
 > Você: "Pegue o texto de example.com" → texto limpo do artigo, três granularidades disponíveis
 
-Remove automaticamente barras de navegação, anúncios, barras laterais e outras sujeiras — **economiza 30–70% em tokens** (e dinheiro). Precisa de marcadores de citação (ótimo para pesquisa, alimentar RAG)? Uma frase troca o modo.
+Remove automaticamente barras de navegação, anúncios, barras laterais e outras sujeiras — **economiza 30–70% em tokens** (e dinheiro). GitHub / Reddit / Hacker News / Wikipedia / Substack / Medium e outros **mais de 20 sites de alto tráfego usam extratores dedicados**, e estruturas como tabelas e fórmulas matemáticas não se perdem (v1.12) — os links no corpo do texto viram endereços absolutos completos e clicáveis. Precisa de marcadores de citação (ótimo para pesquisa, alimentar RAG)? Uma frase troca o modo.
+
+> **A partir da v1.5, o `browse_headless` tem antidetecção ligada por padrão** (UA falsificado / `navigator.webdriver` removido / webgl, plugins e codecs forjados — mais de uma dúzia de camadas). **Zero config — automático.** Muitos sites "detectores de headless" agora podem ser extraídos diretamente (a v1.8 corrigiu um defeito que desativava silenciosamente a injeção — agora funciona de verdade, e falhas de injeção são honestamente reportadas no log). A partir da v1.11 a antidetecção vale **já no lançamento do navegador**: UA, viewport e idioma descem unificados pelo perfil — o cabeçalho HTTP da camada de rede e o JS da página veem os mesmos valores, sem contradição; a partir da v1.12, no macOS a impressão digital padrão **se alinha com o seu sistema** (acabou o "UA diz Windows, as características da máquina entregam macOS"). Só proteção pesada de nível Cloudflare precisa do navegador na nuvem (veja "Bypass Anti-Bot" abaixo). Quer verificar a antidetecção? Rode `lasso doctor --stealth-check` para uma comparação via creepjs.
 
 ### Extrair Páginas com Login (mesmo com 2FA)
 
@@ -141,13 +152,13 @@ Quando você não precisa renderizar uma página inteira, HTTP direto é **~4× 
 
 > Você: "Tire um screenshot de página inteira" / "Salve como PDF" → caminho do arquivo no disco
 
-Todas as imagens e PDFs são **salvos no disco e um caminho é retornado** — nada de blob gigante despejado no seu chat desperdiçando contexto.
+Todas as imagens e PDFs são **salvos no disco e um caminho é retornado** — nada de blob gigante despejado no seu chat desperdiçando contexto. Saídas de texto muito grandes (fetch_url / network etc.) acima de 48 KiB também vão automaticamente para o disco, retornando prévia + handle de paginação `@oN` — continue lendo página por página com a ferramenta `read_text` (chamável diretamente via MCP desde a v1.8).
 
 ### Veja o Que uma Página Carrega
 
 > Você: "Quais rastreadores de terceiros esta página carregou?" → lista de recursos com contagem por domínio de rastreador
 
-Identifica automaticamente todo recurso que a página carrega, agrupado por domínio de terceiros — útil para detectar risco de privacidade e gargalos de desempenho.
+Identifica automaticamente todo recurso que a página carrega, agrupado por domínio de terceiros — útil para detectar risco de privacidade e gargalos de desempenho. Desde a v1.11 a coleta de recursos usa a camada de rede nativa do motor do navegador — **completa mesmo em ambiente de proxy / rede TUN**, e cada recurso vem com método de requisição e código de status.
 
 ### Controlar Apps Nativos do Desktop
 
@@ -155,7 +166,7 @@ Identifica automaticamente todo recurso que a página carrega, agrupado por dom�
 
 No macOS você controla Finder / Mail / Safari / Notes / System Settings e qualquer app nativo. **Windows e Linux também funcionam** (veja a fronteira honesta abaixo). Cada ação é verificada — ele confirma "realmente aconteceu", nunca falso sucesso.
 
-> **Fronteira honesta**: o macOS é verificado em hardware real; Windows / Linux passam por autoverificações em tempo de compilação e a nível de contrato, mas o teste manual completo em máquina real ainda está em andamento. **Não fingemos "totalmente verificado em Win/Linux".**
+> **Fronteira honesta**: o macOS é verificado em hardware real; Windows / Linux passam por autoverificações em tempo de compilação e a nível de contrato, mas o teste manual completo em máquina real ainda está em andamento. **Não fingimos "totalmente verificado em Win/Linux".**
 
 ### Agendamento Unificado entre Web e Desktop
 
@@ -173,11 +184,17 @@ Recorre à Internet Archive (Wayback Machine) para encontrar a última cópia ar
 
 > Você: "Este site tem Cloudflare, não consigo extrair" → anti-bot do Chrome na nuvem
 
-**Completamente desativado por padrão.** Só ativa quando você liga explicitamente E configurou uma key de navegador na nuvem. Você não precisa disso para páginas normais.
+**Completamente desativado por padrão.** Só ativa quando você liga explicitamente E configurou um navegador na nuvem (Steel auto-hospedado ou browserbase / stagehand hospedados). Anti-bot leve já é resolvido pela antidetecção embutida do `browse_headless` — **só proteção pesada de nível Cloudflare precisa do navegador na nuvem**.
+
+- **Steel auto-hospedado (recomendado · grátis)**: rode um navegador na nuvem open source em Docker local — custo zero por sessão, cookies que não saem da sua máquina. Uma linha de comando para ativar, veja o [Guia de Keys · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **browserbase (hospedado · pago)**: paga por uso após o trial; a alternativa quando você não quer rodar Docker você mesmo.
+- **stagehand (hospedado · pago)**: ⚠️ canal experimental programático — configurar a key só monta o canal interno, **sem entrada de ferramenta MCP** (contrato REST não verificado; o `lasso doctor` #39 `stagehand_rest_contract_probe` testa exatamente isso).
 
 ---
 
 ## Instalação
+
+**Versão atual v1.13.0** (v1.13: 7 ajustes da camada de implementação (3ª rodada de revisão de otimalidade): **consistência da impressão de idioma do navegador headless** — o cabeçalho HTTP `Accept-Language` agora segue o perfil stealth (antes era enviado o valor real do host: numa máquina chinesa com perfil inglês, aparecia a contradição "cabeçalho zh-CN ↔ página en-US"), e o `navigator.languages` também passa a seguir o perfil; **correção do ponto de impacto das capturas VLM com região** — no cenário `screenshot_region`, as coordenadas inferidas pelo VLM são convertidas de volta para coordenadas de tela cheia (antes havia desvio sistemático da origem da região, ainda relatando sucesso); **`desktop find` rejeita queries puramente por ref** — `where` só aceita text / role; query ref pura retorna honestamente invalid_params (antes degradava silenciosamente para casar a árvore inteira, explodindo tokens e fingindo sucesso); **saída mais rápida e estável** — a liberação de sessão Steel ganhou teto de 3 segundos (com um Steel auto-hospedado parado, a saída do CC não trava mais por até 5 minutos); quando falta a permissão de síntese de entrada do macOS no modo VLM, mensagem clara "autorização necessária" em vez de falha vaga; v1.12: 14 ajustes da camada de implementação (2ª rodada de revisão de otimalidade): **dupla ativação da extração markdown** — extratores dedicados por site do defuddle (HN / Reddit / GitHub / Wikipedia / Substack / Medium etc., mais de 20 sites) + conversão fiel de tabelas / fórmulas (tabelas GFM não perdem mais a estrutura; links relativos viram absolutos; a saída pode conter dialetos Obsidian como `==destaque==`, notas de rodapé `[^N]`); **impressão digital padrão do navegador headless alinhada ao sistema host** — no macOS, impressão macOS Chrome por padrão (elimina a contradição "UA diz Windows, client hints entregam macOS"; o doctor avisa sobre desvio de versão em relação ao Chrome instalado); **honestização do fim da cadeia desktop** — a inferência por captura VLM não mente mais sobre sucesso (executa de verdade quando dá, senão unknown honesto); `wait/expect` exige dois acertos consecutivos (elementos fugazes no carregamento não geram mais falso sucesso); `snapshot` marca `truncated:true` no topo quando trunca; `find` anexa aos nós encontrados a lista de ações executáveis; **correção de campos de entrada Electron** — controles que engolem AXSetValue (Slack / VSCode etc.) fazem o type degradar automaticamente para "foco + síntese de teclado" (ASCII); **drag-and-drop fica utilizável** — pressão de 200 ms + trajetória interpolada em 12 pontos + assentamento de 100 ms (sliders e ordenação por arrastar vão de provável fracasso a utilizáveis); **consistência de freshness ponta a ponta** — machine_mcp e o fallback DuckDuckGo não descartam mais silenciosamente o parâmetro de temporalidade; em saída anormal do CC, o processo Lasso faz a limpeza imediata (antes ficava pendurado até 1 hora); v1.11 fecha a dimensão de implementação da "alça de interação universal": **o desktop passa de "enxergar" para "clicar"** — click / type / scroll do `desktop` agora executam de verdade (clique semântico AXAPI + verificação escrever-e-ler-de-volta + erro honesto para referências vencidas), além de ações de mouse por coordenadas (arrastar / roda / mover, fallback canvas / Electron) e a poda de árvore `skeleton` (grande queda de tokens em apps densos); **camada de driver atualizada chrome-devtools-mcp 0.3.0 → 1.7.0** (11 meses e 57 releases de benefícios; antidetecção em nível de lançamento UA / viewport; telemetria upstream desligada por padrão); **search ganha filtro de tempo `freshness`** (day / week / month / year repassados a todos os motores — checar notícias / versões sem escrever datas na query); o fallback sem key para queries em inglês trocou de Baidu para DuckDuckGo; novo `LASSO_PROXY`, proxy de saída do navegador (só afeta navegadores headless / nuvem — a saída do Chrome logado fica intacta); v1.10 navegador silencioso por padrão + fecha ao acabar: `launch-chrome` inicia por padrão sem janela e sem incomodar (adaptado a macOS / Windows, `--mode visible` para voltar), sempre com antithrottling em segundo plano e mudo; durante a execução do servidor, fecha automaticamente ~60 s após o último uso (`LASSO_LAUNCH_IDLE_MS` ajustável; a semântica de 5 minutos fica disponível com 300000); v1.9 completa o fim de vida do navegador: headless reciclado automaticamente após 5 minutos ocioso, `lasso chrome-stop` fecha segundo o registro os Chromes que o Lasso abriu, `tab_restore` restaura sua lista original de abas — veja "Limpeza depois do uso" acima; v1.8 corrigiu os 24 defeitos expostos pelo teste completo: adaptação ao contrato do chrome-devtools-mcp@0.3.0 upstream, screenshots realmente salvos em disco, sonda de vida do launch-chrome, fiação da cota por chamada, ferramenta de paginação `read_text` etc. — lista completa em [doc/17-功能测试清单.md](doc/17-功能测试清单.md), seção "v1.8 修复记录".)
 
 **Pré-requisitos**: Node.js ≥ 20; Claude Code (ou qualquer cliente compatível com MCP).
 
@@ -205,7 +222,7 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só isso — s
 | Quase zero falhas na busca (múltiplas fontes) | Adicione keys da Brave / Bing (ambas têm planos grátis) | Faz fail-over automático se uma cair — você nem percebe |
 | Extrair páginas com login | Execute `lasso launch-chrome` uma vez | Reutiliza sua sessão do Chrome local |
 | Controlar o desktop do macOS | Execute `lasso doctor` uma vez | Controla apps nativos |
-| Extrair sites protegidos por Cloudflare | Confirmação dupla + uma key de nuvem | Desativado por padrão; precisa do seu opt-in explícito |
+| Extrair sites protegidos por Cloudflare | Confirmação dupla + um canal de navegador na nuvem (Steel auto-hospedado grátis / hospedado pago) | Desativado por padrão; precisa do seu opt-in explícito |
 
 Abaixo, cada um dos quatro módulos é detalhado com o caminho mais curto até "simplesmente funciona".
 
@@ -213,13 +230,19 @@ Abaixo, cada um dos quatro módulos é detalhado com o caminho mais curto até "
 
 **O que faz**: Pesquisa qualquer coisa, retorna resultados estruturados (título, snippet, link).
 
-**Precisa de key**: Sim — uma key da Zhipu (grátis para solicitar) já basta.
+**Precisa de key**: Sim — mas se a sua máquina já tem o MCP `web-search-prime` da Zhipu configurado (no `mcpServers` do `~/.claude.json` local, com type=http + Authorization), **o Lasso detecta na inicialização e reutiliza essa key como fonte preferida — sem precisar configurar um ZHIPU_API_KEY separado**. Se o MCP da máquina for limitado ou falhar, fallback automático para a key própria do Lasso (preencha abaixo). Rode `lasso doctor` e veja se `#36 machine_search_mcp` está `pass` (host=open.bigmodel.cn) ou `warn` (não detectado).
 
-**Como configurar**:
+> Ordem de prioridade com zero config: reuso do MCP da máquina → `ZHIPU_API_KEY` do Lasso → Brave → Bing → fallback `browse_headless`. O primeiro que falha passa para o próximo — você nem percebe.
+
+**Como configurar** (só se não tiver o MCP da máquina / quiser uma key independente):
 
 ```bash
 lasso config init        # cria o template ~/.lasso/config.json
+lasso --version          # mostra o número de versão (desde a v1.8)
+lasso --help             # uso de todos os subcomandos
 ```
+
+> Desde a v1.8 a linha de comando segue convenções normais: subcomando desconhecido / argumento desconhecido imprime o uso e sai com código não zero — não cai mais silenciosamente no modo servidor MCP esperando entrada.
 
 Abra `~/.lasso/config.json` e preencha:
 
@@ -251,15 +274,30 @@ Os nomes das keys são iguais aos da tabela acima — basta preencher. Salve o a
 
 **Precisa de key**: Não.
 
-**Como configurar**: Execute o comando abaixo uma vez. Ele detecta automaticamente seu Chrome local e reutiliza todas as sessões nas quais você já está logado (inclusive aquelas em que você já passou o 2FA):
+**Como configurar**: Execute o comando abaixo uma vez. Ele encontra automaticamente seu Chrome local e o inicia com porta de debug. Desde a v1.8, usa por padrão um **perfil dedicado** do Lasso (o Chrome 136+ não permite porta de debug no perfil padrão — o método antigo fechava na hora); faça login nas suas contas uma primeira vez nessa janela (2FA por sua conta), e depois **o login desse perfil fica reutilizado para sempre**:
 
 ```bash
 lasso launch-chrome
 ```
 
+Depois de iniciar, o Lasso sonda a porta de debug (verificação nível `curl /json/version`): Chrome não subiu / porta ocupada → **erro explícito**, acabou o "retornou sucesso mas não conecta". Para reutilizar um diretório de perfil existente: `lasso launch-chrome --profile <diretório>`.
+
+**Desde a v1.10, "trabalho silencioso" por padrão**: esse Chrome **inicia sem janela, sem roubar seu teclado / foco, sempre mudo** — você escreve código em primeiro plano enquanto ele extrai páginas atrás, sem um incomodar o outro (o único rastro perceptível é um ícone de Chrome a mais no Dock / barra de tarefas, impossível de remover no nível do SO). Para vê-lo trabalhar: `lasso launch-chrome --mode visible` (ou `"LASSO_LAUNCH_MODE": "visible"` no `~/.lasso/config.json`).
+
 Depois disso, diga "abra meu Jira logado" ao Claude e ele se conecta automaticamente.
 
 > 🔴 **Linha vermelha**: 2FA / códigos SMS / CAPTCHA / magic links — o Lasso nunca resolve isso por você. Você precisa passar por eles manualmente uma vez no seu Chrome local.
+
+**Limpeza depois do uso (desde a v1.10, quase nada para gerenciar)**: com o servidor rodando, esse Chrome **se fecha automaticamente ~60 s depois do último uso** (terminou, fechou — sem esperar e sem lembrar de fechar). Para ajustar o limiar: `LASSO_LAUNCH_IDLE_MS=300000` volta para 5 minutos, `=1000` chega perto do instantâneo (ao custo de ~11 s de re-cold-start para operações espaçadas), `=0` desativa o fechamento automático. Para liberar uma tarefa longa pontual: `lasso launch-chrome --idle-ms 3600000`. Fechamento manual sempre possível (só os Chromes que o próprio Lasso abriu, com propriedade verificada — nunca os seus abertos à mão):
+
+```bash
+lasso chrome-stop          # fecha todos os Chromes abertos pelo Lasso (registro)
+lasso chrome-stop --port 9222   # fecha só o da porta indicada
+```
+
+> Fronteira honesta: rodar `lasso launch-chrome` sozinho (sem o servidor) não tem fechamento idle automático — a saída continua sendo `chrome-stop`; o `browse_logged_in` conectado ao **seu Chrome visível aberto por você** é "pouco intrusivo, não zero intrusão" (limitação upstream da plataforma macOS — algumas ações podem roubar o foco uma vez) — para silêncio puro, use o modo hidden aberto pelo próprio lasso ou o `browse_headless`; o canal `desktop` simula teclado / mouse reais, **por design ocupa o teclado e o mouse físicos** — não existe forma silenciosa.
+
+As abas que o `browse_logged_in` abre no seu Chrome: ao fim da tarefa, diga `admin {action:"tab_restore", reason:"tarefa concluída"}` — as abas abertas pelo Lasso fecham e sua lista original é restaurada (também acontece automaticamente na saída do servidor). O navegador headless, por padrão, é **reciclado automaticamente após 5 minutos sem uso** — não fica residente comendo memória; para economizar cold-start em uso intenso, `LASSO_HEADLESS_IDLE_MS=3600000` (1 hora); `0` desativa completamente.
 
 **Detalhes** → [Guia de Configuração de Keys · Navegação com Login](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
@@ -279,18 +317,33 @@ Depois disso, diga "abra meu Jira logado" ao Claude e ele se conecta automaticam
 
 **Detalhes** → [Guia de Configuração de Keys · Controle do Desktop](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
-### 4. Anti-Bot na Nuvem (⚠️ Pago, desativado por padrão · exige confirmação dupla)
+### 4. Navegador na Nuvem: Auto-Hospedado ou Hospedado (auto-hospedado grátis / hospedado pago, desativado por padrão · confirmação dupla para ligar)
 
-**O que faz**: Extrai sites protegidos por Cloudflare ou por proteção anti-bot pesada.
+**O que faz**: Extrai sites guardados por Cloudflare ou anti-bot pesado (anti-bot leve já passa com a antidetecção embutida do `browse_headless` — esta seção é só para o pesado).
 
-**Precisa de key**: Sim — e só ativa quando **você liga explicitamente**.
+**Precisa de key**: Depende do caminho. Três canais de nuvem à escolha — **só o caminho hospedado precisa de key**:
 
-**Como configurar**: As duas condições abaixo precisam ser atendidas ao mesmo tempo:
+- **(a) Steel auto-hospedado (recomendado · grátis)**: rode um navegador na nuvem open source em Docker local — **custo zero por sessão + cookies que nunca saem da sua máquina**. Sem key para solicitar; basta rodar o Docker você mesmo.
+- **(b) browserbase hospedado (pago)**: 100 minutos de trial, depois paga por uso.
+- **(c) stagehand hospedado (pago)**: observação de página amigável a IA, mais para experimentar. ⚠️ **Canal experimental programático** — mesmo com a key configurada, **não há entrada de ferramenta MCP** (contrato REST não verificado em runtime; `lasso doctor` #39 testa exatamente isso); para realmente atravessar anti-bot, escolha Steel ou browserbase.
+
+**Como configurar**: As duas condições ao mesmo tempo —
 
 1. Interruptor master: defina `LASSO_ALLOW_CLOUD_BROWSER` como `true`
-2. Pelo menos uma key de nuvem (browserbase ou stagehand — escolha uma)
+2. Pelo menos um canal de nuvem — Steel (defina `STEEL_ENDPOINT`) ou browserbase (a key correspondente); a key do stagehand só monta o canal experimental interno, sem expor ferramenta
 
-Escreva em `~/.lasso/config.json`:
+**Config mínima · Steel auto-hospedado (grátis, recomendado)**:
+
+```json
+{
+  "LASSO_ALLOW_CLOUD_BROWSER": true,
+  "STEEL_ENDPOINT": "http://localhost:3000"
+}
+```
+
+O Steel sobe com um comando Docker: `docker run -p 3000:3000 -p 9223:9223 ghcr.io/steel-dev/steel-browser`. Passos completos de ativação no [Guia de Keys · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+
+**Config mínima · browserbase hospedado (pago)**:
 
 ```json
 {
@@ -299,9 +352,9 @@ Escreva em `~/.lasso/config.json`:
 }
 ```
 
-> Desativado por padrão — sem config, essa capacidade não existe. Você não precisa dela para páginas normais, **e só ativa quando você dá opt-in explícito**.
+> Desativado por padrão — sem config, essa capacidade não existe. Você não precisa dela para páginas normais, **e ela só ativa com o seu opt-in explícito**. Anti-bot leve não precisa de navegador na nuvem — a antidetecção embutida do `browse_headless` resolve.
 
-**Como solicitar keys de nuvem, cotas de trial** → veja o [Guia de Configuração de Keys · Navegador na Nuvem](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+**Como solicitar keys hospedadas, como ativar o Steel Docker** → veja o [Guia de Configuração de Keys · Navegador na Nuvem](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
 
 <details>
 <summary><b>Ajuste avançado (opcional — usuários comuns podem pular)</b></summary>
@@ -314,8 +367,12 @@ Você pode **ignorar completamente** o que vem a seguir no uso diário. Estas s�
 - Permitir intranet da empresa / faixas especiais de proxy
 - Definir sua própria passphrase para criptografar cookies de login (se não definir, o macOS Keychain é usado)
 - Salvar snapshots dos resultados de busca no disco (para testes de regressão)
+- Ajustar o tempo de reciclagem automática do navegador headless (`LASSO_HEADLESS_IDLE_MS`, padrão 5 minutos; `0` desativa)
+- Ajustar o tempo de "fechar depois do uso" do Chrome do launch-chrome (`LASSO_LAUNCH_IDLE_MS`, padrão 60 segundos; `300000` para 5 minutos, `0` desativa) ou voltar ao lançamento visível (`LASSO_LAUNCH_MODE=visible`)
+- Configurar um proxy de saída para os navegadores (`LASSO_PROXY`, ex.: `http://127.0.0.1:7890`; **só afeta os navegadores headless e o Steel na nuvem — a saída do Chrome logado fica sempre como está** — v1.11)
+- Definir o endpoint do navegador na nuvem Steel auto-hospedado (`STEEL_ENDPOINT`, ex.: `http://localhost:3000`; precisa também de `LASSO_ALLOW_CLOUD_BROWSER=true` para ativar)
 
-Lista completa de variáveis e padrões: [Guia de Configuração de Keys · Ajuste Avançado](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Redes proxy TUN do Surge / Clash (fake-ip) já são permitidas out of the box.**
+Lista completa de variáveis e padrões: [Guia de Configuração de Keys · Ajuste Avançado](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Redes proxy TUN do Surge / Clash (fake-ip, `198.18.0.0/15`) e `127.0.0.1` (porta de debug CDP do Chrome local) já são permitidas out of the box**, sem config extra — comportamento de design, não config faltando.
 
 > **Compatível com versões anteriores**: se você instalou antes com `claude mcp add -e KEY=VAL`, essas env variables **continuam funcionando** e **sobrescrevem** o arquivo de config. O arquivo de config é só um caminho adicional, mais amigável — não substitui as env vars.
 
@@ -331,7 +388,7 @@ Seus dados são seus.
 - **Logs de ações no desktop ficam locais** — zero relatório remoto. O Lasso não reporta para casa sobre o que você faz.
 - **O navegador na nuvem é desativado por padrão** — exige sua **confirmação dupla explícita** (interruptor master + key) para ativar. Sem isso, a capacidade efetivamente não existe.
 - **Sem resolução de 2FA / CAPTCHA / código de verificação** (linha vermelha). Esses sempre exigem você, em pessoa, para passar uma vez no seu navegador local.
-- **Estranhos não cutucam seus serviços internos** — acesso à rede interna é negado por padrão; redes proxy TUN do Surge / Clash já são permitidas out of the box.
+- **Estranhos não cutucam seus serviços internos** — acesso à rede interna é negado por padrão; redes proxy TUN do Surge / Clash já são permitidas out of the box, sem config extra.
 - **Resultados de busca não são gravados no disco por padrão** — só se você ativar explicitamente o modo de gravação (para testes de regressão).
 
 ---
@@ -348,6 +405,7 @@ Seus dados são seus.
 | Busca insiste em não retornar nada | Verifique se a key expirou / a cota se esgotou; adicionar vários provedores (Zhipu + Brave + Bing) reduz drasticamente a taxa de falha |
 | Um link não abre | Diga "este link está morto, ache um archive" para consultar a Internet Archive |
 | Aviso de que acesso à rede interna foi bloqueado | Confira a URL; redes proxy TUN são permitidas por padrão, outras redes internas precisam de permissão explícita |
+| Quer verificar a antidetecção | Rode `lasso doctor --stealth-check` — ele dirige a página de detecção creepjs e compara com a baseline (opcional, não afeta o uso diário) |
 
 FAQ completo e dicas de debug em [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
 
@@ -386,6 +444,12 @@ WeChat | Alipay
 Ou ⭐ [deixe uma Star neste repo](../../stargazers), [abra uma Issue](../../issues), ou [envie um PR](../../pulls) — cada um deles encoraja o autor.
 
 ---
+
+## Mais Documentos
+
+- Quer a arquitetura profunda? Veja [Arquitetura de Funcionalidades](doc/08-media-interact-功能架构.md)
+- Quer o roteiro de versões? Veja [Cronograma de Implementação](doc/09-media-interact-实施排期.md)
+- Quer a obtenção de keys? Veja [Guia de Configuração de Keys](doc/KEY-GUIDE.md)
 
 ## Licença
 

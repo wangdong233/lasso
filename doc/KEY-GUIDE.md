@@ -143,6 +143,8 @@
 
 > 配齐智谱 + Brave + Bing 三家后，搜索「≈永不失败」——任一家临时限流/挂掉，自动切下一家，你无感。
 
+> 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），智谱 / Brave / Bing 全引擎通用（仅 Bing 无「年」档粒度，该档自动跳过过滤）——不用往查询词里手写日期，也不用配任何 key。
+
 ---
 
 ## B. 登录态浏览（命令行配置，无 key）
@@ -182,6 +184,8 @@ lasso doctor
 ```
 
 按提示打开 **「系统设置 → 隐私与安全 → 辅助功能」** 和 **「屏幕录制」**，把 `lasso-rust-helper` 勾上即可。`doctor` 会一步步引导，不需要你手动找路径。
+
+> **macOS 15+ 补充（坐标鼠标）**：如果你还要用**坐标鼠标动作**（拖拽滑条、按坐标点击、滚轮等），系统会多一项 **「Event Synthesizing」（事件合成）** 授权——同样在「系统设置 → 隐私与安全」里，给 `lasso-rust-helper` 勾上即可（已勾「辅助功能」通常也能兜底）。`lasso doctor` 的 `#21 tcc_event_synthesizing` 检查会专查这项；缺了它坐标动作会明确报「需要授权」而不是含糊失败。macOS 14 及以下没有这一项，走「辅助功能」即可。
 
 ### Windows
 
@@ -318,6 +322,28 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 >
 > 关于本机回环：`127.0.0.1/32` **默认放行——这是设计行为**，供 `browse_logged_in` 连本机 Chrome 的 CDP 调试端口（`127.0.0.1:9222`）；`127.0.0.0/8` 的其余地址（如 `127.0.0.2`）仍默认拒。不是安全漏洞，也无需配置。
 
+### `LASSO_PROXY` —— 浏览器出口代理（可选，v1.11 新）
+
+**什么场景配**：无头浏览器抓的站点有地区限制 / 想统一出口 IP 反封锁，或你的网络必须经代理才能出公网。
+
+**只影响谁（铁律）**：
+
+- ✅ `browse_headless`（无头浏览器，经 `--proxy-server` 下发）
+- ✅ Steel 自托管云浏览器（session 级 `proxyUrl`）
+- ❌ **`browse_logged_in` 永不读取这个配置**——你真实 Chrome 的出口保持原样，登录态浏览绝不被改道（这是设计，不是漏配）
+
+**怎么配**（写进 `~/.lasso/config.json`）：
+
+```json
+{
+  "LASSO_PROXY": "http://127.0.0.1:7890"
+}
+```
+
+（env 覆盖：`export LASSO_PROXY=http://127.0.0.1:7890`，优先级高于配置文件。）
+
+**验证**：跑 `lasso doctor`，看 `proxy_config` 项的回显（配没配、生效面说明；只回显不探活——代理本身通不通，doctor 不替你测）。
+
 ### `LASSO_COOKIE_PASSPHRASE` —— 登录 cookie 加密口令（可选）
 
 默认情况下，Lasso 用 **macOS 钥匙串**（Keychain）保护你的登录 cookie。如果你不在 macOS、或想跨机器使用同一份加密 cookie，可以显式设一个口令：
@@ -348,7 +374,7 @@ lasso doctor
 - 桌面授权是否通过
 - 缓存目录是否可写
 
-doctor 现包含 38 项检查，其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）。
+doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为准**，不在这里背数字），其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）、`#21 tcc_event_synthesizing`（macOS 15+ 事件合成授权，坐标鼠标用，v1.11 新）；另有 `proxy_config` 回显（`LASSO_PROXY` 配没配、只影响无头/Steel，v1.11 新）。
 
 `ready: true` 就可以正常用了。**遇到任何错误，第一步永远是 `lasso doctor`。**
 

@@ -8,12 +8,12 @@
 lasso doctor
 ```
 
-`doctor` 跑 32 项 readiness check，输出 JSON：
+`doctor` 跑全部 readiness check（检查项随版本持续增长，**以实跑输出为准**），输出 JSON：
 
 ```json
 {
   "ready": true,
-  "lasso_version": "1.0.0",
+  "lasso_version": "1.13.0",
   "platform_backend_active": "mac",      // darwin→mac / win32→win_uia / linux→linux_atspi
   "recording_baseline_count": 12,         // fixtures/serp-baseline/ 数量；0 = warn（不阻塞 ready）
   "checks": [
@@ -46,7 +46,7 @@ lasso doctor
 
 **修复**：
 - macOS 上不要调用 `uia_*` / `atspi_*` method（那是 Win/Linux 专用；macOS 走 `ax_*`）
-- 如果是 helper binary 真的装错平台 → `npm install -g lasso-mcp@1.0.0` 重装
+- 如果是 helper binary 真的装错平台 → `npm install -g lasso-mcp` 重装（或直接用 `npx -y lasso-mcp@latest`）
 
 ### 2.3 `unsupported_platform:<x>`
 
@@ -92,9 +92,9 @@ lasso doctor
 
 **症状**：`network` 工具返 `outcome=didnt` + `retrieval_method="upstream_unsupported:network"`。
 
-**根因**：当前 chrome-devtools-mcp 版本不支持 `Network.*` CDP 域 或 `Runtime.evaluate`。
+**根因**：v1.11 起 `network` 走 chrome-devtools-mcp 1.7.0 的**原生** `list_network_requests`（CDP Network 域），不再依赖页面内 JS 注入——旧版在 fake-ip / TUN 代理网络「资源抓不全」的限制已随之关闭。这个错误现在只剩一种来源：上游子进程的工具清单里缺 `list_network_requests`（上游进程被替换 / 启动不完整）。
 
-**修复**：等上游 chrome-devtools-mcp 支持；或用 `browse_headless` + `action="evaluate"` 跑 JS。
+**修复**：重启 Lasso（它会按锁定版本自动经 npx 重新拉起上游）；仍失败用 `LOG_LEVEL=debug` 看上游 `tools/list` 实际返回了什么；临时替代走 `browse_headless` 的 network action。
 
 ### 2.8 `ssrf_blocked`
 
@@ -116,6 +116,52 @@ lasso doctor
 
 **修复**：`admin({action:"enable_channel", channel:"browse_logged_in"})` 重启。
 
+### 2.10 `tcc_event_synthesis_denied`（macOS 15+ 事件合成授权）
+
+**症状**：坐标鼠标动作（拖拽 / 坐标点击 / 滚轮）返 `outcome=didnt`，detail 提示需要 Event Synthesizing 授权；`lasso doctor` 的 `#21 tcc_event_synthesizing` 为 `fail`/`warn`。
+
+**根因**：macOS 15 起，合成鼠标 / 键盘事件需要单独的 TCC 授权（老版本没有这一项）。
+
+**修复**：System Settings → Privacy & Security → **Event Synthesizing**（事件合成）→ 勾选 `lasso-rust-helper`；勾了 **Accessibility（辅助功能）** 一般也能兜底。改完重启 Lasso 进程（TCC 变更需进程重启生效），再跑 `lasso doctor` 验证。
+
+### 2.11 `vlm_inference_only:*`（VLM 档诚实降级）
+
+**症状**：`desktop` 链尾（canvas / 自绘 UI 场景）返 `outcome=unknown` + `error_kind="vlm_inference_only:no_coordinate_action"` 或 `vlm_inference_only:execution_failed`，结果附 VLM 推断原文。
+
+**根因**：VLM 档的工作方式是截图→推断→把推断解析成坐标动作→真执行。解析不出可执行动作、或执行失败时，v1.12 起**不再谎报成功**，诚实返 `unknown`（触发降级链）并把推断原文附在结果里（不浪费）。这不是故障，是设计。
+
+**修复**：先重新 observe 拿最新快照再 act；canvas 场景可指定 `screenshot_region` 缩小范围（v1.13 起区域内的坐标会自动换算回全屏，落点正确）；持续失败说明该 UI 不适合 VLM 档，人工接管。
+
+### 2.12 doctor 提示 Chrome 版本偏差（stealth self-check 的 skew hint）
+
+**症状**：`lasso doctor` 的 stealth self-check detail 提示「与已装 Chrome 版本偏差 ≥2 个大版本」（skew），或「UA 年龄超过 12 个月」。
+
+**根因**：无头浏览器的反检测档案里带一套浏览器版本号；它和你本机真实 Chrome 差得太多（或档案太旧）时，版本年龄本身就是被识破的信号。doctor 在替你盯这个。
+
+**修复**：这是「建议刷新」级提示（warn，不阻塞 `ready: true`）。常规做法：升级 `lasso-mcp` 到最新版（stealth 档案值域随版本刷新，v1.11 已刷到 2026-07 时代的版本值）；如果你手动定制过 profile，改回内置档案（macOS 上默认与宿主系统对齐，v1.12 起）。
+
+### 2.13 Steel 自托管停摆 / 不可达
+
+**症状**：`browse_cloud_steel` 返 `outcome=unknown`（自动降级到下一档通道）；`lasso doctor` 的 `#37 steel_endpoint_reachable` 为 `warn`（GET `/health` 不通）。
+
+**根因**：Steel Docker 容器停了 / 没起，或 endpoint 悬挂不返回（实测可挂 ~5 分钟不响应）。
+
+**修复**：`docker ps` 看容器、`docker start <容器>` 或重跑一行启动命令（见 [KEY-GUIDE · Steel](./KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)），`curl http://localhost:3000/health` 验证。**退出卡顿在 v1.13 已修**：Steel 会话释放加了 3 秒双层上界——旧版 Steel 停摆会把 Claude Code 退出拖到分钟级，现在最多 3 秒收尾，「Steel 挂了」不再拖死退出，恢复容器即可。
+
+### 2.14 Electron 输入框的 type 降级（v1.12）
+
+**症状**：在 Slack / VSCode 等 Electron 应用的输入框输入时，结果里显示走了「键盘合成」路径而非无障碍赋值。
+
+**根因**：Electron 控件经常吞掉无障碍赋值接口（AXSetValue 设了没反应）。v1.12 起档内自动降级：聚焦输入框 → 全选（cmd+a）→ 逐字符键盘合成。
+
+**行为说明**：输入语义是**整值替换**——说「输入 X」就是把框内容变成 X，不是在光标处追加。降级路径只合成 ASCII 字符；值读不回来时跳过读回验证（诚实优先，不误报）。
+
+### 2.15 中文 IME 下 type 的边界
+
+**症状 / 边界**：键盘合成路径（Electron 降级、坐标档输入）走按键码合成——**ASCII 字符直通；中文等非 ASCII 依赖输入法状态**，中文 IME 激活时可能产出错字符或无输出。
+
+**怎么办**：原生 macOS app 的输入框走无障碍赋值路径，输入中文没有问题；只有降级到键盘合成的场景受此限制。需要在这类框里输中文时，先切到英文输入法 / US 键盘布局，或改由你自己粘贴。目前没有实测失败案例在案（已知边界，持续观测）——遇到了请提 issue，附 app 名与输入法状态。
+
 ## 3. FAQ
 
 ### Q1：`npx lasso-mcp` 启动报 "command not found"
@@ -130,13 +176,11 @@ node --version
 
 ### Q2：`lasso doctor` 报 `chrome_devtools_mcp_version=fail`
 
-Lasso 依赖 chrome-devtools-mcp 契约版本。如未装：
+Lasso 的浏览器驱动 chrome-devtools-mcp **版本由 Lasso 锁定（当前 1.7.0）、启动时自动经 npx 拉取**——不需要也不建议手动全局安装（全局装的那份不会被用到，还可能与锁定版本混淆）。报 fail 时：
 
-```bash
-npm install -g chrome-devtools-mcp@<pinned-version>
-```
-
-具体锁定版本见 `package.json` 的 dependencies / devDependencies。
+1. 检查网络 / 代理能否访问 npm registry（npx 拉包失败是最常见原因）
+2. `npm cache verify` 清理后重试
+3. 重启 Claude Code，让 Lasso 重新拉起上游子进程
 
 ### Q3：`browse_logged_in` 一直返 cookie expired
 
@@ -193,6 +237,12 @@ npm run replay-baseline -- --strict
 ### Q10：能不能禁用 cloud 浏览器通道？
 
 可以，**默认就是禁用的**。cloud 浏览器（Browserbase / Stagehand）必经 `LASSO_ALLOW_CLOUD_BROWSER=true` manual-switch AND API key 双重解锁（INV-25 守）。不设 env 就完全不会实例化 cloud channel。
+
+### Q11：升级后 `desktop find` 用 ref 查询报 `invalid_params`？
+
+**v1.13 起的行为变化（诚实化）**：`find` 的 `where` 只认 `text` / `role`——`ref` 是 act / expect 的域（引用 observe 拿到的节点）。旧版本里纯 ref 查询会**静默退化成全节点命中**（token 爆炸还报成功），现在改为明确报 `invalid_params`。
+
+**正确用法**：`find` 用 text / role 定位 → 拿到节点 ref → `act` / `expect` 用这个 ref。
 
 ## 4. 性能调优
 
