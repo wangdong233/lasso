@@ -3,6 +3,19 @@
 > **Lasso**（npm `lasso-mcp`）= CC 的**全交互**对外抓手 MCP（浏览器 + 桌面）。与 media-gen-mcp（图像抓手）双子星。
 > 本文档是权威架构基线（2026-07-21 重写为干净最终版，合并所有调研/审查修正，清除增量附录累积与矛盾）。上游：[07 可行性](07-CC统一交互抓手MCP-可行性分析.md)/[10 搜索](10-搜索MCP调研对架构的启发.md)/[11 简单审查](11-简单架构审查报告.md)/[12 pi-computer-use](12-pi-computer-use及生态深度分析.md)/[13 全交互重设计](13-全交互抓手重设计.md)。下游：[09 排期](09-media-interact-实施排期.md)。
 
+## ⚠️ 现状对齐横幅（v1.17.1 · 2026-08-18）
+
+**本基线冻结于 2026-07-21（v0.x 时代），正文保留不回改**——F 编号是 [09 排期](09-media-interact-实施排期.md)的引用锚，重写即毁锚。**v1.14+ 现状的权威入口 = `lasso/ARCHITECTURE.md`（v1.17.1）**；F 编号 ↔ 现实逐条映射见 `lasso/doc/26-文档查缺补漏/gap-matrix.md` §4（活 / 退役 / 从未 / 无号四态）。照读正文会错的四条最高危失实：
+
+| # | 本文正文表述 | v1.17.1 现实 |
+|---|---|---|
+| 1 | 四通道「search（智谱 web-search-prime）」/ `engine="zhipu"` / F3.5「智谱 http 子进程」 | 智谱直连已删（INV-80 墓碑）；现实链 = machine_mcp → brave → serp_http → browse_headless → replay；智谱能力唯一载体 = machine_mcp 复用 |
+| 2 | F3.8「百度 / **Google** selector」 | Google selector 从未实现；现实三引擎 = 百度 / DuckDuckGo / Brave SERP（selectors.ts） |
+| 3 | §7.5「chrome-devtools-mcp **1.6.x** 契约」 | 版本锁 **1.7.0**（v1.11 迁移，INV-79） |
+| 4 | F3.12 future 行（browse_cloud / stagehand / fetch_url / screenshot / pdf / network / wayback） | **7 项全部已交付**（v0.4–v1.11）；另有 F 体系外新能力：interact_roots/observe/act、search_local、fetch_feed、quality 轴、content_blocks、elicitation、include_refs（映射表「无号」行） |
+
+---以下为 2026-07-21 冻结的历史基线正文（语义按当日快照读）---
+
 ---
 
 ## 0. 项目定位与设计原则

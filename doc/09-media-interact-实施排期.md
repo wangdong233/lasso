@@ -41,6 +41,11 @@
 | **v1.11** ✅ | 最优性审查第 1 轮（16 项） | **桌面从「能看」到「能点」**；驱动层追平上游 57 版 | doc/19 round1（lasso/doc/19-） | ✅ 2026-08-17 完成（commit `0b07536`）：1906 TS + 79 INV + 193 Rust；chrome-devtools-mcp 0.3.0→**1.7.0** 迁移（上游遥测关 + network/console 原生化）、`ax_act` 真实现（写后读回验证 + stale_ref 诚实报错）、坐标鼠标（cgEvent click/drag/move/scroll，canvas/Electron 兜底）、`freshness` 时效过滤全引擎（入 cache key）、DDG 非 CJK 零 Key 兜底、`LASSO_PROXY` 出口代理（登录态 Chrome 永不读取）、`skeleton` 树剪枝、expect 后置真接线、macOS 15+ 输入合成权限、inv-selftest 制度化（10 样本） |
 | **v1.12** ✅ | 最优性审查第 2 轮（14 项 + 2 rider） | 抽取质量 / 指纹对齐 / 链尾诚实化 / Electron 输入全通 | doc/19 round2 | ✅ 2026-08-17 完成（工作树，并入 v1.13.0 commit `a9eb106`）：1941 TS + 79 INV + 202 Rust；defuddle 站点抽取器双激活（28 站 + GFM 表格 / MathML→LaTeX 保真 + 相对链接绝对化）、macOS 默认指纹与宿主对齐（mac_chrome profile）、VLM 档真执行闭环（不可解析诚实 `unknown`）、wait/expect 连续 2 次命中采样、Electron 输入框键盘兜底（Slack/VSCode 能输入了）、拖拽插值物理（12 点轨迹）、snapshot `truncated:true` + find 附 `actions[]`、stdin-EOF 即时收尾、freshness 全链一致（machine_mcp + DDG 兜底） |
 | **v1.13** ✅ | 最优性第 3-5 轮收敛（7+1 项 + round5 终裁） | 四维终态：选型 / 架构 / 范围 / 实施全最优 | doc/19 round3/4/5 + 00-总结 | ✅ 2026-08-17 完成（commit `a9eb106`，npm latest）：终态 **1961 TS + 79 INV + 207 Rust + inv-selftest 14 样本**；Accept-Language 头↔JS 一致（消自矛盾指纹）、VLM region 坐标平移（修系统性偏移）、`find` 拒纯 ref 查询（invalid_params，Breaking 诚实化）、Steel 会话释放 3s 双层上界（停摆不再拖死退出）、`tcc_event_synthesis_denied` 人话报错、注释卫生族清尾；round5 终裁 **ROUND-CLEAN**（候选 16→14→7→1→0 单调收敛，五轮零翻案） |
+| **v1.14** ✅ | 搜索方案全面重审（运营事实清偿） | 搜索链对齐真实世界：真价配额 + 零 Key 兜底真可用 + 计划级探测 | doc/21 verdict（S-1..S-5） | ✅ 2026-08-17 完成（commit `48e0c94`）：1997 TS + 79 INV；运行时配额/字面量对齐真价（Brave 1000/月、Bing 归零）+ free_only 路由接线（machine_mcp=L1 永保留）+ 英文零 Key 兜底 DDG→Brave SERP 级联 + `lasso doctor --deep` 计划级探测（200/401/403/429 四分类）+ KEY-GUIDE 90 天时效标注制度；F-1/F-2/F-3 三修（422 先判 key 无效 / markdown 档 data.markdown 别名） |
+| **v1.15** ✅ | Bing 死层代码级清除 + serp_http 快探 | 死层删净（配置静默忽略）+ 浏览器前 ~1s 直探 | doc/22（parse22 + verify） | ✅ 2026-08-17 完成（commit `e7baac6`）：2008 TS + 79 INV + selftest 15；BingChannel/provider/装配全链移除（INV-54 墓碑，BING_API_KEYS 静默忽略 + doctor 删除建议）+ serp_http 裸 HTTP 快探层（brave 前 ~1s，复用 selector + bot 探测；真机 1.9s/20 条 vs 浏览器 5.3s/0 条）；验证期修 2 真机缺陷（brave 字体 CSS 垃圾结果 / 百度软挡伪 worked→终态 URL 校验） |
+| **v1.16** ✅ | 颠覆性调研落地（D-GO 三项） | freshness 语义真生效 + feed 推模型直取 | doc/24 verdict（ZB-3/ZB-4/ZB-9） | ✅ 2026-08-18 完成（commit `ef94685`）：2032 TS + 79 INV；新方法论首跑（零基重设计 + 红队豁免 + 成本表 → D-GO 3 / D-DECISION 3 / D-WATCH 8 / D-NOGO 9 分级裁决）：freshness=day 缓存 TTL 24h + replay 新鲜度门（ZB-3）/ **fetch_feed** RSS·Atom·JSON Feed 原语（ZB-4，真机 GitHub releases.atom 5 条/2s）/ README 生态搭配段（ZB-9）；doctor-deep timing flake 根治（5s→15s） |
+| **v1.17** ✅ | 五项用户裁决（doc/25 D-DECISION 清偿） | 搜索结果可判质 / 本地可搜 / 高风险可确认 | doc/25 五项裁决实施 | ✅ 2026-08-18 完成（commit `8112a5e`）：2032→2227 TS、79→81 INV、selftest 20/20、rust-helper 零改、零新 npm 依赖；A1 quality 轴（api/scrape/stale，served_by 静态映射）/ A3 删 zhipu 直连（INV-80 墓碑，machine_mcp 为唯一智谱路径）/ A2′ content_blocks 第二跳（1-5 opt-in，并发 3/单条 5s/256KB/裁剪 ~6k，失败如实 content_status）/ B1 **search_local** 第四通道（Chrome History 复制只读 + mdfind，INV-81 隐私红线）/ C1 elicitation 回合内确认（能力未声明 100% 降级 didnt，39 测钉死）+ C2 include_refs 句柄（附录钉尾） |
+| **v1.17.1** ✅ | doc/17 全量测试轮修复收敛 | 真机 ~170 用例四面板全绿（ALL-CLEAN） | doc/17 功能测试清单 + ft-round1 执行记录 | ✅ 2026-08-18 完成（commit `1432bd4`）：**2240 TS（134 文件）+ 81 INV + selftest 20/20 + 207 Rust**，ft-round1 独立裁决 **ALL-CLEAN**；修复 6 缺陷：🔴IPv6 字面量 SSRF 绕过（ssrf-guard 剥括号）/ 🔴HighRiskGate 裸 JSON.parse 围栏响应（改经 upstream-response + INV-76(m)）/ doWait 假成功 / tab_restore 恒 no-op / doctor 不感知 file 键 / SIGHUP TypeError；§6 简单架构 38 条终判 ✅27/⚠️11/❌0/⏸1 |
 
 ---
 
@@ -82,6 +87,8 @@
 **交付**：F3.1.6-10（多源扇出/limit分配/attributed/free_only四级/Wayback 预留）+ F3.5.7（连接池）+ **F3.6.13 统一 ProviderConfig 注册表（provider_type 三态 + 多 Key 池）** + F3.8.9-10,13-14（改版检测/命中率/集中管理/录制回放）+ F3.9.7（partial_failures）
 
 **v0.2 第二源选型**（10 调研硬数据）：**首选 Brave**（669ms 最快 + 2000/月最大额度 + 无收购风险），**强制 in-house 100-query A/B 实测后锁定**。⚠️ 引用 Brave 只引「669ms + 14.89 Agent Score + 2000/月」三项数字，**不写"Brave 最优"**（05 文件 0-3 票否决因果延伸）。Tavily 延后 watch-list（Nebius 收购风险）；mcp-searxng NO-GO（broker 需自建）。
+
+> ⚠️ **后注（2026-08-18）**：上段「2000/月」是 2026-07 决策时的输入，**已失实**——Brave 免费档 2026-02 起取消（doc/21 官方页实核：现口径 $5/月赠送额度 ≈1000 次/月），Bing API 亦已于 2025-08-11 退役。本节按快照纪律保留原文；现价与口径以 `doc/KEY-GUIDE.md` A-2「最后核实」列为准（90 天重核制度）。两例成真催生 R13 风险行与 v1.14 重审。
 
 **验收**：
 - [ ] 5-10 真实中英文 query A/B 实测（智谱 vs Brave），p50/p95，输出 provider 矩阵打分表
@@ -256,6 +263,14 @@ v1.11  桌面能点 + 驱动层 1.7.0（最优性审查第 1 轮 16 项）
 v1.12  抽取保真 + 指纹对齐 + 链尾诚实化（第 2 轮 14 项）
   ↓
 v1.13  五轮收敛终态（第 3-5 轮；1961/79/207，四维全最优）
+  ↓
+v1.14  搜索运营事实清偿（Brave 真价/Bing 归零对账 + doctor --deep 计划级探测 + 90 天重核制度）
+  ↓
+v1.15  死层清除 + serp_http 快探（Bing 删净；浏览器前 ~1s 裸 HTTP 直探）
+  ↓
+v1.16  颠覆性调研落地（freshness TTL 耦合 + replay 新鲜度门 + fetch_feed 推模型）
+  ↓
+v1.17  五项用户裁决（quality 轴 / 删 zhipu 直连 / content_blocks 第二跳 / search_local 第四通道 / elicitation + refs；v1.17.1 全量测试轮 ALL-CLEAN 收敛，2240/81/20）
 ```
 
 ---
@@ -268,6 +283,8 @@ v1.13  五轮收敛终态（第 3-5 轮；1961/79/207，四维全最优）
 4. **v1.0 稳定发布**：跨平台 + 全量测试 + npm 发布
 5. **v1.11 桌面能点 + 驱动追平**：ax_act 真实现 + 坐标鼠标 + chrome-devtools-mcp 1.7.0（最优性审查第 1 轮）
 6. **v1.13 五轮收敛终态**：1961 TS / 79 INV / 207 Rust / inv-selftest 14，四维全最优，npm latest
+7. **v1.14-v1.15 搜索运营事实清偿**：Brave 免费档取消 / Bing 退役两例成真 → 真价对账 + Bing 死层代码级清除（INV-54）+ serp_http 快探 + KEY-GUIDE 90 天重核制度（doc/21/22）
+8. **v1.17 五项用户裁决 + v1.17.1 全量测试收敛**：quality 轴 / 删 zhipu 直连（INV-80）/ content_blocks / search_local（INV-81）/ elicitation + include_refs；ft-round1 ALL-CLEAN，终态 2240 TS / 81 INV / 207 Rust / selftest 20（doc/25 + doc/17）
 
 ---
 
@@ -302,6 +319,7 @@ v0.4 (forest) ──→ v1.0 (Win/Linux desktop via AxBackend)
 | R10 | CC stdio only 限制 | 低 | 低 | 暂不支持 streamableHttp；改配置需重启 | 全 |
 | R11 | compact diff 过度设计 | 低 | 低 | v0.6+ 或 NO-GO（如做借 Stagehand） | v0.6+ |
 | R12 | Rust helper 维护负担 | 中 | 中 | 契约测试 + 黑盒验收 + 用户 Rust 背景契合 | v0.3.5+ |
+| R13 | 搜索供应商运营事实漂移（Brave 免费档取消 / Bing 退役两例已成真） | **已成真** | 中 | KEY-GUIDE 90 天重核制度 + `doctor --deep` 计划级探测 + 死层墓碑清除（doc/21/22；doc/23 方法论检讨的制度化产物） | v1.14+ |
 
 **风险升级触发**：R4/R5（desktop）若 v0.3.5 无法达成验收 → 砍 appleScript/cgEvent，只保留 ax+screenshotVlm，桌面扩展推迟 v0.4。
 
@@ -309,4 +327,4 @@ v0.4 (forest) ──→ v1.0 (Win/Linux desktop via AxBackend)
 
 ## 文档结束
 
-**本文档是 Lasso 权威排期**（2026-07-21 重写，合并 10/12/13 所有修正，清除附录累积；**2026-08-17 增补 v1.8-v1.13 六行**——wave 修复 / 生命周期 / 静默浏览器 / 最优性审查五轮收敛，素材取 lasso 仓 doc/19 与 doc/20）。F 编号严格对应 [08 §4](08-media-interact-功能架构.md)。排期按能力跃升，每阶段可独立交付与验证。
+**本文档是 Lasso 权威排期**（2026-07-21 重写，合并 10/12/13 所有修正，清除附录累积；**2026-08-17 增补 v1.8-v1.13 六行**——wave 修复 / 生命周期 / 静默浏览器 / 最优性审查五轮收敛，素材取 lasso 仓 doc/19 与 doc/20；**2026-08-18 增补 v1.14-v1.17.1 五行**——搜索运营事实清偿 / Bing 死层清除与 serp_http / 颠覆性调研落地 / 五项用户裁决 / 全量测试轮收敛，素材取 lasso 仓 doc/21、doc/22、doc/24、doc/25 与 doc/17 执行记录）。F 编号严格对应 [08 §4](08-media-interact-功能架构.md)（F 编号 ↔ v1.17.1 现实映射见 [doc/26 §4](26-文档查缺补漏/gap-matrix.md)）。排期按能力跃升，每阶段可独立交付与验证。
