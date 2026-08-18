@@ -57,6 +57,8 @@ interface UpstreamFixture {
   screenshotIsError?: boolean;
   /** evaluate_script 覆盖（默认按真实契约 eval+调用） */
   evalOverride?: (fn: string) => { content: unknown[]; isError?: boolean };
+  /** wait_for 返 isError（上游超时形态；默认成功） */
+  waitIsError?: boolean;
 }
 
 function makeUpstreamClient(fx: UpstreamFixture = {}): {
@@ -76,6 +78,7 @@ function makeUpstreamClient(fx: UpstreamFixture = {}): {
         return textContent(fx.snapshotText ?? "Example Domain\n\nMore information...");
       }
       if (name === "wait_for") {
+        if (fx.waitIsError) return textContent("Timeout waiting for text", true);
         return textContent("text found");
       }
       if (name === "take_screenshot") {
@@ -162,6 +165,31 @@ describe("W1-DEF-2 — wait action 传非空 string 数组（1.7.0 契约）", (
     expect(waitCall!.args.text).toEqual(["Welcome"]);
     expect(Array.isArray(waitCall!.args.text)).toBe(true);
     expect(r.outcome).toBe("worked");
+  });
+
+  // W-DEF-R11-1（v1.17.1 ft-round1 R11 真机修）：probe2 W1/W2 实证两缺口——
+  // ① expect.timeout_ms 被静默忽略（恒烧上游默认 30s）；② 上游超时以 isError
+  // 响应返回（callTool 不 throw），不检则文本从未出现仍报 worked（假成功）。
+  it("expect.timeout_ms 透传 wait_for.timeout（ms 整数）", async () => {
+    const { client, calls } = makeUpstreamClient();
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "wait", {
+      expect: { text: "Welcome", timeout_ms: 3000 },
+    } as BrowseOptions);
+    const waitCall = calls.find((c) => c.name === "wait_for");
+    expect(waitCall!.args.timeout).toBe(3000);
+    expect(r.outcome).toBe("worked");
+  });
+
+  it("wait_for 返 isError（上游超时）→ 不再假 worked；error 含 wait_timeout（classify → unknown）", async () => {
+    const { client } = makeUpstreamClient({ waitIsError: true });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "wait", {
+      expect: { text: "Never Appears", timeout_ms: 3000 },
+    } as BrowseOptions);
+    expect(r.outcome).not.toBe("worked");
+    expect(r.outcome).toBe("unknown"); // wait_timeout → 可 fallback 档（页面慢可重试）
+    expect(String(r.error)).toContain("wait_timeout");
   });
 });
 

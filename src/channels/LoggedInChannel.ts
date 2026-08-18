@@ -225,7 +225,7 @@ export class LoggedInChannel extends BrowseChannel {
       const rec = readLedgerSync().find((r) => r.port === this.cdpPort);
       if (!rec || rec.launchMode !== "hidden") return;
       // 2. 零 page target 判定（复用 TabSession /json/list 探针）
-      const pages = await this.tabSession.listPageTargets();
+      const pages = await this.tabSession.listPages();
       if (pages === null || pages.length > 0) return;
       // 3. 预建 background tab（失败返 null 走降级）
       const cdp = new CdpClient(this.cdpPort);

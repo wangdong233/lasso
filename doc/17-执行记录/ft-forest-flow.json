@@ -1,0 +1,51 @@
+{
+ "resource": {
+  "before": "18 procs / 1424MB",
+  "peak": "39 procs / 3738MB",
+  "after": "4 procs / 272MB",
+  "released": true
+ },
+ "nav1": {
+  "ms": 14162,
+  "outcome": "worked"
+ },
+ "nav2": {
+  "ms": 976,
+  "outcome": "worked"
+ },
+ "roots1": {
+  "count": 3,
+  "roots": [
+   "@p0 browse_headless https://example.org/",
+   "@p1 browse_logged_in http://localhost:9222/json/ver",
+   "@w2 desktop "
+  ]
+ },
+ "nav1_again": {
+  "outcome": "worked"
+ },
+ "roots2": {
+  "count": 4,
+  "roots": [
+   "@p0 browse_headless https://example.org/",
+   "@p1 browse_logged_in http://localhost:9222/json/ver",
+   "@p3 browse_headless https://example.com/",
+   "@w2 desktop "
+  ]
+ },
+ "reuse_same_ref": false,
+ "observe_p": {
+  "ref": "@p0",
+  "ms": 2,
+  "preview_head": ""
+ },
+ "err_@w0": {
+  "error": ""
+ },
+ "err_@x0": {
+  "error": ""
+ },
+ "err_@p99": {
+  "error": ""
+ }
+}

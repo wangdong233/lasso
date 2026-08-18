@@ -144,11 +144,16 @@ const VIOLATION_SAMPLES = [
   },
   {
     // INV-71 (b)：loadConfig 丢 file→env 合并（config.json 静默失效）→ 红。
+    // ft-round1（FT-DEF-1）：合并迁入单一真源 mergedEnv()（doctor 调用点共享），
+    // mutation 改打 mergedEnv 体内的合并字面量——丢 fileEnv base = 配置文件机制空心化。
     inv: "INV-71",
-    desc: "loadConfig 丢 {...fileEnv,...envSource} 合并（配置文件机制空心化）",
+    desc: "mergedEnv 丢 {...loadConfigFileEnv(envSource), ...envSource} 合并（配置文件机制空心化）",
     file: "config/config.ts",
     mutation: {
-      replace: ["{ ...fileEnv, ...envSource }", "{ ...envSource }"],
+      replace: [
+        "{ ...loadConfigFileEnv(envSource), ...envSource }",
+        "{ ...envSource }",
+      ],
     },
   },
   {

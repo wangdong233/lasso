@@ -1,0 +1,9 @@
+{"ts":1787052684390,"evt":"chrome_ledger_recorded","port":9231,"pid":71102,"status":"ready"}
+{"ts":1787052685235,"evt":"chrome_hide_fuse_ok","pid":71102}
+{
+  "ok": true,
+  "binaryPath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "pid": 71102,
+  "port": 9231,
+  "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default"
+}

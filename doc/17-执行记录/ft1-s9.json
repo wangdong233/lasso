@@ -1,0 +1,9 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json", "LASSO_SSRF_DENY_RANGES": "0.0.0.0/0,::/0", "ZHIPU_API_KEY": "fake-zhipu-ft1", "ZHIPU_ENDPOINT": "https://fake.example.invalid"},
+  "gapMs": 2500,
+  "resourceMeter": true,
+  "calls": [
+    {"label": "s9a-T-SEARCH-14-baidu-serp-via-browse", "tool": "search", "args": {"query": "Rust 异步编程教程", "limit": 10, "no_cache": true}, "timeoutMs": 180000},
+    {"label": "s9b-U-15-5-wayback-retry2", "tool": "wayback_lookup", "args": {"url": "http://info.cern.ch"}}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json"},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s2a-T-SERPHTTP-01-L-COST-02-EN", "tool": "search", "args": {"query": "rust tokio tutorial ft2a", "limit": 10, "no_cache": true}},
+    {"label": "s2b-T-SERPHTTP-02-L-COST-03-CN", "tool": "search", "args": {"query": "Rust tokio 异步教程 ft2b", "limit": 10, "no_cache": true}},
+    {"label": "s2c-T-SEARCH-32-freeonly-L2-nomachine", "tool": "search", "args": {"query": "free only no machine ft2c", "limit": 5, "free_only": "L2", "no_cache": true}},
+    {"label": "s2d-T-SEARCH-31-freeonly-L1-nomachine", "tool": "search", "args": {"query": "free only L1 no machine ft2d", "limit": 5, "free_only": "L1", "no_cache": true}},
+    {"label": "s2e-doctor-machine-warn", "tool": "doctor", "args": {}},
+    {"label": "s2f-serp-health-after-searches", "tool": "admin", "args": {"action": "serp_health"}},
+    {"label": "s2g-engine-brave-nokey", "tool": "search", "args": {"query": "brave engine no key ft2g", "engine": "brave", "no_cache": true}}
+  ]
+}

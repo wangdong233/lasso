@@ -1,0 +1,23 @@
+lasso-mcp — Claude Code 全交互对外抓手 MCP（search / browse / logged_in / desktop）
+
+Usage:
+  lasso-mcp                                    Start MCP stdio server (default mode; used by
+                                               `claude mcp add lasso -- npx -y lasso-mcp`)
+  lasso-mcp doctor [--stealth-check] [--deep]    Run environment/health checks, print JSON report
+  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json
+  lasso-mcp launch-chrome [--port N] [--profile <dir>]
+                                               [--mode hidden|visible] [--idle-ms N]
+                                               Launch a debug-enabled Chrome for logged_in channel
+                                               (default hidden: zero window, no focus steal;
+  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the
+                                               on-disk ledger (pid ownership verified via cmdline)
+  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression
+  lasso-mcp --version | -v                     Print version
+  lasso-mcp --help | -h                        Print this usage
+
+Flags:
+  --stealth-check   (doctor) opt in to the creepjs stealth regression gate
+                    (opens a headless browser and touches the network)
+  --deep            (doctor) opt in to the Brave plan-level active probe
+                    (sends ONE minimal real request, consuming 1 unit of quota;
+                    env equivalent: LASSO_DOCTOR_DEEP=1)

@@ -1,0 +1,17 @@
+{
+  "env": {},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s3a1-EN-plain-write", "tool": "search", "args": {"query": "rust tokio async programming guide ft3a", "limit": 8}},
+    {"label": "s3a2-EN-cb3-cachehit-enrich", "tool": "search", "args": {"query": "rust tokio async programming guide ft3a", "limit": 8, "content_blocks": 3}},
+    {"label": "s3b1-EN2-plain-write", "tool": "search", "args": {"query": "tokio rust web framework warp ft3b", "limit": 8}},
+    {"label": "s3b2-EN2-cb5-cachehit-enrich", "tool": "search", "args": {"query": "tokio rust web framework warp ft3b", "limit": 8, "content_blocks": 5}},
+    {"label": "s3c1-CN-plain-write", "tool": "search", "args": {"query": "Rust 异步编程 tokio 入门 ft3c", "limit": 8}},
+    {"label": "s3c2-CN-cb3-cachehit-enrich", "tool": "search", "args": {"query": "Rust 异步编程 tokio 入门 ft3c", "limit": 8, "content_blocks": 3}},
+    {"label": "s3d-CN-anticrawl-cb5", "tool": "search", "args": {"query": "知乎 rust 入门推荐 ft3d", "limit": 8, "content_blocks": 5, "no_cache": true}},
+    {"label": "s3e-EN-anticrawl-cb3", "tool": "search", "args": {"query": "medium rust tokio article ft3e", "limit": 8, "content_blocks": 3, "no_cache": true}},
+    {"label": "s3f-cb-zod-0", "tool": "search", "args": {"query": "zod cb probe ft3f", "content_blocks": 0}},
+    {"label": "s3f2-cb-zod-6", "tool": "search", "args": {"query": "zod cb probe ft3f", "content_blocks": 6}},
+    {"label": "s3f3-cb-zod-2.5", "tool": "search", "args": {"query": "zod cb probe ft3f", "content_blocks": 2.5}}
+  ]
+}

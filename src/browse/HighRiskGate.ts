@@ -39,6 +39,12 @@ import type { McpClient } from "../subprocess/McpClient.js";
 import type { Step } from "./steps-types.js";
 import { logger } from "../util/logger.js";
 import type { ElicitationPort } from "../interact/ElicitationPort.js";
+// FT-DEF-1（ft-round1 R11 真机抓出，2026-08-18）：evaluate_script 响应必须经
+// upstream-response 单一权威解析（```json 围栏 + 双层编码）。此前本模块自带
+// 裸 firstText+JSON.parse（W1-DEF-1b 统一 7 消费点时的漏网第 8 点），真机
+// 1.7.0 围栏形状下 JSON.parse("Script ran...") 必炸 → gate_error 保守放行
+// → C1 高风险确认红线真机全失效（2227 单测全绿放过的 V-1 同型缺陷）。
+import { parseEvalResult } from "./upstream-response.js";
 
 // ============================================================
 // HighRiskAssessment
@@ -179,16 +185,14 @@ export class HighRiskGate {
       const r = (await client.callTool("evaluate_script", {
         function: expr,
       })) as ContentResult;
-      const text = firstText(r);
-      if (!text) {
+      // FT-DEF-1：改经 parseEvalResult（围栏剥除 + 双层 JSON 解码；无围栏/解析失败
+      // 返 undefined → 走 empty_eval 保守分支，与旧 firstText 空文本语义对齐）。
+      const verdict = parseEvalResult(r) as
+        | { ok?: boolean; kind?: string; html?: string; reason?: string }
+        | undefined;
+      if (!verdict) {
         return { blocked: false, reason: "gate_error:empty_eval" };
       }
-      const verdict = JSON.parse(text) as {
-        ok?: boolean;
-        kind?: string;
-        html?: string;
-        reason?: string;
-      };
       if (verdict.kind) {
         // v1.17 Phase E（parse24 §6.1）：port 注入时先回合内人确认。
         // accept → blocked=false + reason="high_risk_elicited:<kind>"（审计可见）；
@@ -307,15 +311,7 @@ export function buildAssessExpr(target: string): string {
 }
 
 // ============================================================
-// 内部 helper：SDK 返回结构解析（与 BrowseChannel 内部解析同构；保持本模块独立）
+// 内部 helper：SDK 返回结构类型（解析统一走 upstream-response.ts——FT-DEF-1）
 // ============================================================
 type TextBlock = { type: "text"; text?: string };
 type ContentResult = { content?: TextBlock[]; isError?: boolean };
-
-function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
-}

@@ -1,0 +1,55 @@
+{
+ "fetch_ms": 157,
+ "spill": {
+  "outcome": "worked",
+  "body_kind": "text",
+  "body_bytes": 190399,
+  "truncated": true,
+  "ref": "@o1",
+  "total_bytes": 190399,
+  "continue_hint": "read_text({ref:\"@o1\", offset:16384})",
+  "preview_bytes": 16384,
+  "preview_head": "000000 x x x x x x x x x x"
+ },
+ "page_16384": {
+  "ms": 4,
+  "head": "x x x x x x x x x x ",
+  "expect_head": "x x x x x x x x x x ",
+  "bytes": 16384,
+  "eof": false,
+  "total_bytes": 190399,
+  "match": true
+ },
+ "page_0": {
+  "match": true,
+  "eof": false
+ },
+ "page_beyond_eof": {
+  "text_empty": true,
+  "eof": true,
+  "total_bytes": 190399
+ },
+ "page_last": {
+  "offset": 180224,
+  "eof": true,
+  "bytes": 10175,
+  "tail_match": true
+ },
+ "unknown_ref": {
+  "has_error": true,
+  "error": "Error: unknown ref: @o99",
+  "eof": true
+ },
+ "limit_zod": "NOT_REJECTED",
+ "ref_regex": "NOT_REJECTED",
+ "lcost13_ms": [
+  2,
+  4,
+  2
+ ],
+ "ref_for_restart": "@o1",
+ "after_restart": {
+  "has_error": true,
+  "error": "Error: unknown ref: @o1"
+ }
+}

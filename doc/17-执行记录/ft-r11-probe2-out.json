@@ -1,0 +1,534 @@
+[
+ {
+  "id": "W1-nav",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://example.com",
+   "action": "navigate"
+  },
+  "ms": 8763,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://example.com",
+    "action": "navigate",
+    "state_id": "8914dcab-7cfa-4dc3-aff7-4692fa3ba9df",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-8914dcab-7cfa-4dc3-aff7-4692fa3ba9df.json",
+    "preview": "navigated",
+    "final_url": "https://example.com."
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "W1-wait-present",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://example.com",
+   "action": "wait",
+   "options": {
+    "expect": {
+     "text": "Example Domain"
+    }
+   }
+  },
+  "ms": 34,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://example.com",
+    "action": "wait",
+    "state_id": "90c3ef21-1d13-49f6-ba87-9faa5255b6eb",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-90c3ef21-1d13-49f6-ba87-9faa5255b6eb.json",
+    "preview": "waited for \"Example Domain\"",
+    "final_url": "https://example.com"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "W2-wait-absent-3s",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://example.com",
+   "action": "wait",
+   "options": {
+    "expect": {
+     "text": "Absolutely Not Present Text 12345",
+     "timeout_ms": 3000
+    }
+   }
+  },
+  "ms": 30009,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://example.com",
+    "action": "wait",
+    "state_id": "152b9d80-8188-40f8-ae47-f20f9870e509",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-152b9d80-8188-40f8-ae47-f20f9870e509.json",
+    "preview": "waited for \"Absolutely Not Present Text 12345\"",
+    "final_url": "https://example.com"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-nav",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "navigate"
+  },
+  "ms": 4960,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "navigate",
+    "state_id": "6e777ca4-7885-4f1d-b004-e09aae69ac59",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-6e777ca4-7885-4f1d-b004-e09aae69ac59.json",
+    "preview": "navigated",
+    "final_url": "https://the-internet.herokuapp.com/login."
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-extract",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "extract",
+   "options": {
+    "extract_mode": "markdown",
+    "include_refs": true
+   }
+  },
+  "ms": 1578,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "extract",
+    "state_id": "c0f57f57-2980-47bd-8e9b-203add6126b4",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-c0f57f57-2980-47bd-8e9b-203add6126b4.json",
+    "preview": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/",
+    "title": "The Internet",
+    "final_url": "https://the-internet.herokuapp.com/login",
+    "markdown_engine": "defuddle+turndown",
+    "markdown": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-attr-count",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "evaluate",
+   "options": {
+    "js": "return JSON.stringify({n: document.querySelectorAll('[data-lasso-uid]').length, first: document.querySelector('[data-lasso-uid]')?.tagName, loc: location.href})"
+   }
+  },
+  "ms": 210,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "evaluate",
+    "state_id": "213d748d-38b9-4b5a-834a-3d3cba049c0d",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-213d748d-38b9-4b5a-834a-3d3cba049c0d.json",
+    "preview": "{\"n\":5,\"first\":\"A\",\"loc\":\"https://the-internet.herokuapp.com/login\"}",
+    "final_url": "https://the-internet.herokuapp.com/login"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-fill-r2r3",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "fill",
+   "options": {
+    "selectors": {
+     "r2": "tomsmith",
+     "r3": "SuperSecretPassword!"
+    }
+   }
+  },
+  "ms": 418,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "fill",
+    "state_id": "91118bd3-550e-43b5-b541-b43fb5d27e25",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-91118bd3-550e-43b5-b541-b43fb5d27e25.json",
+    "preview": "filled 2 fields (2 via lasso ref)",
+    "final_url": "https://the-internet.herokuapp.com/login"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-values",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "evaluate",
+   "options": {
+    "js": "return JSON.stringify({u: document.querySelector('input[type=text]')?.value, p: document.querySelector('input[type=password]')?.value ? 'SET' : 'EMPTY'})"
+   }
+  },
+  "ms": 215,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "evaluate",
+    "state_id": "eb642d6d-e386-415f-93c9-26956da67438",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-eb642d6d-e386-415f-93c9-26956da67438.json",
+    "preview": "{\"u\":\"tomsmith\",\"p\":\"SET\"}",
+    "final_url": "https://the-internet.herokuapp.com/login"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-click-r4-login",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "click",
+   "options": {
+    "selectors": {
+     "click": "r4"
+    }
+   }
+  },
+  "ms": 899,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "click",
+    "state_id": "4fc977bd-21cf-4c40-9a00-87a0452a242d",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-4fc977bd-21cf-4c40-9a00-87a0452a242d.json",
+    "preview": "clicked r4 (button via lasso ref)",
+    "final_url": "https://the-internet.herokuapp.com/login"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "R1-after-login",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://the-internet.herokuapp.com/login",
+   "action": "snapshot"
+  },
+  "ms": 15,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "snapshot",
+    "state_id": "af1cf00b-4282-40e7-8746-66705a3e868d",
+    "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-af1cf00b-4282-40e7-8746-66705a3e868d.json",
+    "preview": "## Latest page snapshot\nuid=4_0 RootWebArea \"The Internet\" url=\"https://the-internet.herokuapp.com/secure\"\n  uid=4_1 StaticText \"\"\n  uid=4_2 StaticText \" You logged into a secure area!\"\n  uid=4_3 link \"×\" url=\"https://the-internet.herokuapp.com/secure#\"\n    uid=4_4 StaticText \"×\"\n  uid=4_5 link \"Fork me on GitHub\" url=\"https://github.com/tourdedave/the-internet\"\n    uid=4_6 image \"Fork me on GitHub\" url=\"https://the-internet.herokuapp.com/img/forkme_right_green_007200.png\"\n  uid=4_7 heading \"Secure Area\" level=\"2\"\n  uid=4_8 heading \"Welcome to the Secure Area. When you are done click logout below.\" level=\"4\"\n  uid=4_9 link \"Logout\" url=\"https://the-internet.herokuapp.com/logout\"\n    uid=4_10 StaticText \"Logout\"\n  uid=4_11 StaticText \"Powered by \"\n  uid=4_12 link \"Elemental Selenium\" url=\"http://elementalselenium.com/\"\n    uid=4_13 StaticText \"Elemental Selenium\"\n",
+    "title": "## Latest page snapshot",
+    "final_url": "https://the-internet.herokuapp.com/login"
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "S1-steps-ok",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://books.toscrape.com/",
+   "action": "navigate",
+   "options": {
+    "steps": [
+     {
+      "action": "navigate",
+      "label": "go"
+     },
+     {
+      "action": "snapshot",
+      "label": "look",
+      "expect": {
+       "text": "All products",
+       "timeout_ms": 10000
+      }
+     }
+    ]
+   }
+  },
+  "ms": 4159,
+  "isError": false,
+  "payload": {
+   "outcome": "worked",
+   "data": {
+    "url": "https://books.toscrape.com/",
+    "action": "chain",
+    "state_id": "5146817b-4d24-4ef4-b4f4-824d5672ade5",
+    "preview": "{\"actions_and_results\":[{\"step\":{\"action\":\"navigate\",\"label\":\"go\"},\"results\":[{\"action\":\"navigate\",\"outcome\":\"worked\",\"preview\":\"navigated\",\"state_id\":\"cee5f5a4-6e15-41ed-b71b-b5bd24101832\",\"content_path\":\"/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-cee5f5a4-6e15-41ed-b71b-b5bd24101832.json\",\"duration_ms\":1103}]},{\"step\":{\"action\":\"snapshot\",\"expect\":{\"text\":\"All products\",\"timeout_ms\":10000},\"label\":\"look\"},\"results\":[{\"action\":\"snapshot\",\"outcome\":\"worked\",\"preview\":\"## Latest page snapshot\\nuid=6_0 RootWebArea \\\"All products | Books to Scrape - Sandbox\\\" url=\\\"https://books.toscrape.com/\\\"\\n  uid=6_1 banner\\n    uid=6_2 link \\\"Books to Scrape\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n      uid=6_3 StaticText \\\"Books to Scrape\\\"\\n    uid=6_4 StaticText \\\" We love being scraped!\\\"\\n  uid=6_5 link \\\"Home\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n    uid=6_6 StaticText \\\"Home\\\"\\n  uid=6_7 StaticText \\\"/ \\\"\\n  uid=6_8 StaticText \\\"All products\\\"\\n  uid=6_9 complementary\\n    uid=6_10 link \\\"Books\\\" url=\\\"https://books.toscrape.com/catalogue/category/books_1/index.html\\\"\\n      uid=6_11 StaticText \\\"Books\\\"\\n    uid=6_12 link \\\"Travel\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\\\"\\n      uid=6_13 StaticText \\\"Travel\\\"\\n    uid=6_14 link \\\"Mystery\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\\\"\\n      uid=6_15 StaticText \\\"Mystery\\\"\\n    uid=6_16 link \\\"Historical Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\\\"\\n      uid=6_17 StaticText \\\"Historical Fiction\\\"\\n    uid=6_18 link \\\"Sequential Art\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\\\"\\n      uid=6_19 StaticText \\\"Sequential Art\\\"\\n    uid=6_20 link \\\"Classics\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\\\"\\n      uid=6_21 StaticText \\\"Classics\\\"\\n    uid=6_22 link \\\"Philosophy\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\\\"\\n      uid=6_23 StaticText \\\"Philosophy\\\"\\n    uid=6_24 link \\\"Romance\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\\\"\\n      uid=6_25 StaticText \\\"Romance\\\"\\n    uid=6_26 link \\\"Womens Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\\\"\\n      uid=6_27 StaticText \\\"Womens Fiction\\\"\\n    uid=6_28 link \\\"Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\\\"\\n      uid=6_29 StaticText \\\"Fiction\\\"\\n    uid=6_30 link \\\"Childrens\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\\\"\\n      uid=6_31 StaticText \\\"Childrens\\\"\\n    uid=6_32 link \\\"Religion\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\\\"\\n      uid=6_33 StaticText \\\"Religion\\\"\\n    uid=6_34 link \\\"Nonfiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\\\"\\n      uid=6_35 StaticText \\\"Nonfiction\\\"\\n    uid=6_36 link \\\"Music\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\\\"\\n      uid=6_37 StaticText \\\"Music\\\"\\n    uid=6_38 link \\\"Default\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\\\"\\n      uid=6_39 StaticText \\\"Default\\\"\\n    uid=6_40 link \\\"Science Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\\\"\\n      uid=6_41 StaticText \\\"Science Fiction\\\"\\n    uid=6_42 link \\\"Sports and Games\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\\\"\\n      uid=6_43 StaticText \\\"Sports and Games\\\"\\n    uid=6_44 link \\\"Add a comment\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\\\"\\n      uid=6_45 StaticText \\\"Add a comment\\\"\\n    uid=6_46 link \\\"Fantasy\\\" url=\\\"https://books.toscrape.com/catalogue/category/bo\n…[truncated by lasso]",
+    "final_url": "https://books.toscrape.com/",
+    "chain": {
+     "actions_and_results": [
+      {
+       "step": {
+        "action": "navigate",
+        "label": "go"
+       },
+       "results": [
+        {
+         "action": "navigate",
+         "outcome": "worked",
+         "preview": "navigated",
+         "state_id": "cee5f5a4-6e15-41ed-b71b-b5bd24101832",
+         "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-cee5f5a4-6e15-41ed-b71b-b5bd24101832.json",
+         "duration_ms": 1103
+        }
+       ]
+      },
+      {
+       "step": {
+        "action": "snapshot",
+        "expect": {
+         "text": "All products",
+         "timeout_ms": 10000
+        },
+        "label": "look"
+       },
+       "results": [
+        {
+         "action": "snapshot",
+         "outcome": "worked",
+         "preview": "## Latest page snapshot\nuid=6_0 RootWebArea \"All products | Books to Scrape - Sandbox\" url=\"https://books.toscrape.com/\"\n  uid=6_1 banner\n    uid=6_2 link \"Books to Scrape\" url=\"https://books.toscrape.com/index.html\"\n      uid=6_3 StaticText \"Books to Scrape\"\n    uid=6_4 StaticText \" We love being scraped!\"\n  uid=6_5 link \"Home\" url=\"https://books.toscrape.com/index.html\"\n    uid=6_6 StaticText \"Home\"\n  uid=6_7 StaticText \"/ \"\n  uid=6_8 StaticText \"All products\"\n  uid=6_9 complementary\n    uid=6_10 link \"Books\" url=\"https://books.toscrape.com/catalogue/category/books_1/index.html\"\n      uid=6_11 StaticText \"Books\"\n    uid=6_12 link \"Travel\" url=\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\"\n      uid=6_13 StaticText \"Travel\"\n    uid=6_14 link \"Mystery\" url=\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\"\n      uid=6_15 StaticText \"Mystery\"\n    uid=6_16 link \"Historical Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\"\n      uid=6_17 StaticText \"Historical Fiction\"\n    uid=6_18 link \"Sequential Art\" url=\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\"\n      uid=6_19 StaticText \"Sequential Art\"\n    uid=6_20 link \"Classics\" url=\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\"\n      uid=6_21 StaticText \"Classics\"\n    uid=6_22 link \"Philosophy\" url=\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\"\n      uid=6_23 StaticText \"Philosophy\"\n    uid=6_24 link \"Romance\" url=\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\"\n      uid=6_25 StaticText \"Romance\"\n    uid=6_26 link \"Womens Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\"\n      uid=6_27 StaticText \"Womens Fiction\"\n    uid=6_28 link \"Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\"\n      uid=6_29 StaticText \"Fiction\"\n    uid=6_30 link \"Childrens\" url=\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\"\n      uid=6_31 StaticText \"Childrens\"\n    uid=6_32 link \"Religion\" url=\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\"\n      uid=6_33 StaticText \"Religion\"\n    uid=6_34 link \"Nonfiction\" url=\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\"\n      uid=6_35 StaticText \"Nonfiction\"\n    uid=6_36 link \"Music\" url=\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\"\n      uid=6_37 StaticText \"Music\"\n    uid=6_38 link \"Default\" url=\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\"\n      uid=6_39 StaticText \"Default\"\n    uid=6_40 link \"Science Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\"\n      uid=6_41 StaticText \"Science Fiction\"\n    uid=6_42 link \"Sports and Games\" url=\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\"\n      uid=6_43 StaticText \"Sports and Games\"\n    uid=6_44 link \"Add a comment\" url=\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\"\n      uid=6_45 StaticText \"Add a comment\"\n    uid=6_46 link \"Fantasy\" url=\"https://books.toscrape.com/catalogue/category/books/fantasy_19/index.html\"\n      uid=6_47 StaticText \"Fantasy\"\n    uid=6_48 link \"New Adult\" url=\"https://books.toscrape.com/catalogue/category/books/new-adult_20/index.html\"\n      uid=6_49 StaticText \"New Adult\"\n    uid=6_50 link \"Young Adult\" url=\"https://books.toscrape.com/catalogue/category/books/young-adult_21/index.html\"\n      uid=6_51 StaticText \"Young Adult\"\n    uid=6_52 link \"Science\" url=\"https://books.toscrape.com/catalogue/category/books/science_22/index.html\"\n      uid=6_53 StaticText \"Science\"\n    uid=6_54 link \"Poetry\" url=\"https://books.toscrape.com/catalogue/category/books/poetry_23/index.html\"\n      uid=6_55 StaticText \"Poetry\"\n    uid=6_56 link \"Paranormal\" url=\"https://books.toscrape.com/catalogue/category/books/paranormal_24/index.html\"\n      uid=6_57 StaticText \"Paranormal\"\n    uid=6_58 link \"Art\" url=\"https://books.toscrape.com/catalogue/category/books/art_25/index.html\"\n      uid=6_59 StaticText \"Art\"\n    uid=6_60 link \"Psychology\" url=\"https://books.toscrape.com/catalogue/category/books/psychology_26/index.html\"\n      uid=6_61 StaticText \"Psychology\"\n    uid=6_62 link \"Autobiography\" url=\"https://books.toscrape.com/catalogue/category/books/autobiography_27/index.html\"\n      uid=6_63 StaticText \"Autobiography\"\n    uid=6_64 link \"Parenting\" url=\"https://books.toscrape.com/catalogue/category/books/parenting_28/index.html\"\n      uid=6_65 StaticText \"Parenting\"\n    uid=6_66 link \"Adult Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/adult-fiction_29/index.html\"\n      uid=6_67 StaticText \"Adult Fiction\"\n    uid=6_68 link \"Humor\" url=\"https://books.toscrape.com/catalogue/category/books/humor_30/index.html\"\n      uid=6_69 StaticText \"Humor\"\n    uid=6_70 link \"Horror\" url=\"https://books.toscrape.com/catalogue/category/books/horror_31/index.html\"\n      uid=6_71 StaticText \"Horror\"\n    uid=6_72 link \"History\" url=\"https://books.toscrape.com/catalogue/category/books/history_32/index.html\"\n      uid=6_73 StaticText \"History\"\n    uid=6_74 link \"Food and Drink\" url=\"https://books.toscrape.com/catalogue/category/books/food-and-drink_33/index.html\"\n      uid=6_75 StaticText \"Food and Drink\"\n    uid=6_76 link \"Christian Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/christian-fiction_34/index.html\"\n      uid=6_77 StaticText \"Christian Fiction\"\n    uid=6_78 link \"Business\" url=\"https://books.toscrape.com/catalogue/category/books/business_35/index.html\"\n      uid=6_79 StaticText \"Business\"\n    uid=6_80 link \"Biography\" url=\"https://books.toscrape.com/catalogue/category/books/biography_36/index.html\"\n      uid=6_81 StaticText \"Biography\"\n    uid=6_82 link \"Thriller\" url=\"https://books.toscrape.com/catalogue/category/books/thriller_37/index.html\"\n      uid=6_83 StaticText \"Thriller\"\n    uid=6_84 link \"Contemporary\" url=\"https://books.toscrape.com/catalogue/category/books/contemporary_38/index.html\"\n      uid=6_85 StaticText \"Contemporary\"\n    uid=6_86 link \"Spirituality\" url=\"https://books.toscrape.com/catalogue/category/books/spirituality_39/index.html\"\n      uid=6_87 StaticText \"Spirituality\"\n    uid=6_88 link \"Academic\" url=\"https://books.toscrape.com/catalogue/category/books/academic_40/index.html\"\n      uid=6_89 StaticText \"Academic\"\n    uid=6_90 link \"Self Help\" url=\"https://books.toscrape.com/catalogue/category/books/self-help_41/index.html\"\n      uid=6_91 StaticText \"Self Help\"\n    uid=6_92 link \"Historical\" url=\"https://books.toscrape.com/catalogue/category/books/historical_42/index.html\"\n      uid=6_93 StaticText \"Historical\"\n    uid=6_94 link \"Christian\" url=\"https://books.toscrape.com/catalogue/category/books/christian_43/index.html\"\n      uid=6_95 StaticText \"Christian\"\n    uid=6_96 link \"Suspense\" url=\"https://books.toscrape.com/catalogue/category/books/suspense_44/index.html\"\n      uid=6_97 StaticText \"Suspense\"\n    uid=6_98 link \"Short Stories\" url=\"https://books.toscrape.com/catalogue/category/books/short-stories_45/index.html\"\n      uid=6_99 StaticText \"Short Stories\"\n    uid=6_100 link \"Novels\" url=\"https://books.toscrape.com/catalogue/category/books/novels_46/index.html\"\n      uid=6_101 StaticText \"Novels\"\n    uid=6_102 link \"Health\" url=\"https://books.toscrape.com/catalogue/category/books/health_47/index.html\"\n      uid=6_103 StaticText \"Health\"\n    uid=6_104 link \"Politics\" url=\"https://books.toscrape.com/catalogue/category/books/politics_48/index.html\"\n      uid=6_105 StaticText \"Politics\"\n    uid=6_106 link \"Cultural\" url=\"https://books.toscrape.com/catalogue/category/books/cultural_49/index.html\"\n      uid=6_107 StaticText \"Cultural\"\n    uid=6_108 link \"Erotica\" url=\"https://books.toscrape.com/catalogue/category/books/erotica_50/index.html\"\n      uid=6_109 StaticText \"Erotica\"\n    uid=6_110 link \"Crime\" url=\"https://books.toscrape.com/catalogue/category/books/crime_51/index.html\"\n      uid=6_111 StaticText \"Crime\"\n  uid=6_112 heading \"All products\" level=\"1\"\n  uid=6_113 form\n    uid=6_114 StaticText \"1000\"\n    uid=6_115 StaticText \" results - showing \"\n    uid=6_116 StaticText \"1\"\n    uid=6_117 StaticText \" to \"\n    uid=6_118 StaticText \"20\"\n    uid=6_119 StaticText \".\"\n  uid=6_120 alert atomic live=\"assertive\" relevant=\"additions text\"\n    uid=6_121 StaticText \"Warning!\"\n    uid=6_122 StaticText \" This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\"\n  uid=6_123 link \"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=6_124 image \"A Light in the Attic\" url=\"https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_125 link \"A Light in the ...\" description=\"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=6_126 StaticText \"A Light in the ...\"\n  uid=6_127 StaticText \"£51.77\"\n  uid=6_7 StaticText \"\"\n  uid=6_128 StaticText \" In stock\"\n  uid=6_129 form\n    uid=6_130 button \"Add to basket\"\n  uid=6_131 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=6_132 image \"Tipping the Velvet\" url=\"https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_133 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=6_134 StaticText \"Tipping the Velvet\"\n  uid=6_135 StaticText \"£53.74\"\n  uid=6_7 StaticText \"\"\n  uid=6_136 StaticText \" In stock\"\n  uid=6_137 form\n    uid=6_138 button \"Add to basket\"\n  uid=6_139 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=6_140 image \"Soumission\" url=\"https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_141 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=6_142 StaticText \"Soumission\"\n  uid=6_143 StaticText \"£50.10\"\n  uid=6_7 StaticText \"\"\n  uid=6_144 StaticText \" In stock\"\n  uid=6_145 form\n    uid=6_146 button \"Add to basket\"\n  uid=6_147 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=6_148 image \"Sharp Objects\" url=\"https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_149 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=6_150 StaticText \"Sharp Objects\"\n  uid=6_151 StaticText \"£47.82\"\n  uid=6_7 StaticText \"\"\n  uid=6_152 StaticText \" In stock\"\n  uid=6_153 form\n    uid=6_154 button \"Add to basket\"\n  uid=6_155 link \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=6_156 image \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_157 link \"Sapiens: A Brief History ...\" description=\"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=6_158 StaticText \"Sapiens: A Brief History ...\"\n  uid=6_159 StaticText \"£54.23\"\n  uid=6_7 StaticText \"\"\n  uid=6_160 StaticText \" In stock\"\n  uid=6_161 form\n    uid=6_162 button \"Add to basket\"\n  uid=6_163 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=6_164 image \"The Requiem Red\" url=\"https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_165 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=6_166 StaticText \"The Requiem Red\"\n  uid=6_167 StaticText \"£22.65\"\n  uid=6_7 StaticText \"\"\n  uid=6_168 StaticText \" In stock\"\n  uid=6_169 form\n    uid=6_170 button \"Add to basket\"\n  uid=6_171 link \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=6_172 image \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_173 link \"The Dirty Little Secrets ...\" description=\"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=6_174 StaticText \"The Dirty Little Secrets ...\"\n  uid=6_175 StaticText \"£33.34\"\n  uid=6_7 StaticText \"\"\n  uid=6_176 StaticText \" In stock\"\n  uid=6_177 form\n    uid=6_178 button \"Add to basket\"\n  uid=6_179 link \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=6_180 image \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_181 link \"The Coming Woman: A ...\" description=\"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=6_182 StaticText \"The Coming Woman: A ...\"\n  uid=6_183 StaticText \"£17.93\"\n  uid=6_7 StaticText \"\"\n  uid=6_184 StaticText \" In stock\"\n  uid=6_185 form\n    uid=6_186 button \"Add to basket\"\n  uid=6_187 link \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=6_188 image \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_189 link \"The Boys in the ...\" description=\"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=6_190 StaticText \"The Boys in the ...\"\n  uid=6_191 StaticText \"£22.60\"\n  uid=6_7 StaticText \"\"\n  uid=6_192 StaticText \" In stock\"\n  uid=6_193 form\n    uid=6_194 button \"Add to basket\"\n  uid=6_195 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=6_196 image \"The Black Maria\" url=\"https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_197 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=6_198 StaticText \"The Black Maria\"\n  uid=6_199 StaticText \"£52.15\"\n  uid=6_7 StaticText \"\"\n  uid=6_200 StaticText \" In stock\"\n  uid=6_201 form\n    uid=6_202 button \"Add to basket\"\n  uid=6_203 link \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=6_204 image \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_205 link \"Starving Hearts (Triangular Trade ...\" description=\"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=6_206 StaticText \"Starving Hearts (Triangular Trade ...\"\n  uid=6_207 StaticText \"£13.99\"\n  uid=6_7 StaticText \"\"\n  uid=6_208 StaticText \" In stock\"\n  uid=6_209 form\n    uid=6_210 button \"Add to basket\"\n  uid=6_211 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=6_212 image \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_213 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=6_214 StaticText \"Shakespeare's Sonnets\"\n  uid=6_215 StaticText \"£20.66\"\n  uid=6_7 StaticText \"\"\n  uid=6_216 StaticText \" In stock\"\n  uid=6_217 form\n    uid=6_218 button \"Add to basket\"\n  uid=6_219 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=6_220 image \"Set Me Free\" url=\"https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_221 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=6_222 StaticText \"Set Me Free\"\n  uid=6_223 StaticText \"£17.46\"\n  uid=6_7 StaticText \"\"\n  uid=6_224 StaticText \" In stock\"\n  uid=6_225 form\n    uid=6_226 button \"Add to basket\"\n  uid=6_227 link \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=6_228 image \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_229 link \"Scott Pilgrim's Precious Little ...\" description=\"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=6_230 StaticText \"Scott Pilgrim's Precious Little ...\"\n  uid=6_231 StaticText \"£52.29\"\n  uid=6_7 StaticText \"\"\n  uid=6_232 StaticText \" In stock\"\n  uid=6_233 form\n    uid=6_234 button \"Add to basket\"\n  uid=6_235 link \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=6_236 image \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_237 link \"Rip it Up and ...\" description=\"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=6_238 StaticText \"Rip it Up and ...\"\n  uid=6_239 StaticText \"£35.02\"\n  uid=6_7 StaticText \"\"\n  uid=6_240 StaticText \" In stock\"\n  uid=6_241 form\n    uid=6_242 button \"Add to basket\"\n  uid=6_243 link \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=6_244 image \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/media/cache/54/60/54607fe8945897cdcced0044103b10b6.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_245 link \"Our Band Could Be ...\" description=\"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=6_246 StaticText \"Our Band Could Be ...\"\n  uid=6_247 StaticText \"£57.25\"\n  uid=6_7 StaticText \"\"\n  uid=6_248 StaticText \" In stock\"\n  uid=6_249 form\n    uid=6_250 button \"Add to basket\"\n  uid=6_251 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=6_252 image \"Olio\" url=\"https://books.toscrape.com/media/cache/55/33/553310a7162dfbc2c6d19a84da0df9e1.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_253 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=6_254 StaticText \"Olio\"\n  uid=6_255 StaticText \"£23.88\"\n  uid=6_7 StaticText \"\"\n  uid=6_256 StaticText \" In stock\"\n  uid=6_257 form\n    uid=6_258 button \"Add to basket\"\n  uid=6_259 link \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=6_260 image \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/media/cache/09/a3/09a3aef48557576e1a85ba7efea8ecb7.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_261 link \"Mesaerion: The Best Science ...\" description=\"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=6_262 StaticText \"Mesaerion: The Best Science ...\"\n  uid=6_263 StaticText \"£37.59\"\n  uid=6_7 StaticText \"\"\n  uid=6_264 StaticText \" In stock\"\n  uid=6_265 form\n    uid=6_266 button \"Add to basket\"\n  uid=6_267 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=6_268 image \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/media/cache/0b/bc/0bbcd0a6f4bcd81ccb1049a52736406e.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_269 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=6_270 StaticText \"Libertarianism for Beginners\"\n  uid=6_271 StaticText \"£51.33\"\n  uid=6_7 StaticText \"\"\n  uid=6_272 StaticText \" In stock\"\n  uid=6_273 form\n    uid=6_274 button \"Add to basket\"\n  uid=6_275 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=6_276 image \"It's Only the Himalayas\" url=\"https://books.toscrape.com/media/cache/27/a5/27a53d0bb95bdd88288eaf66c9230d7e.jpg\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_7 StaticText \"\"\n  uid=6_277 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=6_278 StaticText \"It's Only the Himalayas\"\n  uid=6_279 StaticText \"£45.17\"\n  uid=6_7 StaticText \"\"\n  uid=6_280 StaticText \" In stock\"\n  uid=6_281 form\n    uid=6_282 button \"Add to basket\"\n  uid=6_283 StaticText \"Page 1 of 50\"\n  uid=6_284 link \"next\" url=\"https://books.toscrape.com/catalogue/page-2.html\"\n    uid=6_285 StaticText \"next\"\n  uid=6_286 contentinfo\n",
+         "state_id": "5146817b-4d24-4ef4-b4f4-824d5672ade5",
+         "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-5146817b-4d24-4ef4-b4f4-824d5672ade5.json",
+         "duration_ms": 289,
+         "expect_check": "preexisting"
+        }
+       ]
+      }
+     ],
+     "final_state_id": "5146817b-4d24-4ef4-b4f4-824d5672ade5",
+     "final_url": "https://books.toscrape.com/",
+     "budget_used_ms": 1392
+    }
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp.chain",
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "worked"
+    }
+   ]
+  }
+ },
+ {
+  "id": "S2-steps-timeout",
+  "tool": "browse_headless",
+  "args": {
+   "url": "https://books.toscrape.com/",
+   "action": "navigate",
+   "options": {
+    "steps": [
+     {
+      "action": "navigate",
+      "label": "go"
+     },
+     {
+      "action": "snapshot",
+      "label": "look",
+      "expect": {
+       "text": "Definitely Not Here XYZ",
+       "timeout_ms": 3000
+      }
+     }
+    ]
+   }
+  },
+  "ms": 5291,
+  "isError": false,
+  "payload": {
+   "outcome": "didnt",
+   "data": {
+    "url": "",
+    "action": "chain",
+    "state_id": "35604616-e8e0-4594-b778-59011c4bfb23",
+    "preview": "{\"actions_and_results\":[{\"step\":{\"action\":\"navigate\",\"label\":\"go\"},\"results\":[{\"action\":\"navigate\",\"outcome\":\"worked\",\"preview\":\"navigated\",\"state_id\":\"cc7b94c2-00ec-485c-be93-f46c277a7137\",\"content_path\":\"/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-cc7b94c2-00ec-485c-be93-f46c277a7137.json\",\"duration_ms\":988}]},{\"step\":{\"action\":\"snapshot\",\"expect\":{\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000},\"label\":\"look\"},\"results\":[{\"action\":\"snapshot\",\"outcome\":\"didnt\",\"preview\":\"## Latest page snapshot\\nuid=9_0 RootWebArea \\\"All products | Books to Scrape - Sandbox\\\" url=\\\"https://books.toscrape.com/\\\"\\n  uid=9_1 banner\\n    uid=9_2 link \\\"Books to Scrape\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n      uid=9_3 StaticText \\\"Books to Scrape\\\"\\n    uid=9_4 StaticText \\\" We love being scraped!\\\"\\n  uid=9_5 link \\\"Home\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n    uid=9_6 StaticText \\\"Home\\\"\\n  uid=9_7 StaticText \\\"/ \\\"\\n  uid=9_8 StaticText \\\"All products\\\"\\n  uid=9_9 complementary\\n    uid=9_10 link \\\"Books\\\" url=\\\"https://books.toscrape.com/catalogue/category/books_1/index.html\\\"\\n      uid=9_11 StaticText \\\"Books\\\"\\n    uid=9_12 link \\\"Travel\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\\\"\\n      uid=9_13 StaticText \\\"Travel\\\"\\n    uid=9_14 link \\\"Mystery\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\\\"\\n      uid=9_15 StaticText \\\"Mystery\\\"\\n    uid=9_16 link \\\"Historical Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\\\"\\n      uid=9_17 StaticText \\\"Historical Fiction\\\"\\n    uid=9_18 link \\\"Sequential Art\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\\\"\\n      uid=9_19 StaticText \\\"Sequential Art\\\"\\n    uid=9_20 link \\\"Classics\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\\\"\\n      uid=9_21 StaticText \\\"Classics\\\"\\n    uid=9_22 link \\\"Philosophy\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\\\"\\n      uid=9_23 StaticText \\\"Philosophy\\\"\\n    uid=9_24 link \\\"Romance\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\\\"\\n      uid=9_25 StaticText \\\"Romance\\\"\\n    uid=9_26 link \\\"Womens Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\\\"\\n      uid=9_27 StaticText \\\"Womens Fiction\\\"\\n    uid=9_28 link \\\"Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\\\"\\n      uid=9_29 StaticText \\\"Fiction\\\"\\n    uid=9_30 link \\\"Childrens\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\\\"\\n      uid=9_31 StaticText \\\"Childrens\\\"\\n    uid=9_32 link \\\"Religion\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\\\"\\n      uid=9_33 StaticText \\\"Religion\\\"\\n    uid=9_34 link \\\"Nonfiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\\\"\\n      uid=9_35 StaticText \\\"Nonfiction\\\"\\n    uid=9_36 link \\\"Music\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\\\"\\n      uid=9_37 StaticText \\\"Music\\\"\\n    uid=9_38 link \\\"Default\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\\\"\\n      uid=9_39 StaticText \\\"Default\\\"\\n    uid=9_40 link \\\"Science Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\\\"\\n      uid=9_41 StaticText \\\"Science Fiction\\\"\\n    uid=9_42 link \\\"Sports and Games\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\\\"\\n      uid=9_43 StaticText \\\"Sports and Games\\\"\\n    uid=9_44 link \\\"Add a comment\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\\\"\\n      uid=9_45 StaticText \\\"Add a comment\\\"\\n    uid=9_46 link \\\"Fantasy\\\" url=\\\"https://books.toscrape.com/catalogue/cat\n…[truncated by lasso]",
+    "stopped_at": {
+     "step_index": 1,
+     "reason": "failed_postcondition",
+     "failed_action": "snapshot",
+     "detail": "expect failed: {\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000}"
+    },
+    "chain": {
+     "actions_and_results": [
+      {
+       "step": {
+        "action": "navigate",
+        "label": "go"
+       },
+       "results": [
+        {
+         "action": "navigate",
+         "outcome": "worked",
+         "preview": "navigated",
+         "state_id": "cc7b94c2-00ec-485c-be93-f46c277a7137",
+         "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-cc7b94c2-00ec-485c-be93-f46c277a7137.json",
+         "duration_ms": 988
+        }
+       ]
+      },
+      {
+       "step": {
+        "action": "snapshot",
+        "expect": {
+         "text": "Definitely Not Here XYZ",
+         "timeout_ms": 3000
+        },
+        "label": "look"
+       },
+       "results": [
+        {
+         "action": "snapshot",
+         "outcome": "didnt",
+         "preview": "## Latest page snapshot\nuid=9_0 RootWebArea \"All products | Books to Scrape - Sandbox\" url=\"https://books.toscrape.com/\"\n  uid=9_1 banner\n    uid=9_2 link \"Books to Scrape\" url=\"https://books.toscrape.com/index.html\"\n      uid=9_3 StaticText \"Books to Scrape\"\n    uid=9_4 StaticText \" We love being scraped!\"\n  uid=9_5 link \"Home\" url=\"https://books.toscrape.com/index.html\"\n    uid=9_6 StaticText \"Home\"\n  uid=9_7 StaticText \"/ \"\n  uid=9_8 StaticText \"All products\"\n  uid=9_9 complementary\n    uid=9_10 link \"Books\" url=\"https://books.toscrape.com/catalogue/category/books_1/index.html\"\n      uid=9_11 StaticText \"Books\"\n    uid=9_12 link \"Travel\" url=\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\"\n      uid=9_13 StaticText \"Travel\"\n    uid=9_14 link \"Mystery\" url=\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\"\n      uid=9_15 StaticText \"Mystery\"\n    uid=9_16 link \"Historical Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\"\n      uid=9_17 StaticText \"Historical Fiction\"\n    uid=9_18 link \"Sequential Art\" url=\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\"\n      uid=9_19 StaticText \"Sequential Art\"\n    uid=9_20 link \"Classics\" url=\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\"\n      uid=9_21 StaticText \"Classics\"\n    uid=9_22 link \"Philosophy\" url=\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\"\n      uid=9_23 StaticText \"Philosophy\"\n    uid=9_24 link \"Romance\" url=\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\"\n      uid=9_25 StaticText \"Romance\"\n    uid=9_26 link \"Womens Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\"\n      uid=9_27 StaticText \"Womens Fiction\"\n    uid=9_28 link \"Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\"\n      uid=9_29 StaticText \"Fiction\"\n    uid=9_30 link \"Childrens\" url=\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\"\n      uid=9_31 StaticText \"Childrens\"\n    uid=9_32 link \"Religion\" url=\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\"\n      uid=9_33 StaticText \"Religion\"\n    uid=9_34 link \"Nonfiction\" url=\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\"\n      uid=9_35 StaticText \"Nonfiction\"\n    uid=9_36 link \"Music\" url=\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\"\n      uid=9_37 StaticText \"Music\"\n    uid=9_38 link \"Default\" url=\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\"\n      uid=9_39 StaticText \"Default\"\n    uid=9_40 link \"Science Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\"\n      uid=9_41 StaticText \"Science Fiction\"\n    uid=9_42 link \"Sports and Games\" url=\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\"\n      uid=9_43 StaticText \"Sports and Games\"\n    uid=9_44 link \"Add a comment\" url=\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\"\n      uid=9_45 StaticText \"Add a comment\"\n    uid=9_46 link \"Fantasy\" url=\"https://books.toscrape.com/catalogue/category/books/fantasy_19/index.html\"\n      uid=9_47 StaticText \"Fantasy\"\n    uid=9_48 link \"New Adult\" url=\"https://books.toscrape.com/catalogue/category/books/new-adult_20/index.html\"\n      uid=9_49 StaticText \"New Adult\"\n    uid=9_50 link \"Young Adult\" url=\"https://books.toscrape.com/catalogue/category/books/young-adult_21/index.html\"\n      uid=9_51 StaticText \"Young Adult\"\n    uid=9_52 link \"Science\" url=\"https://books.toscrape.com/catalogue/category/books/science_22/index.html\"\n      uid=9_53 StaticText \"Science\"\n    uid=9_54 link \"Poetry\" url=\"https://books.toscrape.com/catalogue/category/books/poetry_23/index.html\"\n      uid=9_55 StaticText \"Poetry\"\n    uid=9_56 link \"Paranormal\" url=\"https://books.toscrape.com/catalogue/category/books/paranormal_24/index.html\"\n      uid=9_57 StaticText \"Paranormal\"\n    uid=9_58 link \"Art\" url=\"https://books.toscrape.com/catalogue/category/books/art_25/index.html\"\n      uid=9_59 StaticText \"Art\"\n    uid=9_60 link \"Psychology\" url=\"https://books.toscrape.com/catalogue/category/books/psychology_26/index.html\"\n      uid=9_61 StaticText \"Psychology\"\n    uid=9_62 link \"Autobiography\" url=\"https://books.toscrape.com/catalogue/category/books/autobiography_27/index.html\"\n      uid=9_63 StaticText \"Autobiography\"\n    uid=9_64 link \"Parenting\" url=\"https://books.toscrape.com/catalogue/category/books/parenting_28/index.html\"\n      uid=9_65 StaticText \"Parenting\"\n    uid=9_66 link \"Adult Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/adult-fiction_29/index.html\"\n      uid=9_67 StaticText \"Adult Fiction\"\n    uid=9_68 link \"Humor\" url=\"https://books.toscrape.com/catalogue/category/books/humor_30/index.html\"\n      uid=9_69 StaticText \"Humor\"\n    uid=9_70 link \"Horror\" url=\"https://books.toscrape.com/catalogue/category/books/horror_31/index.html\"\n      uid=9_71 StaticText \"Horror\"\n    uid=9_72 link \"History\" url=\"https://books.toscrape.com/catalogue/category/books/history_32/index.html\"\n      uid=9_73 StaticText \"History\"\n    uid=9_74 link \"Food and Drink\" url=\"https://books.toscrape.com/catalogue/category/books/food-and-drink_33/index.html\"\n      uid=9_75 StaticText \"Food and Drink\"\n    uid=9_76 link \"Christian Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/christian-fiction_34/index.html\"\n      uid=9_77 StaticText \"Christian Fiction\"\n    uid=9_78 link \"Business\" url=\"https://books.toscrape.com/catalogue/category/books/business_35/index.html\"\n      uid=9_79 StaticText \"Business\"\n    uid=9_80 link \"Biography\" url=\"https://books.toscrape.com/catalogue/category/books/biography_36/index.html\"\n      uid=9_81 StaticText \"Biography\"\n    uid=9_82 link \"Thriller\" url=\"https://books.toscrape.com/catalogue/category/books/thriller_37/index.html\"\n      uid=9_83 StaticText \"Thriller\"\n    uid=9_84 link \"Contemporary\" url=\"https://books.toscrape.com/catalogue/category/books/contemporary_38/index.html\"\n      uid=9_85 StaticText \"Contemporary\"\n    uid=9_86 link \"Spirituality\" url=\"https://books.toscrape.com/catalogue/category/books/spirituality_39/index.html\"\n      uid=9_87 StaticText \"Spirituality\"\n    uid=9_88 link \"Academic\" url=\"https://books.toscrape.com/catalogue/category/books/academic_40/index.html\"\n      uid=9_89 StaticText \"Academic\"\n    uid=9_90 link \"Self Help\" url=\"https://books.toscrape.com/catalogue/category/books/self-help_41/index.html\"\n      uid=9_91 StaticText \"Self Help\"\n    uid=9_92 link \"Historical\" url=\"https://books.toscrape.com/catalogue/category/books/historical_42/index.html\"\n      uid=9_93 StaticText \"Historical\"\n    uid=9_94 link \"Christian\" url=\"https://books.toscrape.com/catalogue/category/books/christian_43/index.html\"\n      uid=9_95 StaticText \"Christian\"\n    uid=9_96 link \"Suspense\" url=\"https://books.toscrape.com/catalogue/category/books/suspense_44/index.html\"\n      uid=9_97 StaticText \"Suspense\"\n    uid=9_98 link \"Short Stories\" url=\"https://books.toscrape.com/catalogue/category/books/short-stories_45/index.html\"\n      uid=9_99 StaticText \"Short Stories\"\n    uid=9_100 link \"Novels\" url=\"https://books.toscrape.com/catalogue/category/books/novels_46/index.html\"\n      uid=9_101 StaticText \"Novels\"\n    uid=9_102 link \"Health\" url=\"https://books.toscrape.com/catalogue/category/books/health_47/index.html\"\n      uid=9_103 StaticText \"Health\"\n    uid=9_104 link \"Politics\" url=\"https://books.toscrape.com/catalogue/category/books/politics_48/index.html\"\n      uid=9_105 StaticText \"Politics\"\n    uid=9_106 link \"Cultural\" url=\"https://books.toscrape.com/catalogue/category/books/cultural_49/index.html\"\n      uid=9_107 StaticText \"Cultural\"\n    uid=9_108 link \"Erotica\" url=\"https://books.toscrape.com/catalogue/category/books/erotica_50/index.html\"\n      uid=9_109 StaticText \"Erotica\"\n    uid=9_110 link \"Crime\" url=\"https://books.toscrape.com/catalogue/category/books/crime_51/index.html\"\n      uid=9_111 StaticText \"Crime\"\n  uid=9_112 heading \"All products\" level=\"1\"\n  uid=9_113 form\n    uid=9_114 StaticText \"1000\"\n    uid=9_115 StaticText \" results - showing \"\n    uid=9_116 StaticText \"1\"\n    uid=9_117 StaticText \" to \"\n    uid=9_118 StaticText \"20\"\n    uid=9_119 StaticText \".\"\n  uid=9_120 alert atomic live=\"assertive\" relevant=\"additions text\"\n    uid=9_121 StaticText \"Warning!\"\n    uid=9_122 StaticText \" This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\"\n  uid=9_123 link \"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=9_124 image \"A Light in the Attic\" url=\"https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_125 link \"A Light in the ...\" description=\"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=9_126 StaticText \"A Light in the ...\"\n  uid=9_127 StaticText \"£51.77\"\n  uid=9_7 StaticText \"\"\n  uid=9_128 StaticText \" In stock\"\n  uid=9_129 form\n    uid=9_130 button \"Add to basket\"\n  uid=9_131 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=9_132 image \"Tipping the Velvet\" url=\"https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_133 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=9_134 StaticText \"Tipping the Velvet\"\n  uid=9_135 StaticText \"£53.74\"\n  uid=9_7 StaticText \"\"\n  uid=9_136 StaticText \" In stock\"\n  uid=9_137 form\n    uid=9_138 button \"Add to basket\"\n  uid=9_139 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=9_140 image \"Soumission\" url=\"https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_141 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=9_142 StaticText \"Soumission\"\n  uid=9_143 StaticText \"£50.10\"\n  uid=9_7 StaticText \"\"\n  uid=9_144 StaticText \" In stock\"\n  uid=9_145 form\n    uid=9_146 button \"Add to basket\"\n  uid=9_147 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=9_148 image \"Sharp Objects\" url=\"https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_149 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=9_150 StaticText \"Sharp Objects\"\n  uid=9_151 StaticText \"£47.82\"\n  uid=9_7 StaticText \"\"\n  uid=9_152 StaticText \" In stock\"\n  uid=9_153 form\n    uid=9_154 button \"Add to basket\"\n  uid=9_155 link \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=9_156 image \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_157 link \"Sapiens: A Brief History ...\" description=\"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=9_158 StaticText \"Sapiens: A Brief History ...\"\n  uid=9_159 StaticText \"£54.23\"\n  uid=9_7 StaticText \"\"\n  uid=9_160 StaticText \" In stock\"\n  uid=9_161 form\n    uid=9_162 button \"Add to basket\"\n  uid=9_163 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=9_164 image \"The Requiem Red\" url=\"https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_165 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=9_166 StaticText \"The Requiem Red\"\n  uid=9_167 StaticText \"£22.65\"\n  uid=9_7 StaticText \"\"\n  uid=9_168 StaticText \" In stock\"\n  uid=9_169 form\n    uid=9_170 button \"Add to basket\"\n  uid=9_171 link \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=9_172 image \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_173 link \"The Dirty Little Secrets ...\" description=\"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=9_174 StaticText \"The Dirty Little Secrets ...\"\n  uid=9_175 StaticText \"£33.34\"\n  uid=9_7 StaticText \"\"\n  uid=9_176 StaticText \" In stock\"\n  uid=9_177 form\n    uid=9_178 button \"Add to basket\"\n  uid=9_179 link \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=9_180 image \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_181 link \"The Coming Woman: A ...\" description=\"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=9_182 StaticText \"The Coming Woman: A ...\"\n  uid=9_183 StaticText \"£17.93\"\n  uid=9_7 StaticText \"\"\n  uid=9_184 StaticText \" In stock\"\n  uid=9_185 form\n    uid=9_186 button \"Add to basket\"\n  uid=9_187 link \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=9_188 image \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_189 link \"The Boys in the ...\" description=\"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=9_190 StaticText \"The Boys in the ...\"\n  uid=9_191 StaticText \"£22.60\"\n  uid=9_7 StaticText \"\"\n  uid=9_192 StaticText \" In stock\"\n  uid=9_193 form\n    uid=9_194 button \"Add to basket\"\n  uid=9_195 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=9_196 image \"The Black Maria\" url=\"https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_197 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=9_198 StaticText \"The Black Maria\"\n  uid=9_199 StaticText \"£52.15\"\n  uid=9_7 StaticText \"\"\n  uid=9_200 StaticText \" In stock\"\n  uid=9_201 form\n    uid=9_202 button \"Add to basket\"\n  uid=9_203 link \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=9_204 image \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_205 link \"Starving Hearts (Triangular Trade ...\" description=\"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=9_206 StaticText \"Starving Hearts (Triangular Trade ...\"\n  uid=9_207 StaticText \"£13.99\"\n  uid=9_7 StaticText \"\"\n  uid=9_208 StaticText \" In stock\"\n  uid=9_209 form\n    uid=9_210 button \"Add to basket\"\n  uid=9_211 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=9_212 image \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_213 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=9_214 StaticText \"Shakespeare's Sonnets\"\n  uid=9_215 StaticText \"£20.66\"\n  uid=9_7 StaticText \"\"\n  uid=9_216 StaticText \" In stock\"\n  uid=9_217 form\n    uid=9_218 button \"Add to basket\"\n  uid=9_219 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=9_220 image \"Set Me Free\" url=\"https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_221 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=9_222 StaticText \"Set Me Free\"\n  uid=9_223 StaticText \"£17.46\"\n  uid=9_7 StaticText \"\"\n  uid=9_224 StaticText \" In stock\"\n  uid=9_225 form\n    uid=9_226 button \"Add to basket\"\n  uid=9_227 link \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=9_228 image \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_229 link \"Scott Pilgrim's Precious Little ...\" description=\"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=9_230 StaticText \"Scott Pilgrim's Precious Little ...\"\n  uid=9_231 StaticText \"£52.29\"\n  uid=9_7 StaticText \"\"\n  uid=9_232 StaticText \" In stock\"\n  uid=9_233 form\n    uid=9_234 button \"Add to basket\"\n  uid=9_235 link \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=9_236 image \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_237 link \"Rip it Up and ...\" description=\"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=9_238 StaticText \"Rip it Up and ...\"\n  uid=9_239 StaticText \"£35.02\"\n  uid=9_7 StaticText \"\"\n  uid=9_240 StaticText \" In stock\"\n  uid=9_241 form\n    uid=9_242 button \"Add to basket\"\n  uid=9_243 link \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=9_244 image \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/media/cache/54/60/54607fe8945897cdcced0044103b10b6.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_245 link \"Our Band Could Be ...\" description=\"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=9_246 StaticText \"Our Band Could Be ...\"\n  uid=9_247 StaticText \"£57.25\"\n  uid=9_7 StaticText \"\"\n  uid=9_248 StaticText \" In stock\"\n  uid=9_249 form\n    uid=9_250 button \"Add to basket\"\n  uid=9_251 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=9_252 image \"Olio\" url=\"https://books.toscrape.com/media/cache/55/33/553310a7162dfbc2c6d19a84da0df9e1.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_253 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=9_254 StaticText \"Olio\"\n  uid=9_255 StaticText \"£23.88\"\n  uid=9_7 StaticText \"\"\n  uid=9_256 StaticText \" In stock\"\n  uid=9_257 form\n    uid=9_258 button \"Add to basket\"\n  uid=9_259 link \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=9_260 image \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/media/cache/09/a3/09a3aef48557576e1a85ba7efea8ecb7.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_261 link \"Mesaerion: The Best Science ...\" description=\"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=9_262 StaticText \"Mesaerion: The Best Science ...\"\n  uid=9_263 StaticText \"£37.59\"\n  uid=9_7 StaticText \"\"\n  uid=9_264 StaticText \" In stock\"\n  uid=9_265 form\n    uid=9_266 button \"Add to basket\"\n  uid=9_267 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=9_268 image \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/media/cache/0b/bc/0bbcd0a6f4bcd81ccb1049a52736406e.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_269 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=9_270 StaticText \"Libertarianism for Beginners\"\n  uid=9_271 StaticText \"£51.33\"\n  uid=9_7 StaticText \"\"\n  uid=9_272 StaticText \" In stock\"\n  uid=9_273 form\n    uid=9_274 button \"Add to basket\"\n  uid=9_275 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=9_276 image \"It's Only the Himalayas\" url=\"https://books.toscrape.com/media/cache/27/a5/27a53d0bb95bdd88288eaf66c9230d7e.jpg\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_7 StaticText \"\"\n  uid=9_277 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=9_278 StaticText \"It's Only the Himalayas\"\n  uid=9_279 StaticText \"£45.17\"\n  uid=9_7 StaticText \"\"\n  uid=9_280 StaticText \" In stock\"\n  uid=9_281 form\n    uid=9_282 button \"Add to basket\"\n  uid=9_283 StaticText \"Page 1 of 50\"\n  uid=9_284 link \"next\" url=\"https://books.toscrape.com/catalogue/page-2.html\"\n    uid=9_285 StaticText \"next\"\n  uid=9_286 contentinfo\n",
+         "state_id": "35604616-e8e0-4594-b778-59011c4bfb23",
+         "content_path": "/Users/wangdong/.cache/lasso/af6445d3-232c-420b-9ddb-cbf41996594c/browse_headless-35604616-e8e0-4594-b778-59011c4bfb23.json",
+         "duration_ms": 261,
+         "expect_check": "failed"
+        }
+       ]
+      }
+     ],
+     "stopped_at": {
+      "step_index": 1,
+      "reason": "failed_postcondition",
+      "failed_action": "snapshot",
+      "detail": "expect failed: {\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000}"
+     },
+     "budget_used_ms": 1249
+    }
+   },
+   "served_by": "browse_headless",
+   "fallback_used": false,
+   "retrieval_method": "chrome_devtools_mcp.chain",
+   "error": "expect failed: {\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000}",
+   "partial_failures": [
+    {
+     "channel": "browse_headless",
+     "error": "expect_failed:{\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000}",
+     "timestamp": 1787052447453
+    }
+   ],
+   "actions_and_results": [
+    {
+     "channel": "browse_headless",
+     "outcome": "didnt",
+     "error": "expect failed: {\"text\":\"Definitely Not Here XYZ\",\"timeout_ms\":3000}"
+    }
+   ]
+  }
+ }
+]

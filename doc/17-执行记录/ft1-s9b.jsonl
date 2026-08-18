@@ -1,0 +1,3 @@
+{"label":"$connect","ms":982,"at":"2026-08-18T11:35:52.894Z","env":{}}
+{"label":"s9c-T-SEARCH-15-wayback-clean","tool":"wayback_lookup","args":{"url":"http://info.cern.ch"},"ms":690,"ok":true,"isError":false,"text":"{\n  \"outcome\": \"didnt\",\n  \"data\": null,\n  \"served_by\": \"wayback_lookup\",\n  \"fallback_used\": false,\n  \"retrieval_method\": \"wayback_availability_api\",\n  \"error\": \"http_429\"\n}","parsed":{"outcome":"didnt","data":null,"served_by":"wayback_lookup","fallback_used":false,"retrieval_method":"wayback_availability_api","error":"http_429"}}
+{"label":"$done","totalMs":4159}

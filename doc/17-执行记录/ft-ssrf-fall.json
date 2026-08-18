@@ -1,0 +1,98 @@
+{
+ "ssrf_default": {
+  "private_192": {
+   "ms": 14,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:private_ip:192.168.1.1"
+  },
+  "private_10": {
+   "ms": 2,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:private_ip:10.0.0.1"
+  },
+  "userinfo": {
+   "ms": 2,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:userinfo_present"
+  },
+  "ftp_proto": {
+   "ms": 2,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:protocol_not_allowed:ftp:"
+  },
+  "ipv6_loopback": {
+   "ms": 57,
+   "outcome": "unknown",
+   "method": "undici_keepalive",
+   "error": "TypeError: fetch failed"
+  },
+  "metadata_169": {
+   "ms": 3,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:private_ip:169.254.169.254"
+  },
+  "loopback_allowed": {
+   "ms": 18,
+   "outcome": "worked",
+   "method": "undici_keepalive",
+   "error": "",
+   "status": 200
+  },
+  "fakeip_allowed": {
+   "ms": 30007,
+   "outcome": "unknown",
+   "method": "undici_keepalive",
+   "error": "AbortError: This operation was aborted"
+  }
+ },
+ "ssrf_deny": {
+  "deny_range_hit": {
+   "ms": 10,
+   "outcome": "didnt",
+   "method": "ssrf_blocked",
+   "error": "ssrf_blocked:deny_range:203.0.113.9"
+  },
+  "loopback_still_allowed": {
+   "ms": 27,
+   "outcome": "worked",
+   "method": "undici_keepalive",
+   "error": "",
+   "status": 200
+  },
+  "doctor_ssrf_config": {
+   "status": "pass",
+   "detail": "allow=0 deny=1 (DEFAULT_ALLOW_RANGES 内置 2 条)"
+  }
+ },
+ "fall": {
+  "e404": {
+   "ms": 8,
+   "outcome": "didnt",
+   "method": "undici_keepalive",
+   "error": "http_404",
+   "status": 404
+  },
+  "e500": {
+   "ms": 5,
+   "outcome": "unknown",
+   "method": "undici_keepalive",
+   "error": "http_500",
+   "status": 500
+  },
+  "redirect": {
+   "outcome": "didnt",
+   "method": "redirect_not_followed",
+   "location": "/big.txt",
+   "body_kind": "redirect"
+  },
+  "empty200": {
+   "outcome": "worked",
+   "body_bytes": 0
+  }
+ }
+}

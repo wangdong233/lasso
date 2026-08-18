@@ -20,19 +20,19 @@ import { SdkElicitationPort } from "../../src/interact/ElicitationPort.js";
 import type { ElicitationPort } from "../../src/interact/ElicitationPort.js";
 import { LoggedInChannel } from "../../src/channels/LoggedInChannel.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
+import { mockEvalResponse } from "../helpers/upstream-mock.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Step } from "../../src/browse/steps-types.js";
 
 // ============================================================
 // helpers
 // ============================================================
-/** mock McpClient：evaluate_script 恒返 pattern 命中 verdict。 */
+/** mock McpClient：evaluate_script 恒返 pattern 命中 verdict。
+ *  FT-DEF-1：真机契约 ```json 围栏包裹（helpers/upstream-mock）——禁裸 JSON。 */
 function makeHitClient(kind: string, html: string): McpClient {
   return {
     async callTool() {
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ok: true, kind, html }) }],
-      };
+      return mockEvalResponse(JSON.stringify({ ok: true, kind, html }));
     },
   } as unknown as McpClient;
 }
@@ -185,7 +185,8 @@ describe("HighRiskGate × port 决议映射", () => {
   it("未命中 pattern → port 不被调用（port 只在命中后介入）", async () => {
     const client: McpClient = {
       async callTool() {
-        return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+        // FT-DEF-1：真机围栏契约（未命中 verdict = {ok:true} 无 kind）
+        return mockEvalResponse(JSON.stringify({ ok: true }));
       },
     } as unknown as McpClient;
     const { port, calls } = makePort("accept");

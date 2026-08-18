@@ -1,0 +1,70 @@
+{
+  "total": 6,
+  "pass": 6,
+  "warn": 0,
+  "fail": 0,
+  "results": [
+    {
+      "engine": "baidu",
+      "fixture_name": "claude-code-mcp",
+      "query": "claude code mcp extension vscode",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://modelcontextprotocol.io/"
+    },
+    {
+      "engine": "baidu",
+      "fixture_name": "rust-async-runtime",
+      "query": "rust async runtime tokio",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://tokio.rs/"
+    },
+    {
+      "engine": "bing",
+      "fixture_name": "axios-undici-fetch",
+      "query": "axios undici fetch nodejs performance",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://undici.nodejs.org/"
+    },
+    {
+      "engine": "bing",
+      "fixture_name": "vitest-runner",
+      "query": "vitest test runner typescript speed",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://vitest.dev/"
+    },
+    {
+      "engine": "google",
+      "fixture_name": "mcp-architecture",
+      "query": "mcp architecture pattern",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://modelcontextprotocol.io/specification/architecture"
+    },
+    {
+      "engine": "google",
+      "fixture_name": "wayback-machine",
+      "query": "wayback machine internet archive api",
+      "expected_count": 5,
+      "actual_count": 5,
+      "hit_rate": 1,
+      "status": "pass",
+      "first_diff_url": "https://web.archive.org/"
+    }
+  ],
+  "fixturesDir": "/Users/wangdong/Documents/Project/cc-control-all/lasso/fixtures/serp-baseline",
+  "sidecar_missing": 0
+}

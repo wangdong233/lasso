@@ -13,10 +13,10 @@
  *
  * 三守卫（宁少关不误关）：
  *  1. CDP 不可达（网络错/非 200）→ cdp_unreachable，放弃不硬来
- *  2. Chrome 重启形态（当前 page url 集 ∩ 快照 url 集 == ∅ 且双方非空）→
- *     browser_restarted——快照内 tab 已随旧 Chrome 消失，现存 tab 全部视为用户
- *     新开的（诚实声明：若 Lasso 把用户原 tab 全 navigate 走且没开新 tab 也会触发，
- *     保守性可接受）
+ *  2. Chrome 重启形态（当前 page 集 ∩ 快照集在 url **或 targetId** 任一通道均
+ *     零交集且双方非空）→ browser_restarted——快照内 tab 已随旧 Chrome 消失，
+ *     现存 tab 全部视为用户新开的（诚实声明：targetId 通道使「navigate 既有 tab」
+ *     不再误触发；仅当快照 tab 全部消失才是重启形态——W-DEF-R11-2 修正口径）
  *  3. diff > maxDiff(32) → diff_too_large——异常大 diff 视为快照错位，不批量关
  *
  * INV-52 合规：TabSession 只读 /json/list + 关闭 diff tab，**不触碰任何 cookie 路径**。
@@ -121,9 +121,16 @@ export class TabSession {
       logger.warn({ evt: "tab_restore_result", ok: false, reason: "cdp_unreachable", cdp_port: this.cdpPort });
       return { ok: false, closed: [], reason: "cdp_unreachable" };
     }
-    // 3. Chrome 重启守卫（url 零交集 + 双方非空 → 守卫 2）
+    // 3. Chrome 重启守卫（W-DEF-R11-2：url **或 targetId** 任一有交集即视为连续——
+    //    同一 tab 被 navigate 后 url 变而 targetId 稳定；纯 url 判定会把「导航既有
+    //    tab + 开新 tab」的 lasso 主流路径误判 browser_restarted，tab_restore 恒
+    //    no-op（ft-round1 R11 E3 真机实证）。浏览器重启后 targetId 必然全新，
+    //    加 targetId 通道不放松守卫语义）
     const snapshotUrls = new Set(snapshot.map((t) => t.url));
-    const overlap = current.some((t) => snapshotUrls.has(t.url));
+    const snapshotIds = new Set(snapshot.map((t) => t.targetId));
+    const overlap = current.some(
+      (t) => snapshotUrls.has(t.url) || snapshotIds.has(t.targetId),
+    );
     if (!overlap && snapshotUrls.size > 0 && current.length > 0) {
       logger.warn({
         evt: "tab_restore_result",
@@ -135,8 +142,7 @@ export class TabSession {
       });
       return { ok: false, closed: [], reason: "browser_restarted" };
     }
-    // 4. diff（只关快照后新增；守卫 3 异常大 diff 放弃）
-    const snapshotIds = new Set(snapshot.map((t) => t.targetId));
+    // 4. diff（只关快照后新增；守卫 3 异常大 diff 放弃；snapshotIds 复用守卫 2 的集合）
     const diff = current.filter((t) => !snapshotIds.has(t.targetId));
     if (diff.length > this.maxDiff) {
       logger.warn({
@@ -190,16 +196,14 @@ export class TabSession {
   }
 
   /**
-   * v1.10（parse18 §4.3 机制三）：当前 page target 列表（公开只读探针）。
-   * LoggedInChannel 预建 background tab 前判定「零 page target」用；
-   * 失败返 null（与 restore 守卫 1 同语义）。
+   * 读 /json/list → filter type==="page"；失败返 null（调用方决定放弃/重试）。
+   * v1.10（parse18 §4.3 机制三）：公开只读探针——LoggedInChannel 预建
+   * background tab 前判定「零 page target」、restore 守卫读当前列表共用；
+   * null 语义与 restore 守卫 1 一致。
+   * （ft-round1 R1 裁决：原 listPageTargets 纯转发别名删除——R-DEP-03/R-FF-04
+   * 穿堂式=0 硬不变量的唯一边界命中清零，listPages 直接 public 化。）
    */
-  async listPageTargets(): Promise<TabSnapshotEntry[] | null> {
-    return this.listPages();
-  }
-
-  /** 读 /json/list → filter type==="page"；失败返 null（调用方决定放弃/重试）。 */
-  private async listPages(): Promise<TabSnapshotEntry[] | null> {
+  async listPages(): Promise<TabSnapshotEntry[] | null> {
     let r: FetchLikeResponse;
     try {
       r = await this.fetchFn(`http://127.0.0.1:${this.cdpPort}/json/list`);

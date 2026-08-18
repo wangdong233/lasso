@@ -318,6 +318,48 @@ describe("admin provider_add / provider_remove 端到端", () => {
 });
 
 // ============================================================
+// ft-round1（FT-DEF-2）回归钉：SIGHUP 文件缺 keys 字段不崩
+// ============================================================
+describe("FT-DEF-2：SIGHUP 文件 untyped config 缺 keys 字段 → add 不抛 TypeError", () => {
+  it("api_key 型 provider 无 keys 字段 → 注册成功 + ledger=null（channel 自报 unavailable）", async () => {
+    // 复刻真实 SIGHUP 路径：LASSO_PROVIDERS_FILE 是运维手写 JSON，keys 字段可缺
+    // （admin 路径有 buildProviderConfig 归一化 keys:[]，SIGHUP 路径直进 registry.add）。
+    // 缺陷史：v1.17 前 provider-registry `config.keys.length` 对 undefined 抛
+    // TypeError → hot_plug_provider_error，provider 加载失败（added:0）。
+    const registry = new ProviderRegistry([]);
+    const { server } = makeMockServerForHotPlug();
+    const toolManager = new ToolManager(server);
+    const bag = new CapabilityBag([]);
+
+    const keysLess = {
+      name: "ft-keys-less",
+      type: "api_key",
+      endpoint_url: "https://example.invalid/api",
+      // keys 字段故意缺席
+    } as unknown as ProviderConfig;
+
+    const report = await applyHotReload([keysLess], registry, bag, toolManager);
+
+    expect(report.added).toEqual(["ft-keys-less"]);
+    expect(registry.listNames()).toContain("ft-keys-less");
+    const entry = registry.get("ft-keys-less")!;
+    expect(entry.ledger).toBeNull(); // 无 keys → 无 QuotaLedger（可用性自报）
+  });
+
+  it("constructor 路径同语义：configs 数组缺 keys 不抛（null-safe 对齐）", () => {
+    const keysLessCtor = {
+      name: "ft-ctor-keys-less",
+      type: "api_key",
+      endpoint_url: null,
+    } as unknown as ProviderConfig;
+    expect(() => new ProviderRegistry([keysLessCtor])).not.toThrow();
+    expect(new ProviderRegistry([keysLessCtor]).listNames()).toContain(
+      "ft-ctor-keys-less",
+    );
+  });
+});
+
+// ============================================================
 // helpers
 // ============================================================
 function makeMockServerForHotPlug(): { server: McpServer } {

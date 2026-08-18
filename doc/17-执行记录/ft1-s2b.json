@@ -1,0 +1,8 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json"},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s2b1-T-SERPHTTP-01-EN-exact", "tool": "search", "args": {"query": "rust tokio tutorial", "limit": 10, "no_cache": true}},
+    {"label": "s2b2-serp-health", "tool": "admin", "args": {"action": "serp_health"}}
+  ]
+}

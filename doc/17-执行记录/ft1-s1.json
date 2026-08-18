@@ -1,0 +1,30 @@
+{
+  "env": {},
+  "gapMs": 2000,
+  "calls": [
+    {"label": "s1a-T-SEARCH-01-auto", "tool": "search", "args": {"query": "claude code mcp tutorial ft1a", "limit": 10, "no_cache": true}},
+    {"label": "s1b-U-15-1-L-COST-01-machine-api", "tool": "search", "args": {"query": "lasso mcp github releases ft1b", "limit": 10, "no_cache": true}},
+    {"label": "s1c-T-SEARCH-04-07-fallback-chain", "tool": "search", "args": {"query": "fallback chain order probe ft1c", "engine": "fallback_chain", "no_cache": true}},
+    {"label": "s1d-T-SEARCH-10-attributed-fresh", "tool": "search", "args": {"query": "attributed probe ft1d", "limit": 5, "attributed": true, "no_cache": true}},
+    {"label": "s1e-T-SEARCH-10-attributed-cachehit", "tool": "search", "args": {"query": "attributed probe ft1d", "limit": 5, "attributed": true}},
+    {"label": "s1f-T-SEARCH-12-cache-1st", "tool": "search", "args": {"query": "cache hit probe ft1f", "limit": 5, "no_cache": true}},
+    {"label": "s1g-T-SEARCH-12-cache-2nd", "tool": "search", "args": {"query": "cache hit probe ft1f", "limit": 5}},
+    {"label": "s1h-T-SEARCH-12-cache-nocache-3rd", "tool": "search", "args": {"query": "cache hit probe ft1f", "limit": 5, "no_cache": true}},
+    {"label": "s1h2-T-SEARCH-12-engine-no-mishit", "tool": "search", "args": {"query": "cache hit probe ft1f", "limit": 5, "engine": "brave"}},
+    {"label": "s1i-freshness-day", "tool": "search", "args": {"query": "freshness day probe ft1i", "limit": 5, "freshness": "day", "no_cache": true}},
+    {"label": "s1j-T-SEARCH-11-freeonly-L1", "tool": "search", "args": {"query": "free only probe ft1j", "limit": 5, "free_only": "L1", "no_cache": true}},
+    {"label": "s1k-T-SEARCH-32-freeonly-L2-machine", "tool": "search", "args": {"query": "free only probe ft1k", "limit": 5, "free_only": "L2", "no_cache": true}},
+    {"label": "s1k2-T-SEARCH-11-freeonly-L4", "tool": "search", "args": {"query": "free only probe ft1k2", "limit": 5, "free_only": "L4", "no_cache": true}},
+    {"label": "s1m-T-SEARCH-25-doctor", "tool": "doctor", "args": {}},
+    {"label": "s1n-T-SEARCH-17-20-serp-health", "tool": "admin", "args": {"action": "serp_health"}},
+    {"label": "s1o-T-SEARCH-24-breaker-status", "tool": "admin", "args": {"action": "breaker_status"}},
+    {"label": "s1p-T-SEARCH-26-provider-add-keys", "tool": "admin", "args": {"action": "provider_add", "reason": "ft1 keys strip probe", "config": {"name": "ft1-probe", "capability": "search", "keys": ["k1", "k2"]}}},
+    {"label": "s1p2-T-SEARCH-26-mutation-no-reason", "tool": "admin", "args": {"action": "provider_remove", "name": "ft1-probe"}},
+    {"label": "s1q-T-SEARCH-15-wayback-hit", "tool": "wayback_lookup", "args": {"url": "http://info.cern.ch"}},
+    {"label": "s1r-T-SEARCH-15-wayback-miss", "tool": "wayback_lookup", "args": {"url": "https://example.com/no-such-page-xyz"}},
+    {"label": "s1r2-T-SEARCH-15-wayback-ssrf", "tool": "wayback_lookup", "args": {"url": "http://192.168.1.1/"}},
+    {"label": "s1z1-T-SEARCH-29-empty-query", "tool": "search", "args": {"query": ""}},
+    {"label": "s1z2-T-SEARCH-29-limit-51", "tool": "search", "args": {"query": "x ft1z2", "limit": 51}},
+    {"label": "s1z3-U-15-4-engine-zhipu", "tool": "search", "args": {"query": "x ft1z3", "engine": "zhipu"}}
+  ]
+}

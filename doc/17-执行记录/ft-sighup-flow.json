@@ -1,0 +1,24 @@
+{
+ "childPid": 78021,
+ "before_has_ft_hot_1": false,
+ "after_has_ft_hot_1": false,
+ "server_alive_after_bad_json_hup": true,
+ "after_remove_has_ft_hot_1": false,
+ "profile_list": {
+  "ok": true,
+  "configured": true,
+  "current": "default",
+  "profiles": 1
+ },
+ "hot_plug_logged": true,
+ "hot_unplug_logged": true,
+ "bad_json_logged": true,
+ "sighup_log_sample": [
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.119Z\",\"evt\":\"hot_reload_installed\",\"path\":\"/var/folders/gp/ggzg5s_j1r59l58chpg9m1bh0000gn/T/ft-providers.json\"}",
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.119Z\",\"evt\":\"v0.6_runtime_wired\",\"bag_size\":8,\"tool_manager_size\":17,\"captured_v5_handles\":16,\"providers_file\":\"/var/f",
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.140Z\",\"evt\":\"hot_reload_triggered\",\"src\":\"SIGHUP\",\"path\":\"/var/folders/gp/ggzg5s_j1r59l58chpg9m1bh0000gn/T/ft-provider",
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.140Z\",\"evt\":\"capability_disabled\",\"name\":\"browse_headless\",\"by\":\"hot_reload\",\"reason\":\"removed_from_providers_file\"}",
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.141Z\",\"evt\":\"capability_disabled\",\"name\":\"browse_logged_in\",\"by\":\"hot_reload\",\"reason\":\"removed_from_providers_file\"}",
+  "{\"level\":\"info\",\"ts\":\"2026-08-18T11:34:54.142Z\",\"evt\":\"hot_reload_applied\",\"added\":0,\"removed\":3}"
+ ]
+}

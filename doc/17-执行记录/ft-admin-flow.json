@@ -1,0 +1,174 @@
+{
+ "tool_list": {
+  "total": 17,
+  "channels": {
+   "search": 1,
+   "browse_headless": 1,
+   "browse_logged_in": 1,
+   "desktop": 1,
+   "fetch": 1,
+   "screenshot": 1,
+   "pdf": 1,
+   "network": 1,
+   "read_text": 1,
+   "search_local": 1,
+   "wayback": 1,
+   "fetch_feed": 1,
+   "doctor": 1,
+   "forest": 3,
+   "admin": 1
+  }
+ },
+ "metrics_cold": {
+  "configured": true,
+  "channels": 1,
+  "first": {
+   "channel": "admin",
+   "total": 1
+  },
+  "alerts": 0
+ },
+ "search1": {
+  "ms": 2475,
+  "outcome": "worked",
+  "served_by": "search.machine_mcp",
+  "results": 10,
+  "has_audit": true
+ },
+ "search2": {
+  "ms": 1744,
+  "outcome": "worked",
+  "served_by": "search.machine_mcp",
+  "results": 10
+ },
+ "metrics_after": {
+  "channels_with_total": [
+   "admin=2",
+   "search.machine_mcp=2"
+  ],
+  "hot_channel": {
+   "channel": "search.machine_mcp",
+   "total": 2,
+   "success_rate": 1
+  }
+ },
+ "serp_health": {
+  "configured": true,
+  "engines": [
+   "baidu:hit=1",
+   "ddg:hit=1"
+  ]
+ },
+ "breaker_status": {
+  "configured": true,
+  "short_count": 10,
+  "long_count": 10,
+  "all_closed": true,
+  "sample": [
+   "search.brave/short:closed",
+   "search.machine_mcp/short:closed",
+   "fanout/short:closed",
+   "serp_http/short:closed"
+  ]
+ },
+ "breaker_reset_unknown": {
+  "ok": false,
+  "error": "unknown breaker channel: no.such.channel (run breaker_status"
+ },
+ "breaker_reset_real": {
+  "ok": true,
+  "name": "search.brave",
+  "reset_short": true,
+  "before": {
+   "short": "closed",
+   "long": "closed"
+  },
+  "after": {
+   "short": "closed",
+   "long": "closed"
+  }
+ },
+ "provider_add": {
+  "ok": true,
+  "keys_from_env": false,
+  "note": ""
+ },
+ "provider_add_dup": {
+  "ok": false,
+  "error": "registry.add failed: Error: ProviderRegistry: ft-probe-1 already regis"
+ },
+ "provider_set_tos": {
+  "ok": true,
+  "tos_ack": true
+ },
+ "provider_remove": {
+  "ok": true,
+  "removed": true
+ },
+ "provider_remove_again": {
+  "ok": true,
+  "removed": false
+ },
+ "cap_set": {
+  "ok": true,
+  "cap": 5
+ },
+ "cap_probe_6": [
+  "worked/machine_mcp_api",
+  "worked/machine_mcp_api",
+  "worked/machine_mcp_api",
+  "didnt/caller_cap_exceeded",
+  "didnt/caller_cap_exceeded",
+  "didnt/caller_cap_exceeded"
+ ],
+ "cap_6th_refused": true,
+ "cap_list": {
+  "callers": [
+   {
+    "callerId": "anonymous",
+    "used": 5,
+    "cap": 5,
+    "windowMs": 60000
+   }
+  ]
+ },
+ "cap_zero": {
+  "set_ok": true,
+  "entry": {
+   "callerId": "ft-banned",
+   "used": 0,
+   "cap": 0,
+   "windowMs": 60000
+  }
+ },
+ "cap_disable": {
+  "ok": true,
+  "changed": true
+ },
+ "browse_gone": true,
+ "list_changed_fired": false,
+ "cap_enable": {
+  "ok": true,
+  "changed": true
+ },
+ "browse_back": true,
+ "missing_reason": {
+  "ok": false,
+  "error": "field required: reason"
+ },
+ "unknown_action": {
+  "isError": true,
+  "text": "MCP error -32602: Input validation error: Invalid arguments for tool admin: Invalid enum v"
+ },
+ "no_args": {
+  "isError": true,
+  "text": "MCP error -32602: Input validation error: Invalid arguments for tool admin: Required at ac"
+ },
+ "tri_state": {
+  "final_outcome": "worked",
+  "chain": [
+   "search.machine_mcp:worked"
+  ],
+  "fallback_used": false
+ }
+}

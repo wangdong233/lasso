@@ -1,0 +1,16 @@
+{"ts":1787052651478,"evt":"launch_mode_fallback","from":"--no-startup-window","to":"--window-position=-32000,-32000","port":9230}
+{
+  "ok": false,
+  "binaryPath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "pid": 70657,
+  "port": 9230,
+  "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default",
+  "candidateSources": [
+    {
+      "source": "default",
+      "path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "desc": "Google Chrome（默认装位 /Applications）"
+    }
+  ],
+  "error": "chrome_exited"
+}

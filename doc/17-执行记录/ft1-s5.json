@@ -1,0 +1,11 @@
+{
+  "env": {},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s5a-T-FEED-02-L-COST-08-github-atom", "tool": "fetch_feed", "args": {"url": "https://github.com/anthropics/claude-code/releases.atom"}},
+    {"label": "s5b-T-FEED-08-nonxml-page", "tool": "fetch_feed", "args": {"url": "https://example.com/"}},
+    {"label": "s5c-T-FEED-08-bad-url-nxdomain", "tool": "fetch_feed", "args": {"url": "https://no-such-host-ft1.invalid/feed.xml"}},
+    {"label": "s5d-T-FEED-04-fullcontent-feed", "tool": "fetch_feed", "args": {"url": "https://www.ruanyifeng.com/blog/atom.xml"}},
+    {"label": "s5e-U-14-5-ssrf-private", "tool": "fetch_feed", "args": {"url": "http://192.168.1.1/feed.xml"}}
+  ]
+}

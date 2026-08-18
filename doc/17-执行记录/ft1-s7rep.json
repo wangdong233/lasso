@@ -1,0 +1,8 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json", "LASSO_SSRF_DENY_RANGES": "0.0.0.0/0,::/0"},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s7p1-T-SEARCH-22-replay-hit", "tool": "search", "args": {"query": "replay probe lasso ft7rq", "engine": "fallback_chain", "no_cache": true}},
+    {"label": "s7p2-T-SEARCH-34-fresh-day-ok", "tool": "search", "args": {"query": "replay probe lasso ft7rq", "engine": "fallback_chain", "freshness": "day", "no_cache": true}}
+  ]
+}

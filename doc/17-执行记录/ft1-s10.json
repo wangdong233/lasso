@@ -1,0 +1,11 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json", "LASSO_SSRF_DENY_RANGES": "0.0.0.0/0,::/0", "PATH": "/usr/bin:/bin"},
+  "gapMs": 2000,
+  "calls": [
+    {"label": "s10a-fail-1", "tool": "search", "args": {"query": "breaker probe ft10 a", "engine": "fallback_chain", "no_cache": true}, "timeoutMs": 180000},
+    {"label": "s10b-fail-2", "tool": "search", "args": {"query": "breaker probe ft10 b", "engine": "fallback_chain", "no_cache": true}, "timeoutMs": 180000},
+    {"label": "s10c-fail-3", "tool": "search", "args": {"query": "breaker probe ft10 c", "engine": "fallback_chain", "no_cache": true}, "timeoutMs": 180000},
+    {"label": "s10d-breaker-status", "tool": "admin", "args": {"action": "breaker_status"}},
+    {"label": "s10e-after-open-search", "tool": "search", "args": {"query": "breaker probe ft10 d", "engine": "fallback_chain", "no_cache": true}, "timeoutMs": 180000}
+  ]
+}

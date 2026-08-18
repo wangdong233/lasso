@@ -124,11 +124,65 @@ describeOrSkip("doctor CLI × config 文件机制（v1.3 Phase B 端到端）", 
     expect(braveCheck.status).toBe("pass");
   });
 
-  it("lasso_version 反映 1.17.0（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
+  // ---- ft-round1（FT-DEF-1）回归钉：doctor 感知 config 文件键 ----
+  // 缺陷史：v1.17 前 doctor 直读 process.env，file 配置的 BRAVE/BING 键对 doctor
+  // 不可见（运行时 BraveChannel 却按 loadConfig 合并后 env 装配）——医生与运行时
+  // 各说各话。修复 = index.ts 两调用点经 mergedEnv() 传 braveKeysCsv/bingKeysCsv。
+
+  it("FT-DEF-1：file 配置 BRAVE_API_KEYS（2 key CSV）→ doctor brave_keys pass 且计数 2", async () => {
+    const configPath = path.join(tempDir, "config.json");
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({ BRAVE_API_KEYS: "file-key-1,file-key-2" }),
+    );
+    const { stdout } = runDoctorCliViaDist(configPath);
+    const report = JSON.parse(stdout);
+    const braveCheck = report.checks.find(
+      (c: { name: string }) => c.name === "brave_keys",
+    );
+    expect(braveCheck).toBeDefined();
+    expect(braveCheck.status).toBe("pass");
+    expect(braveCheck.detail).toContain("2 Key");
+  });
+
+  it("FT-DEF-1：file BRAVE + env BRAVE 同名 → env 覆盖 file（doctor 报 1 Key 非 2）", async () => {
+    const configPath = path.join(tempDir, "config.json");
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({ BRAVE_API_KEYS: "file-key-1,file-key-2" }),
+    );
+    const { stdout } = runDoctorCliViaDist(configPath, {
+      BRAVE_API_KEYS: "env-key-wins",
+    });
+    const report = JSON.parse(stdout);
+    const braveCheck = report.checks.find(
+      (c: { name: string }) => c.name === "brave_keys",
+    );
+    expect(braveCheck.status).toBe("pass");
+    expect(braveCheck.detail).toContain("1 Key");
+  });
+
+  it("FT-DEF-1：file 配置 BING_API_KEYS → doctor bing_keys_retired warn（退役键清理提示不漏报）", async () => {
+    const configPath = path.join(tempDir, "config.json");
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({ BING_API_KEYS: "stale-bing-key" }),
+    );
+    const { stdout } = runDoctorCliViaDist(configPath);
+    const report = JSON.parse(stdout);
+    const bingCheck = report.checks.find(
+      (c: { name: string }) => c.name === "bing_keys_retired",
+    );
+    expect(bingCheck).toBeDefined();
+    expect(bingCheck.status).toBe("warn");
+    expect(bingCheck.detail).toContain("BING_API_KEYS");
+  });
+
+  it("lasso_version 反映 1.17.1（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
     const configPath = path.join(tempDir, "config.json");
     await fs.writeFile(configPath, "{}");
     const { stdout } = runDoctorCliViaDist(configPath);
     const report = JSON.parse(stdout);
-    expect(report.lasso_version).toBe("1.17.0");
+    expect(report.lasso_version).toBe("1.17.1");
   });
 });

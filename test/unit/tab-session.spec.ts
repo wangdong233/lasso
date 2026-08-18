@@ -208,6 +208,61 @@ describe("TabSession —— 恢复（红线：绝不关用户原有 tab）", () 
     expect(close.calls).toHaveLength(0); // 宁少关不误关
   });
 
+  // W-DEF-R11-2（v1.17.1 ft-round1 R11 真机修）：lasso 主流路径 = 导航既有 tab
+  // （targetId 稳定、url 已变）+ 开新 tab。纯 url 判定会把该形态误判 browser_restarted
+  // → tab_restore 恒 no-op。修正后 targetId 通道放行 → 关闭快照后新增 tab。
+  it("快照 tab 被 navigate（同 targetId 异 url）+ 新增 tab → restore 关闭新增（不再误判 browser_restarted）", async () => {
+    const close = makeCloseFn();
+    let currentTargets: RawTarget[] = [...SNAP];
+    const s = new TabSession(9222, {
+      fetchFn: async (url) => {
+        if (url.endsWith("/json/list")) {
+          return { ok: true, json: async () => currentTargets };
+        }
+        return { ok: true, json: async () => ({}) };
+      },
+      closeFn: close.closeFn,
+    });
+    await s.takeSnapshotIfAbsent();
+    // tab A 被 lasso navigate（id 不变、url 变）+ lasso window.open 新 tab N1；
+    // tab B 保持原 url。url 通道与快照仍有交集（B），且 A 的 targetId 也命中——
+    // 本用例的核心是：即便 B 不存在（url 全变），targetId 通道也应放行（见下一用例）。
+    currentTargets = [
+      { id: "A", type: "page", url: "https://scraped-target.example/" },
+      { id: "N1", type: "page", url: "https://opened-by-lasso.example/" },
+    ];
+    const r = await s.restore();
+    expect(r).toMatchObject({ ok: true });
+    expect(r.closed).toEqual(["N1"]); // 主路径 /json/close 成功（fallback closeFn 不触发）
+    // 快照消费（下次附着重新快照）
+    expect(s.hasSnapshot()).toBe(false);
+  });
+
+  it("全部快照 tab 被 navigate（url 零交集）但 targetId 存续 → 不触发 browser_restarted（W-DEF-R11-2 修正口径）", async () => {
+    const close = makeCloseFn();
+    let currentTargets: RawTarget[] = [...SNAP];
+    const s = new TabSession(9222, {
+      fetchFn: async (url) => {
+        if (url.endsWith("/json/list")) {
+          return { ok: true, json: async () => currentTargets };
+        }
+        return { ok: true, json: async () => ({}) };
+      },
+      closeFn: close.closeFn,
+    });
+    await s.takeSnapshotIfAbsent();
+    // A/B 都被 navigate 走（url 全变）+ 新开 N1——旧口径误判重启；新口径 targetId
+    // 通道判连续 → 正常 diff 关闭 N1。
+    currentTargets = [
+      { id: "A", type: "page", url: "https://a-navigated.example/" },
+      { id: "B", type: "page", url: "https://b-navigated.example/" },
+      { id: "N1", type: "page", url: "https://opened-by-lasso.example/" },
+    ];
+    const r = await s.restore();
+    expect(r).toMatchObject({ ok: true });
+    expect(r.closed).toEqual(["N1"]);
+  });
+
   it("diff > 32 → diff_too_large 放弃", async () => {
     const close = makeCloseFn();
     let currentTargets: RawTarget[] = [...SNAP];

@@ -320,6 +320,20 @@ export async function writeConfigTemplate(
 }
 
 /**
+ * file→env 合并单一真源（ft-round1 FT-DEF-1 修复）：config 文件（base）→ env（覆盖）。
+ *
+ * 消费方：loadConfig（运行时装配）+ doctor 两模式调用点（index.ts runDoctorCli /
+ * doctorOpts——此前 doctor 直读 process.env 致 file 配置的 BRAVE/BING/ZHIPU/PROXY
+ * 键对 doctor 不可见，而运行时 BraveChannel 却按合并后 env 装配——医生与运行时
+ * 各说各话）。守 R-CI-02：合并不在第二处重写，全部经本函数。
+ */
+export function mergedEnv(
+  envSource: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...loadConfigFileEnv(envSource), ...envSource };
+}
+
+/**
  * 读 env、合并 BUILTIN_PROVIDERS、注入 env-derived keys。
  * 不抛错——缺 key 时 channel 自报 unavailable（doctor 也会标 fail）。
  *
@@ -330,9 +344,7 @@ export async function writeConfigTemplate(
  */
 export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   const envSource = opts.env ?? process.env;
-  // v1.3 Phase A：config 文件（base）→ env（覆盖）。fileEnv 用 envSource 的 LASSO_CONFIG_PATH 定位。
-  const fileEnv = loadConfigFileEnv(envSource);
-  const env = { ...fileEnv, ...envSource };
+  const env = mergedEnv(envSource);
 
   const providers = new Map<string, ProviderConfig>();
   for (const p of BUILTIN_PROVIDERS) providers.set(p.name, { ...p });

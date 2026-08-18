@@ -1037,7 +1037,21 @@ async function doWait(
   // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text 契约是
   // array(string).min(1)（McpPage.waitForTextOnPage 对 text.flatMap）——单条 string
   // 会被 zod 拒。0.3.0 时代相反（要 string）——W1-DEF-2 随版本迁移翻转，INV-76 (b) 同步。
-  await c.callTool("wait_for", { text: [text] });
+  //
+  // W-DEF-R11-1（v1.17.1 ft-round1 R11 真机修，probe2 W1/W2 实证）：
+  //  ① expect.timeout_ms 透传 wait_for.timeout（上游 ms 整数；此前被静默忽略，
+  //    恒烧上游默认 30s）；
+  //  ② 上游超时以 isError 响应返回（McpClient.callTool 对 is_error 不 throw——
+  //    与 doPdf 的 isError 检查同范式）——此前不检 → 文本从未出现仍报 worked
+  //    （假成功）。isError → throw wait_timeout → classifyBrowseError 落 unknown
+  //    （可 fallback：页面慢是可重试语义，非「明确不可得」）。
+  const r = (await c.callTool("wait_for", {
+    text: [text],
+    ...(opts.expect?.timeout_ms ? { timeout: opts.expect.timeout_ms } : {}),
+  })) as { isError?: boolean };
+  if (r.isError) {
+    throw new Error(`wait_timeout:${JSON.stringify(text).slice(0, 80)}`);
+  }
   return { preview: `waited for "${text}"` };
 }
 

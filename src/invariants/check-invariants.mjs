@@ -3002,7 +3002,7 @@ const assertions = [
     desc:
       "v1.3 Phase A：config 文件机制（~/.lasso/config.json 扁平 JSON；file→env 合并；env 覆盖 file；config init/path CLI 子命令）：" +
       "（a）config.ts 导出 loadConfigFileEnv（读 ~/.lasso/config.json；LASSO_CONFIG_PATH 可覆盖）；" +
-      "（b）loadConfig 合并 file→env（{...fileEnv,...env}，env 覆盖向后兼容）；" +
+      "（b）loadConfig 合并 file→env（内联 {...fileEnv,...env} 或经单一真源 mergedEnv() helper——ft-round1 FT-DEF-1：doctor 调用点共享同源；env 覆盖向后兼容）；" +
       "（c）index.ts 有 `config init` + `config path` 子命令 dispatch；" +
       "（d）config.ts 导出 CONFIG_TEMPLATE / writeConfigTemplate（init 模板）；" +
       "（e）扁平 JSON 红线：loadConfigFileEnv 不递归嵌套对象",
@@ -3023,11 +3023,24 @@ const assertions = [
         /export\s+function\s+loadConfig\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}\n/s,
       )?.[1] ?? "";
       if (loadBody.length === 0) return false;
-      // 必须调 loadConfigFileEnv
-      if (!/loadConfigFileEnv\s*\(/.test(loadBody)) return false;
-      // 必须有合并形式 {...fileEnv, ...<envSource> }（fileEnv 在前 = base；env 在后 = 覆盖）
-      //   容忍变量名差异（envSource / env / opts.env）：grep `{ ...fileEnv, ...` 形式
-      if (!/\{\s*\.\.\.\s*fileEnv\s*,\s*\.\.\./.test(loadBody)) return false;
+      // ft-round1（FT-DEF-1）：合并可经单一真源 helper mergedEnv()（config.ts 导出；
+      // loadConfig 与 doctor 两模式调用点共享，防 file→env 合并第二实现）。两形态任一：
+      //   ① 历史内联：loadConfig 体内调 loadConfigFileEnv + `{ ...fileEnv, ...<env> }`
+      //   ② 单源 helper：loadConfig 体内调 mergedEnv(...)，且 mergedEnv 体内是
+      //      `{ ...loadConfigFileEnv(envSource), ...envSource }`（fileEnv 在前 = base）
+      const inlineMerge =
+        /loadConfigFileEnv\s*\(/.test(loadBody) &&
+        /\{\s*\.\.\.\s*fileEnv\s*,\s*\.\.\./.test(loadBody);
+      const mergedEnvBody =
+        code.match(
+          /export\s+function\s+mergedEnv\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}/,
+        )?.[1] ?? "";
+      const viaMergedEnv =
+        /mergedEnv\s*\(/.test(loadBody) &&
+        /\{\s*\.\.\.\s*loadConfigFileEnv\s*\([^)]*\)\s*,\s*\.\.\.\s*envSource\s*\}/.test(
+          mergedEnvBody,
+        );
+      if (!inlineMerge && !viaMergedEnv) return false;
 
       // ----- (c) index.ts 有 config init + config path 子命令 dispatch -----
       const index = SRC.find((s) =>
@@ -3806,6 +3819,14 @@ const assertions = [
       if (!/imageBlock/.test(stripComments(bc.text))) return false;
       if (!/no_image_block_from_upstream/.test(bc.text)) return false;
       if (!/not_a_valid_png/.test(bc.text)) return false; // PNG magic 校验（47B 垃圾文件教训）
+      // FT-DEF-1（ft-round1 R11 真机抓出，2026-08-18）：HighRiskGate 是 W1-DEF-1b
+      // 统一 7 消费点时的漏网第 8 点——自带裸 firstText+JSON.parse 在真机 1.7.0
+      // 围栏形状下必炸（gate_error 保守放行 → C1 高风险确认红线全失效）。
+      // 守护：gate 的 evaluate_script 解析必须经 parseEvalResult，禁旧范式回潮。
+      const hrg = byPath(/^browse\/HighRiskGate\.ts$/);
+      if (!hrg) return false;
+      if (!/parseEvalResult/.test(stripComments(hrg.text))) return false;
+      if (/JSON\.parse\(\s*text\s*\)/.test(stripComments(hrg.text))) return false;
 
       // ----- (n) v1.8.1 wave2 修复（W2-DEF-N1/N2/W2-DEF-1）-----
       // N1：URL 驱动采集 action 必先导航（network 恒 0 entries 教训）

@@ -157,7 +157,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.17.0";
+export const LASSO_VERSION = "1.17.1";
 
 // ============================================================
 // 类型
@@ -274,6 +274,12 @@ export interface DoctorOptions {
    * 静态检查：键非空 → warn 建议删除（主链已不含 zhipu 直连档，无功能影响）。
    */
   zhipuKey?: string;
+  /**
+   * ft-round1（FT-DEF-1）：覆盖 ZHIPU_ENDPOINT（默认读 process.env.ZHIPU_ENDPOINT）。
+   * 仅用于 zhipu_keys_retired 静态退役提示的 endpoint-only 残留分支；CLI/MCP 调用点
+   * 传 file→env 合并值（mergedEnv），保证 config 文件配置与 doctor 报告一致。
+   */
+  zhipuEndpoint?: string;
   /** 覆盖 CDP 端口（默认 9222）。 */
   cdpPort?: number;
   /** 覆盖 cache 目录（默认 ~/.cache/lasso）。 */
@@ -508,7 +514,12 @@ export async function runDoctor(
 
   // 2. zhipu_keys_retired（v1.17 A3）：零触网静态退役提示（替换已删的
   //    zhipu_api_key / zhipu_endpoint_reachable 两 check——zhipu 直连死层清除）。
-  checks.push(checkZhipuKeysRetired(zhipuKey, process.env.ZHIPU_ENDPOINT ?? ""));
+  checks.push(
+    checkZhipuKeysRetired(
+      zhipuKey,
+      opts.zhipuEndpoint ?? process.env.ZHIPU_ENDPOINT ?? "",
+    ),
+  );
 
   // 4. cdp_mcp_installable
   checks.push(

@@ -22,11 +22,14 @@ const { dnsState } = vi.hoisted(() => ({
   dnsState: {
     ips: [] as string[],
     err: null as string | null,
+    /** ft-round1（FT-DEF-3）：记录 lookup 实际收到的 hostname（剥括号断言用）。 */
+    gotHost: null as string | null,
   },
 }));
 
 vi.mock("node:dns/promises", () => ({
-  lookup: vi.fn(async (_host: string, _opts?: unknown) => {
+  lookup: vi.fn(async (host: string, _opts?: unknown) => {
+    dnsState.gotHost = host;
     if (dnsState.err) throw new Error(dnsState.err);
     return dnsState.ips.map((address) => ({ address }));
   }),
@@ -153,6 +156,33 @@ describe("ssrfGuard — 私网默认拒", () => {
     const r = await ssrfGuard("https://v6loopback.test/x", EMPTY_CONFIG);
     expect(r.allowed).toBe(false);
     expect(r.reason).toBe("private_ip:::1");
+  });
+
+  // ---- ft-round1（FT-DEF-3）回归钉：IPv6 字面量 URL 的括号剥离 ----
+  // 缺陷史：Node 24 的 URL.hostname 对 IPv6 字面量返回带括号的 "[::1]"，旧实现
+  // 直接送 lookup → ① 直连环境 dns_failed；② TUN fake-ip 环境被当域名解析成
+  // 198.18.x → 命中 DEFAULT_ALLOW_RANGES → IPv6 私网全绕过（真机实测 ALLOWED）。
+  it("FT-DEF-3：IPv6 字面量 [::1] → lookup 收到剥括号的 ::1（非域名字符串）", async () => {
+    setDns(["::1"]);
+    const r = await ssrfGuard("http://[::1]:9222/json/version", EMPTY_CONFIG);
+    expect(dnsState.gotHost).toBe("::1");
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toBe("private_ip:::1");
+  });
+
+  it("FT-DEF-3：IPv4-mapped IPv6 [::ffff:7f00:1]（hex 形式 127.0.0.1）→ private_ip", async () => {
+    setDns(["::ffff:7f00:1"]);
+    const r = await ssrfGuard("http://[::ffff:7f00:1]:80/", EMPTY_CONFIG);
+    expect(dnsState.gotHost).toBe("::ffff:7f00:1");
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toContain("private_ip:");
+  });
+
+  it("FT-DEF-3：IPv6 公网字面量（如 2606:4700::）不因剥括号被误拒（走 DNS 字面量返回）", async () => {
+    setDns(["2606:4700:4700::1111"]);
+    const r = await ssrfGuard("http://[2606:4700:4700::1111]:80/", EMPTY_CONFIG);
+    expect(dnsState.gotHost).toBe("2606:4700:4700::1111");
+    expect(r.allowed).toBe(true);
   });
 });
 

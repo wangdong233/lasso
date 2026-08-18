@@ -1,0 +1,8 @@
+{
+  "env": {},
+  "gapMs": 2000,
+  "calls": [
+    {"label": "s9d-T-SEARCH-15-wayback-final", "tool": "wayback_lookup", "args": {"url": "http://info.cern.ch"}},
+    {"label": "s9e-T-SEARCH-15-wayback-miss", "tool": "wayback_lookup", "args": {"url": "https://example.com/no-such-page-xyz"}}
+  ]
+}

@@ -33,7 +33,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig, loadConfigFileEnv } from "./config/config.js";
+import { loadConfig, mergedEnv } from "./config/config.js";
 import { getConfigFilePath, writeConfigTemplate } from "./config/config.js";
 import { logger } from "./util/logger.js";
 // v1.8 Phase E（D6）：fanout RPM 限频 per-process 单例
@@ -221,7 +221,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.17.0";
+const LASSO_SERVER_VERSION = "1.17.1";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -273,6 +273,10 @@ async function runDoctorCli(argv: string[]): Promise<void> {
   // v1.17 A3：zhipuKey / zhipuEndpoint 参数已删（zhipu 直连死层清除；doctor 改报
   // zhipu_keys_retired 静态退役提示）。
   const config = loadConfig({ runId: "doctor-cli" });
+  // ft-round1（FT-DEF-1）：doctor 感知 config 文件键——brave/bing/zhipu/proxy 经
+  // mergedEnv（file→env 合并单一真源，config.ts）取值传入；此前 doctor 直读
+  // process.env，file 配置的 BRAVE_API_KEYS 对 doctor 不可见而运行时却真实装配。
+  const doctorEnv = mergedEnv(process.env);
   // v1.8 Phase D（D11）：`lasso doctor --stealth-check` —— README 承诺落地。
   // flag 解析 + provider 装配独立在 doctor-cli.ts（可单测；probeCreepjs 仍只在
   // doctor/ 内调用——INV-75 的实际 grep 边界，provider 构造点=index.ts+doctor-cli.ts
@@ -282,8 +286,13 @@ async function runDoctorCli(argv: string[]): Promise<void> {
     cdpPort: config.cdpPort,
     // v1.17 A3：zhipu_keys_retired 静态退役提示需看到 config 文件里的**残留**键
     // （file→env 合并语义：env 优先；容忍读不消费——INV-80 墓碑容许此读取）。
-    zhipuKey:
-      process.env.ZHIPU_API_KEY ?? loadConfigFileEnv().ZHIPU_API_KEY,
+    // ft-round1（FT-DEF-1）：zhipuKey 改经 mergedEnv；并补 brave/bing/proxy/endpoint
+    // 同路接入（此前仅 zhipu 一家显式接线，brave/bing 漏接）。
+    zhipuKey: doctorEnv.ZHIPU_API_KEY,
+    zhipuEndpoint: doctorEnv.ZHIPU_ENDPOINT,
+    braveKeysCsv: doctorEnv.BRAVE_API_KEYS ?? doctorEnv.BRAVE_API_KEY ?? "",
+    bingKeysCsv: doctorEnv.BING_API_KEYS ?? doctorEnv.BING_API_KEY ?? "",
+    proxy: doctorEnv.LASSO_PROXY,
     ...stealth.doctorOpts,
   });
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
@@ -366,6 +375,8 @@ async function runConfigCli(args: string[]): Promise<void> {
 async function runMcpServer(): Promise<void> {
   const runId = newRunId();
   const config = loadConfig({ runId });
+  // ft-round1（FT-DEF-1）：doctor tool 感知 config 文件键的合并 env（与 CLI 同源）。
+  const doctorServerEnv = mergedEnv(process.env);
 
   // 让 state-store 知道 run_id + cache_dir（channel 写盘时用）
   setStateStoreContext({ runId, cacheDir: config.cacheDir });
@@ -839,6 +850,16 @@ async function runMcpServer(): Promise<void> {
     // v1.17 A3：zhipuKey / zhipuEndpoint 已删（zhipu 直连死层清除）
     cdpPort: config.cdpPort,
     cacheDir: config.cacheDir,
+    // ft-round1（FT-DEF-1）：MCP doctor tool 同样经 mergedEnv 感知 config 文件键
+    // （brave/bing/zhipu/proxy；与 runDoctorCli 同一合源——此前 MCP 模式连 zhipu
+    // 都是直读 process.env，file 残留键两模式都漏报）。
+    zhipuKey: doctorServerEnv.ZHIPU_API_KEY,
+    zhipuEndpoint: doctorServerEnv.ZHIPU_ENDPOINT,
+    braveKeysCsv:
+      doctorServerEnv.BRAVE_API_KEYS ?? doctorServerEnv.BRAVE_API_KEY ?? "",
+    bingKeysCsv:
+      doctorServerEnv.BING_API_KEYS ?? doctorServerEnv.BING_API_KEY ?? "",
+    proxy: doctorServerEnv.LASSO_PROXY,
     // v0.3.5：doctor tool 也走 desktopChecks（desktop bridge 注入；parse4 §3.4.2）
     desktopChecks: true,
     desktopBridge: rustBridge,

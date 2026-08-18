@@ -1,0 +1,187 @@
+{
+  "ready": false,
+  "timestamp": "2026-08-18T11:20:59.874Z",
+  "lasso_version": "1.17.0",
+  "checks": [
+    {
+      "name": "node_version",
+      "status": "pass",
+      "detail": "Node 24.12.0"
+    },
+    {
+      "name": "zhipu_keys_retired",
+      "status": "pass",
+      "detail": "ZHIPU_API_KEY / ZHIPU_ENDPOINT 未配置（常态：zhipu 直连档已于 v1.17 删除，无需配置；智谱搜索由机器 web-search-prime MCP 复用承载，见 machine_search_mcp）"
+    },
+    {
+      "name": "cdp_mcp_installable",
+      "status": "pass",
+      "detail": "chrome-devtools-mcp@1.7.0 -> 1.7.0"
+    },
+    {
+      "name": "chrome_binary",
+      "status": "pass",
+      "detail": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    },
+    {
+      "name": "cdp_9222_logged_in",
+      "status": "fail",
+      "detail": "CDP /json/version returned HTTP 404",
+      "next_step": "重启 Chrome with --remote-debugging-port=9222"
+    },
+    {
+      "name": "cache_writable",
+      "status": "pass",
+      "detail": "/Users/wangdong/.cache/lasso"
+    },
+    {
+      "name": "ssrf_config",
+      "status": "pass",
+      "detail": "allow=0 deny=0 (DEFAULT_ALLOW_RANGES 内置 2 条)"
+    },
+    {
+      "name": "serp_selectors",
+      "status": "pass",
+      "detail": "BAIDU=2 DDG=2"
+    },
+    {
+      "name": "proxy_config",
+      "status": "pass",
+      "detail": "LASSO_PROXY 未配置（默认直连；配置后 headless/Steel 走代理出口）"
+    },
+    {
+      "name": "invariants",
+      "status": "pass",
+      "detail": "All 81 invariants passed."
+    },
+    {
+      "name": "brave_keys",
+      "status": "warn",
+      "detail": "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 扇出退化为 machine_mcp 单源；无机器 MCP 时走 serp_http→browse_headless 免费兜底链）",
+      "next_step": "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径 = 机器 web-search-prime MCP 复用 + 实搜兜底，详见 doc/KEY-GUIDE.md"
+    },
+    {
+      "name": "bing_keys_retired",
+      "status": "pass",
+      "detail": "BING_API_KEYS 未配置（常态：Bing Search APIs 已于 2025-08-11 退役，无需配置）"
+    },
+    {
+      "name": "provider_registry_loadable",
+      "status": "pass",
+      "detail": "3 providers loaded: browse_headless, browse_logged_in, brave"
+    },
+    {
+      "name": "quota_ledger_initialized",
+      "status": "pass",
+      "detail": "0 QuotaLedger 已装配（已配 Key 的 search provider）"
+    },
+    {
+      "name": "search_cache_dir_writable",
+      "status": "pass",
+      "detail": "/Users/wangdong/.cache/lasso/search-cache"
+    },
+    {
+      "name": "cloud_browser_manual_switch",
+      "status": "pass",
+      "detail": "LASSO_ALLOW_CLOUD_BROWSER=false（默认；cloud 浏览器通道未启用，PolicyGate 将阻断 browse_cloud_*）"
+    },
+    {
+      "name": "forest_root_registry_health",
+      "status": "pass",
+      "detail": "RootRegistry 可装配；size=0；maxRoots 默认 256"
+    },
+    {
+      "name": "forest_dispatcher_ready",
+      "status": "pass",
+      "detail": "InteractDispatcher 可装配；channels Map 形状正确（当前 0 channel 注入；runtime 由 index.ts 装配）"
+    },
+    {
+      "name": "forest_ref_counter_strategy",
+      "status": "pass",
+      "detail": "共享单计数器：@p0/@w1/@p2 交替递增；identity 复用 OK；nextRootRefIndex=3"
+    },
+    {
+      "name": "stealth_profile_self_check",
+      "status": "pass",
+      "detail": "STEALTH_PROFILES 4 条 [windows_chrome_120, mac_chrome, mac_safari_17, linux_firefox_121]；injection 17335B；cloudflare markers 5 项；宿主默认 mac_chrome；版本 skew +1（profile Chrome 151 vs 已装 150）；UA 年龄约 1 月（Chrome 151，v1.11 T4 刷新基线内）"
+    },
+    {
+      "name": "cdp_mcp_pdf_tool_available",
+      "status": "pass",
+      "detail": "cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.pdf = \"pdf\"；动态探测未实装（v0.5 M0.5b 静态层 only；动态 spawn chrome-devtools-mcp + tools/list 推 v0.5.1）",
+      "next_step": "运行时若 pdf tool 返 upstream_unsupported:pdf，改用 browse_headless screenshot + VLM，或本地 Chrome --headless --print-to-pdf"
+    },
+    {
+      "name": "cdp_mcp_network_observer_available",
+      "status": "pass",
+      "detail": "cdp-actions.ts CDP_UPSTREAM_TOOL_NAMES.network_log = \"list_network_requests\"；doNetwork 走 1.7.0 原生工具（v1.11 T5；PerformanceObserver 注入路径已删，F2 TUN 抓不全限制关闭）",
+      "next_step": "运行时若 network tool 返 upstream_unsupported:network，说明锁定的 chrome-devtools-mcp 不含 list_network_requests；entries < 5 多半是页面真实简单（v1.11 原生采集无 TUN 盲区）"
+    },
+    {
+      "name": "profile_registry_loadable",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "profile_user_data_dir_exists",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "cookie_store_stat_only",
+      "status": "warn",
+      "detail": "skipped (profilesChecksProvider not injected)"
+    },
+    {
+      "name": "platform_backend_active",
+      "status": "pass",
+      "detail": "platform=darwin; backend=mac; AxBackendFactory 单一真源已落地（INV-60）"
+    },
+    {
+      "name": "recording_baseline_count",
+      "status": "pass",
+      "detail": "6 条 fixture（baidu=2 bing=2 google=2；建议补到 ≥10 条覆盖更多 selector 改版场景）",
+      "next_step": "当前 6/10 条；可调 LASSO_RECORD_SEARCH=true 加录（INV-62：禁录 logged_in cookie 场景）"
+    },
+    {
+      "name": "markdown_extractor_engine",
+      "status": "pass",
+      "detail": "defuddle@0.19.2 + turndown@7.2.4（MIT；extract_mode=markdown/markdown_cited 可用）"
+    },
+    {
+      "name": "markdown_smoke",
+      "status": "pass",
+      "detail": "smoke ok（engine=defuddle+turndown, 226ms）；preview=\"## Hello\n\nWorld [link](https://example.com/)...\""
+    },
+    {
+      "name": "config_file",
+      "status": "warn",
+      "detail": "config 文件不存在：/Users/wangdong/.lasso/config.json（零配置启动可用；browse/fetch/desktop 不需 key，仅 search 需）",
+      "next_step": "（可选）跑 `lasso-mcp config init` 创建配置文件模板，填入你的 key（env 仍可覆盖文件）"
+    },
+    {
+      "name": "machine_search_mcp",
+      "status": "pass",
+      "detail": "已检测到机器 web-search-prime MCP（host=open.bigmodel.cn；Authorization 已配置；将作 fallback_chain 首选 search.machine_mcp）"
+    },
+    {
+      "name": "steel_endpoint_reachable",
+      "status": "pass",
+      "detail": "LASSO_ALLOW_CLOUD_BROWSER=false（默认；Steel 通道未启用；PolicyGate 将阻断 browse_cloud_steel）"
+    },
+    {
+      "name": "stealth_creepjs_regression",
+      "status": "warn",
+      "detail": "creepjs-baseline.json 未 freeze (frozenAt=null)。本次实跑：totalLies=0, navigatorLied=false, liedModules=[]。首次 freeze 须把此数值写入 baseline 后再跑回归比对。",
+      "next_step": "把实跑结果写入 /Users/wangdong/Documents/Project/cc-control-all/lasso/dist/doctor/fixtures/creepjs-baseline.json 的 baseline 字段 + frozenAt = 当前 ISO 时间"
+    },
+    {
+      "name": "stagehand_rest_contract_probe",
+      "status": "warn",
+      "detail": "api.stagehand.dev/verify 探测失败：TypeError: fetch failed（按 R-ECO-6 不存在处理；StagehandChannel observe 调用预期失败）"
+    }
+  ],
+  "blockers": [
+    "cdp_9222_logged_in"
+  ]
+}

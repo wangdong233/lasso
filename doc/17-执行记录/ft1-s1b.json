@@ -1,0 +1,14 @@
+{
+  "env": {},
+  "gapMs": 2500,
+  "calls": [
+    {"label": "s1b1-cache-1st-write", "tool": "search", "args": {"query": "cache discipline probe ft1b1", "limit": 5}},
+    {"label": "s1b2-cache-2nd-hit", "tool": "search", "args": {"query": "cache discipline probe ft1b1", "limit": 5}},
+    {"label": "s1b3-attributed-1st-write", "tool": "search", "args": {"query": "attributed wrap probe ft1b3", "limit": 5, "attributed": true}},
+    {"label": "s1b4-attributed-2nd-cachehit", "tool": "search", "args": {"query": "attributed wrap probe ft1b3", "limit": 5, "attributed": true}},
+    {"label": "s1b5-attributed-3rd-noattr-cachehit", "tool": "search", "args": {"query": "attributed wrap probe ft1b3", "limit": 5}},
+    {"label": "s1b6-T-SEARCH-26-provider-add", "tool": "admin", "args": {"action": "provider_add", "reason": "ft1 keys strip probe", "config": {"name": "ft1-probe", "type": "api_key", "endpoint_url": "https://example.invalid/api", "keys": ["k1", "k2"]}}},
+    {"label": "s1b7-T-SEARCH-15-wayback-retry", "tool": "wayback_lookup", "args": {"url": "http://info.cern.ch"}},
+    {"label": "s1b8-L-COST-01-sample2", "tool": "search", "args": {"query": "lasso mcp github releases ft1b8", "limit": 10, "no_cache": true}}
+  ]
+}

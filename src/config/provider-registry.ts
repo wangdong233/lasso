@@ -65,8 +65,12 @@ export class ProviderRegistry {
       if (c.enabled === false) continue;
 
       const cap = classifyCapability(c);
+      // ft-round1（FT-DEF-2）：keys null-safe——SIGHUP 热更新文件是 untyped 运维 JSON，
+      // 缺 keys 字段时 `c.keys.length` 抛 TypeError（实测 hot_plug_provider_error）。
+      // 缺 keys = 无 ledger（channel 自报 unavailable），与 admin buildProviderConfig
+      // 归一化（keys: []）后语义一致。
       const ledger =
-        c.type === "api_key" && c.keys.length > 0
+        c.type === "api_key" && (c.keys?.length ?? 0) > 0
           ? new QuotaLedger(c.name, c.keys, c.free_quota_per_month, c.quota_model)
           : null;
 
@@ -172,8 +176,11 @@ export class ProviderRegistry {
     if (config.enabled === false) return;
 
     const cap = classifyCapability(config);
+    // ft-round1（FT-DEF-2）：同 constructor——SIGHUP 文件路径的 untyped config 缺 keys
+    // 字段不抛 TypeError（此前实测 `hot_plug_provider_error: Cannot read properties of
+    // undefined (reading 'length')`，admin 路径因 buildProviderConfig 归一化幸免）。
     const ledger =
-      config.type === "api_key" && config.keys.length > 0
+      config.type === "api_key" && (config.keys?.length ?? 0) > 0
         ? new QuotaLedger(config.name, config.keys, config.free_quota_per_month, config.quota_model)
         : null;
 

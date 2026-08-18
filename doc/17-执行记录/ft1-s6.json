@@ -1,0 +1,8 @@
+{
+  "env": {"LASSO_MACHINE_CLAUDE_JSON_PATH": "/nonexistent-ft1-machine-mcp.json", "LASSO_SSRF_DENY_RANGES": "0.0.0.0/0,::/0"},
+  "gapMs": 2500,
+  "resourceMeter": true,
+  "calls": [
+    {"label": "s6a-T-SERPHTTP-06-escalation", "tool": "search", "args": {"query": "escalation probe baidu serp ft6a", "limit": 10, "no_cache": true}, "timeoutMs": 180000}
+  ]
+}

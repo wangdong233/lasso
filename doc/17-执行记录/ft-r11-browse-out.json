@@ -1,0 +1,1762 @@
+{
+ "resources": {
+  "beforeServer": {
+   "tag": "before-server",
+   "at": "2026-08-18T11:19:24.058Z",
+   "count": 0,
+   "rssKb": 0
+  },
+  "cases": [],
+  "peak": {
+   "tag": "peak-before-shutdown",
+   "at": "2026-08-18T11:22:43.816Z",
+   "count": 18,
+   "rssKb": 1865512
+  },
+  "afterShutdown": {
+   "tag": "after-shutdown",
+   "at": "2026-08-18T11:22:47.628Z",
+   "count": 3,
+   "rssKb": 178932
+  }
+ },
+ "results": [
+  {
+   "id": "A01-T-BROWSE-01a-navigate",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "navigate"
+   },
+   "ms": 6310,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "navigate",
+     "state_id": "c7461fba-fa4f-464f-a71a-baa41210f77a",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-c7461fba-fa4f-464f-a71a-baa41210f77a.json",
+     "preview": "navigated",
+     "final_url": "https://example.com."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   },
+   "res": {
+    "tag": "A01-after-first-browse-peak",
+    "at": "2026-08-18T11:19:33.089Z",
+    "count": 9,
+    "rssKb": 890296
+   }
+  },
+  {
+   "id": "A02-T-BROWSE-02-snapshot",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "snapshot"
+   },
+   "ms": 12,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "snapshot",
+     "state_id": "0ec9a130-648a-4e04-8dc3-161a1c7fb661",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-0ec9a130-648a-4e04-8dc3-161a1c7fb661.json",
+     "preview": "## Latest page snapshot\nuid=1_0 RootWebArea \"Example Domain\" url=\"https://example.com/\"\n  uid=1_1 heading \"Example Domain\" level=\"1\"\n  uid=1_2 StaticText \"This domain is for use in documentation examples without needing permission. Avoid use in operations.\"\n  uid=1_3 link \"Learn more\" url=\"https://iana.org/domains/example\"\n    uid=1_4 StaticText \"Learn more\"\n",
+     "title": "## Latest page snapshot",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A03-T-BROWSE-03-extract-raw",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "extract"
+   },
+   "ms": 8,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "extract",
+     "state_id": "0ba8cfa8-da2e-45f1-8ef6-f21f0f8ba2e3",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-0ba8cfa8-da2e-45f1-8ef6-f21f0f8ba2e3.json",
+     "preview": "## Latest page snapshot\nuid=1_0 RootWebArea \"Example Domain\" url=\"https://example.com/\"\n  uid=1_1 heading \"Example Domain\" level=\"1\"\n  uid=1_2 StaticText \"This domain is for use in documentation examples without needing permission. Avoid use in operations.\"\n  uid=1_3 link \"Learn more\" url=\"https://iana.org/domains/example\"\n    uid=1_4 StaticText \"Learn more\"\n",
+     "title": "## Latest page snapshot",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A04-T-BROWSE-04-extract-md",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown"
+    }
+   },
+   "ms": 666,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "extract",
+     "state_id": "883d56ac-b153-4db9-ae91-c618805af6df",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-883d56ac-b153-4db9-ae91-c618805af6df.json",
+     "preview": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+     "title": "Example Domain",
+     "final_url": "https://example.com",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A05-T-BROWSE-05-cited",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://news.ycombinator.com",
+    "action": "navigate"
+   },
+   "ms": 1928,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://news.ycombinator.com",
+     "action": "navigate",
+     "state_id": "1a8063c1-7426-4bee-82b6-4932905ef937",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-1a8063c1-7426-4bee-82b6-4932905ef937.json",
+     "preview": "navigated",
+     "final_url": "https://news.ycombinator.com."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A05b-cited-extract",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://news.ycombinator.com",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown_cited"
+    }
+   },
+   "ms": 255,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://news.ycombinator.com",
+     "action": "extract",
+     "state_id": "fca1e7b3-22b2-48e4-b94b-680f61307689",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-fca1e7b3-22b2-48e4-b94b-680f61307689.json",
+     "preview": "1. Linux 7.3 improves performance when running out of vRAM ⟨1⟩ (pixelcluster.dev)  \n\t191 points · by flaburgan · 42 comments ⟨2⟩\n2. Rethinking Database Programming ⟨3⟩ (acadia.engineering)  \n\t75 points · by honungsburk · 24 comments ⟨4⟩\n3. How Bluesky draws its logo on screenshots ⟨5⟩ (timmarinin.net)  \n\t551 points · by gavide · 362 comments ⟨6⟩\n4. GPT-5.6 Sol Pricing Cut by 50% ⟨7⟩ (openrouter.ai)  \n\t475 points · by Topfi · 299 comments ⟨8⟩\n5. Google buys crashed airline Spirit's data at auction, because AI ⟨9⟩ (theregister.com)  \n\t52 points · by pseudolus · 18 comments ⟨10⟩\n6. Quake Shareware, a CD-ROM just a little too full ⟨11⟩ (fabiensanglard.net)  \n\t369 points · by shdon · 155 comments ⟨12⟩\n7. I built a golf career management SIM (like Basketball GM, but golf) ⟨13⟩ (rainydaygc.com)  \n\t10 points · by mdstrobe · 3 comments ⟨14⟩\n8. Fairphone 6 and PostmarketOS working main camera ⟨15⟩ (catcrafts.net)  \n\t216 points · by pizzaiolo · 48 comments ⟨16⟩\n9. Ranking the Most Brilliantly Colored Birds with Data ⟨17⟩ (moultano.wordpress.com)  \n\t32 points · by moultano · 3 comments ⟨18⟩\n10. [IBM Simon (1994): the original smartphone, explained in its own ad \\[video\\]](https://www.youtube.com/watch?v=xoTFywZpPcc) (youtube.com)  \n\t39 points · by kls0e · 7 comments ⟨19⟩\n11. A Preview of DuckDB v2.0 ⟨20⟩ (duckdb.org)  \n\t648 points · by ibotty · 116 comments ⟨21⟩\n12. The Benchmarkpocalypse ⟨22⟩ (danluu.com)  \n\t124 points · by cyndunlop · 32 comments ⟨23⟩\n13. Israel creates fake think tank in likely attempt to dupe AI chatbots ⟨24⟩ (responsiblestatecraft.org)  \n\t583 points · by DeepLogin · 354 comments ⟨25⟩\n14. Exercise intensity modulates interorgan communication and is associated with ⟨26⟩ (cell.com)  \n\t42 points · by newsomix9xl · 11 comments ⟨27⟩\n15. Olo (Color) ⟨28⟩) (wikipedia.org)  \n\t463 points · by inigyou · 84 comments ⟨29⟩\n16. AI-Generated GitHub Copilot “Autofix” Allowed Compromise of Snowflake's Jira ⟨30⟩ (wiz.io)  \n\t379 points · by galnagli · 146 comments ⟨31⟩\n17. The key that never exists: a threshold signing ceremony in the browser ⟨32⟩ (808bits.com)  \n\t3 points · by meehow\n18. Shattered skeleton is first confirmed death from trebuchet ⟨33⟩ (science.org)  \n\t77 points · by hermitcrab · 51 comments ⟨34⟩\n19. GPU Offload in Rust: Portable, Safe, and Fast ⟨35⟩ (arxiv.org)  \n\t221 points · by linggen · 45 comments ⟨36⟩\n20. An update on leaving Gmail for Fastmail ⟨37⟩ (moddedbear.com)  \n\t252 points · by neogodless · 157 comments ⟨38⟩\n21. The Road to MS-DOS 2.0 ⟨39⟩ (nemanjatrifunovic.substack.com)  \n\t79 points · by whobre · 32 comments ⟨40⟩\n22. GPT 5.6 Sol is the best \"vision\" model OpenAI ever released ⟨41⟩ (roboflow.com)  \n\t342 points · by plurby · 163 comments ⟨42⟩\n23. Repair Cafe – Fix Your Broken Items ⟨43⟩ (repaircafe.org)  \n\t123 points · by rglover · 22 comments ⟨44⟩\n24. How to disable or avoid intrusive AI ⟨45⟩ (librarian.net)  \n\t306 points · by ColinWright · 181 comments ⟨46⟩\n25. Sun Clock ⟨47⟩ (sunclock.net)  \n\t238 points · by Gecko4072 · 80 comments ⟨48⟩\n26. Climbing Guide as a Shared Infrastructure ⟨49⟩ (irz.fr)  \n\t21 points · by zbycz · 10 comments ⟨50⟩\n27. Judge sets framework for Nine PBS to retrieve archival data ⟨51⟩ (current.org)  \n\t169 points · by qingcharles · 64 comments ⟨52⟩\n28. AI;DR (AI; Didn't Read) ⟨53⟩ (rickmanelius.com)  \n\t910 points · by mooreds · 553 comments ⟨54⟩\n29. Los Puesteros, solitary men who look after ranches and livestock in Patagonia ⟨55⟩ (newyorker.com)  \n\t150 points · by bookofjoe · 54 comments ⟨56⟩\n30. Finger: Social network that never died ⟨57⟩ (andros.dev)  \n\t10 points · by andros · 2 comments ⟨58⟩\n\nMore ⟨59⟩\n\n## References\n[1] https://pixelcluster.dev/VRAM-Overcommit/\n[2] https://news.ycombinator.com/item?id=49342719\n[3] https://acadia.engineering/blog/rethinking-database-programming\n[4] https://news.ycombinator.com/item?id=49342530\n[5] https://timmarinin.net/2026/bluesky-screenshots/\n[6] https://news.ycombinator.com/item?id=49338459\n[7] https://openrouter.ai/openai/gpt-5.6-sol\n[8] https\n…[truncated by lasso]",
+     "title": "Hacker News",
+     "final_url": "https://news.ycombinator.com",
+     "citations": [
+      {
+       "n": 1,
+       "url": "https://pixelcluster.dev/VRAM-Overcommit/"
+      },
+      {
+       "n": 2,
+       "url": "https://news.ycombinator.com/item?id=49342719"
+      },
+      {
+       "n": 3,
+       "url": "https://acadia.engineering/blog/rethinking-database-programming"
+      },
+      {
+       "n": 4,
+       "url": "https://news.ycombinator.com/item?id=49342530"
+      },
+      {
+       "n": 5,
+       "url": "https://timmarinin.net/2026/bluesky-screenshots/"
+      },
+      {
+       "n": 6,
+       "url": "https://news.ycombinator.com/item?id=49338459"
+      },
+      {
+       "n": 7,
+       "url": "https://openrouter.ai/openai/gpt-5.6-sol"
+      },
+      {
+       "n": 8,
+       "url": "https://news.ycombinator.com/item?id=49337602"
+      },
+      {
+       "n": 9,
+       "url": "https://www.theregister.com/ai-and-ml/2026/08/18/google-buys-crashed-airline-spirits-data-at-auction-because-ai/5288962"
+      },
+      {
+       "n": 10,
+       "url": "https://news.ycombinator.com/item?id=49343559"
+      },
+      {
+       "n": 11,
+       "url": "https://fabiensanglard.net/quake_shareware_cd/index.html"
+      },
+      {
+       "n": 12,
+       "url": "https://news.ycombinator.com/item?id=49338328"
+      },
+      {
+       "n": 13,
+       "url": "https://www.rainydaygc.com/"
+      },
+      {
+       "n": 14,
+       "url": "https://news.ycombinator.com/item?id=49279208"
+      },
+      {
+       "n": 15,
+       "url": "https://catcrafts.net/posts/fairphone-6-postmarketos-working-main-camera"
+      },
+      {
+       "n": 16,
+       "url": "https://news.ycombinator.com/item?id=49338285"
+      },
+      {
+       "n": 17,
+       "url": "https://moultano.wordpress.com/2026/08/14/fairly-ranking-the-most-brilliant-birds/"
+      },
+      {
+       "n": 18,
+       "url": "https://news.ycombinator.com/item?id=49311115"
+      },
+      {
+       "n": 19,
+       "url": "https://news.ycombinator.com/item?id=49313360"
+      },
+      {
+       "n": 20,
+       "url": "https://duckdb.org/2026/08/17/duckdb-20-highlights"
+      },
+      {
+       "n": 21,
+       "url": "https://news.ycombinator.com/item?id=49330781"
+      },
+      {
+       "n": 22,
+       "url": "https://danluu.com/benchpocalypse/"
+      },
+      {
+       "n": 23,
+       "url": "https://news.ycombinator.com/item?id=49340299"
+      },
+      {
+       "n": 24,
+       "url": "https://responsiblestatecraft.org/israel-influence-chatgpt/"
+      },
+      {
+       "n": 25,
+       "url": "https://news.ycombinator.com/item?id=49337392"
+      },
+      {
+       "n": 26,
+       "url": "https://www.cell.com/cell-reports-medicine/fulltext/S2666-3791%2826%2900405-2?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS2666379126004052%3Fshowall%3Dtrue"
+      },
+      {
+       "n": 27,
+       "url": "https://news.ycombinator.com/item?id=49341411"
+      },
+      {
+       "n": 28,
+       "url": "https://en.wikipedia.org/wiki/Olo_\\(color\\"
+      },
+      {
+       "n": 29,
+       "url": "https://news.ycombinator.com/item?id=49270194"
+      },
+      {
+       "n": 30,
+       "url": "https://www.wiz.io/blog/red-agent-snowflake-copilot-cicd-bug"
+      },
+      {
+       "n": 31,
+       "url": "https://news.ycombinator.com/item?id=49331423"
+      },
+      {
+       "n": 32,
+       "url": "https://808bits.com/articles/threshold-signing-ceremony-in-your-browser/"
+      },
+      {
+       "n": 33,
+       "url": "https://www.science.org/content/article/shattered-skeleton-scottish-castle-first-confirmed-death-trebuchet"
+      },
+      {
+       "n": 34,
+       "url": "https://news.ycombinator.com/item?id=49285139"
+      },
+      {
+       "n": 35,
+       "url": "https://arxiv.org/abs/2608.13759"
+      },
+      {
+       "n": 36,
+       "url": "https://news.ycombinator.com/item?id=49334991"
+      },
+      {
+       "n": 37,
+       "url": "https://moddedbear.com/an-update-on-leaving-gmail-for-fastmail/"
+      },
+      {
+       "n": 38,
+       "url": "https://news.ycombinator.com/item?id=49334409"
+      },
+      {
+       "n": 39,
+       "url": "https://nemanjatrifunovic.substack.com/p/the-road-to-ms-dos-2"
+      },
+      {
+       "n": 40,
+       "url": "https://news.ycombinator.com/item?id=49269966"
+      },
+      {
+       "n": 41,
+       "url": "https://blog.roboflow.com/openai-gpt-5-6/"
+      },
+      {
+       "n": 42,
+       "url": "https://news.ycombinator.com/item?id=49329575"
+      },
+      {
+       "n": 43,
+       "url": "https://www.repaircafe.org/"
+      },
+      {
+       "n": 44,
+       "url": "https://news.ycombinator.com/item?id=49339097"
+      },
+      {
+       "n": 45,
+       "url": "https://www.librarian.net/notoai/"
+      },
+      {
+       "n": 46,
+       "url": "https://news.ycombinator.com/item?id=49331220"
+      },
+      {
+       "n": 47,
+       "url": "https://sunclock.net/"
+      },
+      {
+       "n": 48,
+       "url": "https://news.ycombinator.com/item?id=49333824"
+      },
+      {
+       "n": 49,
+       "url": "https://irz.fr/en/articles/openclimbing-open-guide-en/"
+      },
+      {
+       "n": 50,
+       "url": "https://news.ycombinator.com/item?id=49318607"
+      },
+      {
+       "n": 51,
+       "url": "https://current.org/2026/08/judge-sets-framework-for-nine-pbs-to-retrieve-archival-data/"
+      },
+      {
+       "n": 52,
+       "url": "https://news.ycombinator.com/item?id=49333344"
+      },
+      {
+       "n": 53,
+       "url": "https://www.rickmanelius.com/p/aidr-ai-didnt-read"
+      },
+      {
+       "n": 54,
+       "url": "https://news.ycombinator.com/item?id=49336573"
+      },
+      {
+       "n": 55,
+       "url": "https://www.newyorker.com/culture/photo-booth/the-lonely-men-at-the-end-of-the-world"
+      },
+      {
+       "n": 56,
+       "url": "https://news.ycombinator.com/item?id=49335600"
+      },
+      {
+       "n": 57,
+       "url": "https://en.andros.dev/blog/54572bc7/finger-the-1971-social-network-that-never-died/"
+      },
+      {
+       "n": 58,
+       "url": "https://news.ycombinator.com/item?id=49342472"
+      },
+      {
+       "n": 59,
+       "url": "https://news.ycombinator.com/?p=2"
+      }
+     ],
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "1. Linux 7.3 improves performance when running out of vRAM ⟨1⟩ (pixelcluster.dev)  \n\t191 points · by flaburgan · 42 comments ⟨2⟩\n2. Rethinking Database Programming ⟨3⟩ (acadia.engineering)  \n\t75 points · by honungsburk · 24 comments ⟨4⟩\n3. How Bluesky draws its logo on screenshots ⟨5⟩ (timmarinin.net)  \n\t551 points · by gavide · 362 comments ⟨6⟩\n4. GPT-5.6 Sol Pricing Cut by 50% ⟨7⟩ (openrouter.ai)  \n\t475 points · by Topfi · 299 comments ⟨8⟩\n5. Google buys crashed airline Spirit's data at auction, because AI ⟨9⟩ (theregister.com)  \n\t52 points · by pseudolus · 18 comments ⟨10⟩\n6. Quake Shareware, a CD-ROM just a little too full ⟨11⟩ (fabiensanglard.net)  \n\t369 points · by shdon · 155 comments ⟨12⟩\n7. I built a golf career management SIM (like Basketball GM, but golf) ⟨13⟩ (rainydaygc.com)  \n\t10 points · by mdstrobe · 3 comments ⟨14⟩\n8. Fairphone 6 and PostmarketOS working main camera ⟨15⟩ (catcrafts.net)  \n\t216 points · by pizzaiolo · 48 comments ⟨16⟩\n9. Ranking the Most Brilliantly Colored Birds with Data ⟨17⟩ (moultano.wordpress.com)  \n\t32 points · by moultano · 3 comments ⟨18⟩\n10. [IBM Simon (1994): the original smartphone, explained in its own ad \\[video\\]](https://www.youtube.com/watch?v=xoTFywZpPcc) (youtube.com)  \n\t39 points · by kls0e · 7 comments ⟨19⟩\n11. A Preview of DuckDB v2.0 ⟨20⟩ (duckdb.org)  \n\t648 points · by ibotty · 116 comments ⟨21⟩\n12. The Benchmarkpocalypse ⟨22⟩ (danluu.com)  \n\t124 points · by cyndunlop · 32 comments ⟨23⟩\n13. Israel creates fake think tank in likely attempt to dupe AI chatbots ⟨24⟩ (responsiblestatecraft.org)  \n\t583 points · by DeepLogin · 354 comments ⟨25⟩\n14. Exercise intensity modulates interorgan communication and is associated with ⟨26⟩ (cell.com)  \n\t42 points · by newsomix9xl · 11 comments ⟨27⟩\n15. Olo (Color) ⟨28⟩) (wikipedia.org)  \n\t463 points · by inigyou · 84 comments ⟨29⟩\n16. AI-Generated GitHub Copilot “Autofix” Allowed Compromise of Snowflake's Jira ⟨30⟩ (wiz.io)  \n\t379 points · by galnagli · 146 comments ⟨31⟩\n17. The key that never exists: a threshold signing ceremony in the browser ⟨32⟩ (808bits.com)  \n\t3 points · by meehow\n18. Shattered skeleton is first confirmed death from trebuchet ⟨33⟩ (science.org)  \n\t77 points · by hermitcrab · 51 comments ⟨34⟩\n19. GPU Offload in Rust: Portable, Safe, and Fast ⟨35⟩ (arxiv.org)  \n\t221 points · by linggen · 45 comments ⟨36⟩\n20. An update on leaving Gmail for Fastmail ⟨37⟩ (moddedbear.com)  \n\t252 points · by neogodless · 157 comments ⟨38⟩\n21. The Road to MS-DOS 2.0 ⟨39⟩ (nemanjatrifunovic.substack.com)  \n\t79 points · by whobre · 32 comments ⟨40⟩\n22. GPT 5.6 Sol is the best \"vision\" model OpenAI ever released ⟨41⟩ (roboflow.com)  \n\t342 points · by plurby · 163 comments ⟨42⟩\n23. Repair Cafe – Fix Your Broken Items ⟨43⟩ (repaircafe.org)  \n\t123 points · by rglover · 22 comments ⟨44⟩\n24. How to disable or avoid intrusive AI ⟨45⟩ (librarian.net)  \n\t306 points · by ColinWright · 181 comments ⟨46⟩\n25. Sun Clock ⟨47⟩ (sunclock.net)  \n\t238 points · by Gecko4072 · 80 comments ⟨48⟩\n26. Climbing Guide as a Shared Infrastructure ⟨49⟩ (irz.fr)  \n\t21 points · by zbycz · 10 comments ⟨50⟩\n27. Judge sets framework for Nine PBS to retrieve archival data ⟨51⟩ (current.org)  \n\t169 points · by qingcharles · 64 comments ⟨52⟩\n28. AI;DR (AI; Didn't Read) ⟨53⟩ (rickmanelius.com)  \n\t910 points · by mooreds · 553 comments ⟨54⟩\n29. Los Puesteros, solitary men who look after ranches and livestock in Patagonia ⟨55⟩ (newyorker.com)  \n\t150 points · by bookofjoe · 54 comments ⟨56⟩\n30. Finger: Social network that never died ⟨57⟩ (andros.dev)  \n\t10 points · by andros · 2 comments ⟨58⟩\n\nMore ⟨59⟩\n\n## References\n[1] https://pixelcluster.dev/VRAM-Overcommit/\n[2] https://news.ycombinator.com/item?id=49342719\n[3] https://acadia.engineering/blog/rethinking-database-programming\n[4] https://news.ycombinator.com/item?id=49342530\n[5] https://timmarinin.net/2026/bluesky-screenshots/\n[6] https://news.ycombinator.com/item?id=49338459\n[7] https://openrouter.ai/openai/gpt-5.6-sol\n[8] https\n…[truncated by lasso]"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A06-T-BROWSE-08-wait",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "wait",
+    "options": {
+     "expect": {
+      "text": "Example Domain"
+     }
+    }
+   },
+   "ms": 30011,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "wait",
+     "state_id": "fe09859b-11f9-45a2-9891-c43ca22059e7",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-fe09859b-11f9-45a2-9891-c43ca22059e7.json",
+     "preview": "waited for \"Example Domain\"",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A06b-wait-missing",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "wait",
+    "options": {}
+   },
+   "ms": 5241,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_logged_in",
+    "fallback_used": true,
+    "retrieval_method": "fallback_exhausted",
+    "error": "all_channels_failed_or_skipped",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "unknown",
+      "error": "Error: wait: opts.expect.text required"
+     },
+     {
+      "channel": "browse_logged_in",
+      "outcome": "unknown",
+      "error": "Error: wait: opts.expect.text required"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A07-T-BROWSE-09-eval-webdriver",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "evaluate",
+    "options": {
+     "js": "return navigator.webdriver"
+    }
+   },
+   "ms": 212,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "evaluate",
+     "state_id": "6c321612-c2a0-450e-8f4d-27218b384fb1",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-6c321612-c2a0-450e-8f4d-27218b384fb1.json",
+     "preview": "Script ran on page and returned:\n```json\nundefined\n```",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A08-T-BROWSE-32-stealth-trio",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "evaluate",
+    "options": {
+     "js": "return JSON.stringify({langs: navigator.languages.join(','), hc: navigator.hardwareConcurrency, plat: navigator.platform})"
+    }
+   },
+   "ms": 227,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "evaluate",
+     "state_id": "18f0ea31-ba07-4c00-8d09-b9b81ca50c0b",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-18f0ea31-ba07-4c00-8d09-b9b81ca50c0b.json",
+     "preview": "{\"langs\":\"en-US,en\",\"hc\":4,\"plat\":\"MacIntel\"}",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A09-T-BROWSE-01b-404",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com/lasso-ft-404-missing",
+    "action": "navigate"
+   },
+   "ms": 438,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "error": "Error: http_404:client_error",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "didnt",
+      "error": "Error: http_404:client_error"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A10-T-BROWSE-01c-nxdomain",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://nonexistent-lasso-ft-20260818.invalid/",
+    "action": "navigate"
+   },
+   "ms": 543,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "error": "Error: dns_or_nav_error:Unable to navigate in the selected page: net::ERR_CONNECTION_CLOSED at https://nonexistent-lasso-ft-20260818.invalid/.\n## Pages\n1: nonexistent-lasso-ft-20260818.invalid (chrome-error://chromewebdata/)",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "didnt",
+      "error": "Error: dns_or_nav_error:Unable to navigate in the selected page: net::ERR_CONNECTION_CLOSED at https://nonexistent-lasso-ft-20260818.invalid/.\n## Pages\n1: nonexistent-lasso-ft-20260818.invalid (chrome-error://chromewebdata/)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A11-T-BROWSE-17-ssrf-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "http://192.168.1.1/",
+    "action": "navigate"
+   },
+   "ms": 2,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "lasso.ssr_guard",
+    "fallback_used": false,
+    "retrieval_method": "ssrf_blocked",
+    "error": "ssrf_blocked:private_ip:192.168.1.1"
+   }
+  },
+  {
+   "id": "A11b-ssrf-pdf",
+   "tool": "pdf",
+   "args": {
+    "url": "http://192.168.1.1/"
+   },
+   "ms": 27,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "lasso.ssr_guard",
+    "fallback_used": false,
+    "retrieval_method": "ssrf_blocked",
+    "error": "ssrf_blocked:private_ip:192.168.1.1"
+   }
+  },
+  {
+   "id": "A11c-ssrf-screenshot",
+   "tool": "screenshot",
+   "args": {
+    "url": "http://192.168.1.1/"
+   },
+   "ms": 3,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "lasso.ssr_guard",
+    "fallback_used": false,
+    "retrieval_method": "ssrf_blocked",
+    "error": "ssrf_blocked:private_ip:192.168.1.1"
+   }
+  },
+  {
+   "id": "A11d-ssrf-network",
+   "tool": "network",
+   "args": {
+    "url": "http://192.168.1.1/",
+    "options": {
+     "filter": "all"
+    }
+   },
+   "ms": 3,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "lasso.ssr_guard",
+    "fallback_used": false,
+    "retrieval_method": "ssrf_blocked",
+    "error": "ssrf_blocked:private_ip:192.168.1.1"
+   }
+  },
+  {
+   "id": "A12-T-BROWSE-27-unknown-action",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "foo"
+   },
+   "ms": 5,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "error": "unknown_action:foo",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "didnt",
+      "error": "unknown_action:foo"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A13-T-BROWSE-10-pdf",
+   "tool": "pdf",
+   "args": {
+    "url": "https://example.com",
+    "options": {
+     "format": "A4",
+     "landscape": false
+    }
+   },
+   "ms": 1089,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": {
+     "url": "https://example.com",
+     "next_step": "chrome-devtools-mcp@LOCKED 不暴露 `pdf` 工具；改用 browse_headless screenshot + 自己 OCR，或本地 Chrome `--headless --print-to-pdf=url` 直接生成 PDF"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "upstream_unsupported:pdf",
+    "error": "Error: upstream_pdf_error:is_error:MCP error -32602: Tool pdf not found"
+   }
+  },
+  {
+   "id": "A14-T-BROWSE-11-network",
+   "tool": "network",
+   "args": {
+    "url": "https://example.com",
+    "options": {
+     "filter": "all"
+    }
+   },
+   "ms": 852,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "page_host": "example.com",
+     "resource_count": 1,
+     "third_party_count": 0,
+     "envelope": {
+      "preview": "[\n  {\n    \"name\": \"https://example.com/\",\n    \"type\": \"\",\n    \"reqid\": 15,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": false\n  }\n]",
+      "truncated": false
+     },
+     "state_id": "94ad91c9-17ba-44f2-ade1-2a57ec90cde1",
+     "next_step": "entries count < 5：多半页面真实简单（v1.11 起走原生 list_network_requests，无 PerformanceObserver TUN 干扰面）；单请求详情（响应体/头）v1.11 暂未接线（reqid 已保留，待 network_get action）"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "native_list_network_requests"
+   }
+  },
+  {
+   "id": "A15a-net-3p-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://www.selenium.dev/",
+    "action": "navigate"
+   },
+   "ms": 2693,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://www.selenium.dev/",
+     "action": "navigate",
+     "state_id": "c2179eda-8965-4133-a308-94da8af7e0ef",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-c2179eda-8965-4133-a308-94da8af7e0ef.json",
+     "preview": "navigated",
+     "final_url": "https://www.selenium.dev/."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A15b-T-BROWSE-29-3p",
+   "tool": "network",
+   "args": {
+    "url": "https://www.selenium.dev/",
+    "options": {
+     "filter": "3rd-party"
+    }
+   },
+   "ms": 1174,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://www.selenium.dev/",
+     "page_host": "www.selenium.dev",
+     "resource_count": 9,
+     "third_party_count": 9,
+     "envelope": {
+      "preview": "[\n  {\n    \"name\": \"https://code.jquery.com/jquery-3.7.1.min.js\",\n    \"type\": \"\",\n    \"reqid\": 47,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://cdn.jsdelivr.net/npm/@docsearch/css@3.6.0\",\n    \"type\": \"\",\n    \"reqid\": 49,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://plausible.io/js/plausible.js\",\n    \"type\": \"\",\n    \"reqid\": 50,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://www.netlify.com/v3/img/components/netlify-light.svg\",\n    \"type\": \"\",\n    \"reqid\": 58,\n    \"method\": \"GET\",\n    \"status\": \"301\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://cdn.jsdelivr.net/npm/@docsearch/js@3.6.0\",\n    \"type\": \"\",\n    \"reqid\": 61,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://fonts.googleapis.com/css?family=Encode+Sans:300,300i,400,400i,700,700i&display=swap\",\n    \"type\": \"\",\n    \"reqid\": 63,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://fonts.gstatic.com/s/encodesans/v23/LDIhapOFNxEwR-Bd1O9uYNmnUQomAgE25imKSbHLSMA6Sw_lSg.woff2\",\n    \"type\": \"\",\n    \"reqid\": 64,\n    \"method\": \"GET\",\n    \"status\": \"200\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://plausible.io/api/event\",\n    \"type\": \"\",\n    \"reqid\": 70,\n    \"method\": \"POST\",\n    \"status\": \"202\",\n    \"third_party\": true\n  },\n  {\n    \"name\": \"https://www.netlify.com/assets/badges/netlify-badge-light.svg\",\n    \"type\": \"\",\n    \"reqid\": 71,\n    \"method\": \"GET\",\n    \"status\": \"304\",\n    \"third_party\": true\n  }\n]",
+      "truncated": false
+     },
+     "state_id": "acd474e5-4359-4235-90ad-40efb5c35b2d"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "native_list_network_requests"
+   }
+  },
+  {
+   "id": "A16a-T-BROWSE-13-shot-tool",
+   "tool": "screenshot",
+   "args": {
+    "url": "https://example.com",
+    "options": {
+     "full_page": true
+    }
+   },
+   "ms": 934,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "path": "/tmp/lasso-screenshot-1d547ace-5e7b-47c3-a5cf-8114575b1fcc.png",
+     "preview": "screenshot saved to /tmp/lasso-screenshot-1d547ace-5e7b-47c3-a5cf-8114575b1fcc.png",
+     "state_id": "a3934e4d-2d57-4e36-87b5-a766f4abe721"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp"
+   }
+  },
+  {
+   "id": "A16b-shot-region",
+   "tool": "screenshot",
+   "args": {
+    "url": "https://example.com",
+    "options": {
+     "region": {
+      "x": 10,
+      "y": 10,
+      "width": 200,
+      "height": 100
+     }
+    }
+   },
+   "ms": 836,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "path": "/tmp/lasso-screenshot-9eac6924-4494-4e90-9224-bb583b26de61.png",
+     "preview": "screenshot saved to /tmp/lasso-screenshot-9eac6924-4494-4e90-9224-bb583b26de61.png",
+     "state_id": "8c8169f9-00b7-4344-9145-ac66cd8f7941"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp"
+   }
+  },
+  {
+   "id": "A16c-shot-action",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "screenshot"
+   },
+   "ms": 850,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "screenshot",
+     "state_id": "fbab60f8-198e-47da-a6c3-59af618579aa",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-fbab60f8-198e-47da-a6c3-59af618579aa.json",
+     "preview": "screenshot saved to /tmp/lasso-screenshot-6c9fe23a-0c32-492d-b50e-54e71922aaa7.png",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A17a-console-log-eval",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "evaluate",
+    "options": {
+     "js": "console.log('lasso-ft-console-marker'); return 1"
+    }
+   },
+   "ms": 210,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "evaluate",
+     "state_id": "ab5225d7-0a34-4bb8-9af3-8fe3b7dbed17",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-ab5225d7-0a34-4bb8-9af3-8fe3b7dbed17.json",
+     "preview": "1",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "A17b-T-BROWSE-12-console",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.com",
+    "action": "console"
+   },
+   "ms": 10,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.com",
+     "action": "console",
+     "state_id": "0360795a-177a-4e97-8c00-eadfba1dd31d",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-0360795a-177a-4e97-8c00-eadfba1dd31d.json",
+     "preview": "[{\"id\":3,\"type\":\"log\",\"text\":\"lasso-ft-console-marker\",\"argsCount\":1}]",
+     "final_url": "https://example.com"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "B00-refs-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "navigate"
+   },
+   "ms": 3601,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "navigate",
+     "state_id": "4c21da1d-cc28-40be-b567-eacc874e33d6",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-4c21da1d-cc28-40be-b567-eacc874e33d6.json",
+     "preview": "navigated",
+     "final_url": "https://books.toscrape.com/."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "B01-T-REFS-02-refs-on",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown",
+     "include_refs": true
+    }
+   },
+   "ms": 937,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "extract",
+     "state_id": "2456ce83-4b8c-4fea-881a-87e2ac8febd7",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-2456ce83-4b8c-4fea-881a-87e2ac8febd7.json",
+     "preview": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Books to Scrape\" → index.html\n- [r2] a \"Home\" → index.html\n- [r3] a \"Books\" → catalogue/category/books_1/index.html\n- [r4] a \"Travel\" → catalogue/category/books/travel_2/index.html\n- [r5] a \"Mystery\" → catalogue/category/books/mystery_3/index.html\n- [r6] a \"Historical Fiction\" → catalogue/category/books/historical-fiction_4/index.html\n- [r7] a \"Sequential Art\" → catalogue/category/books/sequential-art_5/index.html\n- [r8] a \"Classics\" → catalogue/category/books/classics_6/index.html\n- [r9] a \"Philosophy\" → catalogue/category/books/philosophy_7/index.html\n- [r10] a \"Romance\" → catalogue/category/books/romance_8/index.html\n- [r11] a \"Womens Fiction\" → catalogue/category/books/womens-fiction_9/index.html\n- [r12] a \"Fiction\" → catalogue/category/books/fiction_10/index.html\n- [r13] a \"Childrens\" → catalogue/category/books/childrens_11/index.html\n- [r14] a \"Religion\" → catalogue/category/books/religion_12/index.html\n- [r15] a \"Nonfiction\" → catalogue/category/books/nonfiction_13/index.html\n- [r16] a \"Music\" → catalogue/category/books/music_14/index.html\n- [r17] a \"Default\" → catalogue/category/books/default_15/index.html\n- [r18] a \"Science Fiction\" → catalogue/category/books/science-fiction_16/index.html\n- [r19] a \"Sports and Games\" → catalogue/category/books/sports-and-games_17/index.html\n- [r20] a \"Add a comment\" → catalogue/category/books/add-a-comment_18/index.html\n- [r21] a \"Fantasy\" → catalogue/category/books/fantasy_19/index.html\n- [r22] a \"New Adult\" → catalogue/category/books/new-adult_20/index.html\n- [r23] a \"Young Adult\" → catalogue/category/books/young-adult_21/index.html\n- [r24] a \"Science\" → catalogue/category/books/science_22/index.html\n- [r25] a \"Poetry\" → catalogue/category/books/poetry_23/index.html\n- [r26] a \"Paranormal\" → catalogue/category/books/paranormal_24/index.html\n- [r27] a \"Art\" → catalogue/category/books/art_25/index.html\n- [r28] a \"Psychology\" → catalogue/category/books/psychology_26/index.html\n- [r29] a \"Autobiography\" → catalogue/category/books/autobiography_27/index.html\n- [r30] a \"Parenting\" → catalogue/category/books/parenting_28/index.html\n- [r31] a \"Adult Fiction\" → catalogue/category/books/adult-fiction_29/index.html\n- [r32] a \"Humor\" → catalogue/category/books/humor_30/index.html\n- [r33] a \"Horror\" → catalogue/category/books/horror_31/index.html\n- [r34] a \"History\" → catalogue/category/books/history_32/index.html\n- [r35] a \"Food and Drink\" → catalogue/category/books/food-and-drink_33/index.html\n- [r36] a \"Christian Fiction\" → catalogue/category/books/christian-fiction_34/index.html\n- [r37] a \"Business\" → catalogue/category/books/business_35/index.html\n- [r38] a \"Biography\" → catalogue/category/books/biography_36/index.html\n- [r39] a \"Thriller\" → catalogue/category/books/thriller_37/index.html\n- [r40] a \"Contemporary\" → catalogue/category/books/contemporary_38/index.html\n- [r41] a \"Spirituality\" → catalogue/category/books/spirituality_39/index.html\n- [r42] a \"Academic\" → catalogue/category/books/academic_40/index.html\n- [r43] a \"Self Help\" → catalogue/category/books/self-help_41/index.html\n- [r44] a \"Historical\" → catalogue/category/books/historical_42/index.html\n- [r45] a \"Christian\" → catalogue/category/books/christian_43/index.html\n- [r46] a \"Suspense\" → catalogue/category/books/suspense_44/index.html\n- [r47] a \"Short Stories\" → catalogue/category/books/short-stories_45/index.html\n- [r48] a \"Novels\" → catalogue/category/books/novels_46/index.html\n- [r49] a \"Health\" → catalogue/category/books/health_47/index.html\n- [r50] a \"Politics\" → catalogue/category/books/politics_48/index.html",
+     "title": "Books to Scrape - Sandbox",
+     "final_url": "https://books.toscrape.com/",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Books to Scrape\" → index.html\n- [r2] a \"Home\" → index.html\n- [r3] a \"Books\" → catalogue/category/books_1/index.html\n- [r4] a \"Travel\" → catalogue/category/books/travel_2/index.html\n- [r5] a \"Mystery\" → catalogue/category/books/mystery_3/index.html\n- [r6] a \"Historical Fiction\" → catalogue/category/books/historical-fiction_4/index.html\n- [r7] a \"Sequential Art\" → catalogue/category/books/sequential-art_5/index.html\n- [r8] a \"Classics\" → catalogue/category/books/classics_6/index.html\n- [r9] a \"Philosophy\" → catalogue/category/books/philosophy_7/index.html\n- [r10] a \"Romance\" → catalogue/category/books/romance_8/index.html\n- [r11] a \"Womens Fiction\" → catalogue/category/books/womens-fiction_9/index.html\n- [r12] a \"Fiction\" → catalogue/category/books/fiction_10/index.html\n- [r13] a \"Childrens\" → catalogue/category/books/childrens_11/index.html\n- [r14] a \"Religion\" → catalogue/category/books/religion_12/index.html\n- [r15] a \"Nonfiction\" → catalogue/category/books/nonfiction_13/index.html\n- [r16] a \"Music\" → catalogue/category/books/music_14/index.html\n- [r17] a \"Default\" → catalogue/category/books/default_15/index.html\n- [r18] a \"Science Fiction\" → catalogue/category/books/science-fiction_16/index.html\n- [r19] a \"Sports and Games\" → catalogue/category/books/sports-and-games_17/index.html\n- [r20] a \"Add a comment\" → catalogue/category/books/add-a-comment_18/index.html\n- [r21] a \"Fantasy\" → catalogue/category/books/fantasy_19/index.html\n- [r22] a \"New Adult\" → catalogue/category/books/new-adult_20/index.html\n- [r23] a \"Young Adult\" → catalogue/category/books/young-adult_21/index.html\n- [r24] a \"Science\" → catalogue/category/books/science_22/index.html\n- [r25] a \"Poetry\" → catalogue/category/books/poetry_23/index.html\n- [r26] a \"Paranormal\" → catalogue/category/books/paranormal_24/index.html\n- [r27] a \"Art\" → catalogue/category/books/art_25/index.html\n- [r28] a \"Psychology\" → catalogue/category/books/psychology_26/index.html\n- [r29] a \"Autobiography\" → catalogue/category/books/autobiography_27/index.html\n- [r30] a \"Parenting\" → catalogue/category/books/parenting_28/index.html\n- [r31] a \"Adult Fiction\" → catalogue/category/books/adult-fiction_29/index.html\n- [r32] a \"Humor\" → catalogue/category/books/humor_30/index.html\n- [r33] a \"Horror\" → catalogue/category/books/horror_31/index.html\n- [r34] a \"History\" → catalogue/category/books/history_32/index.html\n- [r35] a \"Food and Drink\" → catalogue/category/books/food-and-drink_33/index.html\n- [r36] a \"Christian Fiction\" → catalogue/category/books/christian-fiction_34/index.html\n- [r37] a \"Business\" → catalogue/category/books/business_35/index.html\n- [r38] a \"Biography\" → catalogue/category/books/biography_36/index.html\n- [r39] a \"Thriller\" → catalogue/category/books/thriller_37/index.html\n- [r40] a \"Contemporary\" → catalogue/category/books/contemporary_38/index.html\n- [r41] a \"Spirituality\" → catalogue/category/books/spirituality_39/index.html\n- [r42] a \"Academic\" → catalogue/category/books/academic_40/index.html\n- [r43] a \"Self Help\" → catalogue/category/books/self-help_41/index.html\n- [r44] a \"Historical\" → catalogue/category/books/historical_42/index.html\n- [r45] a \"Christian\" → catalogue/category/books/christian_43/index.html\n- [r46] a \"Suspense\" → catalogue/category/books/suspense_44/index.html\n- [r47] a \"Short Stories\" → catalogue/category/books/short-stories_45/index.html\n- [r48] a \"Novels\" → catalogue/category/books/novels_46/index.html\n- [r49] a \"Health\" → catalogue/category/books/health_47/index.html\n- [r50] a \"Politics\" → catalogue/category/books/politics_48/index.html"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "B02-T-REFS-03-refs-off",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown"
+    }
+   },
+   "ms": 643,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "extract",
+     "state_id": "39ea7c27-04c3-46e9-ab85-15465da5baa3",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-39ea7c27-04c3-46e9-ab85-15465da5baa3.json",
+     "preview": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]",
+     "title": "Books to Scrape - Sandbox",
+     "final_url": "https://books.toscrape.com/",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "B05-T-REFS-08-raw-refs",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "extract",
+    "options": {
+     "extract_mode": "raw",
+     "include_refs": true
+    }
+   },
+   "ms": 60,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "extract",
+     "state_id": "07964f99-9435-4c2e-baa2-d617c03217c3",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-07964f99-9435-4c2e-baa2-d617c03217c3.json",
+     "preview": "## Latest page snapshot\nuid=13_0 RootWebArea \"All products | Books to Scrape - Sandbox\" url=\"https://books.toscrape.com/\"\n  uid=13_1 banner\n    uid=13_2 link \"Books to Scrape\" url=\"https://books.toscrape.com/index.html\"\n      uid=13_3 StaticText \"Books to Scrape\"\n    uid=13_4 StaticText \" We love being scraped!\"\n  uid=13_5 link \"Home\" url=\"https://books.toscrape.com/index.html\"\n    uid=13_6 StaticText \"Home\"\n  uid=13_7 StaticText \"/ \"\n  uid=13_8 StaticText \"All products\"\n  uid=13_9 complementary\n    uid=13_10 link \"Books\" url=\"https://books.toscrape.com/catalogue/category/books_1/index.html\"\n      uid=13_11 StaticText \"Books\"\n    uid=13_12 link \"Travel\" url=\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\"\n      uid=13_13 StaticText \"Travel\"\n    uid=13_14 link \"Mystery\" url=\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\"\n      uid=13_15 StaticText \"Mystery\"\n    uid=13_16 link \"Historical Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\"\n      uid=13_17 StaticText \"Historical Fiction\"\n    uid=13_18 link \"Sequential Art\" url=\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\"\n      uid=13_19 StaticText \"Sequential Art\"\n    uid=13_20 link \"Classics\" url=\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\"\n      uid=13_21 StaticText \"Classics\"\n    uid=13_22 link \"Philosophy\" url=\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\"\n      uid=13_23 StaticText \"Philosophy\"\n    uid=13_24 link \"Romance\" url=\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\"\n      uid=13_25 StaticText \"Romance\"\n    uid=13_26 link \"Womens Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\"\n      uid=13_27 StaticText \"Womens Fiction\"\n    uid=13_28 link \"Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\"\n      uid=13_29 StaticText \"Fiction\"\n    uid=13_30 link \"Childrens\" url=\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\"\n      uid=13_31 StaticText \"Childrens\"\n    uid=13_32 link \"Religion\" url=\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\"\n      uid=13_33 StaticText \"Religion\"\n    uid=13_34 link \"Nonfiction\" url=\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\"\n      uid=13_35 StaticText \"Nonfiction\"\n    uid=13_36 link \"Music\" url=\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\"\n      uid=13_37 StaticText \"Music\"\n    uid=13_38 link \"Default\" url=\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\"\n      uid=13_39 StaticText \"Default\"\n    uid=13_40 link \"Science Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\"\n      uid=13_41 StaticText \"Science Fiction\"\n    uid=13_42 link \"Sports and Games\" url=\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\"\n      uid=13_43 StaticText \"Sports and Games\"\n    uid=13_44 link \"Add a comment\" url=\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\"\n      uid=13_45 StaticText \"Add a comment\"\n    uid=13_46 link \"Fantasy\" url=\"https://books.toscrape.com/catalogue/category/books/fantasy_19/index.html\"\n      uid=13_47 StaticText \"Fantasy\"\n    uid=13_48 link \"New Adult\" url=\"https://books.toscrape.com/catalogue/category/books/new-adult_20/index.html\"\n      uid=13_49 StaticText \"New Adult\"\n    uid=13_50 link \"Young Adult\" url=\"https://books.toscrape.com/catalogue/category/books/young-adult_21/index.html\"\n      uid=13_51 StaticText \"Young Adult\"\n    uid=13_52 link \"Science\" url=\"https://books.toscrape.com/catalogue/category/books/science_22/index.html\"\n      uid=13_53 StaticText \"Science\"\n    uid=13_54 link \"Poetry\" url=\"https://books.toscrape.com/catalogue/category/books/poetry_23/index.html\"\n      uid=13_55 St\n…[truncated by lasso]",
+     "title": "## Latest page snapshot",
+     "final_url": "https://books.toscrape.com/",
+     "ignored_include_refs": true
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "C00-wiki-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+    "action": "navigate"
+   },
+   "ms": 4270,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+     "action": "navigate",
+     "state_id": "3f311348-837b-401e-bdf2-55c0c1cd4827",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-3f311348-837b-401e-bdf2-55c0c1cd4827.json",
+     "preview": "navigated",
+     "final_url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "C01-T-BROWSE-28-cap",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown"
+    }
+   },
+   "ms": 1335,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+     "action": "extract",
+     "state_id": "67c0e6d4-e27e-47ab-8947-839c7d2df856",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-67c0e6d4-e27e-47ab-8947-839c7d2df856.json",
+     "preview": "**Chromium** is a [free and open-source](https://en.wikipedia.org/wiki/Free_and_open-source \"Free and open-source\") [web browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") project, primarily developed and maintained by [Google](https://en.wikipedia.org/wiki/Google \"Google\").[^3] It is a widely used [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\"), providing the vast majority of [code](https://en.wikipedia.org/wiki/Source_code \"Source code\") for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and many other browsers, including [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), [Opera](https://en.wikipedia.org/wiki/Opera_\\(web_browser\\) \"Opera (web browser)\"), [Vivaldi](https://en.wikipedia.org/wiki/Vivaldi_\\(web_browser\\) \"Vivaldi (web browser)\"), [Brave](https://en.wikipedia.org/wiki/Brave_\\(web_browser\\) \"Brave (web browser)\"), [Samsung Browser](https://en.wikipedia.org/wiki/Samsung_Browser \"Samsung Browser\") and [Ungoogled Chromium](https://en.wikipedia.org/wiki/Ungoogled_Chromium \"Ungoogled Chromium\"). The code is also used by several [app frameworks](https://en.wikipedia.org/wiki/Application_framework \"Application framework\").\n\n## Licensing\n\nChromium is a [free and open-source software](https://en.wikipedia.org/wiki/Free_and_open-source_software \"Free and open-source software\") project. Owing to its origins in the [WebKit](https://en.wikipedia.org/wiki/WebKit \"WebKit\") project, Chromium incorporates code subject to a variety of licenses, including [LGPL](https://en.wikipedia.org/wiki/LGPL \"LGPL\"), [MIT](https://en.wikipedia.org/wiki/MIT_License \"MIT License\"), [Ms-PL](https://en.wikipedia.org/wiki/Ms-PL \"Ms-PL\"), and [MPL](https://en.wikipedia.org/wiki/Mozilla_Public_License \"Mozilla Public License\") (with the MPL/ [GPL](https://en.wikipedia.org/wiki/GPL \"GPL\") /LGPL [tri-license](https://en.wikipedia.org/wiki/Tri-license \"Tri-license\") clause).[^9] Original Google-authored portions and some portions written by Apple are shared under the [3-clause BSD license](https://en.wikipedia.org/wiki/3-clause_BSD_license \"3-clause BSD license\").[^8]\n\nThis licensing permits any party to [build](https://en.wikipedia.org/wiki/Build_\\(software\\) \"Build (software)\") the [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\") and share the resulting [browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") [executable](https://en.wikipedia.org/wiki/Executable \"Executable\") with the Chromium name and logo. Thus many [Linux distributions](https://en.wikipedia.org/wiki/Linux_distribution \"Linux distribution\") do this, as well as [FreeBSD](https://en.wikipedia.org/wiki/FreeBSD \"FreeBSD\") and [OpenBSD](https://en.wikipedia.org/wiki/OpenBSD \"OpenBSD\").[^10] Chromium also forms the basis of [Electron](https://en.wikipedia.org/wiki/Electron_\\(software_framework\\) \"Electron (software framework)\"), which in turn is used for many commercial and proprietary [cross-platform](https://en.wikipedia.org/wiki/Cross-platform \"Cross-platform\") applications, such as [Slack](https://en.wikipedia.org/wiki/Slack_\\(software\\) \"Slack (software)\").\n\nMany Chromium-based browsers, such as [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), include the proprietary components, such as proprietary wrapper libraries for [hardware acceleration](https://en.wikipedia.org/wiki/Hardware_acceleration \"Hardware acceleration\").[^11]\n\n## Differences from Google Chrome\n\nChromium provides the vast majority of source code for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\"), but there are important differences.\n\n### Features\n\nChromium lacks the following [Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") features:[^10]\n\n- Automatic browser updates\n- API keys for some [Google services](https://en.wikipedia.org/wiki/List_of_Google_\n…[truncated by lasso]",
+     "title": "Chromium (web browser)",
+     "final_url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+     "byline": "Wikipedia",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "**Chromium** is a [free and open-source](https://en.wikipedia.org/wiki/Free_and_open-source \"Free and open-source\") [web browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") project, primarily developed and maintained by [Google](https://en.wikipedia.org/wiki/Google \"Google\").[^3] It is a widely used [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\"), providing the vast majority of [code](https://en.wikipedia.org/wiki/Source_code \"Source code\") for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and many other browsers, including [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), [Opera](https://en.wikipedia.org/wiki/Opera_\\(web_browser\\) \"Opera (web browser)\"), [Vivaldi](https://en.wikipedia.org/wiki/Vivaldi_\\(web_browser\\) \"Vivaldi (web browser)\"), [Brave](https://en.wikipedia.org/wiki/Brave_\\(web_browser\\) \"Brave (web browser)\"), [Samsung Browser](https://en.wikipedia.org/wiki/Samsung_Browser \"Samsung Browser\") and [Ungoogled Chromium](https://en.wikipedia.org/wiki/Ungoogled_Chromium \"Ungoogled Chromium\"). The code is also used by several [app frameworks](https://en.wikipedia.org/wiki/Application_framework \"Application framework\").\n\n## Licensing\n\nChromium is a [free and open-source software](https://en.wikipedia.org/wiki/Free_and_open-source_software \"Free and open-source software\") project. Owing to its origins in the [WebKit](https://en.wikipedia.org/wiki/WebKit \"WebKit\") project, Chromium incorporates code subject to a variety of licenses, including [LGPL](https://en.wikipedia.org/wiki/LGPL \"LGPL\"), [MIT](https://en.wikipedia.org/wiki/MIT_License \"MIT License\"), [Ms-PL](https://en.wikipedia.org/wiki/Ms-PL \"Ms-PL\"), and [MPL](https://en.wikipedia.org/wiki/Mozilla_Public_License \"Mozilla Public License\") (with the MPL/ [GPL](https://en.wikipedia.org/wiki/GPL \"GPL\") /LGPL [tri-license](https://en.wikipedia.org/wiki/Tri-license \"Tri-license\") clause).[^9] Original Google-authored portions and some portions written by Apple are shared under the [3-clause BSD license](https://en.wikipedia.org/wiki/3-clause_BSD_license \"3-clause BSD license\").[^8]\n\nThis licensing permits any party to [build](https://en.wikipedia.org/wiki/Build_\\(software\\) \"Build (software)\") the [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\") and share the resulting [browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") [executable](https://en.wikipedia.org/wiki/Executable \"Executable\") with the Chromium name and logo. Thus many [Linux distributions](https://en.wikipedia.org/wiki/Linux_distribution \"Linux distribution\") do this, as well as [FreeBSD](https://en.wikipedia.org/wiki/FreeBSD \"FreeBSD\") and [OpenBSD](https://en.wikipedia.org/wiki/OpenBSD \"OpenBSD\").[^10] Chromium also forms the basis of [Electron](https://en.wikipedia.org/wiki/Electron_\\(software_framework\\) \"Electron (software framework)\"), which in turn is used for many commercial and proprietary [cross-platform](https://en.wikipedia.org/wiki/Cross-platform \"Cross-platform\") applications, such as [Slack](https://en.wikipedia.org/wiki/Slack_\\(software\\) \"Slack (software)\").\n\nMany Chromium-based browsers, such as [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), include the proprietary components, such as proprietary wrapper libraries for [hardware acceleration](https://en.wikipedia.org/wiki/Hardware_acceleration \"Hardware acceleration\").[^11]\n\n## Differences from Google Chrome\n\nChromium provides the vast majority of source code for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\"), but there are important differences.\n\n### Features\n\nChromium lacks the following [Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") features:[^10]\n\n- Automatic browser updates\n- API keys for some [Google services](https://en.wikipedia.org/wiki/List_of_Google_\n…[truncated by lasso]"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "C02-T-REFS-04-cap-refs",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown",
+     "include_refs": true
+    }
+   },
+   "ms": 1265,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+     "action": "extract",
+     "state_id": "696a7e66-0fd2-4984-a174-e520d1eaf10d",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-696a7e66-0fd2-4984-a174-e520d1eaf10d.json",
+     "preview": "**Chromium** is a [free and open-source](https://en.wikipedia.org/wiki/Free_and_open-source \"Free and open-source\") [web browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") project, primarily developed and maintained by [Google](https://en.wikipedia.org/wiki/Google \"Google\").[^3] It is a widely used [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\"), providing the vast majority of [code](https://en.wikipedia.org/wiki/Source_code \"Source code\") for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and many other browsers, including [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), [Opera](https://en.wikipedia.org/wiki/Opera_\\(web_browser\\) \"Opera (web browser)\"), [Vivaldi](https://en.wikipedia.org/wiki/Vivaldi_\\(web_browser\\) \"Vivaldi (web browser)\"), [Brave](https://en.wikipedia.org/wiki/Brave_\\(web_browser\\) \"Brave (web browser)\"), [Samsung Browser](https://en.wikipedia.org/wiki/Samsung_Browser \"Samsung Browser\") and [Ungoogled Chromium](https://en.wikipedia.org/wiki/Ungoogled_Chromium \"Ungoogled Chromium\"). The code is also used by several [app frameworks](https://en.wikipedia.org/wiki/Application_framework \"Application framework\").\n\n## Licensing\n\nChromium is a [free and open-source software](https://en.wikipedia.org/wiki/Free_and_open-source_software \"Free and open-source software\") project. Owing to its origins in the [WebKit](https://en.wikipedia.org/wiki/WebKit \"WebKit\") project, Chromium incorporates code subject to a variety of licenses, including [LGPL](https://en.wikipedia.org/wiki/LGPL \"LGPL\"), [MIT](https://en.wikipedia.org/wiki/MIT_License \"MIT License\"), [Ms-PL](https://en.wikipedia.org/wiki/Ms-PL \"Ms-PL\"), and [MPL](https://en.wikipedia.org/wiki/Mozilla_Public_License \"Mozilla Public License\") (with the MPL/ [GPL](https://en.wikipedia.org/wiki/GPL \"GPL\") /LGPL [tri-license](https://en.wikipedia.org/wiki/Tri-license \"Tri-license\") clause).[^9] Original Google-authored portions and some portions written by Apple are shared under the [3-clause BSD license](https://en.wikipedia.org/wiki/3-clause_BSD_license \"3-clause BSD license\").[^8]\n\nThis licensing permits any party to [build](https://en.wikipedia.org/wiki/Build_\\(software\\) \"Build (software)\") the [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\") and share the resulting [browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") [executable](https://en.wikipedia.org/wiki/Executable \"Executable\") with the Chromium name and logo. Thus many [Linux distributions](https://en.wikipedia.org/wiki/Linux_distribution \"Linux distribution\") do this, as well as [FreeBSD](https://en.wikipedia.org/wiki/FreeBSD \"FreeBSD\") and [OpenBSD](https://en.wikipedia.org/wiki/OpenBSD \"OpenBSD\").[^10] Chromium also forms the basis of [Electron](https://en.wikipedia.org/wiki/Electron_\\(software_framework\\) \"Electron (software framework)\"), which in turn is used for many commercial and proprietary [cross-platform](https://en.wikipedia.org/wiki/Cross-platform \"Cross-platform\") applications, such as [Slack](https://en.wikipedia.org/wiki/Slack_\\(software\\) \"Slack (software)\").\n\nMany Chromium-based browsers, such as [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), include the proprietary components, such as proprietary wrapper libraries for [hardware acceleration](https://en.wikipedia.org/wiki/Hardware_acceleration \"Hardware acceleration\").[^11]\n\n## Differences from Google Chrome\n\nChromium provides the vast majority of source code for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\"), but there are important differences.\n\n### Features\n\nChromium lacks the following [Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") features:[^10]\n\n- Automatic browser updates\n- API keys for some [Google services](https://en.wikipedia.org/wiki/List_of_Google_\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Jump to content\" → #bodyContent\n- [r2] input[type=checkbox][role=button] \"Main menu\"\n- [r3] button \"Move Main menu to sidebar\"\n- [r4] button \"Hide Main menu\"\n- [r5] a \"Visit the main page [ctrl-option-z]\" → /wiki/Main_Page\n- [r6] a \"Guides to browsing Wikipedia\" → /wiki/Wikipedia:Contents\n- [r7] a \"Articles related to current events\" → /wiki/Portal:Current_events\n- [r8] a \"Visit a randomly selected article [ctrl-option-x]\" → /wiki/Special:Random\n- [r9] a \"Learn about Wikipedia and how it works\" → /wiki/Wikipedia:About\n- [r10] a \"How to contact Wikipedia\" → //en.wikipedia.org/wiki/Wikipedia:Contact_us\n- [r11] a \"Guidance on how to use and edit Wikipedia\" → /wiki/Help:Contents\n- [r12] a \"Learn how to edit Wikipedia\" → /wiki/Help:Introduction\n- [r13] a \"The hub for editors\" → /wiki/Wikipedia:Community_portal\n- [r14] a \"A list of recent changes to Wikipedia [ctrl-option-r]\" → /wiki/Special:RecentChanges\n- [r15] a \"Add images or other media for use on Wikipedia\" → /wiki/Wikipedia:File_upload_wizard\n- [r16] a \"A list of all special pages [ctrl-option-q]\" → /wiki/Special:SpecialPages\n- [r17] a → /wiki/Main_Page\n- [r18] a \"Search Wikipedia [ctrl-option-f]\" → /wiki/Special:Search\n- [r19] input[type=search] \"Search Wikipedia\"\n- [r20] input[type=hidden]\n- [r21] button \"Search\"\n- [r22] input[type=checkbox][role=button] \"Appearance\"\n- [r23] a \"Donate\" → https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- [r24] a \"You are encouraged to create an account and log in; however, it is not mandatory\" → https://en.wikipedia.org/w/index.php?title=Special%3ACreateAccount&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r25] a \"You're encouraged to log in; however, it's not mandatory. [ctrl-option-o]\" → https://en.wikipedia.org/w/index.php?title=Special%3AUserLogin&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r26] input[type=checkbox][role=button] \"Personal tools\"\n- [r27] a \"Donate\" → https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- [r28] a \"You are encouraged to create an account and log in; however, it is not mandatory\" → https://en.wikipedia.org/w/index.php?title=Special%3ACreateAccount&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r29] a \"You're encouraged to log in; however, it's not mandatory. [ctrl-option-o]\" → https://en.wikipedia.org/w/index.php?title=Special%3AUserLogin&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r30] button \"Move Contents to sidebar\"\n- [r31] button \"Hide Contents\"\n- [r32] a \"(Top)\" → #\n- [r33] a \"Licensing\" → #Licensing\n- [r34] a \"Differences from Google Chrome\" → #Differences_from_Google_Chrome\n- [r35] button \"Toggle Differences from Google Chrome subsection\"\n- [r36] a \"Features\" → #Features\n- [r37] a \"Branding and licensing\" → #Branding_and_licensing\n- [r38] a \"Development\" → #Development\n- [r39] button \"Toggle Development subsection\"\n- [r40] a \"Contributors\" → #Contributors\n- [r41] a \"Architecture\" → #Architecture\n- [r42] a \"Programming languages\" → #Programming_languages\n- [r43] a \"Logistics\" → #Logistics\n- [r44] a \"History\" → #History\n- [r45] button \"Toggle History subsection\"\n- [r46] a \"2008 to 2010\" → #2008_to_2010\n- [r47] a \"2011\" → #2011\n- [r48] a \"Since 2012\" → #Since_2012\n- [r49] a \"Third-party ports\" → #Third-party_ports\n- [r50] a \"Browsers based on Chromium\" → #Browsers_based_on_Chromium",
+     "title": "Chromium (web browser)",
+     "final_url": "https://en.wikipedia.org/wiki/Chromium_(web_browser)",
+     "byline": "Wikipedia",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "**Chromium** is a [free and open-source](https://en.wikipedia.org/wiki/Free_and_open-source \"Free and open-source\") [web browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") project, primarily developed and maintained by [Google](https://en.wikipedia.org/wiki/Google \"Google\").[^3] It is a widely used [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\"), providing the vast majority of [code](https://en.wikipedia.org/wiki/Source_code \"Source code\") for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and many other browsers, including [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), [Opera](https://en.wikipedia.org/wiki/Opera_\\(web_browser\\) \"Opera (web browser)\"), [Vivaldi](https://en.wikipedia.org/wiki/Vivaldi_\\(web_browser\\) \"Vivaldi (web browser)\"), [Brave](https://en.wikipedia.org/wiki/Brave_\\(web_browser\\) \"Brave (web browser)\"), [Samsung Browser](https://en.wikipedia.org/wiki/Samsung_Browser \"Samsung Browser\") and [Ungoogled Chromium](https://en.wikipedia.org/wiki/Ungoogled_Chromium \"Ungoogled Chromium\"). The code is also used by several [app frameworks](https://en.wikipedia.org/wiki/Application_framework \"Application framework\").\n\n## Licensing\n\nChromium is a [free and open-source software](https://en.wikipedia.org/wiki/Free_and_open-source_software \"Free and open-source software\") project. Owing to its origins in the [WebKit](https://en.wikipedia.org/wiki/WebKit \"WebKit\") project, Chromium incorporates code subject to a variety of licenses, including [LGPL](https://en.wikipedia.org/wiki/LGPL \"LGPL\"), [MIT](https://en.wikipedia.org/wiki/MIT_License \"MIT License\"), [Ms-PL](https://en.wikipedia.org/wiki/Ms-PL \"Ms-PL\"), and [MPL](https://en.wikipedia.org/wiki/Mozilla_Public_License \"Mozilla Public License\") (with the MPL/ [GPL](https://en.wikipedia.org/wiki/GPL \"GPL\") /LGPL [tri-license](https://en.wikipedia.org/wiki/Tri-license \"Tri-license\") clause).[^9] Original Google-authored portions and some portions written by Apple are shared under the [3-clause BSD license](https://en.wikipedia.org/wiki/3-clause_BSD_license \"3-clause BSD license\").[^8]\n\nThis licensing permits any party to [build](https://en.wikipedia.org/wiki/Build_\\(software\\) \"Build (software)\") the [codebase](https://en.wikipedia.org/wiki/Codebase \"Codebase\") and share the resulting [browser](https://en.wikipedia.org/wiki/Web_browser \"Web browser\") [executable](https://en.wikipedia.org/wiki/Executable \"Executable\") with the Chromium name and logo. Thus many [Linux distributions](https://en.wikipedia.org/wiki/Linux_distribution \"Linux distribution\") do this, as well as [FreeBSD](https://en.wikipedia.org/wiki/FreeBSD \"FreeBSD\") and [OpenBSD](https://en.wikipedia.org/wiki/OpenBSD \"OpenBSD\").[^10] Chromium also forms the basis of [Electron](https://en.wikipedia.org/wiki/Electron_\\(software_framework\\) \"Electron (software framework)\"), which in turn is used for many commercial and proprietary [cross-platform](https://en.wikipedia.org/wiki/Cross-platform \"Cross-platform\") applications, such as [Slack](https://en.wikipedia.org/wiki/Slack_\\(software\\) \"Slack (software)\").\n\nMany Chromium-based browsers, such as [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") and [Microsoft Edge](https://en.wikipedia.org/wiki/Microsoft_Edge \"Microsoft Edge\"), include the proprietary components, such as proprietary wrapper libraries for [hardware acceleration](https://en.wikipedia.org/wiki/Hardware_acceleration \"Hardware acceleration\").[^11]\n\n## Differences from Google Chrome\n\nChromium provides the vast majority of source code for [Google Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\"), but there are important differences.\n\n### Features\n\nChromium lacks the following [Chrome](https://en.wikipedia.org/wiki/Google_Chrome \"Google Chrome\") features:[^10]\n\n- Automatic browser updates\n- API keys for some [Google services](https://en.wikipedia.org/wiki/List_of_Google_\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Jump to content\" → #bodyContent\n- [r2] input[type=checkbox][role=button] \"Main menu\"\n- [r3] button \"Move Main menu to sidebar\"\n- [r4] button \"Hide Main menu\"\n- [r5] a \"Visit the main page [ctrl-option-z]\" → /wiki/Main_Page\n- [r6] a \"Guides to browsing Wikipedia\" → /wiki/Wikipedia:Contents\n- [r7] a \"Articles related to current events\" → /wiki/Portal:Current_events\n- [r8] a \"Visit a randomly selected article [ctrl-option-x]\" → /wiki/Special:Random\n- [r9] a \"Learn about Wikipedia and how it works\" → /wiki/Wikipedia:About\n- [r10] a \"How to contact Wikipedia\" → //en.wikipedia.org/wiki/Wikipedia:Contact_us\n- [r11] a \"Guidance on how to use and edit Wikipedia\" → /wiki/Help:Contents\n- [r12] a \"Learn how to edit Wikipedia\" → /wiki/Help:Introduction\n- [r13] a \"The hub for editors\" → /wiki/Wikipedia:Community_portal\n- [r14] a \"A list of recent changes to Wikipedia [ctrl-option-r]\" → /wiki/Special:RecentChanges\n- [r15] a \"Add images or other media for use on Wikipedia\" → /wiki/Wikipedia:File_upload_wizard\n- [r16] a \"A list of all special pages [ctrl-option-q]\" → /wiki/Special:SpecialPages\n- [r17] a → /wiki/Main_Page\n- [r18] a \"Search Wikipedia [ctrl-option-f]\" → /wiki/Special:Search\n- [r19] input[type=search] \"Search Wikipedia\"\n- [r20] input[type=hidden]\n- [r21] button \"Search\"\n- [r22] input[type=checkbox][role=button] \"Appearance\"\n- [r23] a \"Donate\" → https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- [r24] a \"You are encouraged to create an account and log in; however, it is not mandatory\" → https://en.wikipedia.org/w/index.php?title=Special%3ACreateAccount&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r25] a \"You're encouraged to log in; however, it's not mandatory. [ctrl-option-o]\" → https://en.wikipedia.org/w/index.php?title=Special%3AUserLogin&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r26] input[type=checkbox][role=button] \"Personal tools\"\n- [r27] a \"Donate\" → https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en\n- [r28] a \"You are encouraged to create an account and log in; however, it is not mandatory\" → https://en.wikipedia.org/w/index.php?title=Special%3ACreateAccount&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r29] a \"You're encouraged to log in; however, it's not mandatory. [ctrl-option-o]\" → https://en.wikipedia.org/w/index.php?title=Special%3AUserLogin&returnto=Chromium+%28web+browser%29&experiments%5B0%5D=we-1-8-account-creation-no-desktop-benefits%3Aunsampled\n- [r30] button \"Move Contents to sidebar\"\n- [r31] button \"Hide Contents\"\n- [r32] a \"(Top)\" → #\n- [r33] a \"Licensing\" → #Licensing\n- [r34] a \"Differences from Google Chrome\" → #Differences_from_Google_Chrome\n- [r35] button \"Toggle Differences from Google Chrome subsection\"\n- [r36] a \"Features\" → #Features\n- [r37] a \"Branding and licensing\" → #Branding_and_licensing\n- [r38] a \"Development\" → #Development\n- [r39] button \"Toggle Development subsection\"\n- [r40] a \"Contributors\" → #Contributors\n- [r41] a \"Architecture\" → #Architecture\n- [r42] a \"Programming languages\" → #Programming_languages\n- [r43] a \"Logistics\" → #Logistics\n- [r44] a \"History\" → #History\n- [r45] button \"Toggle History subsection\"\n- [r46] a \"2008 to 2010\" → #2008_to_2010\n- [r47] a \"2011\" → #2011\n- [r48] a \"Since 2012\" → #Since_2012\n- [r49] a \"Third-party ports\" → #Third-party_ports\n- [r50] a \"Browsers based on Chromium\" → #Browsers_based_on_Chromium"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "D00-gh-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://github.com/microsoft/vscode",
+    "action": "navigate"
+   },
+   "ms": 8847,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://github.com/microsoft/vscode",
+     "action": "navigate",
+     "state_id": "bdcfd7a2-39fa-4f9c-a898-957fc71d7db0",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-bdcfd7a2-39fa-4f9c-a898-957fc71d7db0.json",
+     "preview": "navigated",
+     "final_url": "https://github.com/microsoft/vscode."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "D01-T-BROWSE-31-engine",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://github.com/microsoft/vscode",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown"
+    }
+   },
+   "ms": 1559,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://github.com/microsoft/vscode",
+     "action": "extract",
+     "state_id": "e9250655-9300-4079-b0ab-cdf08b39bb29",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-e9250655-9300-4079-b0ab-cdf08b39bb29.json",
+     "preview": "## Visual Studio Code - Open Source (\"Code - OSS\")\n\n[![Feature Requests](https://camo.githubusercontent.com/4c8b8bc6eb4db5068056f781db2a63254ebd4fc7cc648287e0ff599434dea499/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f666561747572652d726571756573742e737667)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc) [![Bugs](https://camo.githubusercontent.com/e4c8c6f566765bd98f4bbbc880cfbb353cbabe574ada3ec23db83c307dad1529/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f6275672e737667)](https://github.com/microsoft/vscode/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3Abug) [![Gitter](https://camo.githubusercontent.com/e058a490c16d8ad79a43645498dd9e928fe1c19e86ffcbf962428049436ba979/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f636861742d6f6e2532306769747465722d79656c6c6f772e737667)](https://gitter.im/Microsoft/vscode)\n\n## The Repository\n\nThis repository (\" `Code - OSS` \") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com/) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).\n\n## Visual Studio Code\n\n[![VS Code in action](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)\n\n[Visual Studio Code](https://code.visualstudio.com/) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).\n\n[Visual Studio Code](https://code.visualstudio.com/) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.\n\nVisual Studio Code is updated monthly with new features and bug fixes\n…[truncated by lasso]",
+     "title": "microsoft/vscode: Visual Studio Code",
+     "final_url": "https://github.com/microsoft/vscode",
+     "byline": "microsoft",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "## Visual Studio Code - Open Source (\"Code - OSS\")\n\n[![Feature Requests](https://camo.githubusercontent.com/4c8b8bc6eb4db5068056f781db2a63254ebd4fc7cc648287e0ff599434dea499/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f666561747572652d726571756573742e737667)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc) [![Bugs](https://camo.githubusercontent.com/e4c8c6f566765bd98f4bbbc880cfbb353cbabe574ada3ec23db83c307dad1529/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f6275672e737667)](https://github.com/microsoft/vscode/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3Abug) [![Gitter](https://camo.githubusercontent.com/e058a490c16d8ad79a43645498dd9e928fe1c19e86ffcbf962428049436ba979/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f636861742d6f6e2532306769747465722d79656c6c6f772e737667)](https://gitter.im/Microsoft/vscode)\n\n## The Repository\n\nThis repository (\" `Code - OSS` \") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com/) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).\n\n## Visual Studio Code\n\n[![VS Code in action](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)\n\n[Visual Studio Code](https://code.visualstudio.com/) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).\n\n[Visual Studio Code](https://code.visualstudio.com/) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.\n\nVisual Studio Code is updated monthly with new features and bug fixes\n…[truncated by lasso]"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "E01-T-BROWSE-33-extract-no-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://example.org",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown"
+    }
+   },
+   "ms": 2677,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://example.org",
+     "action": "extract",
+     "state_id": "28a2ba00-03d6-4bf8-9754-564802c50c2a",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-28a2ba00-03d6-4bf8-9754-564802c50c2a.json",
+     "preview": "## Visual Studio Code - Open Source (\"Code - OSS\")\n\n[![Feature Requests](https://camo.githubusercontent.com/4c8b8bc6eb4db5068056f781db2a63254ebd4fc7cc648287e0ff599434dea499/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f666561747572652d726571756573742e737667)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc) [![Bugs](https://camo.githubusercontent.com/e4c8c6f566765bd98f4bbbc880cfbb353cbabe574ada3ec23db83c307dad1529/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f6275672e737667)](https://github.com/microsoft/vscode/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3Abug) [![Gitter](https://camo.githubusercontent.com/e058a490c16d8ad79a43645498dd9e928fe1c19e86ffcbf962428049436ba979/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f636861742d6f6e2532306769747465722d79656c6c6f772e737667)](https://gitter.im/Microsoft/vscode)\n\n## The Repository\n\nThis repository (\" `Code - OSS` \") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com/) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).\n\n## Visual Studio Code\n\n[![VS Code in action](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)\n\n[Visual Studio Code](https://code.visualstudio.com/) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).\n\n[Visual Studio Code](https://code.visualstudio.com/) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.\n\nVisual Studio Code is updated monthly with new features and bug fixes\n…[truncated by lasso]",
+     "title": "microsoft/vscode: Visual Studio Code",
+     "final_url": "https://example.org",
+     "byline": "microsoft",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "## Visual Studio Code - Open Source (\"Code - OSS\")\n\n[![Feature Requests](https://camo.githubusercontent.com/4c8b8bc6eb4db5068056f781db2a63254ebd4fc7cc648287e0ff599434dea499/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f666561747572652d726571756573742e737667)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc) [![Bugs](https://camo.githubusercontent.com/e4c8c6f566765bd98f4bbbc880cfbb353cbabe574ada3ec23db83c307dad1529/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f6d6963726f736f66742f7673636f64652f6275672e737667)](https://github.com/microsoft/vscode/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3Abug) [![Gitter](https://camo.githubusercontent.com/e058a490c16d8ad79a43645498dd9e928fe1c19e86ffcbf962428049436ba979/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f636861742d6f6e2532306769747465722d79656c6c6f772e737667)](https://gitter.im/Microsoft/vscode)\n\n## The Repository\n\nThis repository (\" `Code - OSS` \") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com/) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).\n\n## Visual Studio Code\n\n[![VS Code in action](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)](https://private-user-images.githubusercontent.com/1908215/595962420-56af271c-949d-454c-a3ea-16188c063414.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODcwNTI0MDcsIm5iZiI6MTc4NzA1MjEwNywicGF0aCI6Ii8xOTA4MjE1LzU5NTk2MjQyMC01NmFmMjcxYy05NDlkLTQ1NGMtYTNlYS0xNjE4OGMwNjM0MTQucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI2MDgxOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNjA4MThUMTEyMTQ3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9YjU2YzVhNjAwZWU0ODc2ZWU0ZjliZjE3YzAyZDcwMTU2MWFjYmE5MzEzYmQ2YWZhOTI0ZGFkYWQ1ZTUzNjI3ZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmcmVzcG9uc2UtY29udGVudC10eXBlPWltYWdlJTJGcG5nIn0.R_kDc3MQie7A6fa5p_MWxYLQI5ukwG4rhjnmmID0Rt4)\n\n[Visual Studio Code](https://code.visualstudio.com/) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).\n\n[Visual Studio Code](https://code.visualstudio.com/) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.\n\nVisual Studio Code is updated monthly with new features and bug fixes\n…[truncated by lasso]"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "F01-T-BROWSE-14-steps",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "navigate",
+    "options": {
+     "steps": [
+      {
+       "action": "navigate",
+       "label": "go"
+      },
+      {
+       "action": "extract",
+       "options": {
+        "extract_mode": "markdown"
+       },
+       "label": "read",
+       "expect": {
+        "text": "books",
+        "timeout_ms": 15000
+       }
+      }
+     ]
+    }
+   },
+   "ms": 17865,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": {
+     "url": "",
+     "action": "chain",
+     "state_id": "62c14f11-d2ca-4311-8074-eef092103f1d",
+     "preview": "{\"actions_and_results\":[{\"step\":{\"action\":\"navigate\",\"label\":\"go\"},\"results\":[{\"action\":\"navigate\",\"outcome\":\"worked\",\"preview\":\"navigated\",\"state_id\":\"633be0d6-9566-45db-a5e7-0945e1b55eec\",\"content_path\":\"/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-633be0d6-9566-45db-a5e7-0945e1b55eec.json\",\"duration_ms\":995}]},{\"step\":{\"action\":\"extract\",\"expect\":{\"text\":\"books\",\"timeout_ms\":15000},\"label\":\"read\"},\"results\":[{\"action\":\"extract\",\"outcome\":\"didnt\",\"preview\":\"## Latest page snapshot\\nuid=18_0 RootWebArea \\\"All products | Books to Scrape - Sandbox\\\" url=\\\"https://books.toscrape.com/\\\"\\n  uid=18_1 banner\\n    uid=18_2 link \\\"Books to Scrape\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n      uid=18_3 StaticText \\\"Books to Scrape\\\"\\n    uid=18_4 StaticText \\\" We love being scraped!\\\"\\n  uid=18_5 link \\\"Home\\\" url=\\\"https://books.toscrape.com/index.html\\\"\\n    uid=18_6 StaticText \\\"Home\\\"\\n  uid=18_7 StaticText \\\"/ \\\"\\n  uid=18_8 StaticText \\\"All products\\\"\\n  uid=18_9 complementary\\n    uid=18_10 link \\\"Books\\\" url=\\\"https://books.toscrape.com/catalogue/category/books_1/index.html\\\"\\n      uid=18_11 StaticText \\\"Books\\\"\\n    uid=18_12 link \\\"Travel\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\\\"\\n      uid=18_13 StaticText \\\"Travel\\\"\\n    uid=18_14 link \\\"Mystery\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\\\"\\n      uid=18_15 StaticText \\\"Mystery\\\"\\n    uid=18_16 link \\\"Historical Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\\\"\\n      uid=18_17 StaticText \\\"Historical Fiction\\\"\\n    uid=18_18 link \\\"Sequential Art\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\\\"\\n      uid=18_19 StaticText \\\"Sequential Art\\\"\\n    uid=18_20 link \\\"Classics\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\\\"\\n      uid=18_21 StaticText \\\"Classics\\\"\\n    uid=18_22 link \\\"Philosophy\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\\\"\\n      uid=18_23 StaticText \\\"Philosophy\\\"\\n    uid=18_24 link \\\"Romance\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\\\"\\n      uid=18_25 StaticText \\\"Romance\\\"\\n    uid=18_26 link \\\"Womens Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\\\"\\n      uid=18_27 StaticText \\\"Womens Fiction\\\"\\n    uid=18_28 link \\\"Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\\\"\\n      uid=18_29 StaticText \\\"Fiction\\\"\\n    uid=18_30 link \\\"Childrens\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\\\"\\n      uid=18_31 StaticText \\\"Childrens\\\"\\n    uid=18_32 link \\\"Religion\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\\\"\\n      uid=18_33 StaticText \\\"Religion\\\"\\n    uid=18_34 link \\\"Nonfiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\\\"\\n      uid=18_35 StaticText \\\"Nonfiction\\\"\\n    uid=18_36 link \\\"Music\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\\\"\\n      uid=18_37 StaticText \\\"Music\\\"\\n    uid=18_38 link \\\"Default\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\\\"\\n      uid=18_39 StaticText \\\"Default\\\"\\n    uid=18_40 link \\\"Science Fiction\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\\\"\\n      uid=18_41 StaticText \\\"Science Fiction\\\"\\n    uid=18_42 link \\\"Sports and Games\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\\\"\\n      uid=18_43 StaticText \\\"Sports and Games\\\"\\n    uid=18_44 link \\\"Add a comment\\\" url=\\\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\\\"\\n      uid=18_45 StaticText \\\"Add a comment\\\"\\n    uid=18_46 link \\\"Fantasy\\\" url=\\\"https://book\n…[truncated by lasso]",
+     "stopped_at": {
+      "step_index": 1,
+      "reason": "failed_postcondition",
+      "failed_action": "extract",
+      "detail": "expect failed: {\"text\":\"books\",\"timeout_ms\":15000}"
+     },
+     "chain": {
+      "actions_and_results": [
+       {
+        "step": {
+         "action": "navigate",
+         "label": "go"
+        },
+        "results": [
+         {
+          "action": "navigate",
+          "outcome": "worked",
+          "preview": "navigated",
+          "state_id": "633be0d6-9566-45db-a5e7-0945e1b55eec",
+          "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-633be0d6-9566-45db-a5e7-0945e1b55eec.json",
+          "duration_ms": 995
+         }
+        ]
+       },
+       {
+        "step": {
+         "action": "extract",
+         "expect": {
+          "text": "books",
+          "timeout_ms": 15000
+         },
+         "label": "read"
+        },
+        "results": [
+         {
+          "action": "extract",
+          "outcome": "didnt",
+          "preview": "## Latest page snapshot\nuid=18_0 RootWebArea \"All products | Books to Scrape - Sandbox\" url=\"https://books.toscrape.com/\"\n  uid=18_1 banner\n    uid=18_2 link \"Books to Scrape\" url=\"https://books.toscrape.com/index.html\"\n      uid=18_3 StaticText \"Books to Scrape\"\n    uid=18_4 StaticText \" We love being scraped!\"\n  uid=18_5 link \"Home\" url=\"https://books.toscrape.com/index.html\"\n    uid=18_6 StaticText \"Home\"\n  uid=18_7 StaticText \"/ \"\n  uid=18_8 StaticText \"All products\"\n  uid=18_9 complementary\n    uid=18_10 link \"Books\" url=\"https://books.toscrape.com/catalogue/category/books_1/index.html\"\n      uid=18_11 StaticText \"Books\"\n    uid=18_12 link \"Travel\" url=\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\"\n      uid=18_13 StaticText \"Travel\"\n    uid=18_14 link \"Mystery\" url=\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\"\n      uid=18_15 StaticText \"Mystery\"\n    uid=18_16 link \"Historical Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\"\n      uid=18_17 StaticText \"Historical Fiction\"\n    uid=18_18 link \"Sequential Art\" url=\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\"\n      uid=18_19 StaticText \"Sequential Art\"\n    uid=18_20 link \"Classics\" url=\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\"\n      uid=18_21 StaticText \"Classics\"\n    uid=18_22 link \"Philosophy\" url=\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\"\n      uid=18_23 StaticText \"Philosophy\"\n    uid=18_24 link \"Romance\" url=\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\"\n      uid=18_25 StaticText \"Romance\"\n    uid=18_26 link \"Womens Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\"\n      uid=18_27 StaticText \"Womens Fiction\"\n    uid=18_28 link \"Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\"\n      uid=18_29 StaticText \"Fiction\"\n    uid=18_30 link \"Childrens\" url=\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\"\n      uid=18_31 StaticText \"Childrens\"\n    uid=18_32 link \"Religion\" url=\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\"\n      uid=18_33 StaticText \"Religion\"\n    uid=18_34 link \"Nonfiction\" url=\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\"\n      uid=18_35 StaticText \"Nonfiction\"\n    uid=18_36 link \"Music\" url=\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\"\n      uid=18_37 StaticText \"Music\"\n    uid=18_38 link \"Default\" url=\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\"\n      uid=18_39 StaticText \"Default\"\n    uid=18_40 link \"Science Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\"\n      uid=18_41 StaticText \"Science Fiction\"\n    uid=18_42 link \"Sports and Games\" url=\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\"\n      uid=18_43 StaticText \"Sports and Games\"\n    uid=18_44 link \"Add a comment\" url=\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\"\n      uid=18_45 StaticText \"Add a comment\"\n    uid=18_46 link \"Fantasy\" url=\"https://books.toscrape.com/catalogue/category/books/fantasy_19/index.html\"\n      uid=18_47 StaticText \"Fantasy\"\n    uid=18_48 link \"New Adult\" url=\"https://books.toscrape.com/catalogue/category/books/new-adult_20/index.html\"\n      uid=18_49 StaticText \"New Adult\"\n    uid=18_50 link \"Young Adult\" url=\"https://books.toscrape.com/catalogue/category/books/young-adult_21/index.html\"\n      uid=18_51 StaticText \"Young Adult\"\n    uid=18_52 link \"Science\" url=\"https://books.toscrape.com/catalogue/category/books/science_22/index.html\"\n      uid=18_53 StaticText \"Science\"\n    uid=18_54 link \"Poetry\" url=\"https://books.toscrape.com/catalogue/category/books/poetry_23/index.html\"\n      uid=18_55 StaticText \"Poetry\"\n    uid=18_56 link \"Paranormal\" url=\"https://books.toscrape.com/catalogue/category/books/paranormal_24/index.html\"\n      uid=18_57 StaticText \"Paranormal\"\n    uid=18_58 link \"Art\" url=\"https://books.toscrape.com/catalogue/category/books/art_25/index.html\"\n      uid=18_59 StaticText \"Art\"\n    uid=18_60 link \"Psychology\" url=\"https://books.toscrape.com/catalogue/category/books/psychology_26/index.html\"\n      uid=18_61 StaticText \"Psychology\"\n    uid=18_62 link \"Autobiography\" url=\"https://books.toscrape.com/catalogue/category/books/autobiography_27/index.html\"\n      uid=18_63 StaticText \"Autobiography\"\n    uid=18_64 link \"Parenting\" url=\"https://books.toscrape.com/catalogue/category/books/parenting_28/index.html\"\n      uid=18_65 StaticText \"Parenting\"\n    uid=18_66 link \"Adult Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/adult-fiction_29/index.html\"\n      uid=18_67 StaticText \"Adult Fiction\"\n    uid=18_68 link \"Humor\" url=\"https://books.toscrape.com/catalogue/category/books/humor_30/index.html\"\n      uid=18_69 StaticText \"Humor\"\n    uid=18_70 link \"Horror\" url=\"https://books.toscrape.com/catalogue/category/books/horror_31/index.html\"\n      uid=18_71 StaticText \"Horror\"\n    uid=18_72 link \"History\" url=\"https://books.toscrape.com/catalogue/category/books/history_32/index.html\"\n      uid=18_73 StaticText \"History\"\n    uid=18_74 link \"Food and Drink\" url=\"https://books.toscrape.com/catalogue/category/books/food-and-drink_33/index.html\"\n      uid=18_75 StaticText \"Food and Drink\"\n    uid=18_76 link \"Christian Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/christian-fiction_34/index.html\"\n      uid=18_77 StaticText \"Christian Fiction\"\n    uid=18_78 link \"Business\" url=\"https://books.toscrape.com/catalogue/category/books/business_35/index.html\"\n      uid=18_79 StaticText \"Business\"\n    uid=18_80 link \"Biography\" url=\"https://books.toscrape.com/catalogue/category/books/biography_36/index.html\"\n      uid=18_81 StaticText \"Biography\"\n    uid=18_82 link \"Thriller\" url=\"https://books.toscrape.com/catalogue/category/books/thriller_37/index.html\"\n      uid=18_83 StaticText \"Thriller\"\n    uid=18_84 link \"Contemporary\" url=\"https://books.toscrape.com/catalogue/category/books/contemporary_38/index.html\"\n      uid=18_85 StaticText \"Contemporary\"\n    uid=18_86 link \"Spirituality\" url=\"https://books.toscrape.com/catalogue/category/books/spirituality_39/index.html\"\n      uid=18_87 StaticText \"Spirituality\"\n    uid=18_88 link \"Academic\" url=\"https://books.toscrape.com/catalogue/category/books/academic_40/index.html\"\n      uid=18_89 StaticText \"Academic\"\n    uid=18_90 link \"Self Help\" url=\"https://books.toscrape.com/catalogue/category/books/self-help_41/index.html\"\n      uid=18_91 StaticText \"Self Help\"\n    uid=18_92 link \"Historical\" url=\"https://books.toscrape.com/catalogue/category/books/historical_42/index.html\"\n      uid=18_93 StaticText \"Historical\"\n    uid=18_94 link \"Christian\" url=\"https://books.toscrape.com/catalogue/category/books/christian_43/index.html\"\n      uid=18_95 StaticText \"Christian\"\n    uid=18_96 link \"Suspense\" url=\"https://books.toscrape.com/catalogue/category/books/suspense_44/index.html\"\n      uid=18_97 StaticText \"Suspense\"\n    uid=18_98 link \"Short Stories\" url=\"https://books.toscrape.com/catalogue/category/books/short-stories_45/index.html\"\n      uid=18_99 StaticText \"Short Stories\"\n    uid=18_100 link \"Novels\" url=\"https://books.toscrape.com/catalogue/category/books/novels_46/index.html\"\n      uid=18_101 StaticText \"Novels\"\n    uid=18_102 link \"Health\" url=\"https://books.toscrape.com/catalogue/category/books/health_47/index.html\"\n      uid=18_103 StaticText \"Health\"\n    uid=18_104 link \"Politics\" url=\"https://books.toscrape.com/catalogue/category/books/politics_48/index.html\"\n      uid=18_105 StaticText \"Politics\"\n    uid=18_106 link \"Cultural\" url=\"https://books.toscrape.com/catalogue/category/books/cultural_49/index.html\"\n      uid=18_107 StaticText \"Cultural\"\n    uid=18_108 link \"Erotica\" url=\"https://books.toscrape.com/catalogue/category/books/erotica_50/index.html\"\n      uid=18_109 StaticText \"Erotica\"\n    uid=18_110 link \"Crime\" url=\"https://books.toscrape.com/catalogue/category/books/crime_51/index.html\"\n      uid=18_111 StaticText \"Crime\"\n  uid=18_112 heading \"All products\" level=\"1\"\n  uid=18_113 form\n    uid=18_114 StaticText \"1000\"\n    uid=18_115 StaticText \" results - showing \"\n    uid=18_116 StaticText \"1\"\n    uid=18_117 StaticText \" to \"\n    uid=18_118 StaticText \"20\"\n    uid=18_119 StaticText \".\"\n  uid=18_120 alert atomic live=\"assertive\" relevant=\"additions text\"\n    uid=18_121 StaticText \"Warning!\"\n    uid=18_122 StaticText \" This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\"\n  uid=18_123 link \"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=18_124 image \"A Light in the Attic\" url=\"https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_125 link \"A Light in the ...\" description=\"A Light in the Attic\" url=\"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html\"\n    uid=18_126 StaticText \"A Light in the ...\"\n  uid=18_127 StaticText \"£51.77\"\n  uid=18_7 StaticText \"\"\n  uid=18_128 StaticText \" In stock\"\n  uid=18_129 form\n    uid=18_130 button \"Add to basket\"\n  uid=18_131 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=18_132 image \"Tipping the Velvet\" url=\"https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_133 link \"Tipping the Velvet\" url=\"https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html\"\n    uid=18_134 StaticText \"Tipping the Velvet\"\n  uid=18_135 StaticText \"£53.74\"\n  uid=18_7 StaticText \"\"\n  uid=18_136 StaticText \" In stock\"\n  uid=18_137 form\n    uid=18_138 button \"Add to basket\"\n  uid=18_139 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=18_140 image \"Soumission\" url=\"https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_141 link \"Soumission\" url=\"https://books.toscrape.com/catalogue/soumission_998/index.html\"\n    uid=18_142 StaticText \"Soumission\"\n  uid=18_143 StaticText \"£50.10\"\n  uid=18_7 StaticText \"\"\n  uid=18_144 StaticText \" In stock\"\n  uid=18_145 form\n    uid=18_146 button \"Add to basket\"\n  uid=18_147 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=18_148 image \"Sharp Objects\" url=\"https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_149 link \"Sharp Objects\" url=\"https://books.toscrape.com/catalogue/sharp-objects_997/index.html\"\n    uid=18_150 StaticText \"Sharp Objects\"\n  uid=18_151 StaticText \"£47.82\"\n  uid=18_7 StaticText \"\"\n  uid=18_152 StaticText \" In stock\"\n  uid=18_153 form\n    uid=18_154 button \"Add to basket\"\n  uid=18_155 link \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=18_156 image \"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_157 link \"Sapiens: A Brief History ...\" description=\"Sapiens: A Brief History of Humankind\" url=\"https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html\"\n    uid=18_158 StaticText \"Sapiens: A Brief History ...\"\n  uid=18_159 StaticText \"£54.23\"\n  uid=18_7 StaticText \"\"\n  uid=18_160 StaticText \" In stock\"\n  uid=18_161 form\n    uid=18_162 button \"Add to basket\"\n  uid=18_163 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=18_164 image \"The Requiem Red\" url=\"https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_165 link \"The Requiem Red\" url=\"https://books.toscrape.com/catalogue/the-requiem-red_995/index.html\"\n    uid=18_166 StaticText \"The Requiem Red\"\n  uid=18_167 StaticText \"£22.65\"\n  uid=18_7 StaticText \"\"\n  uid=18_168 StaticText \" In stock\"\n  uid=18_169 form\n    uid=18_170 button \"Add to basket\"\n  uid=18_171 link \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=18_172 image \"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_173 link \"The Dirty Little Secrets ...\" description=\"The Dirty Little Secrets of Getting Your Dream Job\" url=\"https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html\"\n    uid=18_174 StaticText \"The Dirty Little Secrets ...\"\n  uid=18_175 StaticText \"£33.34\"\n  uid=18_7 StaticText \"\"\n  uid=18_176 StaticText \" In stock\"\n  uid=18_177 form\n    uid=18_178 button \"Add to basket\"\n  uid=18_179 link \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=18_180 image \"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_181 link \"The Coming Woman: A ...\" description=\"The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull\" url=\"https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html\"\n    uid=18_182 StaticText \"The Coming Woman: A ...\"\n  uid=18_183 StaticText \"£17.93\"\n  uid=18_7 StaticText \"\"\n  uid=18_184 StaticText \" In stock\"\n  uid=18_185 form\n    uid=18_186 button \"Add to basket\"\n  uid=18_187 link \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=18_188 image \"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_189 link \"The Boys in the ...\" description=\"The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics\" url=\"https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html\"\n    uid=18_190 StaticText \"The Boys in the ...\"\n  uid=18_191 StaticText \"£22.60\"\n  uid=18_7 StaticText \"\"\n  uid=18_192 StaticText \" In stock\"\n  uid=18_193 form\n    uid=18_194 button \"Add to basket\"\n  uid=18_195 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=18_196 image \"The Black Maria\" url=\"https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_197 link \"The Black Maria\" url=\"https://books.toscrape.com/catalogue/the-black-maria_991/index.html\"\n    uid=18_198 StaticText \"The Black Maria\"\n  uid=18_199 StaticText \"£52.15\"\n  uid=18_7 StaticText \"\"\n  uid=18_200 StaticText \" In stock\"\n  uid=18_201 form\n    uid=18_202 button \"Add to basket\"\n  uid=18_203 link \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=18_204 image \"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_205 link \"Starving Hearts (Triangular Trade ...\" description=\"Starving Hearts (Triangular Trade Trilogy, #1)\" url=\"https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html\"\n    uid=18_206 StaticText \"Starving Hearts (Triangular Trade ...\"\n  uid=18_207 StaticText \"£13.99\"\n  uid=18_7 StaticText \"\"\n  uid=18_208 StaticText \" In stock\"\n  uid=18_209 form\n    uid=18_210 button \"Add to basket\"\n  uid=18_211 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=18_212 image \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_213 link \"Shakespeare's Sonnets\" url=\"https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html\"\n    uid=18_214 StaticText \"Shakespeare's Sonnets\"\n  uid=18_215 StaticText \"£20.66\"\n  uid=18_7 StaticText \"\"\n  uid=18_216 StaticText \" In stock\"\n  uid=18_217 form\n    uid=18_218 button \"Add to basket\"\n  uid=18_219 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=18_220 image \"Set Me Free\" url=\"https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_221 link \"Set Me Free\" url=\"https://books.toscrape.com/catalogue/set-me-free_988/index.html\"\n    uid=18_222 StaticText \"Set Me Free\"\n  uid=18_223 StaticText \"£17.46\"\n  uid=18_7 StaticText \"\"\n  uid=18_224 StaticText \" In stock\"\n  uid=18_225 form\n    uid=18_226 button \"Add to basket\"\n  uid=18_227 link \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=18_228 image \"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_229 link \"Scott Pilgrim's Precious Little ...\" description=\"Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)\" url=\"https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html\"\n    uid=18_230 StaticText \"Scott Pilgrim's Precious Little ...\"\n  uid=18_231 StaticText \"£52.29\"\n  uid=18_7 StaticText \"\"\n  uid=18_232 StaticText \" In stock\"\n  uid=18_233 form\n    uid=18_234 button \"Add to basket\"\n  uid=18_235 link \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=18_236 image \"Rip it Up and Start Again\" url=\"https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_237 link \"Rip it Up and ...\" description=\"Rip it Up and Start Again\" url=\"https://books.toscrape.com/catalogue/rip-it-up-and-start-again_986/index.html\"\n    uid=18_238 StaticText \"Rip it Up and ...\"\n  uid=18_239 StaticText \"£35.02\"\n  uid=18_7 StaticText \"\"\n  uid=18_240 StaticText \" In stock\"\n  uid=18_241 form\n    uid=18_242 button \"Add to basket\"\n  uid=18_243 link \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=18_244 image \"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/media/cache/54/60/54607fe8945897cdcced0044103b10b6.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_245 link \"Our Band Could Be ...\" description=\"Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991\" url=\"https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html\"\n    uid=18_246 StaticText \"Our Band Could Be ...\"\n  uid=18_247 StaticText \"£57.25\"\n  uid=18_7 StaticText \"\"\n  uid=18_248 StaticText \" In stock\"\n  uid=18_249 form\n    uid=18_250 button \"Add to basket\"\n  uid=18_251 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=18_252 image \"Olio\" url=\"https://books.toscrape.com/media/cache/55/33/553310a7162dfbc2c6d19a84da0df9e1.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_253 link \"Olio\" url=\"https://books.toscrape.com/catalogue/olio_984/index.html\"\n    uid=18_254 StaticText \"Olio\"\n  uid=18_255 StaticText \"£23.88\"\n  uid=18_7 StaticText \"\"\n  uid=18_256 StaticText \" In stock\"\n  uid=18_257 form\n    uid=18_258 button \"Add to basket\"\n  uid=18_259 link \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=18_260 image \"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/media/cache/09/a3/09a3aef48557576e1a85ba7efea8ecb7.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_261 link \"Mesaerion: The Best Science ...\" description=\"Mesaerion: The Best Science Fiction Stories 1800-1849\" url=\"https://books.toscrape.com/catalogue/mesaerion-the-best-science-fiction-stories-1800-1849_983/index.html\"\n    uid=18_262 StaticText \"Mesaerion: The Best Science ...\"\n  uid=18_263 StaticText \"£37.59\"\n  uid=18_7 StaticText \"\"\n  uid=18_264 StaticText \" In stock\"\n  uid=18_265 form\n    uid=18_266 button \"Add to basket\"\n  uid=18_267 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=18_268 image \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/media/cache/0b/bc/0bbcd0a6f4bcd81ccb1049a52736406e.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_269 link \"Libertarianism for Beginners\" url=\"https://books.toscrape.com/catalogue/libertarianism-for-beginners_982/index.html\"\n    uid=18_270 StaticText \"Libertarianism for Beginners\"\n  uid=18_271 StaticText \"£51.33\"\n  uid=18_7 StaticText \"\"\n  uid=18_272 StaticText \" In stock\"\n  uid=18_273 form\n    uid=18_274 button \"Add to basket\"\n  uid=18_275 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=18_276 image \"It's Only the Himalayas\" url=\"https://books.toscrape.com/media/cache/27/a5/27a53d0bb95bdd88288eaf66c9230d7e.jpg\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_7 StaticText \"\"\n  uid=18_277 link \"It's Only the Himalayas\" url=\"https://books.toscrape.com/catalogue/its-only-the-himalayas_981/index.html\"\n    uid=18_278 StaticText \"It's Only the Himalayas\"\n  uid=18_279 StaticText \"£45.17\"\n  uid=18_7 StaticText \"\"\n  uid=18_280 StaticText \" In stock\"\n  uid=18_281 form\n    uid=18_282 button \"Add to basket\"\n  uid=18_283 StaticText \"Page 1 of 50\"\n  uid=18_284 link \"next\" url=\"https://books.toscrape.com/catalogue/page-2.html\"\n    uid=18_285 StaticText \"next\"\n  uid=18_286 contentinfo\n",
+          "state_id": "62c14f11-d2ca-4311-8074-eef092103f1d",
+          "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-62c14f11-d2ca-4311-8074-eef092103f1d.json",
+          "duration_ms": 309,
+          "expect_check": "failed"
+         }
+        ]
+       }
+      ],
+      "stopped_at": {
+       "step_index": 1,
+       "reason": "failed_postcondition",
+       "failed_action": "extract",
+       "detail": "expect failed: {\"text\":\"books\",\"timeout_ms\":15000}"
+      },
+      "budget_used_ms": 1304
+     }
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp.chain",
+    "error": "expect failed: {\"text\":\"books\",\"timeout_ms\":15000}",
+    "partial_failures": [
+     {
+      "channel": "browse_headless",
+      "error": "expect_failed:{\"text\":\"books\",\"timeout_ms\":15000}",
+      "timestamp": 1787052136420
+     }
+    ],
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "didnt",
+      "error": "expect failed: {\"text\":\"books\",\"timeout_ms\":15000}"
+     }
+    ]
+   }
+  },
+  {
+   "id": "G00-refs2-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "navigate"
+   },
+   "ms": 1063,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "navigate",
+     "state_id": "88fc1a52-040b-4197-abf6-3caa3b7e26e6",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-88fc1a52-040b-4197-abf6-3caa3b7e26e6.json",
+     "preview": "navigated",
+     "final_url": "https://books.toscrape.com/."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "G01-refs2-extract",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown",
+     "include_refs": true
+    }
+   },
+   "ms": 1659,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "extract",
+     "state_id": "bc2f58da-decb-4bb1-8177-8846f2aa7fb0",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-bc2f58da-decb-4bb1-8177-8846f2aa7fb0.json",
+     "preview": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Books to Scrape\" → index.html\n- [r2] a \"Home\" → index.html\n- [r3] a \"Books\" → catalogue/category/books_1/index.html\n- [r4] a \"Travel\" → catalogue/category/books/travel_2/index.html\n- [r5] a \"Mystery\" → catalogue/category/books/mystery_3/index.html\n- [r6] a \"Historical Fiction\" → catalogue/category/books/historical-fiction_4/index.html\n- [r7] a \"Sequential Art\" → catalogue/category/books/sequential-art_5/index.html\n- [r8] a \"Classics\" → catalogue/category/books/classics_6/index.html\n- [r9] a \"Philosophy\" → catalogue/category/books/philosophy_7/index.html\n- [r10] a \"Romance\" → catalogue/category/books/romance_8/index.html\n- [r11] a \"Womens Fiction\" → catalogue/category/books/womens-fiction_9/index.html\n- [r12] a \"Fiction\" → catalogue/category/books/fiction_10/index.html\n- [r13] a \"Childrens\" → catalogue/category/books/childrens_11/index.html\n- [r14] a \"Religion\" → catalogue/category/books/religion_12/index.html\n- [r15] a \"Nonfiction\" → catalogue/category/books/nonfiction_13/index.html\n- [r16] a \"Music\" → catalogue/category/books/music_14/index.html\n- [r17] a \"Default\" → catalogue/category/books/default_15/index.html\n- [r18] a \"Science Fiction\" → catalogue/category/books/science-fiction_16/index.html\n- [r19] a \"Sports and Games\" → catalogue/category/books/sports-and-games_17/index.html\n- [r20] a \"Add a comment\" → catalogue/category/books/add-a-comment_18/index.html\n- [r21] a \"Fantasy\" → catalogue/category/books/fantasy_19/index.html\n- [r22] a \"New Adult\" → catalogue/category/books/new-adult_20/index.html\n- [r23] a \"Young Adult\" → catalogue/category/books/young-adult_21/index.html\n- [r24] a \"Science\" → catalogue/category/books/science_22/index.html\n- [r25] a \"Poetry\" → catalogue/category/books/poetry_23/index.html\n- [r26] a \"Paranormal\" → catalogue/category/books/paranormal_24/index.html\n- [r27] a \"Art\" → catalogue/category/books/art_25/index.html\n- [r28] a \"Psychology\" → catalogue/category/books/psychology_26/index.html\n- [r29] a \"Autobiography\" → catalogue/category/books/autobiography_27/index.html\n- [r30] a \"Parenting\" → catalogue/category/books/parenting_28/index.html\n- [r31] a \"Adult Fiction\" → catalogue/category/books/adult-fiction_29/index.html\n- [r32] a \"Humor\" → catalogue/category/books/humor_30/index.html\n- [r33] a \"Horror\" → catalogue/category/books/horror_31/index.html\n- [r34] a \"History\" → catalogue/category/books/history_32/index.html\n- [r35] a \"Food and Drink\" → catalogue/category/books/food-and-drink_33/index.html\n- [r36] a \"Christian Fiction\" → catalogue/category/books/christian-fiction_34/index.html\n- [r37] a \"Business\" → catalogue/category/books/business_35/index.html\n- [r38] a \"Biography\" → catalogue/category/books/biography_36/index.html\n- [r39] a \"Thriller\" → catalogue/category/books/thriller_37/index.html\n- [r40] a \"Contemporary\" → catalogue/category/books/contemporary_38/index.html\n- [r41] a \"Spirituality\" → catalogue/category/books/spirituality_39/index.html\n- [r42] a \"Academic\" → catalogue/category/books/academic_40/index.html\n- [r43] a \"Self Help\" → catalogue/category/books/self-help_41/index.html\n- [r44] a \"Historical\" → catalogue/category/books/historical_42/index.html\n- [r45] a \"Christian\" → catalogue/category/books/christian_43/index.html\n- [r46] a \"Suspense\" → catalogue/category/books/suspense_44/index.html\n- [r47] a \"Short Stories\" → catalogue/category/books/short-stories_45/index.html\n- [r48] a \"Novels\" → catalogue/category/books/novels_46/index.html\n- [r49] a \"Health\" → catalogue/category/books/health_47/index.html\n- [r50] a \"Politics\" → catalogue/category/books/politics_48/index.html",
+     "title": "Books to Scrape - Sandbox",
+     "final_url": "https://books.toscrape.com/",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "- [Home](https://books.toscrape.com/index.html)\n- All products\n\n## All products\n\n> [!warning] Warning\n> **Warning!** This is a demo website for web scraping purposes. Prices and ratings here were randomly assigned and have no real meaning.\n\n1. [![A Light in the Attic](https://books.toscrape.com/media/cache/2c/da/2cdad67c44b002e7ead0cc35693c0e8b.jpg)](https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html)\n\t### A Light in the...\n\t£51.77\n\tIn stock\n2. [![Tipping the Velvet](https://books.toscrape.com/media/cache/26/0c/260c6ae16bce31c8f8c95daddd9f4a1c.jpg)](https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html)\n\t### Tipping the Velvet\n\t£53.74\n\tIn stock\n3. [![Soumission](https://books.toscrape.com/media/cache/3e/ef/3eef99c9d9adef34639f510662022830.jpg)](https://books.toscrape.com/catalogue/soumission_998/index.html)\n\t### Soumission\n\t£50.10\n\tIn stock\n4. [![Sharp Objects](https://books.toscrape.com/media/cache/32/51/3251cf3a3412f53f339e42cac2134093.jpg)](https://books.toscrape.com/catalogue/sharp-objects_997/index.html)\n\t### Sharp Objects\n\t£47.82\n\tIn stock\n5. [![Sapiens: A Brief History of Humankind](https://books.toscrape.com/media/cache/be/a5/bea5697f2534a2f86a3ef27b5a8c12a6.jpg)](https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html)\n\t### Sapiens: A Brief History...\n\t£54.23\n\tIn stock\n6. [![The Requiem Red](https://books.toscrape.com/media/cache/68/33/68339b4c9bc034267e1da611ab3b34f8.jpg)](https://books.toscrape.com/catalogue/the-requiem-red_995/index.html)\n\t### The Requiem Red\n\t£22.65\n\tIn stock\n7. [![The Dirty Little Secrets of Getting Your Dream Job](https://books.toscrape.com/media/cache/92/27/92274a95b7c251fea59a2b8a78275ab4.jpg)](https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html)\n\t### The Dirty Little Secrets...\n\t£33.34\n\tIn stock\n8. [![The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull](https://books.toscrape.com/media/cache/3d/54/3d54940e57e662c4dd1f3ff00c78cc64.jpg)](https://books.toscrape.com/catalogue/the-coming-woman-a-novel-based-on-the-life-of-the-infamous-feminist-victoria-woodhull_993/index.html)\n\t### The Coming Woman: A...\n\t£17.93\n\tIn stock\n9. [![The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics](https://books.toscrape.com/media/cache/66/88/66883b91f6804b2323c8369331cb7dd1.jpg)](https://books.toscrape.com/catalogue/the-boys-in-the-boat-nine-americans-and-their-epic-quest-for-gold-at-the-1936-berlin-olympics_992/index.html)\n\t### The Boys in the...\n\t£22.60\n\tIn stock\n10. [![The Black Maria](https://books.toscrape.com/media/cache/58/46/5846057e28022268153beff6d352b06c.jpg)](https://books.toscrape.com/catalogue/the-black-maria_991/index.html)\n\t### The Black Maria\n\t£52.15\n\tIn stock\n11. [![Starving Hearts (Triangular Trade Trilogy, #1)](https://books.toscrape.com/media/cache/be/f4/bef44da28c98f905a3ebec0b87be8530.jpg)](https://books.toscrape.com/catalogue/starving-hearts-triangular-trade-trilogy-1_990/index.html)\n\t### Starving Hearts (Triangular Trade...\n\t£13.99\n\tIn stock\n12. [![Shakespeare's Sonnets](https://books.toscrape.com/media/cache/10/48/1048f63d3b5061cd2f424d20b3f9b666.jpg)](https://books.toscrape.com/catalogue/shakespeares-sonnets_989/index.html)\n\t### Shakespeare's Sonnets\n\t£20.66\n\tIn stock\n13. [![Set Me Free](https://books.toscrape.com/media/cache/5b/88/5b88c52633f53cacf162c15f4f823153.jpg)](https://books.toscrape.com/catalogue/set-me-free_988/index.html)\n\t### Set Me Free\n\t£17.46\n\tIn stock\n14. [![Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)](https://books.toscrape.com/media/cache/94/b1/94b1b8b244bce9677c2f29ccc890d4d2.jpg)](https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html)\n\t### Scott Pilgrim's Precious Little...\n\t£52.29\n\tIn stock\n15. [![Rip it Up and Start Again](https://books.toscrape.com/media/cache/81/c4/81c4a973364e17d01f217e1188253d5e.jpg)](\n…[truncated by lasso]\n\n## Interactive refs\n\n- [r1] a \"Books to Scrape\" → index.html\n- [r2] a \"Home\" → index.html\n- [r3] a \"Books\" → catalogue/category/books_1/index.html\n- [r4] a \"Travel\" → catalogue/category/books/travel_2/index.html\n- [r5] a \"Mystery\" → catalogue/category/books/mystery_3/index.html\n- [r6] a \"Historical Fiction\" → catalogue/category/books/historical-fiction_4/index.html\n- [r7] a \"Sequential Art\" → catalogue/category/books/sequential-art_5/index.html\n- [r8] a \"Classics\" → catalogue/category/books/classics_6/index.html\n- [r9] a \"Philosophy\" → catalogue/category/books/philosophy_7/index.html\n- [r10] a \"Romance\" → catalogue/category/books/romance_8/index.html\n- [r11] a \"Womens Fiction\" → catalogue/category/books/womens-fiction_9/index.html\n- [r12] a \"Fiction\" → catalogue/category/books/fiction_10/index.html\n- [r13] a \"Childrens\" → catalogue/category/books/childrens_11/index.html\n- [r14] a \"Religion\" → catalogue/category/books/religion_12/index.html\n- [r15] a \"Nonfiction\" → catalogue/category/books/nonfiction_13/index.html\n- [r16] a \"Music\" → catalogue/category/books/music_14/index.html\n- [r17] a \"Default\" → catalogue/category/books/default_15/index.html\n- [r18] a \"Science Fiction\" → catalogue/category/books/science-fiction_16/index.html\n- [r19] a \"Sports and Games\" → catalogue/category/books/sports-and-games_17/index.html\n- [r20] a \"Add a comment\" → catalogue/category/books/add-a-comment_18/index.html\n- [r21] a \"Fantasy\" → catalogue/category/books/fantasy_19/index.html\n- [r22] a \"New Adult\" → catalogue/category/books/new-adult_20/index.html\n- [r23] a \"Young Adult\" → catalogue/category/books/young-adult_21/index.html\n- [r24] a \"Science\" → catalogue/category/books/science_22/index.html\n- [r25] a \"Poetry\" → catalogue/category/books/poetry_23/index.html\n- [r26] a \"Paranormal\" → catalogue/category/books/paranormal_24/index.html\n- [r27] a \"Art\" → catalogue/category/books/art_25/index.html\n- [r28] a \"Psychology\" → catalogue/category/books/psychology_26/index.html\n- [r29] a \"Autobiography\" → catalogue/category/books/autobiography_27/index.html\n- [r30] a \"Parenting\" → catalogue/category/books/parenting_28/index.html\n- [r31] a \"Adult Fiction\" → catalogue/category/books/adult-fiction_29/index.html\n- [r32] a \"Humor\" → catalogue/category/books/humor_30/index.html\n- [r33] a \"Horror\" → catalogue/category/books/horror_31/index.html\n- [r34] a \"History\" → catalogue/category/books/history_32/index.html\n- [r35] a \"Food and Drink\" → catalogue/category/books/food-and-drink_33/index.html\n- [r36] a \"Christian Fiction\" → catalogue/category/books/christian-fiction_34/index.html\n- [r37] a \"Business\" → catalogue/category/books/business_35/index.html\n- [r38] a \"Biography\" → catalogue/category/books/biography_36/index.html\n- [r39] a \"Thriller\" → catalogue/category/books/thriller_37/index.html\n- [r40] a \"Contemporary\" → catalogue/category/books/contemporary_38/index.html\n- [r41] a \"Spirituality\" → catalogue/category/books/spirituality_39/index.html\n- [r42] a \"Academic\" → catalogue/category/books/academic_40/index.html\n- [r43] a \"Self Help\" → catalogue/category/books/self-help_41/index.html\n- [r44] a \"Historical\" → catalogue/category/books/historical_42/index.html\n- [r45] a \"Christian\" → catalogue/category/books/christian_43/index.html\n- [r46] a \"Suspense\" → catalogue/category/books/suspense_44/index.html\n- [r47] a \"Short Stories\" → catalogue/category/books/short-stories_45/index.html\n- [r48] a \"Novels\" → catalogue/category/books/novels_46/index.html\n- [r49] a \"Health\" → catalogue/category/books/health_47/index.html\n- [r50] a \"Politics\" → catalogue/category/books/politics_48/index.html"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "G02-T-REFS-05-ref-click",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "click",
+    "options": {
+     "selectors": {
+      "click": "r1"
+     }
+    }
+   },
+   "ms": 666,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "click",
+     "state_id": "b95cfcd4-8859-45f9-8805-f8c0f4b3e9de",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-b95cfcd4-8859-45f9-8805-f8c0f4b3e9de.json",
+     "preview": "clicked r1 (a via lasso ref)",
+     "final_url": "https://books.toscrape.com/"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "G03-click-verify",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "snapshot"
+   },
+   "ms": 173,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://books.toscrape.com/",
+     "action": "snapshot",
+     "state_id": "0117b981-edf5-4557-b52f-1964c7e45e2c",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-0117b981-edf5-4557-b52f-1964c7e45e2c.json",
+     "preview": "## Latest page snapshot\nuid=21_0 RootWebArea \"All products | Books to Scrape - Sandbox\" url=\"https://books.toscrape.com/index.html\"\n  uid=21_1 banner\n    uid=21_2 link \"Books to Scrape\" url=\"https://books.toscrape.com/index.html\"\n      uid=21_3 StaticText \"Books to Scrape\"\n    uid=21_4 StaticText \" We love being scraped!\"\n  uid=21_5 link \"Home\" url=\"https://books.toscrape.com/index.html\"\n    uid=21_6 StaticText \"Home\"\n  uid=21_7 StaticText \"/ \"\n  uid=21_8 StaticText \"All products\"\n  uid=21_9 complementary\n    uid=21_10 link \"Books\" url=\"https://books.toscrape.com/catalogue/category/books_1/index.html\"\n      uid=21_11 StaticText \"Books\"\n    uid=21_12 link \"Travel\" url=\"https://books.toscrape.com/catalogue/category/books/travel_2/index.html\"\n      uid=21_13 StaticText \"Travel\"\n    uid=21_14 link \"Mystery\" url=\"https://books.toscrape.com/catalogue/category/books/mystery_3/index.html\"\n      uid=21_15 StaticText \"Mystery\"\n    uid=21_16 link \"Historical Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/historical-fiction_4/index.html\"\n      uid=21_17 StaticText \"Historical Fiction\"\n    uid=21_18 link \"Sequential Art\" url=\"https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html\"\n      uid=21_19 StaticText \"Sequential Art\"\n    uid=21_20 link \"Classics\" url=\"https://books.toscrape.com/catalogue/category/books/classics_6/index.html\"\n      uid=21_21 StaticText \"Classics\"\n    uid=21_22 link \"Philosophy\" url=\"https://books.toscrape.com/catalogue/category/books/philosophy_7/index.html\"\n      uid=21_23 StaticText \"Philosophy\"\n    uid=21_24 link \"Romance\" url=\"https://books.toscrape.com/catalogue/category/books/romance_8/index.html\"\n      uid=21_25 StaticText \"Romance\"\n    uid=21_26 link \"Womens Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html\"\n      uid=21_27 StaticText \"Womens Fiction\"\n    uid=21_28 link \"Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/fiction_10/index.html\"\n      uid=21_29 StaticText \"Fiction\"\n    uid=21_30 link \"Childrens\" url=\"https://books.toscrape.com/catalogue/category/books/childrens_11/index.html\"\n      uid=21_31 StaticText \"Childrens\"\n    uid=21_32 link \"Religion\" url=\"https://books.toscrape.com/catalogue/category/books/religion_12/index.html\"\n      uid=21_33 StaticText \"Religion\"\n    uid=21_34 link \"Nonfiction\" url=\"https://books.toscrape.com/catalogue/category/books/nonfiction_13/index.html\"\n      uid=21_35 StaticText \"Nonfiction\"\n    uid=21_36 link \"Music\" url=\"https://books.toscrape.com/catalogue/category/books/music_14/index.html\"\n      uid=21_37 StaticText \"Music\"\n    uid=21_38 link \"Default\" url=\"https://books.toscrape.com/catalogue/category/books/default_15/index.html\"\n      uid=21_39 StaticText \"Default\"\n    uid=21_40 link \"Science Fiction\" url=\"https://books.toscrape.com/catalogue/category/books/science-fiction_16/index.html\"\n      uid=21_41 StaticText \"Science Fiction\"\n    uid=21_42 link \"Sports and Games\" url=\"https://books.toscrape.com/catalogue/category/books/sports-and-games_17/index.html\"\n      uid=21_43 StaticText \"Sports and Games\"\n    uid=21_44 link \"Add a comment\" url=\"https://books.toscrape.com/catalogue/category/books/add-a-comment_18/index.html\"\n      uid=21_45 StaticText \"Add a comment\"\n    uid=21_46 link \"Fantasy\" url=\"https://books.toscrape.com/catalogue/category/books/fantasy_19/index.html\"\n      uid=21_47 StaticText \"Fantasy\"\n    uid=21_48 link \"New Adult\" url=\"https://books.toscrape.com/catalogue/category/books/new-adult_20/index.html\"\n      uid=21_49 StaticText \"New Adult\"\n    uid=21_50 link \"Young Adult\" url=\"https://books.toscrape.com/catalogue/category/books/young-adult_21/index.html\"\n      uid=21_51 StaticText \"Young Adult\"\n    uid=21_52 link \"Science\" url=\"https://books.toscrape.com/catalogue/category/books/science_22/index.html\"\n      uid=21_53 StaticText \"Science\"\n    uid=21_54 link \"Poetry\" url=\"https://books.toscrape.com/catalogue/category/books/poetry_23/index.html\"\n      ui\n…[truncated by lasso]",
+     "title": "## Latest page snapshot",
+     "final_url": "https://books.toscrape.com/"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "G04-ref-stale",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://books.toscrape.com/",
+    "action": "click",
+    "options": {
+     "selectors": {
+      "click": "r77"
+     }
+    }
+   },
+   "ms": 215,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "error": "Error: ref_stale_re_snapshot: ref \"r77\" not found in DOM (page changed since extract? re-run extract with include_refs)",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "didnt",
+      "error": "Error: ref_stale_re_snapshot: ref \"r77\" not found in DOM (page changed since extract? re-run extract with include_refs)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "H00-form-nav",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "navigate"
+   },
+   "ms": 4512,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://the-internet.herokuapp.com/login",
+     "action": "navigate",
+     "state_id": "72f3b76f-1909-4cd4-bbe8-49600525aa84",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-72f3b76f-1909-4cd4-bbe8-49600525aa84.json",
+     "preview": "navigated",
+     "final_url": "https://the-internet.herokuapp.com/login."
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "H01-form-extract",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown",
+     "include_refs": true
+    }
+   },
+   "ms": 251,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://the-internet.herokuapp.com/login",
+     "action": "extract",
+     "state_id": "2d59313f-684b-4836-90c5-bbd3d88ef7e9",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-2d59313f-684b-4836-90c5-bbd3d88ef7e9.json",
+     "preview": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/",
+     "title": "The Internet",
+     "final_url": "https://the-internet.herokuapp.com/login",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  },
+  {
+   "id": "H02-T-REFS-06-ref-fill",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "fill",
+    "options": {
+     "selectors": {
+      "r1": "tomsmith",
+      "r2": "SuperSecretPassword!"
+     }
+    }
+   },
+   "ms": 446,
+   "isError": false,
+   "payload": {
+    "outcome": "didnt",
+    "data": null,
+    "served_by": "browse_logged_in",
+    "fallback_used": true,
+    "retrieval_method": "chrome_devtools_mcp",
+    "error": "Error: ref_stale_re_snapshot: refs [r1, r2] not found in DOM (page changed since extract? re-run extract with include_refs)",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "unknown",
+      "error": "Error: ref_fill_failed:r1:TypeError: Illegal invocation"
+     },
+     {
+      "channel": "browse_logged_in",
+      "outcome": "didnt",
+      "error": "Error: ref_stale_re_snapshot: refs [r1, r2] not found in DOM (page changed since extract? re-run extract with include_refs)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "H03-fill-login-click",
+   "tool": "browse_headless",
+   "args": {
+    "url": "https://the-internet.herokuapp.com/login",
+    "action": "extract",
+    "options": {
+     "extract_mode": "markdown",
+     "include_refs": true
+    }
+   },
+   "ms": 264,
+   "isError": false,
+   "payload": {
+    "outcome": "worked",
+    "data": {
+     "url": "https://the-internet.herokuapp.com/login",
+     "action": "extract",
+     "state_id": "7e6e3f2b-ff95-48b1-a3dc-a4788a7a1e68",
+     "content_path": "/Users/wangdong/.cache/lasso/8110030c-26f9-4bf6-8725-2c48b3d663c4/browse_headless-7e6e3f2b-ff95-48b1-a3dc-a4788a7a1e68.json",
+     "preview": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/",
+     "title": "The Internet",
+     "final_url": "https://the-internet.herokuapp.com/login",
+     "markdown_engine": "defuddle+turndown",
+     "markdown": "\n\n## Interactive refs\n\n- [r1] a → https://github.com/tourdedave/the-internet\n- [r2] input[type=text]\n- [r3] input[type=password]\n- [r4] button[type=submit] \"Login\"\n- [r5] a \"Elemental Selenium\" → http://elementalselenium.com/"
+    },
+    "served_by": "browse_headless",
+    "fallback_used": false,
+    "retrieval_method": "chrome_devtools_mcp",
+    "actions_and_results": [
+     {
+      "channel": "browse_headless",
+      "outcome": "worked"
+     }
+    ]
+   }
+  }
+ ]
+}

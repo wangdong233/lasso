@@ -1,0 +1,15 @@
+{
+  "env": {},
+  "gapMs": 2000,
+  "calls": [
+    {"label": "s4a-T-LOCAL-01-history-default", "tool": "search_local", "args": {"query": "lasso", "limit": 5}},
+    {"label": "s4b-T-LOCAL-03-profile-directed", "tool": "search_local", "args": {"query": "lasso", "limit": 5, "profile": "Profile 1"}},
+    {"label": "s4c-T-LOCAL-05-files-mdfind", "tool": "search_local", "args": {"query": "lasso mcp", "source": "files", "limit": 5}},
+    {"label": "s4d-T-LOCAL-06-notes-deferred", "tool": "search_local", "args": {"query": "架构", "source": "notes", "limit": 5}},
+    {"label": "s4e-T-LOCAL-12-zero-hit-history", "tool": "search_local", "args": {"query": "zzqqxxylrt9182 no-such", "limit": 5}},
+    {"label": "s4f-T-LOCAL-12-zero-hit-files", "tool": "search_local", "args": {"query": "zzqqxxylrt9182 no-such", "source": "files", "limit": 5}},
+    {"label": "s4g-T-LOCAL-07-limit-51", "tool": "search_local", "args": {"query": "lasso", "limit": 51}},
+    {"label": "s4h-T-LOCAL-07-limit-0", "tool": "search_local", "args": {"query": "lasso", "limit": 0}},
+    {"label": "s4i-CJK-history", "tool": "search_local", "args": {"query": "架构", "limit": 5}}
+  ]
+}

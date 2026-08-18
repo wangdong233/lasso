@@ -77,9 +77,16 @@ export async function ssrfGuard(
   }
 
   // 4. fresh DNS lookup（all records，不缓存）
+  // ft-round1（FT-DEF-3）：IPv6 字面量 URL 的 parsed.hostname 带方括号（Node 24 实测
+  // `new URL("http://[::1]:80/").hostname === "[::1]"`）。带括号串不是合法 IP 字面量：
+  // ① 直连环境 lookup 抛错 → dns_failed（误拒非私网判定路径）；② TUN fake-ip 环境
+  // （ClashX 198.18.0.0/15）把它当域名解析成 fake-ip → 命中 DEFAULT_ALLOW_RANGES →
+  // **IPv6 loopback/ULA/IPv4-mapped 全部绕过**（真机实测 ALLOWED）。修复：lookup 前
+  // 剥括号——剥后 "::1" 被 node:dns 识别为字面量直接返回，进 isPrivateIp → 拒。
+  const hostname = parsed.hostname.replace(/^\[(.+)\]$/, "$1");
   let records: { address: string }[];
   try {
-    records = await lookup(parsed.hostname, { all: true });
+    records = await lookup(hostname, { all: true });
   } catch (e) {
     return {
       allowed: false,

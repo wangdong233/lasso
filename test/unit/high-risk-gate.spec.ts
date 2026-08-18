@@ -26,6 +26,7 @@ import {
 } from "../../src/browse/HighRiskGate.js";
 import type { Step } from "../../src/browse/steps-types.js";
 import type { McpClient } from "../../src/subprocess/McpClient.js";
+import { mockEvalResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
 // Mock McpClient
@@ -49,7 +50,10 @@ function makeMockClient(replyText: string): {
       args: Record<string, unknown>,
     ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
       calls.push({ name, args });
-      return { content: [{ type: "text", text: replyText }] };
+      // FT-DEF-1（ft-round1 R11 真机抓出）：evaluate_script 真实契约是
+      // ```json 围栏包裹（chrome-devtools-mcp 1.7.0；helpers/upstream-mock）。
+      // 旧 mock 裸放 JSON 正是掩盖 gate 解析缺陷的根因（V-1 同型）。
+      return mockEvalResponse(replyText);
     },
   };
   return { client: client as unknown as McpClient, calls };
@@ -198,14 +202,32 @@ describe("HighRiskGate.assessStep — pattern 命中拦截", () => {
     expect(v.reason).toBe("high_risk_pattern:toast");
   });
 
-  it("未命中 pattern（ok:true 无 kind）→ blocked=false", async () => {
-    const { client } = makeMockClient(JSON.stringify({ ok: true }));
+  it("未命中 pattern（ok:true 无 kind）→ blocked=false", async () => {    const { client } = makeMockClient(JSON.stringify({ ok: true }));
     const gate = new HighRiskGate(async () => client);
     const v = await gate.assessStep(
       step("click", { selectors: { click: "uid1" } }),
     );
     expect(v.blocked).toBe(false);
     expect(v.reason).toBeUndefined();
+  });
+
+  it("FT-DEF-1 回归钉：真机 1.7.0 围栏形状（双层编码）→ gate 必须命中而非 gate_error 放行", async () => {
+    // 2026-08-18 ft-round1 R11 真机抓出：gate 自带裸 firstText+JSON.parse 在
+    // 围栏形状下必炸 → 保守放行 → C1 红线失效。本钉用真实围栏 mock 锁死修复。
+    const { client } = makeMockClient(
+      JSON.stringify({
+        ok: true,
+        kind: "rte",
+        html: '<div role="textbox" contenteditable="true"></div>',
+      }),
+    );
+    const gate = new HighRiskGate(async () => client);
+    const v = await gate.assessStep(
+      step("click", { selectors: { click: "999_999" } }),
+    );
+    expect(v.blocked).toBe(true);
+    expect(v.reason).toBe("high_risk_pattern:rte");
+    expect(String(v.reason)).not.toContain("gate_error");
   });
 });
 
