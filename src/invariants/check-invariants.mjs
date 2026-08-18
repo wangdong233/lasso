@@ -19,6 +19,8 @@
  *                     + parse11 §3.3 + §3.4 + §7.2 Phase E v1.0 加 INV-65 README/ARCHITECTURE 必引用 08/09（文档完整化）
  *                     + parse12 §2.2 + §6 v1.1 Phase A 加 INV-66..69 MarkdownExtractor mode-aware 三模式 + 引擎约束 + 子组件定位 + citation reimplement）
  *                     + v1.8 wave1 修复清单（doc/17-执行记录/wave1-summary.md §4）加 INV-76 上游契约 + 接线回归守护（W1-DEF-1..10 / D1-D2 / D6-D8 / D11 / F-CLI-01）
+ *                     + v1.17 A3（doc/25 五项裁决裁决③）加 INV-80 zhipu 直连死层清除墓碑守卫（machine_mcp 保留为智谱能力唯一载体）
+ *                     + v1.17 Phase D（doc/25 五项裁决裁决④ B1 第四通道）加 INV-81 search_local 本地私有搜索隐私红线（只读/无全文导出/limit≤50/零网络/日志 query_len/四处联动/notes_deferred_v2）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -104,6 +106,8 @@
  *  INV-73 stealth 16 路 + header 一致性 + HeadlessChannel 接入 —— STEALTH_INJECTION_SCRIPT 含 12 新路 vendored evasion import（stealth-evasions/ 目录 12 文件均带 MIT 头）；StealthProfile 接口含 secChUa/secFetch* header 集；UA ≥ Chrome 130；HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）—— v1.5 Phase A
  *  INV-74 Steel cloud 通道零回归守护 —— SteelChannel（browse_cloud_steel）必经 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；STEEL ProviderConfig 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归）；SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）—— v1.6 Phase A
  *  INV-75 creepjs 门禁纯 doctor 侧零回归守护（INV-73/74 后）；INV-76 v1.8 wave1 修复回归守护 —— 上游 chrome-devtools-mcp@0.3.0 契约（evaluate_script 函数表达式 / wait_for text string / take_screenshot 自落盘+stat 校验）+ CdpClient Storage 域 + launch-chrome 探活 + 孤儿清理 + rust crash 归因 + screenshot_region 跨语言配对（TS↔rust-helper）+ caller-tier 接线 + read_text 四处联动 + CLI 惯例（--version/--stealth-check/未知参数非零退）—— v1.8
+ *  INV-80 zhipu 直连死层清除墓碑（v1.17 A3，doc/25 裁决③）—— channels/SearchChannel.ts 不存在；无 ZhipuSearchChannel import / "search.zhipu" 字面量；DEFAULT_FALLBACK_ORDER 无 zhipu；providers 无 ZHIPU ProviderConfig；config 不消费 ZHIPU_API_KEY（键容忍读）；doctor zhipu_keys_retired；engine enum 无 "zhipu"
+ *  INV-81 search_local 本地私有搜索隐私红线（v1.17 Phase D，doc/25 裁决④）—— 源库禁写（唯一写面 mkdtemp 临时目录）；无 content 全文导出字段；limit≤50 硬顶；模块零网络（import 白名单）；日志只记 query_len；四处联动（注册器+index.ts 注册+V5_TOOL_TO_CHANNEL+descriptions）；notes_deferred_v2 诚实 didnt
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -3076,7 +3080,7 @@ const assertions = [
   {
     id: "INV-72-machine-mcp-reuse-safe",
     desc:
-      "v1.4 Phase A：机器 MCP 复用安全（MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；DEFAULT_FALLBACK_ORDER[0]=search.machine_mcp）：" +
+      "v1.4 Phase A（v1.17 A3 文字修订：machine_mcp 是 McpClient.connectHttp + callTool web_search_prime 范式在 Lasso 内的唯一持有者——原「与 ZhipuSearchChannel 同范式」描述已随直连死层删除失准）：机器 MCP 复用安全（MachineMcpDetector 只读 ~/.claude.json 不写；永不 log Authorization 值；检测不到 graceful skip 不崩；MachineMcpSearchChannel 注册条件=detected；DEFAULT_FALLBACK_ORDER[0]=search.machine_mcp）：" +
       "（a）Detector 只用 readFileSync（禁 write/rename/unlink）；" +
       "（b）Detector + Channel + index.ts 永不 logger.* 直接打印 authorization 字段；" +
       "（c）readFileSync + JSON.parse 包 try/catch（graceful skip null）；" +
@@ -3145,10 +3149,10 @@ const assertions = [
         return false;
       }
 
-      // 必要条件 12：channel 调 McpClient.connectHttp（与 ZhipuSearchChannel 同范式）
+      // 必要条件 12：channel 调 McpClient.connectHttp（v1.17 A3 起是唯一持有者）
       if (!/McpClient\.connectHttp\s*\(/.test(channelCode)) return false;
 
-      // 必要条件 13：channel callTool("web_search_prime", ...)（同 ZhipuSearchChannel）
+      // 必要条件 13：channel callTool("web_search_prime", ...)（智谱上游直调）
       if (!/callTool\s*\(\s*["']web_search_prime["']/.test(channelCode)) return false;
 
       // ----- (d) index.ts 仅在 detectMachineSearchMcp() 命中时实例化 MachineMcpSearchChannel -----
@@ -4153,6 +4157,240 @@ const assertions = [
         const bare = argsBlock[0].match(/"--disable-blink-features[^"]*"/g) ?? [];
         if (bare.length > 0) return false;
       }
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.17 A3 新增（doc/25 五项裁决裁决③ —— INV-80 zhipu 直连死层清除墓碑守卫）
+  // ============================================================
+  // 裁决③（2026-08-18）：保留 machine_mcp（智谱 MCP 复用），删除 zhipu 直连 API channel。
+  // 守（照 INV-54 Bing 墓碑范式）：
+  //  INV-80  zhipu-direct-channel-removed：
+  //    (a) channels/SearchChannel.ts 不存在
+  //    (b) src/ 全树无 ZhipuSearchChannel import、无 "search.zhipu" channel 字面量（stripComments 后）
+  //    (c) FallbackChain DEFAULT_FALLBACK_ORDER 不含 search.zhipu
+  //    (d) providers.ts 禁 const ZHIPU: ProviderConfig
+  //    (e) config.ts 不消费 ZHIPU_API_KEY（禁 providers.set("zhipu") + 禁 zhipu keys 注入；
+  //        键容忍读存在合法——照 BING_API_KEYS 模式）
+  //    (f) doctor 存在 zhipu_keys_retired 检查名（退役提示）
+  //    (g) searchSchema engine enum 无 "zhipu" 值
+  {
+    id: "INV-80-zhipu-direct-channel-removed",
+    desc:
+      "v1.17 A3（doc/25 裁决③）：zhipu 直连 API channel 死层彻底清除且禁回潮（machine_mcp 机器 MCP 复用保留为智谱能力唯一载体）：" +
+      "channels/SearchChannel.ts 不存在；src/ 全树无 ZhipuSearchChannel import、无 \"search.zhipu\" channel 字面量；" +
+      "FallbackChain DEFAULT_FALLBACK_ORDER 不含 search.zhipu；providers.ts 无 ZHIPU ProviderConfig；" +
+      "config.ts 不消费 ZHIPU_API_KEY（键容忍读但不注册 provider，照 BING_API_KEYS 模式）；" +
+      "doctor 存在 zhipu_keys_retired 检查；searchSchema engine enum 无 \"zhipu\" 值",
+    check: () => {
+      // 必要条件 1：channels/SearchChannel.ts 必须不存在（墓碑语义反转）
+      const sc = SRC.find((s) =>
+        /channels\/SearchChannel\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (sc) return false;
+
+      // 注：以下条件全部用 stripComments 后的**代码本体**匹配——墓碑注释
+      // （providers.ts / config.ts / index.ts 等「已删」说明）合法保留字面量，不算回潮。
+
+      // 必要条件 2：src/ 全树禁 import ZhipuSearchChannel / SearchChannel.js（防装配层回潮）
+      for (const s of SRC) {
+        if (
+          /from\s+["'][^"']*channels\/SearchChannel(\.js)?["']/.test(
+            stripComments(s.text),
+          )
+        ) {
+          return false;
+        }
+      }
+
+      // 必要条件 3：src/ 全树禁出现 "search.zhipu" channel 字面量
+      //   （index.ts 装配 / search.ts channelOrder+executor / FallbackChain / descriptions 零残留；
+      //     ZHIPU_RECENCY_MAP 常量名不含该字面量，迁入 MachineMcpSearchChannel.ts 合法）
+      for (const s of SRC) {
+        if (/["']search\.zhipu["']/.test(stripComments(s.text))) {
+          return false;
+        }
+      }
+
+      // 必要条件 4：FallbackChain.ts 必须存在且 DEFAULT_FALLBACK_ORDER 禁含 search.zhipu
+      const fc = SRC.find((s) =>
+        /search\/FallbackChain\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!fc) return false;
+      const fcCode = stripComments(fc.text);
+      const fallbackOrderBlock = fcCode.match(
+        /DEFAULT_FALLBACK_ORDER\s*:[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/["']search\.zhipu["']/.test(fallbackOrderBlock)) return false;
+
+      // 必要条件 5：providers.ts 禁 const ZHIPU: ProviderConfig（且 BUILTIN_PROVIDERS 不含 ZHIPU 标识符）
+      const prov = SRC.find((s) =>
+        /config\/providers\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!prov) return false;
+      const provCode = stripComments(prov.text);
+      if (/const\s+ZHIPU\s*:\s*ProviderConfig/.test(provCode)) return false;
+      const builtinBlock = provCode.match(
+        /BUILTIN_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/,
+      )?.[1] ?? "";
+      if (/\bZHIPU\b/.test(builtinBlock)) return false;
+
+      // 必要条件 6：config.ts 禁注册 zhipu provider（providers.set("zhipu", ...)）
+      //   且禁向 zhipu provider 注入 keys（.keys = [...zhipuKey...] 消费路径）
+      //   键容忍读（env.ZHIPU_API_KEY 读取存在）合法——照 BING_API_KEYS 模式。
+      const cfg = SRC.find((s) =>
+        /config\/config\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!cfg) return false;
+      const cfgCode = stripComments(cfg.text);
+      if (/providers\.set\(\s*["']zhipu["']/.test(cfgCode)) return false;
+      if (/get\(\s*["']zhipu["']\s*\)/.test(cfgCode)) return false;
+
+      // 必要条件 7：doctor 存在 zhipu_keys_retired 检查名（退役静态提示，零触网）
+      const doc = SRC.find((s) =>
+        /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!doc) return false;
+      const docCode = stripComments(doc.text);
+      if (!/zhipu_keys_retired/.test(docCode)) return false;
+      // 且已删的两 check 名不得回潮
+      if (/["']zhipu_api_key["']/.test(docCode)) return false;
+      if (/["']zhipu_endpoint_reachable["']/.test(docCode)) return false;
+
+      // 必要条件 8：searchSchema engine enum 无 "zhipu" 值
+      const st = SRC.find((s) =>
+        /tools\/search\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!st) return false;
+      const stCode = stripComments(st.text);
+      const enumBlock = stCode.match(
+        /engine\s*:\s*z\.enum\(\[([\s\S]*?)\]\)/,
+      )?.[1] ?? "";
+      if (enumBlock.length === 0) return false;
+      if (/["']zhipu["']/.test(enumBlock)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.17 Phase D（B1 第四通道，doc/25 裁决④ + parse24 §5.5）—— INV-81
+  // ============================================================
+  // 裁决④（2026-08-18）：本地私有搜索并入 Lasso 做第四通道 search_local。
+  // 浏览历史是高敏数据——隐私红线 INV 级钉死（决策文档 B 风险②）：
+  //  INV-81  search-local-readonly-privacy：
+  //    (a) 源库禁写 + 写面白名单：模块禁 writeFileSync/appendFileSync/renameSync/
+  //        unlinkSync/chmodSync/truncate；唯一写面 = copyFileSync(源库→mkdtempSync
+  //        随机临时目录) + finally rmSync(该临时目录)（各恰 1 处）
+  //    (b) 无全文导出：模块代码禁 content 字段（唯一合法形态是 MCP 信封
+  //        `content: [` 数组——数据面 content 一律红）
+  //    (c) limit 硬顶 50：zod .max(50) 存在（无 dump 面板）
+  //    (d) 零网络（架构属性，grep 可守）：禁 fetch( / ssrf-guard / acquireHttpClient /
+  //        undici / http.request / net.connect；import 白名单 = node:* 内建 +
+  //        相对路径 + @modelcontextprotocol/sdk + zod
+  //    (e) 日志纪律：logger 调用体去 query_len / query.length / results.length
+  //        计数形态后禁裸 query / results 字样；且模块必含 query_len 正面钉
+  //    (f) 四处联动（防 read_text D1「写好没装配」bug 类）：注册器 server.tool(
+  //        "search_local") + index.ts registerSearchLocalTool 调用 + index.ts
+  //        V5_TOOL_TO_CHANNEL search_local 项 + descriptions.ts SEARCH_LOCAL_DESCRIPTION
+  //    (g) notes deferred 诚实：register 文件含 "notes_deferred_v2" 字面量
+  //        （enum 可见但未开放——诚实 didnt，比从 enum 删除更诚实）
+  {
+    id: "INV-81-search-local-readonly-privacy",
+    desc:
+      "v1.17 Phase D（doc/25 裁决④）：search_local 本地私有搜索隐私红线——只读（源库零写 API，唯一写面=mkdtemp 临时目录复制+清理）、" +
+      "无全文导出（无 content 数据字段）、limit≤50 硬顶、零网络（import 白名单 node:*/相对/SDK/zod）、" +
+      "日志只记 query_len、四处联动装配完整、notes_deferred_v2 诚实 didnt",
+    check: () => {
+      const localFiles = SRC.filter((s) =>
+        /^search-local\//.test(s.f.replace(/\\/g, "/")),
+      );
+      // 模块必须存在且含三源实装（chrome-history / mdfind / register）
+      const byLocal = (re) => localFiles.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const chrome = byLocal(/^search-local\/chrome-history\.ts$/);
+      const mdfind = byLocal(/^search-local\/mdfind\.ts$/);
+      const register = byLocal(/^search-local\/register-search-local-tool\.ts$/);
+      if (!chrome || !mdfind || !register) return false;
+      const codes = localFiles.map((s) => stripComments(s.text));
+      const chromeCode = stripComments(chrome.text);
+      const regCode = stripComments(register.text);
+
+      // ----- (a) 源库禁写 + 写面白名单 -----
+      for (const code of codes) {
+        if (/\bwriteFileSync\b|\bappendFileSync\b|\brenameSync\b|\bunlinkSync\b|\bchmodSync\b|\.truncate\(/.test(code)) {
+          return false;
+        }
+      }
+      // 唯一写面：mkdtempSync 建随机临时目录 + copyFileSync 复制源库 + rmSync 恰 1 处清理
+      if (!/mkdtempSync\(/.test(chromeCode)) return false;
+      if (!/copyFileSync\(/.test(chromeCode)) return false;
+      if ((chromeCode.match(/rmSync\(/g) || []).length !== 1) return false;
+
+      // ----- (b) 无全文导出（唯一合法形态 = MCP 信封 content: [ 数组） -----
+      for (const code of codes) {
+        const hits = code.match(/content\s*\??\s*:(?!\s*\[)/g);
+        if (hits && hits.length > 0) return false;
+      }
+
+      // ----- (c) limit 硬顶 50 -----
+      if (!/limit\s*:\s*z\.number\(\)\.int\(\)\.min\(1\)\.max\(50\)/.test(regCode)) {
+        return false;
+      }
+
+      // ----- (d) 零网络：调用面 + import 白名单 + 网络 require 串兜底 -----
+      for (const code of codes) {
+        if (/\bfetch\(|ssrf-guard|acquireHttpClient|\bundici\b|https?\.request|net\.connect/.test(code)) {
+          return false;
+        }
+        // require 形态兜底：网络相关模块名字面量一律禁（import 白名单之外的第二入口）
+        if (/["']undici["']|["']node:http["']|["']node:https["']|["']node:net["']|["']node:tls["']|["']node:dgram["']/.test(code)) {
+          return false;
+        }
+      }
+      for (const s of localFiles) {
+        const specs = [
+          ...(stripComments(s.text).matchAll(/from\s+["']([^"']+)["']/g)),
+          ...(stripComments(s.text).matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)),
+        ].map((m) => m[1]);
+        for (const spec of specs) {
+          if (!/^(node:|\.{1,2}\/|@modelcontextprotocol\/sdk\/|zod$)/.test(spec)) {
+            return false;
+          }
+        }
+      }
+
+      // ----- (e) 日志纪律：只记 query_len，不记查询原文与结果集 -----
+      let sawQueryLen = false;
+      for (const s of localFiles) {
+        const code = stripComments(s.text);
+        const calls = code.match(/logger\.(?:info|warn|error|debug)\([^;]*\);/g) ?? [];
+        for (const call of calls) {
+          if (/query_len/.test(call)) sawQueryLen = true;
+          const scrubbed = call
+            .replace(/query_len/g, "")
+            .replace(/query\.length/g, "")
+            .replace(/results\.length/g, "");
+          if (/\bquery\b/.test(scrubbed)) return false;
+          if (/\bresults\b/.test(scrubbed)) return false;
+        }
+      }
+      if (!sawQueryLen) return false;
+
+      // ----- (f) 四处联动（防「写好没装配」） -----
+      if (!/server\.tool\(\s*["']search_local["']/.test(regCode)) return false;
+      const idx = SRC.find((s) => /^index\.ts$/.test(s.f));
+      if (!idx) return false;
+      const idxCode = stripComments(idx.text);
+      if (!/registerSearchLocalTool\(server/.test(idxCode)) return false;
+      if (!/search_local:\s*"search_local"/.test(idxCode)) return false;
+      const desc = SRC.find((s) =>
+        /tools\/descriptions\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!desc) return false;
+      if (!/SEARCH_LOCAL_DESCRIPTION/.test(desc.text)) return false;
+
+      // ----- (g) notes deferred 诚实 didnt -----
+      if (!/notes_deferred_v2/.test(regCode)) return false;
 
       return true;
     },

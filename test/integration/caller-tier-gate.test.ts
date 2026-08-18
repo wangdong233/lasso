@@ -31,7 +31,7 @@ import type {
   InteractResult,
   SearchResult,
 } from "../../src/types.js";
-import type { SearchChannel } from "../../src/channels/SearchChannel.js";
+import type { MachineMcpSearchChannel } from "../../src/channels/MachineMcpSearchChannel.js";
 import type { BraveChannel } from "../../src/channels/BraveChannel.js";
 import type { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
 import type { LoggedInChannel } from "../../src/channels/LoggedInChannel.js";
@@ -41,27 +41,27 @@ import type { SsrfConfig } from "../../src/ssrf/ssrf-guard.js";
 // ============================================================
 // stubs（与 fallback.spec / attributed-search.spec 同范式）
 // ============================================================
-function makeStubSearch(): SearchChannel {
+function makeStubMachineMcp(): MachineMcpSearchChannel {
   const ch = {
-    name: "search.zhipu",
+    name: "search.machine_mcp",
     search: vi.fn(async (q: string): Promise<InteractResult<SearchResult>> => ({
       outcome: "worked",
       data: {
         query: q,
-        results: [{ title: `Z:${q}`, url: `https://z.test/${q}`, snippet: "" }],
+        results: [{ title: `M:${q}`, url: `https://m.test/${q}`, snippet: "" }],
         count: 1,
-        engine: "zhipu",
+        engine: "machine_mcp",
         region: "cn",
       },
-      served_by: "search.zhipu",
+      served_by: "search.machine_mcp",
       fallback_used: false,
-      retrieval_method: "zhipu_api",
+      retrieval_method: "machine_mcp_api",
     })),
     isAvailable: vi.fn(async () => true),
     status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
     healthCheck: vi.fn(async () => "healthy" as const),
   };
-  return ch as unknown as SearchChannel;
+  return ch as unknown as MachineMcpSearchChannel;
 }
 
 function makeStubBrowse(
@@ -86,10 +86,8 @@ function makeStubBrowse(
 }
 
 function makeRegistry(): ProviderRegistry {
-  const filled = BUILTIN_PROVIDERS.map((p) => ({ ...p }));
-  const z = filled.find((p) => p.name === "zhipu");
-  if (z) z.keys = ["zhipu-test-key"];
-  return new ProviderRegistry(filled);
+  // v1.17 A3：zhipu provider 已删（BUILTIN 不含；无 key 注入）
+  return new ProviderRegistry(BUILTIN_PROVIDERS.map((p) => ({ ...p })));
 }
 
 const noopBrowseExec: BrowseExec = async () => ({
@@ -145,24 +143,27 @@ async function callBrowse(client: Client, tool: string, meta?: Record<string, un
   return JSON.parse(text) as InteractResult<BrowseResult>;
 }
 
-function registerSearch(server: McpServer, search: SearchChannel, callerTier?: CallerTierTracker) {
+function registerSearch(
+  server: McpServer,
+  machineMcp: MachineMcpSearchChannel,
+  callerTier?: CallerTierTracker,
+) {
   registerSearchTool(
     server,
-    search,
     new FallbackDecider(
       new Map([
         ["fanout", new CircuitBreaker()],
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     ),
     noopBrowseExec,
-    undefined, // brave：单源路径（zhipu worked 即 fanout 不可达，断言更窄）
+    undefined, // brave：单源路径（machine_mcp worked 即 fanout 不可达，断言更窄）
     makeRegistry(),
     undefined,
     null,
     null,
-    undefined, // machineMcp（v1.15 Phase A：bing 参数已删，后续参数左移一位）
+    machineMcp, // v1.17 A3：search 参数已删；machine_mcp 是唯一注入源
     callerTier,
   );
 }
@@ -172,10 +173,10 @@ function registerSearch(server: McpServer, search: SearchChannel, callerTier?: C
 // ============================================================
 describe("search × caller-tier gate（W1-DEF-10）", () => {
   it("cap=2 时第 3 次调用被拒（retrieval_method=caller_cap_exceeded，used 计数可见）", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const callerTier = new CallerTierTracker(2); // anonymous 默认 cap=2
     const { client, shutdown } = await startServer((s) =>
-      registerSearch(s, search, callerTier),
+      registerSearch(s, machineMcp, callerTier),
     );
     try {
       const r1 = await callSearch(client, "q1");
@@ -190,7 +191,7 @@ describe("search × caller-tier gate（W1-DEF-10）", () => {
       expect(r3.error).toContain(ANONYMOUS_CALLER_ID);
       expect(r3.error).toContain("cap=2");
       // 3rd 未触 channel（search mock 仍 2 次）
-      expect(search.search).toHaveBeenCalledTimes(2);
+      expect(machineMcp.search).toHaveBeenCalledTimes(2);
       expect(callerTier.currentUsage(ANONYMOUS_CALLER_ID)).toBe(2); // 拒绝不扣
     } finally {
       await shutdown();
@@ -198,11 +199,11 @@ describe("search × caller-tier gate（W1-DEF-10）", () => {
   });
 
   it("_meta.callerId 隔离：vip cap=1 超限不影响 anonymous", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const callerTier = new CallerTierTracker(100);
     callerTier.setCap("vip", 1);
     const { client, shutdown } = await startServer((s) =>
-      registerSearch(s, search, callerTier),
+      registerSearch(s, machineMcp, callerTier),
     );
     try {
       const v1 = await callSearch(client, "q1", { callerId: "vip" });
@@ -221,34 +222,34 @@ describe("search × caller-tier gate（W1-DEF-10）", () => {
   });
 
   it("cap=0 封禁语义：setCap(banned,0) → 首调即拒", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const callerTier = new CallerTierTracker(100);
     callerTier.setCap("banned", 0);
     const { client, shutdown } = await startServer((s) =>
-      registerSearch(s, search, callerTier),
+      registerSearch(s, machineMcp, callerTier),
     );
     try {
       const r = await callSearch(client, "q1", { callerId: "banned" });
       expect(r.outcome).toBe("didnt");
       expect(r.retrieval_method).toBe("caller_cap_exceeded");
       expect(r.error).toContain("cap=0");
-      expect(search.search).not.toHaveBeenCalled();
+      expect(machineMcp.search).not.toHaveBeenCalled();
     } finally {
       await shutdown();
     }
   });
 
   it("零回归：callerTier 未注入 → 连续 5 次调用无一被拒（v1.7 行为）", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const { client, shutdown } = await startServer((s) =>
-      registerSearch(s, search, undefined),
+      registerSearch(s, machineMcp, undefined),
     );
     try {
       for (let i = 1; i <= 5; i++) {
         const r = await callSearch(client, `q${i}`);
         expect(r.outcome).toBe("worked");
       }
-      expect(search.search).toHaveBeenCalledTimes(5);
+      expect(machineMcp.search).toHaveBeenCalledTimes(5);
     } finally {
       await shutdown();
     }
@@ -316,9 +317,9 @@ describe("browse_headless / browse_logged_in × caller-tier gate（W1-DEF-10）"
 
   it("search 与 browse 共享同一 caller 预算（per-caller 跨工具总量）", async () => {
     const callerTier = new CallerTierTracker(2);
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const { client, shutdown } = await startServer((s) => {
-      registerSearch(s, search, callerTier);
+      registerSearch(s, machineMcp, callerTier);
       registerBrowse(s, callerTier);
     });
     try {

@@ -119,7 +119,7 @@ describe("admin breaker_reset — D7 熔断手工唤醒", () => {
   it("只配了短熔断的 channel 也能 reset（reset_long=false 不误报）", async () => {
     const server = makeMockServer();
     const tm = new ToolManager(server);
-    const bag = new CapabilityBag(["search.zhipu"]);
+    const bag = new CapabilityBag(["search.machine_mcp"]);
     const callerTier = new CallerTierTracker(100);
     const registry = new ProviderRegistry(BUILTIN_PROVIDERS);
     const { short, breakers } = await makeOpenBreakers();

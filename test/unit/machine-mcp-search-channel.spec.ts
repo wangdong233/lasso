@@ -456,6 +456,68 @@ describe("parseMachineMcpContent — 形状兼容", () => {
     expect(r[0].url).toBe("https://x.test");
   });
 
+  // ----- v1.17 真机实测形态（doc/25 verify ②，2026-08-18 open.bigmodel.cn 实抓）-----
+  // 上游现行 = 双重编码裸数组：text = JSON.stringify(JSON.stringify([{...}]))
+  // items 键 title/link/content/refer（无 media）。旧单次解析恒 [] → 真机
+  // machine_mcp 永远静默降级 scrape 链——verify 轮修复的回归钉。
+  it("真机现行形态：双重编码裸数组（JSON.stringify 两层）+ refer 键", () => {
+    const items = [
+      {
+        title: "Lasso MCP Gateway",
+        link: "https://www.lasso.security/resources/open-source-mcp-gateway-security",
+        content: "Connect AI agents to tools and data securely.",
+        refer: "ref_1",
+      },
+    ];
+    const r = parseMachineMcpContent([
+      {
+        type: "text",
+        text: JSON.stringify(JSON.stringify(items)),
+      },
+    ]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toEqual({
+      title: "Lasso MCP Gateway",
+      url: "https://www.lasso.security/resources/open-source-mcp-gateway-security",
+      snippet: "Connect AI agents to tools and data securely.",
+      source: undefined,
+    });
+  });
+
+  it("单次编码裸数组（同内容少一层）也接受", () => {
+    const r = parseMachineMcpContent([
+      {
+        type: "text",
+        text: JSON.stringify([
+          { title: "T", link: "https://a.test", content: "c" },
+        ]),
+      },
+    ]);
+    expect(r).toHaveLength(1);
+    expect(r[0].url).toBe("https://a.test");
+  });
+
+  it("三重以上病态编码：第 3 层起不再剥，非对象/数组 → []（不抛不误收）", () => {
+    expect(
+      parseMachineMcpContent([
+        { type: "text", text: JSON.stringify(JSON.stringify(JSON.stringify("x"))) },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("双重编码 + search_results 对象混合形态（旧 key 双层）也接受", () => {
+    const r = parseMachineMcpContent([
+      {
+        type: "text",
+        text: JSON.stringify(
+          JSON.stringify({ search_results: [{ title: "T", link: "https://b.test" }] }),
+        ),
+      },
+    ]);
+    expect(r).toHaveLength(1);
+    expect(r[0].url).toBe("https://b.test");
+  });
+
   it("content 非 array → []", () => {
     expect(parseMachineMcpContent(null)).toEqual([]);
     expect(parseMachineMcpContent("string")).toEqual([]);

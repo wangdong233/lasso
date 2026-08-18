@@ -30,6 +30,7 @@ import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { logger } from "../util/logger.js";
 import { HighRiskGate } from "../browse/HighRiskGate.js";
 import type { HighRiskGateLike } from "../browse/StepEngine.js";
+import type { ElicitationPort } from "../interact/ElicitationPort.js";
 // v0.8：profile + cookie + tab（parse9 §3）
 import type { IProfileRegistry } from "../logged-in/ProfileRegistry.js";
 import type { CookieStore } from "../logged-in/CookieStore.js";
@@ -91,6 +92,14 @@ export class LoggedInChannel extends BrowseChannel {
    * 台账 Chrome 的 idle 回收因此不误杀 in-flight 会话。
    */
   private readonly onChromeUse?: () => void;
+
+  /**
+   * v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate 的 elicitation 端口。
+   * null = 现行行为（命中 → blocked；零回归）。McpServer 在 index.ts 装配段
+   * 晚于本 channel 构造，故走 setter 注入（注入式手法，照 machineMcp/serpHttp
+   * 先例——未注入 = 零回归）。
+   */
+  private elicitationPort: ElicitationPort | null = null;
 
   constructor(
     private readonly subproc: SubprocessManager,
@@ -316,9 +325,21 @@ export class LoggedInChannel extends BrowseChannel {
    *
    * 命中 high-risk pattern（drag-drop / RTE / tree-view / data-grid / toast）→
    * StepEngine 立即 stop("manual_abort")，不进 fallback chain。
+   *
+   * v1.17 Phase E（parse24 §6.1 C1）：elicitationPort 已注入（setElicitationPort）
+   * 且客户端声明 elicitation.form 时，命中先回合内人确认——accept 仅本次放行
+   * （无记忆），decline / 能力未声明 / 任何异常维持现行 blocked 路径。
    */
   protected override createHighRiskGate(): HighRiskGateLike | null {
-    return new HighRiskGate(() => this.getMcpClient());
+    return new HighRiskGate(() => this.getMcpClient(), this.elicitationPort);
+  }
+
+  /**
+   * v1.17 Phase E（parse24 §6.1 C1）：elicitation 端口注入点（index.ts 装配段，
+   * McpServer 构造后调用）。未调用 / 传 null = 现行行为零回归。
+   */
+  setElicitationPort(port: ElicitationPort | null): void {
+    this.elicitationPort = port;
   }
 
   // ============================================================

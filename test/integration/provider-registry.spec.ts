@@ -2,7 +2,8 @@
  * ProviderRegistry 集成测（parse2 §5.2）。
  *
  * 覆盖：
- *  - 加载 5 个 builtin provider（zhipu / brave / browse_headless / browse_logged_in / tavily-watch）
+ *  - 加载 4 个 builtin provider（brave / browse_headless / browse_logged_in / tavily-watch；
+ *    v1.17 A3：zhipu 已随直连死层删除，INV-80 墓碑守卫）
  *  - enabled=false（tavily）不进注册表
  *  - CapabilityBag 按 fallback_order 排序
  *  - filterByFreeTier 正确（L1/L2/L4 三档）
@@ -21,19 +22,15 @@ import type { ProviderConfig } from "../../src/types.js";
 // ============================================================
 // fixture
 // ============================================================
-const ZHIPU_KEY = "test-zhipu-key";
 const BRAVE_KEYS = "brave-key-1,brave-key-2,brave-key-3";
 
 function makeRegistry(
   providers: ProviderConfig[],
-  opts: { zhipuKey?: string; braveKeys?: string } = {},
+  opts: { braveKeys?: string } = {},
 ): ProviderRegistry {
   // 模拟 loadConfig 的 key 注入：构造时 copy 后填 keys
+  // （v1.17 A3：zhipu provider 已删——无 zhipuKey 注入路径）
   const filled = providers.map((p) => ({ ...p }));
-  if (opts.zhipuKey) {
-    const z = filled.find((p) => p.name === "zhipu");
-    if (z) z.keys = [opts.zhipuKey];
-  }
   if (opts.braveKeys) {
     const b = filled.find((p) => p.name === "brave");
     if (b)
@@ -49,27 +46,31 @@ function makeRegistry(
 // builtin provider 加载
 // ============================================================
 describe("ProviderRegistry — builtin 加载", () => {
-  it("BUILTIN_PROVIDERS 含 5 个 provider（zhipu/browse_headless/browse_logged_in/brave/tavily）", () => {
+  it("BUILTIN_PROVIDERS 含 4 个 provider（brave/browse_headless/browse_logged_in/tavily；v1.17 A3 无 zhipu）", () => {
     const names = BUILTIN_PROVIDERS.map((p) => p.name).sort();
     expect(names).toEqual(
-      ["brave", "browse_headless", "browse_logged_in", "tavily", "zhipu"].sort(),
+      ["brave", "browse_headless", "browse_logged_in", "tavily"].sort(),
     );
+    // v1.17 A3：zhipu provider 已删（INV-80 墓碑——BUILTIN 永不出 zhipu）
+    expect(names).not.toContain("zhipu");
   });
 
-  it("loadConfig + env → registry 列表 4 个（tavily enabled=false 跳过）", () => {
+  it("loadConfig + env → registry 列表 3 个（tavily enabled=false 跳过；ZHIPU_API_KEY 容忍不注册）", () => {
     const cfg = loadConfig({
       runId: "test-run",
       env: {
-        ZHIPU_API_KEY: ZHIPU_KEY,
+        // v1.17 A3：ZHIPU_API_KEY 容忍读但不消费——静默忽略，不注册 provider
+        ZHIPU_API_KEY: "retired-zhipu-key",
         BRAVE_API_KEYS: BRAVE_KEYS,
       },
     });
     const names = cfg.registry.listNames().sort();
     expect(names).toEqual(
-      ["brave", "browse_headless", "browse_logged_in", "zhipu"].sort(),
+      ["brave", "browse_headless", "browse_logged_in"].sort(),
     );
-    // tavily 被 enabled=false 过滤
+    // tavily 被 enabled=false 过滤；zhipu 已删永不注册
     expect(names).not.toContain("tavily");
+    expect(names).not.toContain("zhipu");
   });
 
   it("tavily 在 getAllConfigs 中（doctor 诊断用）但不在注册表", () => {
@@ -84,13 +85,12 @@ describe("ProviderRegistry — builtin 加载", () => {
 // CapabilityBag 分桶 + 排序
 // ============================================================
 describe("ProviderRegistry — CapabilityBag 分桶", () => {
-  it("byCap('search') 含 zhipu + brave（按 fallback_order 排序）", () => {
+  it("byCap('search') 含 brave（v1.17 A3：唯一 api_key 型 search provider）", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS], {
-      zhipuKey: ZHIPU_KEY,
       braveKeys: BRAVE_KEYS,
     });
     const search = r.byCap("search");
-    expect(search.map((p) => p.config.name)).toEqual(["zhipu", "brave"]);
+    expect(search.map((p) => p.config.name)).toEqual(["brave"]);
   });
 
   it("byCap('browse') 含 browse_headless + browse_logged_in", () => {
@@ -117,16 +117,9 @@ describe("ProviderRegistry — CapabilityBag 分桶", () => {
 // get(name) + ledger 注入
 // ============================================================
 describe("ProviderRegistry — get + ledger", () => {
-  it("get('zhipu') 返 config + ledger（keys 注入后）", () => {
-    const r = makeRegistry([...BUILTIN_PROVIDERS], { zhipuKey: ZHIPU_KEY });
-    const z = r.get("zhipu");
-    expect(z).toBeDefined();
-    expect(z!.config.name).toBe("zhipu");
-    expect(z!.ledger).not.toBeNull();
-    expect(z!.ledger!.keyCount).toBe(1);
-    // 智谱 quotaPerMonth=0（未公开精确值），totalRemaining 也为 0；
-    // 但 ledger 实例存在（key 注入成功）。
-    expect(z!.ledger!.quotaModel).toBe("token");
+  it("v1.17 A3：get('zhipu') → undefined（provider 已删；ZHIPU_API_KEY 不再注入任何 provider）", () => {
+    const r = makeRegistry([...BUILTIN_PROVIDERS], { braveKeys: BRAVE_KEYS });
+    expect(r.get("zhipu")).toBeUndefined();
   });
 
   it("get('brave') 返 config + ledger（3 Key 池）", () => {
@@ -146,11 +139,11 @@ describe("ProviderRegistry — get + ledger", () => {
     expect(h!.ledger).toBeNull();
   });
 
-  it("api_key 型但 keys=[] → ledger=null（zhipu 未配 key）", () => {
+  it("api_key 型但 keys=[] → ledger=null（brave 未配 key）", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS]); // 无 key 注入
-    const z = r.get("zhipu");
-    expect(z).toBeDefined();
-    expect(z!.ledger).toBeNull(); // 无 key → 无 ledger
+    const b = r.get("brave");
+    expect(b).toBeDefined();
+    expect(b!.ledger).toBeNull(); // 无 key → 无 ledger
   });
 
   it("get('tavily') → undefined（enabled=false 不在注册表）", () => {
@@ -168,27 +161,24 @@ describe("ProviderRegistry — get + ledger", () => {
 // filterByFreeTier
 // ============================================================
 describe("ProviderRegistry — filterByFreeTier", () => {
-  it("L4（默认）→ zhipu + brave 都通过", () => {
+  it("L4（默认）→ brave 通过", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS], {
-      zhipuKey: ZHIPU_KEY,
       braveKeys: BRAVE_KEYS,
     });
     const filtered = r.filterByFreeTier("L4").map((p) => p.name).sort();
-    expect(filtered).toEqual(["brave", "zhipu"]);
+    expect(filtered).toEqual(["brave"]);
   });
 
-  it("L2 → 只 zhipu 通过（brave 2026-02 免费档取消后是 L4 计量计费，S-1 改判）", () => {
+  it("L2 → 空（v1.17 A3：zhipu L2 已删；brave L4 被滤——machine_mcp L1 在 registry 外由 auto 路径兑现）", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS], {
-      zhipuKey: ZHIPU_KEY,
       braveKeys: BRAVE_KEYS,
     });
     const filtered = r.filterByFreeTier("L2").map((p) => p.name).sort();
-    expect(filtered).toEqual(["zhipu"]);
+    expect(filtered).toEqual([]);
   });
 
-  it("L1 → 都不过滤通过（v0.2 无 L1 search provider）", () => {
+  it("L1 → 空（registry 内无 L1 search provider；machine_mcp enabled=false 不进 registry）", () => {
     const r = makeRegistry([...BUILTIN_PROVIDERS], {
-      zhipuKey: ZHIPU_KEY,
       braveKeys: BRAVE_KEYS,
     });
     expect(r.filterByFreeTier("L1")).toEqual([]);
@@ -243,7 +233,6 @@ describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () =
       runId: "s1-bing-dead-layer",
       env: {
         ...process.env,
-        ZHIPU_API_KEY: ZHIPU_KEY,
         BING_API_KEYS: "dead-key-1,dead-key-2",
       },
     });
@@ -251,6 +240,23 @@ describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () =
     expect(
       cfg.registry.byCap("search").map((p) => p.config.name),
     ).not.toContain("bing");
+  });
+
+  it("ZHIPU 死层清除（v1.17 A3）：配 ZHIPU_API_KEY → provider 永不注册（存量 config 不炸但静默忽略）", () => {
+    // zhipu 直连 API channel 已删除（doc/25 裁决③）——loadConfig 容忍读 ZHIPU_API_KEY
+    // 但 providers 表不再注册 zhipu（doctor zhipu_keys_retired 提示删除；INV-80 墓碑守卫）
+    const cfg = loadConfig({
+      runId: "a3-zhipu-dead-layer",
+      env: {
+        ...process.env,
+        ZHIPU_API_KEY: "retired-key-1",
+        ZHIPU_ENDPOINT: "https://open.bigmodel.cn/retired",
+      },
+    });
+    expect(cfg.registry.get("zhipu")).toBeUndefined();
+    expect(
+      cfg.registry.byCap("search").map((p) => p.config.name),
+    ).not.toContain("zhipu");
   });
 
   it("QuotaLedger 记账不高估：3 Key Brave 池 totalRemaining=3000（非旧 2000/Key）", () => {

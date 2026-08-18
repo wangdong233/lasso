@@ -20,16 +20,18 @@
  *  - runFallbackChain(decider, channelNames, executor, opts?) → Promise<InteractResult<T>>：
  *    构造 plan 后直调 decider.runWithFallback（INV-55）。
  *
- * 默认 fallback_order（parse10 §1 决策 6 + parse10 §3.2；v1.15 Phase A 修订）：
- *  - ["search.machine_mcp", "search.zhipu", "search.brave"]
+ * 默认 fallback_order（parse10 §1 决策 6 + parse10 §3.2；v1.15 Phase A / v1.17 A3 修订）：
+ *  - ["search.machine_mcp", "search.brave"]
  *  - v1.15 Phase A：search.bing 档已删（Bing Search APIs 2025-08-11 全量退役，
  *    死层清除；INV-54 墓碑守卫禁回潮）。
+ *  - v1.17 A3：search.zhipu 直连档已删（doc/25 裁决③；INV-80 墓碑守卫禁回潮）。
  *
  * 不替换 fanout 默认（parse10 §1 决策 4）：
- *  - tools/search.ts 中 engine="auto" 默认行为 byte-identical v0.8（zhipu+brave 多源扇出）；
+ *  - tools/search.ts 中 engine="auto" 默认行为 = 动态源集合扇出（machine_mcp+brave，
+ *    v1.17 A3 起）；
  *  - engine="fallback_chain" 才是显式 opt-in 走本模块；
  *  - 「search ≈永不失败」目标场景：caller 显式 engine="fallback_chain" 时
- *    串行降级（machine_mcp → zhipu → brave → browse_headless 实搜兜底）。
+ *    串行降级（machine_mcp → brave → browse_headless 实搜兜底）。
  *
  * 借鉴：FallbackDecider.runWithFallback（plan 形状 + executor + budget 范式）；
  *       MultiSourceFanout（Promise.allSettled 并发 —— 本模块**不并发**，是串行 fallback）。
@@ -48,18 +50,18 @@ import type { BudgetTracker } from "../fallback/BudgetTracker.js";
  *
  * 顺序语义：
  *  - search.machine_mcp —— **零配置优先**（v1.4 Phase A）：~/.claude.json 已配过
- *                           web-search-prime MCP 时优先复用机器 key；detector 未命中
- *                           时 index.ts 不实例化该 channel，FallbackChain 自动跳过
- *                           （行为等价 v1.3，byte-identical；INV-72 守）
- *  - search.zhipu       —— 中文主力（fallback_order=0 in v1.3；v1.4 起退为第二档）
+ *                           web-search-prime MCP 时优先复用机器 key（智谱 web_search_prime
+ *                           能力的现行载体）；detector 未命中时 index.ts 不实例化该
+ *                           channel，FallbackChain 自动跳过（byte-identical；INV-72 守）
  *  - search.brave       —— 英文/质量层（fallback_order=3）
  *  - （v1.15 Phase A：search.bing 兜底第三源已删——Bing Search APIs 2025-08-11
- *    全量退役，死层清除；INV-54 墓碑守卫。browse_headless 实搜兜底由
- *    runFallbackChainEngine 末尾追加，不在此常量内。）
+ *    全量退役，死层清除；INV-54 墓碑守卫。）
+ *  - （v1.17 A3：search.zhipu 直连档已删——doc/25 裁决③，死层清除；INV-80 墓碑
+ *    守卫。browse_headless 实搜兜底由 runFallbackChainEngine 末尾追加，不在此常量内。）
  */
 export const DEFAULT_FALLBACK_ORDER: readonly string[] = [
+  // v1.17 A3：search.zhipu 项已删（INV-80 墓碑守卫）
   "search.machine_mcp",
-  "search.zhipu",
   "search.brave",
 ] as const;
 

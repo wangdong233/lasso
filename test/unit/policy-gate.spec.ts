@@ -95,7 +95,7 @@ describe("PolicyGate — toProviderName 反查", () => {
   it("无前缀可剥的原样返回", () => {
     expect(toProviderName("browse_headless")).toBe("browse_headless");
     expect(toProviderName("desktop.ax")).toBe("desktop.ax");
-    expect(toProviderName("zhipu")).toBe("zhipu");
+    expect(toProviderName("machine_mcp")).toBe("machine_mcp");
   });
 });
 

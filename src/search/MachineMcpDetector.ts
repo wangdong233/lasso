@@ -2,15 +2,16 @@
  * MachineMcpDetector —— v1.4 Phase A（parse-v1.4 §Phase A 机器 MCP 复用）。
  *
  * 用户需求：零配置优先——如果机器已配过 web-search-prime MCP（CC 全局 ~/.claude.json），
- * Lasso 直接复用它的 Authorization Bearer key 先搜；额度不足/失败 → fallback 链自动
- * 降级到 search.zhipu（Lasso 自己 key）→ brave → browse_headless。
+ * Lasso 直接复用它的 Authorization Bearer key 先搜（v1.17 A3 起是智谱搜索能力的
+ * 唯一载体——zhipu 直连 API channel 已删，doc/25 裁决③）；额度不足/失败 → fallback
+ * 链自动降级到 brave → serp_http → browse_headless。
  * （v1.15 Phase A：bing 档已死层清除——Bing Search APIs 2025-08-11 全量退役。）
  *
  * **安全红线（INV-72）**：
  *  - 只读 ~/.claude.json（永不写；永不 rename / unlink）
  *  - 只取 web_search_prime / bigmodel.cn 的 http entry 的 url + headers.Authorization
  *  - **永不 log Authorization 值**（log 只说 detected/missing；hashKey 也不打——本 provider 无 ledger）
- *  - 文件不存在 / JSON 损坏 / 无目标 MCP → 返 null 不抛（graceful skip → 链路降级 search.zhipu）
+ *  - 文件不存在 / JSON 损坏 / 无目标 MCP → 返 null 不抛（graceful skip → 链路降级 brave → 兜底链）
  *  - type 非 http（如 stdio / sse）→ skip（不混用 transport）
  *  - 缺 headers.Authorization → null（没 key 等于没配）
  *

@@ -202,7 +202,7 @@ describe("runtime-disable-channel 端到端", () => {
       "browse_headless",
       "browse_logged_in",
       "desktop",
-      "search.zhipu",
+      "search.machine_mcp",
       "desktop.ax",
       "desktop.cgEvent",
     ];

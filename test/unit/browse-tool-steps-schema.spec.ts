@@ -175,3 +175,83 @@ describe("browse tool schema — D2 steps 多步链经 MCP 可达", () => {
     );
   });
 });
+
+// ============================================================
+// v1.17 Phase F（parse24 §6.2 C2）：include_refs 经 MCP 可达（D2 同范式守护）
+// ============================================================
+describe("browse tool schema — include_refs 不被 zod strip（C2 MCP 可达性）", () => {
+  it("schema 解析保留 options.include_refs（true/false 均通过）", () => {
+    const { server, captured } = makeCaptureServer();
+    const { headless, logged_in } = makeStubChannels();
+    registerBrowseTools(
+      server as unknown as McpServer,
+      headless as unknown as HeadlessChannel,
+      logged_in as unknown as LoggedInChannel,
+      new FallbackDecider(
+        new Map<string, CircuitBreaker>([
+          ["browse_headless", new CircuitBreaker()],
+          ["browse_logged_in", new CircuitBreaker()],
+        ]),
+      ),
+      ALWAYS_OK_SSRF,
+    );
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "extract",
+        options: { extract_mode: "markdown", include_refs: true },
+      }) as { options: { include_refs?: boolean } };
+      expect(parsed.options.include_refs).toBe(true);
+    }
+  });
+
+  it("handler 端到端：include_refs=true → channel.browse 收到该字段", async () => {
+    const { server, captured } = makeCaptureServer();
+    const { headless, logged_in, browseCalls } = makeStubChannels();
+    registerBrowseTools(
+      server as unknown as McpServer,
+      headless as unknown as HeadlessChannel,
+      logged_in as unknown as LoggedInChannel,
+      new FallbackDecider(
+        new Map<string, CircuitBreaker>([
+          ["browse_headless", new CircuitBreaker()],
+          ["browse_logged_in", new CircuitBreaker()],
+        ]),
+      ),
+      ALWAYS_OK_SSRF,
+    );
+    const headlessCap = captured.find((c) => c.name === "browse_headless")!;
+    const parsed = z.object(headlessCap.schema as never).parse({
+      url: "https://example.com",
+      action: "extract",
+      options: { extract_mode: "markdown", include_refs: true },
+    }) as never;
+    await headlessCap.handler(parsed);
+    expect(browseCalls[0]!.opts.include_refs).toBe(true);
+  });
+
+  it("缺省（不传 include_refs）→ channel.browse 收到 undefined（byte-identical 基线）", async () => {
+    const { server, captured } = makeCaptureServer();
+    const { headless, logged_in, browseCalls } = makeStubChannels();
+    registerBrowseTools(
+      server as unknown as McpServer,
+      headless as unknown as HeadlessChannel,
+      logged_in as unknown as LoggedInChannel,
+      new FallbackDecider(
+        new Map<string, CircuitBreaker>([
+          ["browse_headless", new CircuitBreaker()],
+          ["browse_logged_in", new CircuitBreaker()],
+        ]),
+      ),
+      ALWAYS_OK_SSRF,
+    );
+    const headlessCap = captured.find((c) => c.name === "browse_headless")!;
+    const parsed = z.object(headlessCap.schema as never).parse({
+      url: "https://example.com",
+      action: "extract",
+      options: { extract_mode: "markdown" },
+    }) as never;
+    await headlessCap.handler(parsed);
+    expect(browseCalls[0]!.opts.include_refs).toBeUndefined();
+  });
+});

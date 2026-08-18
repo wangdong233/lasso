@@ -87,6 +87,10 @@ const browseSchema = {
       // .optional() 无 default（防 zod 自动注入致 raw byte-identical 断言失真）。
       // 仅 action="extract" 读此字段；snapshot/navigate/screenshot 等忽略。
       extract_mode: z.enum(["raw", "markdown", "markdown_cited"]).optional(),
+      // v1.17 Phase F（parse24 §6.2 C2）：extract 的交互句柄 opt-in（缺省关 =
+      // byte-identical，INV-66 手法）。markdown* 档注入 data-lasso-uid ref +
+      // 附录；raw 档运行时忽略 + ignored_include_refs:true 标注（冲突 #8）。
+      include_refs: z.boolean().optional(),
       // v0.1 忽略（types.ts 里有定义，仅供 LLM 提前写好）
       expect: z
         .object({

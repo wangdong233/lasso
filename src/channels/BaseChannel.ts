@@ -14,7 +14,7 @@
 import type { ChannelStatus, Health } from "../types.js";
 
 export abstract class BaseChannel {
-  /** channel 自报名（如 "search.zhipu" / "browse_headless"），用于 InteractResult.served_by。 */
+  /** channel 自报名（如 "search.machine_mcp" / "browse_headless"），用于 InteractResult.served_by。 */
   abstract readonly name: string;
 
   /**

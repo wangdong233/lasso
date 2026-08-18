@@ -64,7 +64,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("200 → pass（key + 计划层健康，明示消耗 1 次额度）", async () => {
     const mock = stubFetchBrave(200, '{"web":{"results":[]}}');
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -89,7 +88,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("401 → fail「key 无效」+ next_step（凭证问题与计划问题可区分）", async () => {
     stubFetchBrave(401);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -105,7 +103,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("403 → fail「计划层级异常」+ 指向 KEY-GUIDE 最后核实列", async () => {
     stubFetchBrave(403);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -121,7 +118,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("非 403 但响应体含 plan/subscription 语义 → fail 计划层级异常（body 语义兜底）", async () => {
     stubFetchBrave(400, '{"error":"Your subscription plan does not include this API"}');
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -136,7 +132,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("429 → warn「限流（key 本身有效）」（不阻塞 ready）", async () => {
     stubFetchBrave(429);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -151,7 +146,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
   it("5xx → warn（服务端异常，计划状态不可判定）", async () => {
     stubFetchBrave(503);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -173,7 +167,6 @@ describe("runDoctor #11b brave_deep_probe（S-3）", () => {
       }),
     );
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -192,7 +185,6 @@ describe("runDoctor #11b 默认关（S-3 红线：doctor 零网络副作用）",
   it("无 deep / 无 env → brave_deep_probe 不出现 + 零 Brave fetch 调用", async () => {
     const mock = stubFetchBrave(200);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       braveKeysCsv: "brave-key-1",
@@ -207,7 +199,6 @@ describe("runDoctor #11b 默认关（S-3 红线：doctor 零网络副作用）",
   it("deep=true 但 skipNetwork=true → 跳过（skipNetwork 是硬性不触网总开关）", async () => {
     const mock = stubFetchBrave(200);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       deep: true,
@@ -220,7 +211,6 @@ describe("runDoctor #11b 默认关（S-3 红线：doctor 零网络副作用）",
   it("deep=true 但 BRAVE_API_KEYS 空 → warn（无事可做，不 fail）", async () => {
     stubFetchBrave(200);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       deep: true,
@@ -235,7 +225,6 @@ describe("runDoctor #11b 默认关（S-3 红线：doctor 零网络副作用）",
     process.env.LASSO_DOCTOR_DEEP = "1";
     stubFetchBrave(200);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       braveKeysCsv: "brave-key-1",
@@ -250,7 +239,6 @@ describe("runDoctor #11b 默认关（S-3 红线：doctor 零网络副作用）",
 describe("runDoctor #11c bing_keys_retired（S-3 静态）", () => {
   it("BING_API_KEYS 未配置 → pass（常态）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       bingKeysCsv: "",
@@ -261,7 +249,6 @@ describe("runDoctor #11c bing_keys_retired（S-3 静态）", () => {
 
   it("BING_API_KEYS 配置 → warn 建议删除 + 不进 blockers（主链已自动跳过）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       bingKeysCsv: "dead-key-1,dead-key-2",
@@ -276,7 +263,6 @@ describe("runDoctor #11c bing_keys_retired（S-3 静态）", () => {
 
   it("零触网：bing 检查不依赖 deep 也不 fetch（skipNetwork=true 下仍运行）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });

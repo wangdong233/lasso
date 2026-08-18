@@ -30,7 +30,7 @@ import { CircuitBreaker } from "../../src/fallback/CircuitBreaker.js";
 import { ProviderRegistry } from "../../src/config/provider-registry.js";
 import { BUILTIN_PROVIDERS } from "../../src/config/providers.js";
 import type { InteractResult, SearchResult } from "../../src/types.js";
-import type { SearchChannel } from "../../src/channels/SearchChannel.js";
+import type { MachineMcpSearchChannel } from "../../src/channels/MachineMcpSearchChannel.js";
 import type { BraveChannel } from "../../src/channels/BraveChannel.js";
 import type { BrowseExec } from "../../src/serp/extract.js";
 import type { ProviderRegistry as IProviderRegistry } from "../../src/config/provider-registry.js";
@@ -38,27 +38,27 @@ import type { ProviderRegistry as IProviderRegistry } from "../../src/config/pro
 // ============================================================
 // stubs（与 attributed-search.spec / fallback.spec 同范式）
 // ============================================================
-function makeStubSearch(): SearchChannel {
+function makeStubMachineMcp(): MachineMcpSearchChannel {
   const ch = {
-    name: "search.zhipu",
+    name: "search.machine_mcp",
     search: vi.fn(async (q: string): Promise<InteractResult<SearchResult>> => ({
       outcome: "worked",
       data: {
         query: q,
-        results: [{ title: `Z:${q}`, url: `https://z.test/${q}`, snippet: "" }],
+        results: [{ title: `M:${q}`, url: `https://m.test/${q}`, snippet: "" }],
         count: 1,
-        engine: "zhipu",
+        engine: "machine_mcp",
         region: "cn",
       },
-      served_by: "search.zhipu",
+      served_by: "search.machine_mcp",
       fallback_used: false,
-      retrieval_method: "zhipu_api",
+      retrieval_method: "machine_mcp_api",
     })),
     isAvailable: vi.fn(async () => true),
     status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
     healthCheck: vi.fn(async () => "healthy" as const),
   };
-  return ch as unknown as SearchChannel;
+  return ch as unknown as MachineMcpSearchChannel;
 }
 
 function makeStubBrave(): BraveChannel {
@@ -85,9 +85,9 @@ function makeStubBrave(): BraveChannel {
 }
 
 function makeRegistry(): ProviderRegistry {
+  // v1.17 A3：zhipu provider 已删（machine_mcp 不进 registry / 无 ledger——
+  // rpm 走 limiter.defaultMax 兜底）
   const filled = BUILTIN_PROVIDERS.map((p) => ({ ...p }));
-  const z = filled.find((p) => p.name === "zhipu");
-  if (z) z.keys = ["zhipu-test-key"];
   const b = filled.find((p) => p.name === "brave");
   if (b) b.keys = ["brave-key-1"];
   return new ProviderRegistry(filled);
@@ -145,13 +145,14 @@ async function callSearch(client: Client, query: string) {
 // ============================================================
 describe("buildFanoutRpmOptions（D6 映射构造）", () => {
   it("ledger.rpmMax 配了 → maxBySource 逐源映射；limiter 透传", () => {
+    // v1.17 A3：zhipu 项已删——machine_mcp 查询保留（未来进 registry 时自动生效）
     const limiter = new RpmLimiter();
-    const zhipuLedger = new QuotaLedger("zhipu", ["k"], 1000, "monthly", 5);
+    const machineMcpLedger = new QuotaLedger("machine_mcp", ["k"], 1000, "monthly", 5);
     const braveLedger = new QuotaLedger("brave", ["k"], 2000, "monthly", 9);
     const registry = {
       get: (n: string) =>
-        n === "zhipu"
-          ? { ledger: zhipuLedger }
+        n === "machine_mcp"
+          ? { ledger: machineMcpLedger }
           : n === "brave"
             ? { ledger: braveLedger }
             : undefined,
@@ -159,7 +160,7 @@ describe("buildFanoutRpmOptions（D6 映射构造）", () => {
     const opts = buildFanoutRpmOptions(limiter, registry);
     expect(opts.limiter).toBe(limiter);
     expect(opts.maxBySource).toEqual({
-      "search.zhipu": 5,
+      "search.machine_mcp": 5,
       "search.brave": 9,
     });
   });
@@ -182,7 +183,7 @@ describe("buildFanoutRpmOptions（D6 映射构造）", () => {
 // ============================================================
 describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
   it("defaultMax=1：第 1 次两源各跑 1 次；第 2 次两源 rpm_limited 跳过（channel.search 不再被调）", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const brave = makeStubBrave();
     // defaultMax=1：每源 60s 窗口 1 次（未配 ledger.rpmMax 的源走 defaultMax）
     const limiter = new RpmLimiter(60_000, 1);
@@ -190,7 +191,6 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
     const { client, shutdown } = await startServer((server) => {
       registerSearchTool(
         server,
-        search,
         makeDecider(),
         noopBrowseExec,
         brave,
@@ -198,7 +198,7 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
         undefined, // cache：不注入（隔离）
         null,
         null,
-        undefined, // machineMcp（v1.15 Phase A：bing 参数已删，后续参数左移一位）
+        machineMcp, // v1.17 A3：machine_mcp 是首位扇出源
         undefined, // callerTier
         limiter, // ← D6 接线点
       );
@@ -209,9 +209,9 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
       const r1 = await callSearch(client, "q1");
       expect(r1.outcome).toBe("worked");
       expect(r1.data?.engine).toBe("multi");
-      expect(search.search).toHaveBeenCalledTimes(1);
+      expect(machineMcp.search).toHaveBeenCalledTimes(1);
       expect(brave.search).toHaveBeenCalledTimes(1);
-      expect(limiter.currentUsage("search.zhipu")).toBe(1);
+      expect(limiter.currentUsage("search.machine_mcp")).toBe(1);
       expect(limiter.currentUsage("search.brave")).toBe(1);
 
       // 第 2 次：两源 usage 1/1 → rpm_limited 跳过（channel.search 计数不变）
@@ -219,22 +219,21 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
       //   （noop exec → 不 worked）→ 最终非 worked，但 RPM 跳过才是断言核心。
       const r2 = await callSearch(client, "q2");
       expect(r2.outcome).not.toBe("worked");
-      expect(search.search).toHaveBeenCalledTimes(1); // 未被再次调用
+      expect(machineMcp.search).toHaveBeenCalledTimes(1); // 未被再次调用
       expect(brave.search).toHaveBeenCalledTimes(1); // 未被再次调用
-      expect(limiter.currentUsage("search.zhipu")).toBe(1); // 失败不记账
+      expect(limiter.currentUsage("search.machine_mcp")).toBe(1); // 失败不记账
     } finally {
       await shutdown();
     }
   });
 
   it("零回归：rpmLimiter 未注入 → 连续两次 fanout 均正常执行（v1.7 行为）", async () => {
-    const search = makeStubSearch();
+    const machineMcp = makeStubMachineMcp();
     const brave = makeStubBrave();
 
     const { client, shutdown } = await startServer((server) => {
       registerSearchTool(
         server,
-        search,
         makeDecider(),
         noopBrowseExec,
         brave,
@@ -242,7 +241,7 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
         undefined,
         null,
         null,
-        undefined,
+        machineMcp,
         undefined, // callerTier 未注入
         // rpmLimiter 未注入（v1.7 调用形状）
       );
@@ -253,7 +252,7 @@ describe("search fanout × rpmLimiter 端到端（D6 接线）", () => {
       const r2 = await callSearch(client, "q2");
       expect(r1.outcome).toBe("worked");
       expect(r2.outcome).toBe("worked");
-      expect(search.search).toHaveBeenCalledTimes(2);
+      expect(machineMcp.search).toHaveBeenCalledTimes(2);
       expect(brave.search).toHaveBeenCalledTimes(2);
     } finally {
       await shutdown();

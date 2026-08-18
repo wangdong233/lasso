@@ -4,25 +4,33 @@
  * v0.1：单一 fallback 链 search.zhipu → browse_headless（cross_modal=true）。
  * v0.2：加 engine enum / free_only / attributed / 多源扇出 / SearchCache。
  * v0.9 Phase B（parse10 §3 + §1 决策 4）：加 engine="fallback_chain" 显式 opt-in。
+ * v1.17 A3（doc/25 裁决③）：zhipu 直连 API channel 删除——engine enum 去 "zhipu" 值；
+ * auto 路径源集合动态化 [machine_mcp?, brave?]；free_only 过滤后 API 源全空且
+ * machine_mcp 已注入 → 降级 machine_mcp 单源（L1 ≤ 任何档位）。
+ *
+ * v1.17 A3 兼容性：
+ *  - 显式传 engine="zhipu" 的旧调用收 zod 校验错误（错误信息自动列出合法值）——
+ *    诚实破坏（CC 动态读 tool schema，无静默错路由风险）；README/CHANGELOG 写明。
+ *  - registerSearchTool 签名收敛为「可选源注入」风格（search: SearchChannel 参数
+ *    已删；machineMcp / brave 均可选注入）。
  *
  * v0.9 兼容性（parse10 §1 决策 4 + 零回归承诺）：
- *  - engine="auto" 默认行为 byte-identical v0.8（MultiSourceFanout 多源扇出）
+ *  - engine="auto" 默认行为 = 动态源集合扇出（machine_mcp + brave 两源齐 → fanout；
+ *    单源 → 单源 primary；零 API 源 → serp_http→browse_headless 免费兜底链）
  *  - engine="fallback_chain" 是显式 opt-in：经 FallbackChain 构造 plan
- *    （machine_mcp → zhipu → brave → serp_http → browse_headless 串行 fallback；v1.15
+ *    （machine_mcp → brave → serp_http → browse_headless 串行 fallback；v1.15
  *    Phase B 起 browse_headless 之前多一层 serp_http 裸 HTTP 快探），仍走
  *    FallbackDecider.runWithFallback（INV-4 / INV-55 单一 fallback 引擎铁律）。
- *    （v0.9 的 bing 第三源已于 v1.15 Phase A 死层清除——Bing Search APIs
- *    2025-08-11 全量退役；INV-54 墓碑守卫。）
+ *    （v0.9 的 bing 第三源已于 v1.15 Phase A 死层清除；zhipu 直连档已于
+ *    v1.17 A3 删除——INV-54 / INV-80 墓碑守卫。）
  *  - engine="fallback_chain" 全源熔断 → tri-state didnt（诚实，不伪造）+
  *    命中 RecordingStore.replay 最后兜底（若过去录过同 query 的 fixture）。
  *
  * v0.2 兼容性（parse2 §2.2）：
- *  - engine 默认从 "zhipu" 改为 "auto"，但 brave 未注入时 auto 走单源 zhipu
- *    （功能等价 v0.1）→ v0.1 调用方零感知
- *  - free_only / attributed 全可选默认值，不传 = v0.1 行为
- *  - registerSearchTool 签名：v0.1 前 4 参保留，v0.2 加可选 brave / registry / cache
- *    → v0.1 调用方零改动；v0.2 装配在 index.ts 显式传 brave/cache
- *    → v0.9 装配在 index.ts 显式传 recordingStore（bing 参数已随 v1.15 Phase A 删除）
+ *  - free_only / attributed 全可选默认值，不传 = 现行行为
+ *  - registerSearchTool 签名：v0.2 加可选 brave / registry / cache
+ *    → 旧调用方零改动；装配在 index.ts 显式传 brave/cache/recordingStore
+ *    → v0.9 装配在 index.ts 显式传 recordingStore
  *
  * 多源扇出走 FallbackDecider 不开第二套（INV-4）：fanout 是 primary="fanout" 的
  * executor 内部策略，不绕过 fallback 引擎。fanout 失败 → decider 自动升 browse_headless。
@@ -43,12 +51,12 @@ import type {
   SearchFreshness,
   SearchResult,
 } from "../types.js";
-import type { SearchChannel } from "../channels/SearchChannel.js";
+// v1.17 A3（zhipu 直连删除）：SearchChannel import 已删（INV-80 墓碑守卫）
 import type { BraveChannel } from "../channels/BraveChannel.js";
 // v1.15 Phase A（Bing 死层清除）：BingChannel 第三源 import 已删（INV-54 墓碑守卫）
 // v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
 // 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时由 index.ts 注入；否则为 undefined
-//            → channelOrder 不含 search.machine_mcp（零回归 byte-identical v1.3）
+//            → channelOrder 不含 search.machine_mcp（零回归 byte-identical）
 import type { MachineMcpSearchChannel } from "../channels/MachineMcpSearchChannel.js";
 import type { ProviderRegistry } from "../config/provider-registry.js";
 import type { FallbackDecider } from "../fallback/FallbackDecider.js";
@@ -67,6 +75,10 @@ import {
   callerCapExceededResult,
 } from "../runtime/CallerTierTracker.js";
 import { withAttribution } from "../search/AttributedSearch.js";
+// v1.17 Phase B（A1 质量轴）：served_by → quality 静态映射（零启发式单一真源）
+import { tagQuality } from "../search/QualityTag.js";
+// v1.17 Phase C（A2′ 自研第二跳）：content_blocks opt-in 正文富化（parse24 §3）
+import { enrichWithContentBlocks, type ContentSecondHopDeps } from "../search/ContentSecondHop.js";
 import { filterByFreeTier } from "../search/FreeTierRouter.js";
 import type { SearchCache } from "../search/SearchCache.js";
 // v0.9 Phase B（parse10 §3.2 + §3.4）：FallbackChain plan 构造器 + RecordingStore 兜底
@@ -83,16 +95,18 @@ export const searchSchema = {
   query: z.string().min(1),
   limit: z.number().int().min(1).max(50).default(10),
   /**
-   * v0.2 enum：auto（多源扇出，默认）/ zhipu（单源中文主力）/ brave（单源英文）。
-   * v0.1 默认 "zhipu" 改为 "auto"：brave 未注入时降级为单源 zhipu，功能等价 v0.1。
+   * v0.2 enum：auto（动态源扇出，默认）/ brave（单源英文）。
+   * v1.17 A3：**"zhipu" 值已删**（zhipu 直连 API channel 死层清除；显式传
+   * engine="zhipu" 收 zod 校验错误——错误信息自动列出合法值，诚实破坏）。
+   * 智谱能力现行载体 = machine_mcp（机器 web-search-prime MCP 复用，auto/fallback_chain
+   * 自动首位，无单源档——它的身份是「借机器 key」不是「Lasso 直连源」）。
    *
    * v0.9 Phase B 新增（parse10 §1 决策 4）：fallback_chain —— 显式 opt-in 串行
-   * fallback（machine_mcp → zhipu → brave → browse_headless），仍走
+   * fallback（machine_mcp → brave → serp_http → browse_headless），仍走
    * FallbackDecider.runWithFallback（INV-55）。用于「search ≈永不失败」目标场景
-   * （高可靠需求）；engine="auto" 默认行为 byte-identical v0.8（不替换 fanout
-   * 默认，零回归）。
+   * （高可靠需求）。
    */
-  engine: z.enum(["zhipu", "brave", "auto", "fallback_chain"]).default("auto"),
+  engine: z.enum(["auto", "brave", "fallback_chain"]).default("auto"),
   region: z.string().default("cn"),
   no_cache: z.boolean().default(false),
   /** v0.2 新增（parse2 §3.3.3）：L1/L2/L3/L4 四级分级路由 */
@@ -106,23 +120,34 @@ export const searchSchema = {
    * 同款守护手法）。（v1.15 Phase A 前 Bing 源已清除。）
    */
   freshness: z.enum(["day", "week", "month", "year"]).optional(),
+  /**
+   * v1.17 Phase C 新增（A2′ 自研第二跳，doc/25 裁决② + parse24 §3）：
+   * 拿到搜索结果后对 top N 条并发裸 HTTP 抓正文（raw HTTP，不起浏览器），
+   * defuddle 抽取 + 查询相关裁剪（~6k 字符/条），零付费依赖。
+   * optional 无 default —— 不传 = 关 = 现行行为 byte-identical（与
+   * freshness/extract_mode 同款守护手法）。护栏：SSRF 必过 / 连接池 / 5s 超时 /
+   * 256KB 字节闸 / 并发 3 / 整体 15s 软预算。
+   * 失败条目如实 content_status 标注（fetch_failed/not_html/extract_failed），
+   * 不改变主结果 outcome/served_by（tri-state 诚实；enrichment 非 fallback）。
+   * cache 语义：蓝链照常缓存 7 天（content_blocks 不入 cache key），正文每次实抓。
+   */
+  content_blocks: z.number().int().min(1).max(5).optional(),
 };
 
 // ============================================================
-// 注册器（v0.1 前 4 参 + v0.2 可选 brave/registry/cache + v0.9 可选 recordingStore）
+// 注册器（v1.17 A3 收敛为「可选源注入」风格：machineMcp / brave 均可选）
 // ============================================================
 /**
  * @param server              MCP server
- * @param search              SearchChannel（智谱）
  * @param decider             单一 fallback 引擎
  * @param browseHeadlessExec  跨模态降级执行器
  * @param brave               v0.2 可选：BraveChannel（多源扇出时注入）
  * @param registry            v0.2 可选：ProviderRegistry（free_only 过滤 + quota 查询）
  * @param cache               v0.2 可选：SearchCache（命中/写入）
  * @param serpHealth          v0.7 可选：SerpHealthMonitor（serp 抽完结果后通知 hit/miss）
- *                            （v0.9 的 bing 第 9 参已随 v1.15 Phase A Bing 死层清除删除）
- * @param recordingStore      v0.9 可选：RecordingStore（全源熔断时 replay 最后兜底；
- *                            engine="auto" 默认路径不注入 → byte-identical v0.8）
+ *                            （v0.9 的 bing 参数已随 v1.15 Phase A Bing 死层清除删除；
+ *                             v1.17 A3 的 search: SearchChannel 参数已随 zhipu 直连删除）
+ * @param recordingStore      v0.9 可选：RecordingStore（全源熔断时 replay 最后兜底）
  */
 /**
  * F-1（v1.14.0 收尾）：free_only 最终生效值——args 显式传参 > LASSO_SEARCH_FREE_ONLY env
@@ -141,10 +166,9 @@ export function resolveFreeOnly(
 
 export function registerSearchTool(
   server: McpServer,
-  search: SearchChannel,
   decider: FallbackDecider,
   browseHeadlessExec: BrowseExec,
-  // v0.2 可选注入（不传 = v0.1 行为）
+  // v0.2 可选注入（不传 = 无 brave 源）
   brave?: BraveChannel,
   registry?: ProviderRegistry,
   cache?: SearchCache,
@@ -165,12 +189,12 @@ export function registerSearchTool(
   recordingStore?: RecordingStore | null,
   /**
    * v1.4 Phase A 可选（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用。
-   * 未注入 / null / undefined → engine="fallback_chain" 路径 channelOrder 不含 search.machine_mcp
-   *                             （行为 byte-identical v1.3；INV-72 零回归承诺）。
-   * 注入          → channelOrder 首位 unshift search.machine_mcp（零配置优先，machine key 先试；
-   *                 失败 → fallback 链自动降级到 search.zhipu → brave → browse_headless）。
+   * 未注入 / null / undefined → channelOrder 不含 search.machine_mcp、auto 源集合
+   *                             不含该源（零回归；INV-72 零回归承诺）。
+   * 注入          → fallback_chain channelOrder 首位 + auto 扇出源（零配置优先，
+   *                 machine key 先试；失败 → fallback 链降级到 brave → 兜底链）。
    * 注：machine_mcp 是 self_hosted L1，永远在 free_only 任何档位下（L1 ≤ L1/L2/L3/L4），
-   *     故不参与 free_only 过滤剔除（不同于 zhipu/brave 经 allowedSearchProviders 过滤）。
+   *     故不参与 free_only 过滤剔除（不同于 brave 经 allowedSearchProviders 过滤）。
    */
   machineMcp?: MachineMcpSearchChannel | null,
   /**
@@ -199,6 +223,15 @@ export function registerSearchTool(
    * serp_http unknown（被挡/空/超时）→ decider 升 browse_headless 原路径不变。
    */
   httpSerp?: HttpSerpExec | null,
+  /**
+   * v1.17 Phase C 可选（A2′ 自研第二跳，parse24 §3）：content_blocks 正文富化依赖。
+   * 未注入 / null / undefined → content_blocks 参数被诚实忽略（条目不带
+   *   content_status；照 httpSerp 未注入的注入式手法，零回归 byte-identical）。
+   * 注入          → 三条路径（fanout / 单源 / fallback_chain+replay）+ cache 命中
+   *                 路径的 worked 结果统一富化 top content_blocks 条。
+   * fetchImpl 由 index.ts 装 subproc.acquireHttpClient(origin).fetch 池包装（INV-32）。
+   */
+  contentDeps?: ContentSecondHopDeps | null,
 ): void {
   server.tool(
     "search",
@@ -227,7 +260,7 @@ export function registerSearchTool(
 
       const query: string = args.query;
       const limit: number = args.limit;
-      const engine: "zhipu" | "brave" | "auto" | "fallback_chain" = args.engine;
+      const engine: "auto" | "brave" | "fallback_chain" = args.engine;
       const region: string = args.region;
       const noCache: boolean = args.no_cache;
       const attributed: boolean = args.attributed;
@@ -237,6 +270,9 @@ export function registerSearchTool(
       const freeOnly: FreeTierLevel | undefined = resolveFreeOnly(args.free_only);
       // v1.11（round1 T6）：时效性过滤（透传三引擎 + 入 cache key）
       const freshness: SearchFreshness | undefined = args.freshness;
+      // v1.17 Phase C（A2′ 第二跳）：content_blocks opt-in（缺省 undefined = 关；
+      // contentDeps 未注入时参数被诚实忽略——照 httpSerp 注入式手法）
+      const contentBlocks: number | undefined = args.content_blocks;
 
       // ---------- 1. cache 命中（除非 no_cache）----------
       if (!noCache && cache) {
@@ -258,7 +294,15 @@ export function registerSearchTool(
               {
                 type: "text",
                 text: JSON.stringify(
-                  { ...outResult, cached: true },
+                  // v1.17 Phase C（A2′）：cache 命中路径同样富化（蓝链来自 cache，
+                  // 正文每次实抓——parse24 §3.2「cache 命中与新查均适用」；
+                  // enrich 纯函数不改写 cached 信封本体，零 cache 污染）
+                  {
+                    ...(contentBlocks && contentDeps
+                      ? await maybeEnrichContent(outResult, query, contentBlocks, contentDeps)
+                      : outResult),
+                    cached: true,
+                  },
                   null,
                   2,
                 ),
@@ -268,16 +312,14 @@ export function registerSearchTool(
         }
       }
 
-      // ---------- 2. 选源：engine="auto" + brave 可用 → 多源；否则单源 ----------
+      // ---------- 2. 选源：v1.17 A3 动态源集合 [machine_mcp?, brave?] ----------
       const braveAvailable =
         brave !== undefined && (await brave.isAvailable());
-      const zhipuAvailable = await search.isAvailable();
 
       // free_only 过滤（v0.2 §3.3.3）：L1/L2/L3/L4 四级。
-      // 取 registry 中所有 search providers 过滤后判定 brave / zhipu 是否在允许集。
-      // 默认 L4 = 全允许（zhipu=L2 免费层；brave=L4 计量计费——2026-02 免费档取消，
-      // 21-搜索方案重审 S-1 改判；默认路径 Brave 仍参与扇出）。
-      // L1 → 都禁（无 provider 满足），返回 empty 结果（不让 zhipu 偷偷走）。
+      // 取 registry 中所有 search providers 过滤后判定 brave 是否在允许集。
+      // 默认 L4 = 全允许（brave=L4 计量计费——2026-02 免费档取消，21-搜索方案重审
+      // S-1 改判；默认路径 Brave 仍参与扇出）。
       // 未注入 registry（v0.1 兼容模式）→ 跳过过滤，视为全允许。
       const freeTierFilter: FreeTierLevel = freeOnly ?? "L4";
       const allowedSearchProviders = registry
@@ -289,18 +331,13 @@ export function registerSearchTool(
       const braveAllowedByFreeTier = allowedSearchProviders
         ? allowedSearchProviders.some((p) => p.name === "brave")
         : true;
-      const zhipuAllowedByFreeTier = allowedSearchProviders
-        ? allowedSearchProviders.some((p) => p.name === "zhipu")
-        : true;
 
-      // 极端情形：free_only 把所有 search provider 都过滤光（如 L1 + v0.2 无 L1 provider）
-      // → 返回 empty didnt 结果（不抛错；保留 fallback_exhausted 风格的 retrieval_method）。
-      // 仅在 registry 注入时生效——v0.1 兼容模式不走此分支。
-      if (
-        allowedSearchProviders !== null &&
-        !braveAllowedByFreeTier &&
-        !zhipuAllowedByFreeTier
-      ) {
+      // v1.17 A3 联动（§2.3-4）：free_only 过滤后 API 源全空（brave 被滤除）且
+      // machine_mcp 已注入 → 降级 machine_mcp 单源（L1 ≤ 任何档位；与 fallback_chain
+      // 路径的既有语义对齐）；无 machine_mcp 才诚实返 free_only_filtered 空结果。
+      const apiSourcesExhaustedByFreeTier =
+        allowedSearchProviders !== null && !braveAllowedByFreeTier;
+      if (apiSourcesExhaustedByFreeTier && !machineMcp) {
         const emptyResult: InteractResult<SearchResult> = {
           outcome: "didnt",
           data: {
@@ -325,12 +362,21 @@ export function registerSearchTool(
         };
       }
 
+      // v1.17 A3（§2.3-3）：auto 路径源集合动态构造——
+      //   machine_mcp：注入即参与（isAvailable 由 decider 运行时判，与 fallback_chain
+      //               channelOrder 同款「只看注入」语义）；不参与 free_only 过滤（L1）。
+      //   brave：available 且 free_tier 允许时参与。
+      // 三态：两源齐 → fanout；单源 → 单源 primary；零 API 源 → serp_http→browse_headless
+      //       免费兜底链（KEY-GUIDE 既有承诺「一家不配也有搜索」保持）。
+      const autoSources: string[] = [];
+      if (machineMcp) autoSources.push("search.machine_mcp");
+      if (braveAvailable && braveAllowedByFreeTier) autoSources.push("search.brave");
+      // free_only 降级修正：API 源被滤空且 machine_mcp 在 → 源集合就是 machine_mcp 单源
+      // （上面 apiSourcesExhaustedByFreeTier && machineMcp 时 brave 不在集合，天然成立）。
+
       const canFanout =
         engine === "auto" &&
-        braveAvailable &&
-        zhipuAvailable &&
-        braveAllowedByFreeTier &&
-        zhipuAllowedByFreeTier &&
+        autoSources.length >= 2 &&
         registry !== undefined;
 
       // ============================================================
@@ -341,7 +387,7 @@ export function registerSearchTool(
       // 守 INV-57：recordingStore 默认 OFF；replay 查的是过去录制 fixture，与本次录制开关无关。
       // 守 INV-58：本路径内不调 wayback_lookup（wayback 是独立 tool）。
       // 守 INV-59：saveIfRecording 是 sync void，fire-and-forget；search 主路径不 await。
-      // 零回归：engine="auto" / "zhipu" / "brave" 路径完全等价 v0.8（不进此分支）。
+      // 零回归：engine="auto" / "brave" 路径完全等价（不进此分支）。
       if (engine === "fallback_chain") {
         const fbResult = await runFallbackChainEngine(
           query,
@@ -349,19 +395,18 @@ export function registerSearchTool(
           region,
           noCache,
           freshness,
-          search,
           brave ?? null,
           browseHeadlessExec,
           decider,
           recordingStore ?? null,
           // free_only 过滤：fallback_chain 也尊重 L1-L4 路由
           braveAllowedByFreeTier,
-          zhipuAllowedByFreeTier,
           // v1.4 Phase A：machine MCP 复用注入（detector 命中时由 index.ts 传入）
           machineMcp ?? null,
           // v1.15 Phase B（parse22 §2.2）：serp_http 快探注入（browse_headless 之前）
           httpSerp ?? null,
         );
+
 
         // ---------- attributed 后处理（与 v0.8 路径同范式）----------
         if (attributed && fbResult.data) {
@@ -376,6 +421,8 @@ export function registerSearchTool(
 
         // ---------- cache 写入（仅 worked + !no_cache + cache 注入）----------
         // 与 v0.8 路径同范式：engine 字段是 cache key 一部分（fallback_chain 独立 key 空间）。
+        // v1.17 Phase C（A2′）：cache.set 恒在 content 富化**之前**——蓝链入缓存，
+        // 正文不入（第二跳每次实抓；INV-11 cache key 不含 content_blocks）。
         if (fbResult.outcome === "worked" && !noCache && cache) {
           try {
             await cache.set(query, engine, region, limit, fbResult, freshness);
@@ -388,9 +435,15 @@ export function registerSearchTool(
           }
         }
 
+        // ---------- v1.17 Phase C（A2′）：第二跳富化（出口三：fallback_chain+replay）----------
+        const fbOut =
+          contentBlocks && contentDeps
+            ? await maybeEnrichContent(fbResult, query, contentBlocks, contentDeps)
+            : fbResult;
+
         return {
           content: [
-            { type: "text", text: JSON.stringify(fbResult, null, 2) },
+            { type: "text", text: JSON.stringify(fbOut, null, 2) },
           ],
         };
       }
@@ -403,18 +456,19 @@ export function registerSearchTool(
       const serpHttpLayer: string[] = httpSerp ? ["serp_http"] : [];
 
       if (canFanout) {
-        // ---------- 多源扇出 ----------
+        // ---------- 多源扇出（v1.17 A3：machine_mcp + brave 动态源集合）----------
         // S-1（21-搜索方案重审）：配额 hint 缺省 0（registry 未装配该 provider 时
-        // allocateLimit 视为无配额信息，不再用无据字面量 1000/2000 高估 Brave）。
+        // allocateLimit 视为无配额信息）。machine_mcp 不进 registry / 无 ledger →
+        // quotaRemaining=0/quotaPerMonth=0 → allocateLimit 退化为 weight=1 兜底（可测）。
         const sources = allocateLimit(
           limit,
           [
             {
-              name: "search.zhipu",
+              name: "search.machine_mcp",
               quotaRemaining:
-                registry.get("zhipu")?.ledger?.totalRemaining() ?? 0,
+                registry.get("machine_mcp")?.ledger?.totalRemaining() ?? 0,
               quotaPerMonth:
-                registry.get("zhipu")?.config.free_quota_per_month || 0,
+                registry.get("machine_mcp")?.config.free_quota_per_month || 0,
             },
             {
               name: "search.brave",
@@ -442,10 +496,10 @@ export function registerSearchTool(
               limit,
               sources,
               async (cn, sub) => {
-                if (cn === "search.zhipu") {
-                  return search.search(query, {
+                if (cn === "search.machine_mcp" && machineMcp) {
+                  return machineMcp.search(query, {
                     limit: sub,
-                    engine: "zhipu",
+                    engine: "machine_mcp",
                     region,
                     no_cache: noCache,
                     ...(freshness ? { freshness } : {}),
@@ -476,24 +530,41 @@ export function registerSearchTool(
           throw new Error(`unknown_channel:${channelName}`);
         };
       } else {
-        // ---------- 单源（v0.1 行为）----------
-        // engine="brave" 强制走 brave（若不可用降级 zhipu 由 fallback 链处理）
+        // ---------- 单源（v1.17 A3：动态源集合首个 / 免费兜底链）----------
+        // engine="brave" 显式指名 brave（不可用/被滤除时降级到源集合首个——
+        // 与 v0.2「zhipu 不允许时强制 brave」同型的偏好语义，方向反转）；
+        // engine="auto" 单源退化：源集合首个（machine_mcp 或 brave）；
+        // 零 API 源（machine_mcp 未注入 + brave 未配 key/被滤）→ 免费兜底链：
+        // serp_http（注入时快探）否则直达 browse_headless。
         const wantBrave =
           engine === "brave" && braveAvailable && braveAllowedByFreeTier;
-        // zhipu 不允许时强制走 brave（即使 brave 不可用也试一次让 fallback 链处理）
-        const target =
-          wantBrave || !zhipuAllowedByFreeTier ? "search.brave" : "search.zhipu";
+        const target = wantBrave
+          ? "search.brave"
+          : autoSources.length > 0
+            ? autoSources[0]
+            : httpSerp
+              ? "serp_http"
+              : "browse_headless";
+
+        // primary 已是兜底链成员时去重（browse_headless primary 无 fallback 可降；
+        // serp_http primary 的 fallback 是 browse_headless 慢路径）
+        const fallbacks =
+          target === "browse_headless"
+            ? []
+            : target === "serp_http"
+              ? ["browse_headless"]
+              : [...serpHttpLayer, "browse_headless"];
 
         plan = {
           primary: target,
-          fallbacks: [...serpHttpLayer, "browse_headless"],
+          fallbacks,
           cross_modal: true,
         };
         executor = async (channelName) => {
-          if (channelName === "search.zhipu") {
-            return search.search(query, {
+          if (channelName === "search.machine_mcp" && machineMcp) {
+            return machineMcp.search(query, {
               limit,
-              engine: "zhipu",
+              engine: "machine_mcp",
               region,
               no_cache: noCache,
               ...(freshness ? { freshness } : {}),
@@ -520,7 +591,10 @@ export function registerSearchTool(
         };
       }
 
-      const result = await decider.runWithFallback(plan, executor);
+      // ---------- A1 质量轴打标（v1.17 Phase B）----------
+      // fanout / 单源两路径统一出口：machine_mcp/brave → api；serp_http/browse_headless →
+      // scrape（含聚合串 "search.machine_mcp,search.brave" → api）。
+      const result = tagQuality(await decider.runWithFallback(plan, executor));
 
       // ---------- 3. attributed 后处理 ----------
       if (attributed && result.data) {
@@ -534,6 +608,8 @@ export function registerSearchTool(
       }
 
       // ---------- 4. cache 写入（仅 worked + !no_cache + cache 注入）----------
+      // v1.17 Phase C（A2′）：cache.set 恒在 content 富化**之前**——蓝链入缓存，
+      // 正文不入（第二跳每次实抓；INV-11 cache key 不含 content_blocks）。
       if (result.outcome === "worked" && !noCache && cache) {
         try {
           await cache.set(query, engine, region, limit, result, freshness);
@@ -545,13 +621,44 @@ export function registerSearchTool(
         }
       }
 
+      // ---------- 5. v1.17 Phase C（A2′）：第二跳富化（出口一/二：fanout / 单源）----------
+      const finalOut =
+        contentBlocks && contentDeps
+          ? await maybeEnrichContent(result, query, contentBlocks, contentDeps)
+          : result;
+
       return {
         content: [
-          { type: "text", text: JSON.stringify(result, null, 2) },
+          { type: "text", text: JSON.stringify(finalOut, null, 2) },
         ],
       };
     },
   );
+}
+
+// ============================================================
+// v1.17 Phase C（A2′ 第二跳）：富化出口 helper
+// ============================================================
+/**
+ * 三路径 + cache 命中路径统一调用的第二跳出口。
+ *
+ *  - topN < 1 / 非 worked / 空 results → enrichWithContentBlocks 内部原样返回
+ *  - 外层 catch 是 belt（per-item 失败已在 ContentSecondHop 内部消化为
+ *    content_status；此处只兜程序性异常）：富化**永不**让 search 主路径失败，
+ *    也永不改变 outcome/served_by/quality（tri-state 诚实红线）
+ */
+async function maybeEnrichContent(
+  result: InteractResult<SearchResult>,
+  query: string,
+  topN: number,
+  deps: ContentSecondHopDeps,
+): Promise<InteractResult<SearchResult>> {
+  try {
+    return await enrichWithContentBlocks(result, query, topN, undefined, deps);
+  } catch (e) {
+    logger.warn({ evt: "content_second_hop_error", error: String(e).slice(0, 200) });
+    return result;
+  }
 }
 
 // ============================================================
@@ -574,8 +681,13 @@ export function buildFanoutRpmOptions(
   registry?: ProviderRegistry,
 ): FanoutRpmOptions {
   const maxBySource: Record<string, number> = {};
-  const zhipuRpm = registry?.get("zhipu")?.ledger?.rpmMax;
-  if (typeof zhipuRpm === "number") maxBySource["search.zhipu"] = zhipuRpm;
+  // v1.17 A3：zhipuRpm 项已删（zhipu 直连死层清除）。machine_mcp 不进 registry /
+  // 无 ledger → rpmMax undefined → 不入 maxBySource（走 limiter.defaultMax，行为可测）；
+  // 保留此查询是给 machine_mcp 未来进 registry 留门（开闭）。
+  const machineMcpRpm = registry?.get("machine_mcp")?.ledger?.rpmMax;
+  if (typeof machineMcpRpm === "number") {
+    maxBySource["search.machine_mcp"] = machineMcpRpm;
+  }
   const braveRpm = registry?.get("brave")?.ledger?.rpmMax;
   if (typeof braveRpm === "number") maxBySource["search.brave"] = braveRpm;
   return { limiter, maxBySource };
@@ -587,8 +699,8 @@ export function buildFanoutRpmOptions(
 /**
  * engine="fallback_chain" 的主路径 —— 独立 helper 让 registerSearchTool 顶层 if 分支保持薄。
  *
- * 流程（parse10 §3 伪码 + §3.4 录制回放兜底）：
- *  1. 构造 channelOrder：默认 DEFAULT_FALLBACK_ORDER [machine_mcp, zhipu, brave]；
+ * 流程（parse10 §3 伪码 + §3.4 录制回放兜底 + v1.17 A3 链形状）：
+ *  1. 构造 channelOrder：默认 DEFAULT_FALLBACK_ORDER [machine_mcp, brave]；
  *     按 channel 是否注入 + free_only 过滤剔除不可用源；
  *     末尾追加 browse_headless（cross_modal 兜底，parse10 §3.5）。
  *  2. FallbackChain.runFallbackChain 构造 plan + 调 decider.runWithFallback
@@ -613,44 +725,42 @@ export async function runFallbackChainEngine(
   region: string,
   noCache: boolean,
   /**
-   * v1.11（round1 T6）：时效性过滤（透传 zhipu/brave 两源 + browse_headless SERP；
+   * v1.11（round1 T6）：时效性过滤（透传 machine_mcp/brave 两源 + browse_headless SERP；
    * 不传 = 不限时效 = byte-identical 基线）。
    */
   freshness: SearchFreshness | undefined,
-  search: SearchChannel,
   brave: BraveChannel | null,
   browseHeadlessExec: BrowseExec,
   decider: FallbackDecider,
   recordingStore: RecordingStore | null,
   braveAllowedByFreeTier: boolean,
-  zhipuAllowedByFreeTier: boolean,
   /**
    * v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用。
-   * 未注入 / null → channelOrder 不含 search.machine_mcp（byte-identical v1.3）。
-   * 注入         → channelOrder 首位 unshift（machine key 先试；失败 fallback 链降级）。
+   * 未注入 / null → channelOrder 不含 search.machine_mcp（零回归）。
+   * 注入         → channelOrder 首位（machine key 先试；失败 fallback 链降级）。
    */
   machineMcp: MachineMcpSearchChannel | null = null,
   /**
    * v1.15 Phase B 可选（parse22 §2.2）：serp_http 裸 HTTP 快探执行器。
    * 未注入 / null → channelOrder 不含 serp_http 档（byte-identical Phase A 基线）。
    * 注入         → browse_headless 之前插入 serp_http（链：
-   *                 machine_mcp → zhipu → brave → serp_http → browse_headless → replay）。
+   *                 machine_mcp → brave → serp_http → browse_headless → replay）。
    */
   httpSerp: HttpSerpExec | null = null,
 ): Promise<InteractResult<SearchResult>> {
   // ---------- 1. 构造 channelOrder（parse10 §3.2 + §3.5 + v1.4 Phase A machine_mcp）----------
-  // 默认顺序 DEFAULT_FALLBACK_ORDER = [search.machine_mcp, search.zhipu, search.brave]；
+  // 默认顺序 DEFAULT_FALLBACK_ORDER = [search.machine_mcp, search.brave]；
   // 按 channel 是否注入 + free_only 过滤剔除。
   // （v1.15 Phase A：search.bing 档已删——Bing 死层清除，INV-54 墓碑守卫。）
+  // （v1.17 A3：search.zhipu 档已删——zhipu 直连死层清除，INV-80 墓碑守卫。）
   // （v1.15 Phase B：browse_headless 之前插 serp_http 快探档——注入时。）
 
   const channelOrder: string[] = [];
   // v1.4 Phase A：machine_mcp 首位（零配置优先）。
   // machine_mcp 是 self_hosted L1（providers.ts），永远在 free_only 任何档位下（L1 ≤ L1/L2/L3/L4）；
-  // 故不参与 allowedSearchProviders 过滤剔除（不同于 zhipu/brave 经 ProviderRegistry 过滤）。
+  // 故不参与 allowedSearchProviders 过滤剔除（不同于 brave 经 ProviderRegistry 过滤）。
   // 只看是否注入（注入即 channelOrder 首位；channel.isAvailable 由 decider 运行时判）。
   if (machineMcp) channelOrder.push("search.machine_mcp");
-  if (zhipuAllowedByFreeTier) channelOrder.push("search.zhipu");
   if (brave && braveAllowedByFreeTier) channelOrder.push("search.brave");
 
   // v1.15 Phase B（parse22 §2.2）：serp_http 快探层——browse_headless 之前。
@@ -675,15 +785,6 @@ export async function runFallbackChainEngine(
         region,
         no_cache: noCache,
         // v1.12（round2 T2-5）：freshness 透传（首位引擎此前静默忽略显式参数）
-        ...(freshness ? { freshness } : {}),
-      });
-    }
-    if (channelName === "search.zhipu") {
-      return search.search(query, {
-        limit,
-        engine: "zhipu",
-        region,
-        no_cache: noCache,
         ...(freshness ? { freshness } : {}),
       });
     }
@@ -788,7 +889,9 @@ export async function runFallbackChainEngine(
             query_len: query.length,
             recorded_at: replayResult.recorded_at,
           });
-          return replayed;
+          // A1 质量轴（v1.17 Phase B）：回放是过去快照 → quality="stale"
+          // （tagQuality 在本引擎统一出口打标——engine 拥有自己的信封）
+          return tagQuality(replayed);
         } catch (e) {
           logger.warn({
             evt: "fallback_chain_replay_parse_failed",
@@ -805,5 +908,8 @@ export async function runFallbackChainEngine(
     }
   }
 
-  return fbResult;
+  // A1 质量轴（v1.17 Phase B）：fallback_chain 统一出口打标——
+  // machine_mcp/brave → "api"；serp_http/browse_headless → "scrape"；
+  // （replay 命中路径已在上方早返处标 "stale"；didnt/unknown 也如实标路径轴）
+  return tagQuality(fbResult);
 }

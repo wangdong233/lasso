@@ -41,7 +41,7 @@ describe("T6 — SearchCache key 纳入 freshness", () => {
 
   it("freshness 档间互不误命中（语义验证：day ≠ week ≠ month ≠ year）", () => {
     const keys = (["day", "week", "month", "year"] as const).map((f) =>
-      cache.computeKey("q", "zhipu", "cn", 5, f),
+      cache.computeKey("q", "machine_mcp", "cn", 5, f),
     );
     expect(new Set(keys).size).toBe(4);
   });
@@ -58,9 +58,10 @@ describe("T6 — 各引擎 freshness 映射", () => {
     expect(BRAVE_FRESHNESS_MAP.year).toBe("py");
   });
 
-  it("智谱：search_recency_filter 映射 oneDay/oneWeek/oneMonth/oneYear", async () => {
+  it("智谱（machine_mcp 载体）：search_recency_filter 映射 oneDay/oneWeek/oneMonth/oneYear", async () => {
+    // v1.17 A3：ZHIPU_RECENCY_MAP 随 zhipu 直连删除迁入 MachineMcpSearchChannel.ts
     const { ZHIPU_RECENCY_MAP } = await import(
-      "../../src/channels/SearchChannel.js"
+      "../../src/channels/MachineMcpSearchChannel.js"
     );
     expect(ZHIPU_RECENCY_MAP).toEqual({
       day: "oneDay",
@@ -72,12 +73,13 @@ describe("T6 — 各引擎 freshness 映射", () => {
 });
 
 // ============================================================
-// 3. zhipu callTool 实际透传（集成 mock）
+// 3. machine_mcp（智谱上游）callTool 实际透传（集成 mock）
+//    （v1.17 A3：zhipu 直连 channel 已删——同一上游透传契约由 machine_mcp 承载）
 // ============================================================
-describe("T6 — 智谱 channel search_recency_filter 透传", () => {
+describe("T6 — machine_mcp channel search_recency_filter 透传", () => {
   it("freshness=day → callTool('web_search_prime') args 含 search_recency_filter='oneDay'", async () => {
-    const { ZhipuSearchChannel } = await import(
-      "../../src/channels/SearchChannel.js"
+    const { MachineMcpSearchChannel } = await import(
+      "../../src/channels/MachineMcpSearchChannel.js"
     );
     const calls: Array<Record<string, unknown>> = [];
     const fakeClient = {
@@ -93,16 +95,16 @@ describe("T6 — 智谱 channel search_recency_filter 透传", () => {
       close: async () => {},
     };
     const ch = new (
-      ZhipuSearchChannel as unknown as new (
+      MachineMcpSearchChannel as unknown as new (
         ep: string,
-        key: string | undefined,
-      ) => { search: typeof ZhipuSearchChannel.prototype.search; _getClient: () => Promise<unknown> }
-    )("https://example.invalid/mcp", "test-key");
+        authorization: string,
+      ) => { search: typeof MachineMcpSearchChannel.prototype.search; _getClient: () => Promise<unknown> }
+    )("https://example.invalid/mcp", "Bearer test-key");
     // 注入 fake client（绕过真实 MCP 连接）
     (ch as unknown as { client: unknown }).client = fakeClient;
     await ch.search("query", {
       limit: 5,
-      engine: "zhipu",
+      engine: "machine_mcp",
       region: "cn",
       no_cache: true,
       freshness: "day",
@@ -111,8 +113,8 @@ describe("T6 — 智谱 channel search_recency_filter 透传", () => {
   });
 
   it("不传 freshness → callTool args 无 search_recency_filter 字段（byte-identical）", async () => {
-    const { ZhipuSearchChannel } = await import(
-      "../../src/channels/SearchChannel.js"
+    const { MachineMcpSearchChannel } = await import(
+      "../../src/channels/MachineMcpSearchChannel.js"
     );
     const calls: Array<Record<string, unknown>> = [];
     const fakeClient = {
@@ -123,17 +125,17 @@ describe("T6 — 智谱 channel search_recency_filter 透传", () => {
       listTools: async () => [],
       close: async () => {},
     };
-    const ch = new (ZhipuSearchChannel as unknown as new (
+    const ch = new (MachineMcpSearchChannel as unknown as new (
       ep: string,
-      key: string | undefined,
-    ) => { search: typeof ZhipuSearchChannel.prototype.search })(
+      authorization: string,
+    ) => { search: typeof MachineMcpSearchChannel.prototype.search })(
       "https://example.invalid/mcp",
-      "test-key",
+      "Bearer test-key",
     );
     (ch as unknown as { client: unknown }).client = fakeClient;
     await ch.search("query", {
       limit: 5,
-      engine: "zhipu",
+      engine: "machine_mcp",
       region: "cn",
       no_cache: true,
     });

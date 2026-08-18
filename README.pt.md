@@ -66,8 +66,8 @@ O Lasso em si é **completamente grátis + MIT open source**. Veja quanto cada c
 | Capacidade | Custo | Observações |
 |---|---|---|
 | O próprio Lasso (servidor MCP + todas as capacidades principais) | ✅ Grátis | MIT open source, grátis para sempre |
-| Busca (Zhipu + Brave) | ✅ Grátis para começar com a Zhipu | A Zhipu cobra por token (usuários novos têm crédito de cortesia); se a máquina já tem o MCP da Zhipu configurado, funciona com configuração zero; a Brave agora é um plano pago com \$5/mês de crédito (o plano grátis foi descontinuado a partir de 2026-02); o Lasso ainda traz um fallback de busca real gratuito — você tem busca mesmo sem configurar nenhum |
-| Extrair páginas públicas / screenshots / PDF / auditoria de rede / bytes brutos | ✅ Grátis | Roda localmente, sem key, sem pagamento |
+| Busca (reuso do MCP da Zhipu da máquina + Brave) | ✅ Normalmente zero configuração | Se a máquina já tem o MCP `web-search-prime` da Zhipu configurado, o Lasso reutiliza automaticamente (caminho principal — nenhuma key de busca necessária); a Brave é um plano pago opcional com \$5/mês de crédito (o plano grátis foi descontinuado a partir de 2026-02); o Lasso ainda traz um fallback de busca real gratuito — você tem busca mesmo sem configurar nenhum. Desde a v1.17 o Lasso não suporta mais sua própria key direta da Zhipu (`ZHIPU_API_KEY` está aposentada) |
+| Extrair páginas públicas / screenshots / PDF / auditoria de rede / bytes brutos / busca privada local (v1.17: histórico+arquivos) | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Extrair páginas com login (reutiliza o Chrome local) | ✅ Grátis | Roda localmente, sem key, sem pagamento |
 | Controlar o desktop (macOS / Windows / Linux) | ✅ Grátis | Construído e executado localmente, só precisa de autorização do SO; conta Apple Developer de \$99/ano **opcional** para autorização persistente assinada (também funciona sem assinar — basta autorizar de novo a cada vez) |
 | Navegador na nuvem · Steel auto-hospedado (novo na v1.6) | ✅ Grátis | Rode o Steel (Apache-2.0 open source) em Docker local — **custo zero por sessão + os cookies nunca saem da sua máquina**; precisa de `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
@@ -98,7 +98,7 @@ Sem keys logo após instalar (este é o **Nível 1: zero config**):
 - Buscar bytes brutos diretamente de uma JSON API ou arquivo
 - Controlar apps nativos do macOS (Finder / Mail / System Settings, etc. — exige uma marcação única em System Settings)
 
-> 💡 **A busca também pode funcionar com zero config**: se o `~/.claude.json` da sua máquina já tem o MCP `web-search-prime` da Zhipu configurado, o Lasso detecta e reutiliza na inicialização — sem precisar configurar um `ZHIPU_API_KEY` separado, a busca simplesmente funciona. Rode `lasso doctor` e veja se `#36 machine_search_mcp` está `pass`.
+> 💡 **A busca é zero-config por padrão**: se o `~/.claude.json` da sua máquina já tem o MCP `web-search-prime` da Zhipu configurado, o Lasso detecta e reutiliza na inicialização — a busca simplesmente funciona, sem nenhuma key de busca (desde a v1.17 esta é a única forma suportada de usar a Zhipu). Rode `lasso doctor` e veja se `#36 machine_search_mcp` está `pass`.
 
 Seu primeiro resultado — basta dizer ao Claude:
 
@@ -106,7 +106,7 @@ Seu primeiro resultado — basta dizer ao Claude:
 
 ### Quer mais? Adicione no arquivo de config (Nível 2)
 
-- **Busca** → execute `lasso config init` para criar `~/.lasso/config.json`, depois preencha uma key da Zhipu (veja [Configuração](#configuração))
+- **Busca** → normalmente zero configuração (reuso do MCP da Zhipu da máquina); opcionalmente adicione uma key da Brave como segunda fonte (veja [Configuração](#configuração))
 - **Extrair páginas com login** (Jira / GitHub privado / intranet da empresa) → execute `lasso launch-chrome` uma vez
 - **Controlar o desktop do macOS** → execute `lasso doctor` uma vez para ser guiado pela autorização
 
@@ -122,15 +122,25 @@ Agrupado por **o que você quer fazer**, não pelo nome da ferramenta. Cada item
 
 > Você: "Pesquise por X" → resultados estruturados de busca
 
-Usa a Zhipu por padrão (forte em chinês); você pode adicionar a Brave como segunda fonte (o upstream do Bing já foi desligado e sua camada morta removida; a chave de configuração é tolerada, mas silenciosamente ignorada). **Se uma fonte qualquer for limitada por taxa ou estiver fora do ar, ele alterna automaticamente para a próxima — você nem percebe.** Esgotar a cota grátis de um provedor não derruba o conjunto.
+Por padrão reutiliza o MCP da Zhipu da máquina (forte em chinês, zero configuração); você pode adicionar a Brave como segunda fonte (as camadas mortas do Bing e da Zhipu direta foram removidas; chaves de configuração remanescentes são toleradas, mas silenciosamente ignoradas). **Se uma fonte qualquer for limitada por taxa ou estiver fora do ar, ele alterna automaticamente para a próxima — você nem percebe.** Esgotar a cota grátis de um provedor não derruba o conjunto.
 
 Para conteúdo **de atualidade — notícias, movimentos de versão**, basta dizer "pesquise o X da última semana / do último mês" — o filtro de temporalidade se aplica automaticamente (day / week / month / year, v1.11), sem escrever datas à mão na query.
+
+> Quer **o corpo das páginas junto com os resultados**? Diga "busque e inclua 3 blocos de conteúdo" (`content_blocks: 1-5`, v1.17) — após os links, o Lasso busca em paralelo as N páginas principais e recorta cada corpo para ~6k caracteres **relevantes para a sua consulta** (o parágrafo de abertura é sempre mantido, seções ricas em palavras-chave primeiro): um passo até "links + conteúdo imediatamente legível". Itens que não puderam ser buscados são **anotados com honestidade** (`fetch_failed` / `not_html`), mantendo o link — você (ou a IA) decide se vale um navegador. Zero dependências pagas, sem navegador.
+
+### Busque na sua própria máquina (novo em v1.17)
+
+> Você: "quais páginas sobre X eu li recentemente?" / "quais arquivos locais mencionam X?" → busca privada local
+
+`search_local` consulta diretamente o **histórico do Chrome** (todos os perfis) e o **índice Spotlight de arquivos** (mdfind) da sua máquina — sem rede, sem nuvem. Privacidade embutida: **apenas título / URL / horário / trecho do título são retornados, nunca uma exportação do conteúdo completo das páginas**, limite de 50 resultados, bancos de dados de origem abertos somente leitura. A busca full-text do Apple Notes ainda não está aberta (um honesto "ainda não implementado" em vez de fingir que buscou).
 
 ### Extrair Páginas Públicas (sem login)
 
 > Você: "Pegue o texto de example.com" → texto limpo do artigo, três granularidades disponíveis
 
 Remove automaticamente barras de navegação, anúncios, barras laterais e outras sujeiras — **economiza 30–70% em tokens** (e dinheiro). GitHub / Reddit / Hacker News / Wikipedia / Substack / Medium e outros **mais de 20 sites de alto tráfego usam extratores dedicados**, e estruturas como tabelas e fórmulas matemáticas não se perdem (v1.12) — os links no corpo do texto viram endereços absolutos completos e clicáveis. Precisa de marcadores de citação (ótimo para pesquisa, alimentar RAG)? Uma frase troca o modo.
+
+> Quer **continuar interagindo logo após a leitura** (clicar um botão, preencher um formulário)? Diga «inclua os handles interativos na extração» (`include_refs`, v1.17) — no fim do markdown é anexada uma tabela de handles tipo `[r1] button "Enviar"` (o corpo fica sem marcadores), e então «clique r1» / «preencha r2 com X» localiza direto pelo handle, sem repetir o snapshot da página inteira. Se a página mudou, o handle **falha com honestidade** (retorna didnt + sugere re-extrair — sem adivinhar, sem retry automático).
 
 > **A partir da v1.5, o `browse_headless` tem antidetecção ligada por padrão** (UA falsificado / `navigator.webdriver` removido / webgl, plugins e codecs forjados — mais de uma dúzia de camadas). **Zero config — automático.** Muitos sites "detectores de headless" agora podem ser extraídos diretamente (a v1.8 corrigiu um defeito que desativava silenciosamente a injeção — agora funciona de verdade, e falhas de injeção são honestamente reportadas no log). A partir da v1.11 a antidetecção vale **já no lançamento do navegador**: UA, viewport e idioma descem unificados pelo perfil — o cabeçalho HTTP da camada de rede e o JS da página veem os mesmos valores, sem contradição; a partir da v1.12, no macOS a impressão digital padrão **se alinha com o seu sistema** (acabou o "UA diz Windows, as características da máquina entregam macOS"). Só proteção pesada de nível Cloudflare precisa do navegador na nuvem (veja "Bypass Anti-Bot" abaixo). Quer verificar a antidetecção? Rode `lasso doctor --stealth-check` para uma comparação via creepjs.
 
@@ -141,6 +151,8 @@ Remove automaticamente barras de navegação, anúncios, barras laterais e outra
 Reutiliza **seu Chrome já logado localmente** — você resolve o 2FA uma vez; o Lasso cuida do resto. Funciona para repositórios privados do GitHub, intranets de empresas, conteúdo de assinatura paga, etc.
 
 > 🔴 **Linha vermelha**: o Lasso **nunca resolve 2FA / códigos SMS / CAPTCHA / magic links por você**. Você precisa passar por eles manualmente uma vez no seu Chrome local.
+
+> 🛡️ **Confirmação na mesma rodada para ações de alto risco** (v1.17): quando uma ação automática atinge um padrão de alto risco (editores de rich text, arrastar e soltar, toasts transitórios…), clientes com suporte a elicitation (Claude Code ≥ 2.1.76) recebem uma pergunta na mesma rodada — «continuar / pular / abortar» — e a etapa só roda se você escolher continuar, em vez de abortar toda a execução. Clientes antigos mantêm exatamente o comportamento atual (bloqueio seguro). **A confirmação vale só para aquela ocorrência**: você será perguntado de novo toda vez; nada é memorizado.
 
 ### Buscar Bytes Brutos (mais rápido, mais barato)
 
@@ -194,7 +206,7 @@ Recorre à Internet Archive (Wayback Machine) para encontrar a última cópia ar
 
 ## Instalação
 
-**Versão atual v1.15.0** (changelog no bloco recolhido no fim desta seção).
+**Versão atual v1.17.0** (changelog no bloco recolhido no fim desta seção).
 
 Pré-requisitos: Node.js ≥ 20 + Claude Code (ou qualquer cliente compatível com MCP).
 
@@ -207,7 +219,9 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só essa linha
 **Controle do desktop no macOS**: rode `lasso doctor` uma vez e siga as instruções para marcar `lasso-rust-helper` em "Accessibility" e "Screen Recording" — o `doctor` guia você passo a passo.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.15, clique para ver o que mudou em cada versão)</summary>
+<summary>📋 Changelog (v1.8 → v1.17, clique para ver o que mudou em cada versão)</summary>
+
+- **v1.17**: cinco upgrades — ① chave direta da Zhipu aposentada (`ZHIPU_API_KEY` não é mais consumida; a capacidade Zhipu passa exclusivamente pela reutilização do MCP web-search-prime da máquina, busca zero-config por padrão) ② `search` ganha o segundo salto `content_blocks` (após os links, busca paralela dos corpos top-N recortados para ~6k caracteres conforme a consulta, falhas anotadas com honestidade, zero dependências pagas) ③ nova ferramenta `search_local` (histórico do Chrome + Spotlight, privada e local; apenas título/URL/horário, sem exportação full-text) ④ confirmação por elicitation dentro do turno para ações de alto risco (clientes antigos sem impacto) ⑤ `browse extract` ganha alças interativas `include_refs` (apêndice estilo `[r1]` + clique/preenchimento por alça, expiração honesta quando a página muda). Os resultados de busca agora carregam um eixo `quality` uniforme (api / scrape / stale).
 
 - **v1.15**: camada morta do Bing removida por inteiro (Bing Search APIs aposentado por completo em 2025-08-11 — código apagado, não só documentado; `BING_API_KEYS` residual é silenciosamente ignorado e o `lasso doctor` sugere a remoção) + **sonda rápida de HTTP puro** antes do navegador headless (se todas as camadas de API caírem, primeiro busca-se a página de resultados sem navegador em ~1s; só se voltar vazia o caminho lento arranca — teste real: 20 resultados em 1,9s contra 5,3s do caminho headless com captcha e zero resultados; páginas de bloqueio brando como o captcha/home do Baidu nunca forjam sucesso e escalam para o navegador).
 
@@ -230,7 +244,7 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só essa linha
 | O que você quer fazer | O que configurar |
 |---|---|
 | Extrair páginas públicas / screenshots / PDF / ver rastreadores / bytes brutos / controlar desktop | **Nada** |
-| Buscar | Uma key da Zhipu (grátis para solicitar; se a máquina já tem o MCP da Zhipu, nem isso) |
+| Buscar | Normalmente zero configuração (reuso do MCP da Zhipu); key da Brave opcional (plano pago) |
 | Busca quase sem falhas | Adicionar uma key da Brave (plano pago com \$5/mês de crédito; sem configurar também há fallback de busca real gratuito) |
 | Extrair páginas com login | Executar `lasso launch-chrome` uma vez |
 | Controlar o desktop do macOS | Executar `lasso doctor` uma vez para autorizar |
@@ -261,7 +275,7 @@ Salve e já vale. **Quer mais robustez**: adicione também a Brave (plano pago c
 }
 ```
 
-> Ordem de fallback: reuso do MCP da máquina → Zhipu → Brave → fallback de busca real no navegador headless (v1.14: fallback inglês de dois motores — falha/vazio do DDG tenta automaticamente mais uma vez com busca real do Brave; v1.15 adiciona antes uma **sonda rápida de HTTP puro** (~1s, busca a página de resultados sem nenhum navegador — em testes reais alguns motores desconfiam menos de clientes sem navegador); só se não achar nada o caminho lento do navegador arranca). O primeiro que falha passa para o próximo. (A fonte Bing foi removida por inteiro após a aposentadoria do upstream em 2025-08-11; um `BING_API_KEYS` residual é silenciosamente ignorado e o `lasso doctor` sugere removê-lo.)
+> Ordem de fallback: reuso do MCP da máquina → Brave (se houver key configurada) → fallback de busca real no navegador headless (v1.14: fallback inglês de dois motores — falha/vazio do DDG tenta automaticamente mais uma vez com busca real do Brave; v1.15 adiciona antes uma **sonda rápida de HTTP puro** (~1s, busca a página de resultados sem nenhum navegador — em testes reais alguns motores desconfiam menos de clientes sem navegador); só se não achar nada o caminho lento do navegador arranca). O primeiro que falha passa para o próximo. (A fonte Bing foi removida por inteiro após a aposentadoria do upstream em 2025-08-11, e o nível direto da Zhipu foi deletado na v1.17; um `BING_API_KEYS` / `ZHIPU_API_KEY` residual é silenciosamente ignorado e o `lasso doctor` sugere removê-lo.)
 
 Como solicitar keys, cotas dos planos grátis → [Guia de Configuração de Keys · Busca](./doc/KEY-GUIDE.md#a-搜索). Comandos úteis: `lasso --version` / `lasso --help` (desde a v1.8, comando desconhecido imprime o uso e sai com código não zero — não trava mais em silêncio).
 
@@ -366,7 +380,7 @@ Seus dados são seus.
 | Controle do desktop no macOS não funciona | Marque `lasso-rust-helper` em "System Settings → Privacy & Security → Accessibility / Screen Recording" (o `lasso doctor` te guia) |
 | Extração de página com login falha | Faça login uma vez manualmente no seu Chrome local (resolva o 2FA também), depois diga "abra meu X logado" |
 | Salvar como PDF falha | Diga "tire um screenshot de página inteira desta página" no lugar |
-| Busca insiste em não retornar nada | Verifique se a key expirou / a cota se esgotou; adicionar vários provedores (Zhipu + Brave) reduz drasticamente a taxa de falha |
+| Busca insiste em não retornar nada | Rode `lasso doctor` e veja `machine_search_mcp` / `brave_keys`; verifique se a key da Brave expirou / a cota se esgotou; o reuso do MCP da máquina + o fallback de busca real gratuito funcionam sem configurar nada |
 | Um link não abre | Diga "este link está morto, ache um archive" para consultar a Internet Archive |
 | Aviso de que acesso à rede interna foi bloqueado | Confira a URL; redes proxy TUN são permitidas por padrão, outras redes internas precisam de permissão explícita |
 | Quer verificar a antidetecção | Rode `lasso doctor --stealth-check` — ele dirige a página de detecção creepjs e compara com a baseline (opcional, não afeta o uso diário) |

@@ -1,7 +1,7 @@
 /**
  * PartialFailures —— 多源扇出 partial_failures 聚合（parse2 §3.6.1 / F3.9.7）。
  *
- * 场景：多源扇出时，zhipu worked 但 brave 429；总 outcome=worked（用户拿到结果），
+ * 场景：多源扇出时，machine_mcp worked 但 brave 429；总 outcome=worked（用户拿到结果），
  * 但要诚实记录"哪些源失败了"，便于 doctor / 告警 / 排查。
  *
  * 透传路径（parse2 §3.6.1）：
@@ -29,7 +29,7 @@ import type { Outcome, PartialFailure } from "../types.js";
  * 与 InteractResult 兼容（只要 outcome + 可选 channel / error / partial_count）。
  */
 export interface PerSourceResult {
-  /** channel 全名（如 "search.zhipu" / "search.brave"）。 */
+  /** channel 全名（如 "search.machine_mcp" / "search.brave"）。 */
   channel: string;
   /** 该源的 outcome。 */
   outcome: Outcome;

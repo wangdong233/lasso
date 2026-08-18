@@ -50,35 +50,23 @@ describe("makeStubChannel", () => {
     expect(r.served_by).toBe("search.brave");
   });
 
-  it("zhipu stub region=cn", async () => {
-    const r = await makeStubChannel("zhipu")("test");
-    expect(r.data?.region).toBe("cn");
+  it("v1.17 A3：zhipu 档已删——ProviderName 仅 brave 单侧（INV-80 墓碑镜像）", async () => {
+    // stub 层 brave 单侧（智谱侧成本基线改用 machine_mcp 实测，不进本 stub 基准）
+    const r = await makeStubChannel("brave")("test");
+    expect(r.data?.region).toBe("US");
   });
 });
 
 describe("runColdWarm", () => {
   it("每 query × 每 provider × rounds 产出 2 * rounds * (cold + warm) samples", async () => {
     // 用同步 fast stub（不依赖 setTimeout，避免测试变慢）
-    const fastZhipu = (q: string) =>
-      Promise.resolve({
-        outcome: "worked" as const,
-        data: {
-          query: q,
-          results: [{ title: "z", url: "u", snippet: "" }],
-          count: 1,
-          engine: "zhipu",
-          region: "cn",
-        },
-        served_by: "search.zhipu",
-        fallback_used: false,
-        retrieval_method: "stub",
-      });
+    // v1.17 A3：zhipu 档已删（INV-80 墓碑）——brave 单侧
     const fastBrave = (q: string) =>
       Promise.resolve({
         outcome: "worked" as const,
         data: {
           query: q,
-          results: [{ title: "z", url: "u", snippet: "" }],
+          results: [{ title: "b", url: "u", snippet: "" }],
           count: 1,
           engine: "brave",
           region: "US",
@@ -87,21 +75,20 @@ describe("runColdWarm", () => {
         fallback_used: false,
         retrieval_method: "stub",
       });
-    const providers = { zhipu: fastZhipu, brave: fastBrave };
+    const providers = { brave: fastBrave };
     const rounds = 3;
     const samples = await runColdWarm(queries, providers, rounds);
-    // 5 query × 2 provider × 2 mode (cold/warm) × 3 rounds = 60
-    expect(samples).toHaveLength(5 * 2 * 2 * rounds);
-    // mode 分布：cold == warm == 5*2*3 = 30
+    // 5 query × 1 provider × 2 mode (cold/warm) × 3 rounds = 30
+    expect(samples).toHaveLength(5 * 1 * 2 * rounds);
+    // mode 分布：cold == warm == 5*1*3 = 15
     const cold = samples.filter((s) => s.mode === "cold");
     const warm = samples.filter((s) => s.mode === "warm");
-    expect(cold).toHaveLength(30);
-    expect(warm).toHaveLength(30);
+    expect(cold).toHaveLength(15);
+    expect(warm).toHaveLength(15);
   }, 15_000);
 
   it("所有 sample outcome=worked（stub 永远成功）", async () => {
     const providers = {
-      zhipu: makeStubChannel("zhipu"),
       brave: makeStubChannel("brave"),
     };
     const samples = await runColdWarm(queries.slice(0, 2), providers, 1);
@@ -112,45 +99,29 @@ describe("runColdWarm", () => {
 describe("runConcurrent", () => {
   it("batch size 控制 samples 数 = batch × provider × rounds", async () => {
     const providers = {
-      zhipu: makeStubChannel("zhipu"),
       brave: makeStubChannel("brave"),
     };
     const batchSize = 3;
     const rounds = 2;
     const samples = await runConcurrent(queries, providers, rounds, batchSize);
-    // 3 (batch) × 2 (provider) × 2 (rounds) = 12
-    expect(samples).toHaveLength(batchSize * 2 * rounds);
+    // 3 (batch) × 1 (provider) × 2 (rounds) = 6
+    expect(samples).toHaveLength(batchSize * 1 * rounds);
     expect(samples.every((s) => s.mode === "concurrent")).toBe(true);
   });
 
   it("batch size > queries.length 时 clamp 到 queries.length", async () => {
     const providers = {
-      zhipu: makeStubChannel("zhipu"),
       brave: makeStubChannel("brave"),
     };
     const samples = await runConcurrent(queries.slice(0, 2), providers, 1, 10);
-    // 实际 batch = min(10, 2) = 2；2 × 2 provider × 1 round = 4
-    expect(samples).toHaveLength(4);
+    // 实际 batch = min(10, 2) = 2；2 × 1 provider × 1 round = 2
+    expect(samples).toHaveLength(2);
   });
 });
 
 describe("summarize", () => {
   it("p50/p95 在合理范围 + success_rate ∈ [0, 1]", async () => {
-    // 用同步 fast stub 避免 setTimeout 拖慢
-    const fastZhipu = (q: string) =>
-      Promise.resolve({
-        outcome: "worked" as const,
-        data: {
-          query: q,
-          results: [{ title: "z", url: "u", snippet: "" }],
-          count: 1,
-          engine: "zhipu",
-          region: "cn",
-        },
-        served_by: "search.zhipu",
-        fallback_used: false,
-        retrieval_method: "stub",
-      });
+    // 用同步 fast stub 避免 setTimeout 拖慢（v1.17 A3：brave 单侧）
     const fastBrave = (q: string) =>
       Promise.resolve({
         outcome: "worked" as const,
@@ -165,7 +136,7 @@ describe("summarize", () => {
         fallback_used: false,
         retrieval_method: "stub",
       });
-    const providers = { zhipu: fastZhipu, brave: fastBrave };
+    const providers = { brave: fastBrave };
     const samples = [
       ...(await runColdWarm(queries.slice(0, 3), providers, 1)),
       ...(await runConcurrent(queries.slice(0, 3), providers, 1, 2)),
@@ -191,7 +162,7 @@ describe("renderMarkdown", () => {
       queries: { zh: 2, en: 3 },
       samples: [],
       summary: [
-        { provider: "zhipu", mode: "cold", p50_ms: 400, p95_ms: 600, success_rate: 1.0, samples: 5 },
+        // v1.17 A3：zhipu 档已删（INV-80 墓碑）——brave 单侧
         { provider: "brave", mode: "cold", p50_ms: 700, p95_ms: 900, success_rate: 0.95, samples: 5 },
       ],
       external_citations: {

@@ -66,8 +66,8 @@ Lasso itself is **completely free + MIT open source**. Here's what each capabili
 | Capability | Cost | Notes |
 |---|---|---|
 | Lasso itself (MCP server + all core capabilities) | ✅ Free | MIT open source, free forever |
-| Search (Zhipu + Brave) | ✅ Free to start with Zhipu | Zhipu is billed by token (new users get free credits), and if the Zhipu MCP is already configured on the machine it works with zero setup; Brave is now a paid plan that includes a \$5/month credit (the free tier was discontinued as of 2026-02); Lasso also ships a free live-search fallback, so you still have search even without configuring any provider |
-| Scrape public pages / screenshots / PDF / network audit / raw bytes | ✅ Free | Runs locally, no key, no payment |
+| Search (machine Zhipu MCP reuse + Brave) | ✅ Usually zero-config | If the machine already has the Zhipu web-search-prime MCP configured, Lasso reuses it automatically (the main path — no search key needed at all); Brave is an optional paid plan that includes a \$5/month credit (the free tier was discontinued as of 2026-02); Lasso also ships a free live-search fallback, so you still have search even without configuring any provider. As of v1.17 Lasso no longer supports its own Zhipu direct key (`ZHIPU_API_KEY` is retired) |
+| Scrape public pages / screenshots / PDF / network audit / raw bytes / local private search (v1.17: history+files) | ✅ Free | Runs locally, no key, no payment |
 | Scrape logged-in pages (reuse local Chrome) | ✅ Free | Runs locally, no key, no payment |
 | Drive desktop (macOS / Windows / Linux) | ✅ Free | Built and run locally, only OS authorization needed; **optional** Apple Developer account \$99/yr for signed persistent authorization (works without signing too — just re-authorize each time) |
 | Cloud browser · self-hosted Steel (v1.6 new) | ✅ Free | Run Steel (Apache-2.0 open source) in local Docker — **zero per-session cost + cookies never leave your machine**; needs `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
@@ -98,7 +98,7 @@ No keys needed right after install (this is **Tier 1: zero config**):
 - Fetch raw bytes from a JSON API or file directly
 - Control native macOS apps (Finder / Mail / System Settings, etc. — requires a one-time tick in System Settings)
 
-> 💡 **Search may be zero-config too**: if your machine's `~/.claude.json` already has the Zhipu `web-search-prime` MCP configured, Lasso auto-detects and reuses it at startup — no need to set a separate `ZHIPU_API_KEY`, search just works. Run `lasso doctor` and check whether `#36 machine_search_mcp` is `pass`.
+> 💡 **Search is zero-config by default**: if your machine's `~/.claude.json` already has the Zhipu `web-search-prime` MCP configured, Lasso auto-detects and reuses it at startup — search just works, no search key needed at all (as of v1.17 this is the only supported way to use Zhipu). Run `lasso doctor` and check whether `#36 machine_search_mcp` is `pass`.
 
 Your first output — just say to Claude:
 
@@ -106,7 +106,7 @@ Your first output — just say to Claude:
 
 ### Want more? Add it in the config file (Tier 2)
 
-- **Search** → run `lasso config init` to create `~/.lasso/config.json`, then fill in a Zhipu key (see [Configure](#configure))
+- **Search** → usually zero-config (machine Zhipu MCP reuse); optionally add a Brave key for a second source (see [Configure](#configure))
 - **Scrape logged-in pages** (Jira / private GitHub / company intranet) → run `lasso launch-chrome` once
 - **Control the macOS desktop** → run `lasso doctor` once to be guided through authorization
 
@@ -122,15 +122,25 @@ Grouped by **what you want to do**, not by tool name. Each is one sentence in, o
 
 > You: "Search for X" → structured search results
 
-Defaults to Zhipu (strong for Chinese); you can add Brave as a second source (the Bing upstream has been shut down and its dead layer removed; the config key is tolerated but silently ignored). **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
+Defaults to reusing the machine's Zhipu MCP (strong for Chinese, zero-config); you can optionally add Brave as a second source (both the Bing and the Zhipu-direct dead layers have been removed; leftover config keys are tolerated but silently ignored). **If any single source is rate-limited or down, it auto-switches to the next — you don't feel a thing.** Hitting one provider's free quota doesn't break the whole.
 
 For time-sensitive content like **news and release tracking**, just say "search for X from the last week / last month" — a time filter is applied automatically (day / week / month / year, v1.11), no hand-written dates in your query.
+
+> Want the **page bodies along with the results**? Say "search and include 3 content blocks" (`content_blocks: 1-5`, v1.17) — after the blue links come back, Lasso concurrently fetches the top N pages and trims each body to ~6k chars **relevant to your query** (lead paragraph always kept, keyword-heavy sections first): one step to "links + immediately readable content". Items that can't be fetched are **honestly annotated** (`fetch_failed` / `not_html`) with the blue link intact — you (or the AI) decide whether a browser follow-up is worth it. Zero paid dependencies, no browser launched.
+
+### Search Your Own Machine (new in v1.17)
+
+> You: "which pages about X did I read recently?" / "which local files mention X?" → local private search
+
+`search_local` queries your machine's **Chrome history** (all profiles) and **Spotlight file index** (mdfind) directly — no network, no cloud. Privacy is built in: **only title / URL / time / title-match snippet are returned, never a full page-content export**, capped at 50 results, source databases opened read-only. Apple Notes full-text search is not open yet (an honest "not implemented yet" instead of pretending to have searched).
 
 ### Scrape Public Pages (no login)
 
 > You: "Grab the text of example.com" → clean article text, three granularities available
 
 Auto-strips nav bars, ads, sidebars and other clutter — **saves 30–70% on tokens** (and money). GitHub / Reddit / Hacker News / Wikipedia / Substack / Medium and other **high-traffic sites — 20+ in all — get dedicated extractors**, so tables and math formulas keep their structure too (v1.12), and every link in the body text is a fully clickable absolute URL. Need citation markers (great for research, feeding RAG)? One sentence switches modes.
+
+> Want to **keep interacting right after reading** (click a button, fill a form)? Say "include interactive refs with the extract" (`include_refs`, v1.17) — a `[r1] button "Submit"`-style handle table is appended at the end of the markdown (the body itself stays marker-free), and then "click r1" / "fill r2 with X" locates by handle directly, no full-page snapshot needed. If the page has changed, the handle **fails honestly** (returns didnt + tells you to re-extract — no guessing, no auto-retry).
 
 > **As of v1.5, `browse_headless` has anti-detection on by default** (spoofed UA / `navigator.webdriver` removed / faked webgl, plugins, codecs, and a dozen more layers). **Zero config — automatic.** Many "detect headless" sites now scrape directly (v1.8 fixed a defect where the injection silently failed to apply — it really takes effect now, and injection failures are reported honestly in the logs). As of v1.11 anti-detection is applied **at browser-launch level**: UA, viewport and language are issued together from the profile, so the network-layer HTTP headers and the page's JS see the same values — no more self-contradiction. As of v1.12 the default fingerprint on macOS **matches your system** (no more "UA says Windows while machine traits give away macOS"). Only Cloudflare-grade heavy anti-bot needs the cloud browser (see "Anti-Bot Bypass" below). Want to verify the anti-detection effect? Run `lasso doctor --stealth-check` for a creepjs detection comparison.
 
@@ -141,6 +151,8 @@ Auto-strips nav bars, ads, sidebars and other clutter — **saves 30–70% on to
 Reuses **your locally-logged-in Chrome** — you handle 2FA once; Lasso takes over the rest. Works for private GitHub repos, company intranets, paid-subscription content, etc.
 
 > 🔴 **Red line**: Lasso **never solves 2FA / SMS codes / CAPTCHA / magic links for you**. You must manually pass these once in your local Chrome.
+
+> 🛡️ **In-turn confirmation for high-risk actions** (v1.17): when an automated action hits a high-risk pattern (rich-text editors, drag-and-drop, transient toasts…), clients that support elicitation (Claude Code ≥ 2.1.76) get an in-turn prompt — "continue / skip / abort" — and the step only runs if you choose continue, instead of aborting the whole run. Older clients keep the exact current behavior (safe block). **Confirmation is per-hit only**: you'll be asked again every time; nothing is remembered.
 
 ### Fetch Raw Bytes (fastest, cheapest)
 
@@ -194,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.15.0** (changelog in the collapsed block at the end of this section).
+**Current version v1.17.0** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -207,7 +219,9 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.15 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.17 — click to see what each version changed)</summary>
+
+- **v1.17**: five upgrades — ① Zhipu direct key retired (`ZHIPU_API_KEY` is no longer consumed; Zhipu capability is carried solely by machine web-search-prime MCP reuse, search is zero-config by default) ② `search` gains the `content_blocks` second hop (after the blue links, concurrently fetch top-N bodies trimmed query-relevantly to ~6k chars, failures honestly annotated, zero paid dependencies) ③ new tool `search_local` (Chrome history + Spotlight local private search; title/URL/time only, no full-text export) ④ in-turn elicitation confirmation for high-risk actions (older clients unaffected) ⑤ `browse extract` gains `include_refs` interactive handles (`[r1]`-style appendix + click/fill by handle, honest staleness on page change). Search results now carry a uniform `quality` axis (api / scrape / stale).
 
 - **v1.15**: Bing dead layer removed outright (Bing Search APIs fully retired 2025-08-11 — code deleted, not just documented; leftover `BING_API_KEYS` silently ignored, `lasso doctor` suggests removal) + a **bare-HTTP quick probe** before the headless browser (when all API layers are down, a browserless fetch of the results page runs first in ~1s; only if it comes up empty does the slow headless path start — real-machine test: 20 results in 1.9s vs the headless path's 5.3s with a captcha and zero results; soft-block pages such as Baidu's captcha/homepage shell never fake success and escalate to the browser).
 
@@ -230,7 +244,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 | What you want to do | What to configure |
 |---|---|
 | Scrape public pages / screenshots / PDF / see third-party resources / fetch raw bytes / drive the desktop | **Nothing at all** |
-| Search | One Zhipu key (free to apply; not even that if the machine already has the Zhipu MCP) |
+| Search | Usually zero-config (machine Zhipu MCP reuse); optional Brave key (paid plan) |
 | Near-zero search failures | Add a Brave key (paid plan that includes a \$5/month credit; even without it there's a free live-search fallback) |
 | Scrape logged-in pages | Run `lasso launch-chrome` once |
 | Drive the macOS desktop | Run `lasso doctor` once to authorize |
@@ -238,30 +252,27 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 
 The four modules below each give the shortest path to "it just runs"; details are collapsed and expandable.
 
-### 1. Search (✅ Free · the only module that needs a key)
+### 1. Search (✅ Usually zero-config · key optional)
 
-**First check whether you need to configure it**: if your machine already has the Zhipu `web-search-prime` MCP configured, Lasso **auto-detects and reuses its key** — nothing to fill in. Run `lasso doctor`: if `#36 machine_search_mcp` is `pass`, that's this case.
+**First check whether you need to configure it**: if your machine already has the Zhipu `web-search-prime` MCP configured, Lasso **auto-detects and reuses its key** — nothing to fill in (as of v1.17 this is the default main path). Run `lasso doctor`: if `#36 machine_search_mcp` is `pass`, that's this case.
 
-**To configure, three steps**:
+**To add a second source (optional), three steps**:
 
 ```bash
 lasso config init        # creates ~/.lasso/config.json
 ```
 
 ```json
-{ "ZHIPU_API_KEY": "your_zhipu_key" }
-```
-
-Takes effect on save. **For more stability**, add Brave too (a paid plan that includes a \$5/month credit ≈ 1,000 queries, credit card required — the free tier was discontinued as of 2026-02; if any configured provider goes down it auto-switches to the next; multiple keys comma-separated, each with its own quota):
-
-```json
 {
-  "ZHIPU_API_KEY": "your_zhipu_key",
   "BRAVE_API_KEYS": "bravekey1,bravekey2"
 }
 ```
 
-> Fallback order: machine MCP reuse → Zhipu → Brave → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search; v1.15 adds a **bare-HTTP quick probe** (~1s, fetches the results page with no browser at all — in real-machine tests some engines are less suspicious of browserless clients) before the slow headless path). If the one ahead fails, it auto-switches to the next. (The Bing source was removed outright after the upstream retired it on 2025-08-11; leftover `BING_API_KEYS` is silently ignored and `lasso doctor` will suggest removing it.)
+Takes effect on save. Brave is a paid plan that includes a \$5/month credit ≈ 1,000 queries, credit card required — the free tier was discontinued as of 2026-02; if any configured provider goes down it auto-switches to the next; multiple keys comma-separated, each with its own quota.
+
+> 🔴 **As of v1.17 Lasso no longer supports its own Zhipu direct key**: `ZHIPU_API_KEY` / `ZHIPU_ENDPOINT` are retired (the direct API channel was deleted; Zhipu capability is carried entirely by machine MCP reuse). Leftover keys in old configs are silently ignored, and `lasso doctor`'s `zhipu_keys_retired` check will suggest removing them.
+
+> Fallback order: machine MCP reuse → Brave (if a key is set) → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search; v1.15 adds a **bare-HTTP quick probe** (~1s, fetches the results page with no browser at all — in real-machine tests some engines are less suspicious of browserless clients) before the slow headless path). If the one ahead fails, it auto-switches to the next. (The Bing source was removed outright after the upstream retired it on 2025-08-11, and the Zhipu direct tier was deleted in v1.17; leftover `BING_API_KEYS` / `ZHIPU_API_KEY` are silently ignored and `lasso doctor` will suggest removing them.)
 
 How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 
@@ -366,7 +377,7 @@ Your data is yours.
 | macOS desktop control doesn't work | Tick `lasso-rust-helper` under "System Settings → Privacy & Security → Accessibility / Screen Recording" (`lasso doctor` guides you) |
 | Logged-in page scrape fails | Log in once manually in your local Chrome (handle 2FA too), then say "open my logged-in X" |
 | Save-as-PDF fails | Say "take a full-page screenshot of this page" instead |
-| Search keeps returning nothing | Check whether the key expired / quota is exhausted; adding multiple providers (Zhipu + Brave) dramatically lowers the failure rate |
+| Search keeps returning nothing | Run `lasso doctor` and check `machine_search_mcp` / `brave_keys`; check whether the Brave key expired / quota is exhausted; machine MCP reuse + the free live-search fallback work with zero config |
 | A link won't open | Say "this link is dead, find an archive" to check the Internet Archive |
 | Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
 | Want to verify the anti-detection effect | Run `lasso doctor --stealth-check` — it drives the creepjs detection page and compares against a baseline (optional, doesn't affect daily use) |

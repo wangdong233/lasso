@@ -168,7 +168,7 @@ afterEach(async () => {
 
 /**
  * Stub fetch → 返固定 Response（skipNetwork=false 时防其他 check 触真网）。
- * 默认返 200 空体（让 zhipu_endpoint / steel_endpoint 等 check 不超时）。
+ * 默认返 200 空体（让 steel_endpoint 等 check 不超时）。
  */
 function stubFetchOk() {
   vi.stubGlobal(
@@ -203,7 +203,6 @@ function stubFetchThrow() {
 describe("runDoctor #38 stealth_creepjs_regression —— 默认 + skip 路径", () => {
   it("默认（stealthCheck 不传）→ warn-skip（零回归：不开浏览器）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
@@ -214,7 +213,6 @@ describe("runDoctor #38 stealth_creepjs_regression —— 默认 + skip 路径",
 
   it("stealthCheck=true 但无 clientProvider → warn", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       stealthCheck: true,
@@ -227,7 +225,6 @@ describe("runDoctor #38 stealth_creepjs_regression —— 默认 + skip 路径",
 
   it("stealthCheck=true + provider + skipNetwork=true → warn-skip（probe 需触网）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       stealthCheck: true,
@@ -261,7 +258,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk(); // 防 #39 + 其他 check 触网
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -288,7 +284,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -314,7 +309,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -339,7 +333,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -360,7 +353,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -375,7 +367,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
   it("clientProvider 返 null（9222 未开）→ warn", async () => {
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -394,7 +385,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 
     stubFetchOk();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
       stealthCheck: true,
@@ -413,7 +403,6 @@ describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2
 describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock fetch）", () => {
   it("skipNetwork=true → warn-skip", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
@@ -425,7 +414,6 @@ describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock 
   it("fetch 返 404 → warn + detail 含 R-ECO-6（契约虚构确认）", async () => {
     stubFetchStatus(404, "Not Found");
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
     });
@@ -438,7 +426,6 @@ describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock 
   it("fetch 返 2xx → pass（契约存在；R-ECO-6 反驳）", async () => {
     stubFetchStatus(200, "OK");
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
     });
@@ -450,7 +437,6 @@ describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock 
   it("fetch 抛网络错 → warn（按 R-ECO-6 不存在处理）", async () => {
     stubFetchThrow();
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
     });
@@ -463,7 +449,6 @@ describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock 
     // 这是 parse15 §3.4 "永不 fail" 范式验证
     stubFetchStatus(404);
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: false,
       skipInvariants: true,
     });
@@ -478,7 +463,6 @@ describe("runDoctor #39 stagehand_rest_contract_probe —— HEAD 探测（mock 
 describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
   it("checks 含 stealth_creepjs_regression + stagehand_rest_contract_probe（#38/#39 存在）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
@@ -487,19 +471,17 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
     expect(names).toContain("stagehand_rest_contract_probe");
   });
 
-  it("lasso_version === 1.16.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+  it("lasso_version === 1.17.0（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.16.0");
-    expect(LASSO_VERSION).toBe("1.16.0");
+    expect(r.lasso_version).toBe("1.17.0");
+    expect(LASSO_VERSION).toBe("1.17.0");
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       skipNetwork: true,
       skipInvariants: true,
       stealthCheck: true,

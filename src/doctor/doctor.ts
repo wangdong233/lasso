@@ -8,8 +8,10 @@
  * 25 项 check（v0.1 10 项 + v0.2 加 4 项 + v0.3.5 加 6 项 desktop + v0.4 M0.4a 加 4 项 forest
  *           + v0.4 M0.4c 加 1 项 stealth profile）：
  *   1. node_version               — Node ≥ 20
- *   2. zhipu_api_key              — ZHIPU_API_KEY 存在
- *   3. zhipu_endpoint_reachable   — 智谱 MCP endpoint 网络可达（HTTP HEAD/GET，不深测协议）
+ *   2. zhipu_keys_retired         — v1.17 A3：ZHIPU_API_KEY / ZHIPU_ENDPOINT 已退役容忍
+ *                                   读（非空 → warn 建议删除；零触网，照 #11c bing 先例）
+ *      （v1.17 A3 删除：zhipu_api_key / zhipu_endpoint_reachable 两 check——zhipu 直连
+ *        API channel 死层清除，key 不再被消费；INV-80 墓碑守卫）
  *   4. cdp_mcp_installable        — chrome-devtools-mcp@<LOCKED> 在 npm 可装（npm view 查询）
  *   5. chrome_binary              — Chrome / Chromium 二进制存在（browse_logged_in 需要）
  *   6. cdp_9222_logged_in         — 本机 :9222 CDP 可达 + 至少 1 个 tab
@@ -155,7 +157,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.16.0";
+export const LASSO_VERSION = "1.17.0";
 
 // ============================================================
 // 类型
@@ -266,10 +268,12 @@ export interface DoctorReport {
 }
 
 export interface DoctorOptions {
-  /** 覆盖 ZHIPU_API_KEY（默认读 process.env）。 */
+  /**
+   * v1.17 A3：覆盖 ZHIPU_API_KEY（默认读 process.env；**已退役容忍读**）。
+   * zhipu 直连 API channel 已删除（doc/25 裁决③）；zhipu_keys_retired 是零触网
+   * 静态检查：键非空 → warn 建议删除（主链已不含 zhipu 直连档，无功能影响）。
+   */
   zhipuKey?: string;
-  /** 覆盖 ZHIPU endpoint。 */
-  zhipuEndpoint?: string;
   /** 覆盖 CDP 端口（默认 9222）。 */
   cdpPort?: number;
   /** 覆盖 cache 目录（默认 ~/.cache/lasso）。 */
@@ -299,7 +303,7 @@ export interface DoctorOptions {
    * 注：此 check 改为 warn，不算 blocker。
    */
   skipInvariants?: boolean;
-  /** 跳过触网检查（zhipu_endpoint_reachable + cdp_9222_logged_in + cdp_mcp_installable）。 */
+  /** 跳过触网检查（cdp_9222_logged_in + cdp_mcp_installable + steel/stagehand 探测）。 */
   skipNetwork?: boolean;
   /**
    * v0.3.5（parse4 §3.4）：跑 #15-#20 desktop check（v1.11 T11 扩为 #15-#21 共 7 项）。
@@ -494,30 +498,17 @@ export async function runDoctor(
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
 
+  // v1.17 A3：zhipuKey 仅用于 zhipu_keys_retired 静态退役提示（不再装配任何 channel）。
   const zhipuKey = opts.zhipuKey ?? process.env.ZHIPU_API_KEY;
-  const zhipuEndpoint =
-    opts.zhipuEndpoint ??
-    process.env.ZHIPU_ENDPOINT ??
-    "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp";
   const cdpPort = opts.cdpPort ?? parseInt(process.env.LASSO_CDP_PORT ?? "9222", 10);
   const cacheDir = opts.cacheDir ?? path.join(os.homedir(), ".cache", "lasso");
 
   // 1. node_version
   checks.push(checkNodeVersion());
 
-  // 2. zhipu_api_key
-  checks.push(checkZhipuKey(zhipuKey));
-
-  // 3. zhipu_endpoint_reachable
-  checks.push(
-    opts.skipNetwork
-      ? {
-          name: "zhipu_endpoint_reachable",
-          status: "warn",
-          detail: "skipped (skipNetwork=true)",
-        }
-      : await checkZhipuEndpoint(zhipuEndpoint),
-  );
+  // 2. zhipu_keys_retired（v1.17 A3）：零触网静态退役提示（替换已删的
+  //    zhipu_api_key / zhipu_endpoint_reachable 两 check——zhipu 直连死层清除）。
+  checks.push(checkZhipuKeysRetired(zhipuKey, process.env.ZHIPU_ENDPOINT ?? ""));
 
   // 4. cdp_mcp_installable
   checks.push(
@@ -596,8 +587,8 @@ export async function runDoctor(
   // 12. provider_registry_loadable
   checks.push(checkProviderRegistry());
 
-  // 13. quota_ledger_initialized
-  checks.push(checkQuotaLedger(braveKeysCsv, zhipuKey));
+  // 13. quota_ledger_initialized（v1.17 A3：zhipu 直连 provider 已删，只查 brave）
+  checks.push(checkQuotaLedger(braveKeysCsv));
 
   // 14. search_cache_dir_writable
   checks.push(await checkSearchCacheDir(cacheDir));
@@ -743,7 +734,8 @@ export async function runDoctor(
   // ---- v1.4 Phase B（parse-v1.4 §Phase B 机器 MCP 复用）----
   // #36 machine_search_mcp：探测 ~/.claude.json 是否配过 web-search-prime MCP
   //   - detected → pass：报 hostname（open.bigmodel.cn），不报完整 url + 永不报 Authorization
-  //   - missing  → warn（零配置兼容；不阻塞 ready）：降级到 search.zhipu（Lasso 自己 key）
+  //   - missing  → warn（零配置兼容；不阻塞 ready）：降级 brave（需 key）→ 免费兜底链
+  //                （v1.17 A3：zhipu 直连档已删，不再是降级目的地）
   // 守 INV-72：detectMachineSearchMcp() 已 read-only + 永不抛；本 check 不再触网、不再读 key。
   checks.push(checkMachineSearchMcp());
 
@@ -754,7 +746,7 @@ export async function runDoctor(
   //   - 双重解锁且 endpoint 配 → GET $STEEL_ENDPOINT/health 探测
   //     · 2xx/3xx/4xx 都算"可达"（TCP/TLS+HTTP 通即可；与 #21 probeCloudEndpoint 同范式）
   //     · 5xx → warn（Steel 不健康）；网络错/timeout → warn（Steel Docker 未启）
-  //   - skipNetwork=true → warn-skip（同 #3/#4/#6/#21 范式）
+  //   - skipNetwork=true → warn-skip（同 #4/#6/#21 范式）
   //   - **永不 fail**：Steel 是可选 cloud fallback 链尾，不可达不阻塞 Lasso 整体 ready
   //   - 源码证据（parse14 §3.2 表 + §4.3）：Steel sessions.routes.ts L27-40 GET /health
   //     返 {status:"ok"} 或 503 {status:"service_unavailable"}。
@@ -807,7 +799,7 @@ export async function runDoctor(
   }
 
   // #39 stagehand_rest_contract_probe：HEAD 探 api.stagehand.dev/verify 裁决 R-ECO-6
-  //   - skipNetwork=true → warn-skip（同 #3/#4/#21 范式）
+  //   - skipNetwork=true → warn-skip（同 #4/#21 范式）
   //   - 404 / 连接拒 → warn（REST 契约不存在；R-ECO-6 确认；StagehandChannel 为 v0.4 设计期假设）
   //   - 2xx → pass（契约存在；R-ECO-6 反驳；StagehandChannel 可用）
   //   - 网络错 → warn（按不存在处理）
@@ -862,38 +854,44 @@ function checkNodeVersion(): DoctorCheck {
   };
 }
 
-/** 2. ZHIPU_API_KEY 存在（不验证有效性）。 */
-function checkZhipuKey(key: string | undefined): DoctorCheck {
-  return {
-    name: "zhipu_api_key",
-    status: key ? "pass" : "fail",
-    detail: key ? "已配置（有效性未深测）" : "ZHIPU_API_KEY 未设置",
-    next_step: key ? undefined : "export ZHIPU_API_KEY=<your-key>",
-  };
-}
-
-/** 3. 智谱 MCP endpoint 可达（HEAD 请求，2xx/4xx 都算"可达"；网络错才算 fail）。 */
-async function checkZhipuEndpoint(endpoint: string): Promise<DoctorCheck> {
-  try {
-    const resp = await fetch(endpoint, {
-      method: "GET",
-      signal: AbortSignal.timeout(5000),
-      // 不带 Authorization 也行——只测 TCP/TLS+HTTP 通
-    });
+/**
+ * 2. zhipu_keys_retired（v1.17 A3，doc/25 裁决③）：零触网静态退役提示。
+ *
+ * zhipu 直连 API channel 已删除（channels/SearchChannel.ts 死层清除；INV-80 墓碑守卫）
+ * ——智谱搜索能力的现行载体是 search.machine_mcp（机器 ~/.claude.json 已配的
+ * web-search-prime MCP，零配置复用，见 #36 machine_search_mcp）。
+ *
+ * 行为（照 #11c bing_keys_retired 先例）：
+ *  - ZHIPU_API_KEY / ZHIPU_ENDPOINT 均未配 → pass（常态：无需配置）
+ *  - 任一键非空 → warn：该配置永远不被消费，建议删除（存量 config 不炸、静默忽略）
+ */
+function checkZhipuKeysRetired(
+  zhipuKey: string | undefined,
+  zhipuEndpoint: string,
+): DoctorCheck {
+  const keySet = !!(zhipuKey && zhipuKey.trim().length > 0);
+  const endpointSet = zhipuEndpoint.trim().length > 0;
+  if (!keySet && !endpointSet) {
     return {
-      name: "zhipu_endpoint_reachable",
-      // 401/403/405 都说明端点活着；5xx 视为不稳定 → warn
-      status: resp.status < 500 ? "pass" : "warn",
-      detail: `HTTP ${resp.status} ${resp.statusText}`,
-    };
-  } catch (e) {
-    return {
-      name: "zhipu_endpoint_reachable",
-      status: "fail",
-      detail: String(e),
-      next_step: `检查网络 / endpoint: ${endpoint}`,
+      name: "zhipu_keys_retired",
+      status: "pass",
+      detail:
+        "ZHIPU_API_KEY / ZHIPU_ENDPOINT 未配置（常态：zhipu 直连档已于 v1.17 删除，无需配置；智谱搜索由机器 web-search-prime MCP 复用承载，见 machine_search_mcp）",
     };
   }
+  const which = [
+    keySet ? "ZHIPU_API_KEY" : null,
+    endpointSet ? "ZHIPU_ENDPOINT" : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  return {
+    name: "zhipu_keys_retired",
+    status: "warn",
+    detail: `${which} 已配置，但 zhipu 直连 API channel 已于 v1.17 删除（doc/25 裁决③），该配置永远不被消费`,
+    next_step:
+      "建议删除 ZHIPU_API_KEY / ZHIPU_ENDPOINT 配置；主链已不含 zhipu 直连档（静默忽略、无功能影响）。要 API 档搜索请配置机器 web-search-prime MCP（推荐，零配置复用）或 BRAVE_API_KEYS，见 doc/KEY-GUIDE.md",
+  };
 }
 
 /** 4. chrome-devtools-mcp@<LOCKED> 在 npm registry 可装。 */
@@ -1146,9 +1144,10 @@ function checkBraveKeys(braveKeysCsv: string): DoctorCheck {
     return {
       name: "brave_keys",
       status: "warn",
-      detail: "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 多源扇出退化为单源 zhipu）",
+      detail:
+        "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 扇出退化为 machine_mcp 单源；无机器 MCP 时走 serp_http→browse_headless 免费兜底链）",
       next_step:
-        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径用智谱 + 实搜兜底即可，详见 doc/KEY-GUIDE.md",
+        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径 = 机器 web-search-prime MCP 复用 + 实搜兜底，详见 doc/KEY-GUIDE.md",
     };
   }
   return {
@@ -1188,7 +1187,7 @@ async function checkBraveDeepProbe(braveKeysCsv: string): Promise<DoctorCheck> {
       name,
       status: "warn",
       detail:
-        "BRAVE_API_KEYS 未配置，无 key 可探测（--deep 对 Brave 无事可做；零 key 免费路径=智谱+实搜兜底）",
+        "BRAVE_API_KEYS 未配置，无 key 可探测（--deep 对 Brave 无事可做；零 key 免费路径=机器 MCP 复用+实搜兜底）",
     };
   }
   const brave = BUILTIN_PROVIDERS.find((p) => p.name === "brave");
@@ -1303,7 +1302,8 @@ function checkBingKeysRetired(bingKeysCsv: string): DoctorCheck {
 /**
  * 12. provider_registry_loadable（v0.2 §3.1.2）：ProviderRegistry 能加载 BUILTIN_PROVIDERS。
  *
- *  - 5 条 builtin：zhipu / brave / browse_headless / browse_logged_in / tavily
+ *  - 4 条 builtin：brave / browse_headless / browse_logged_in / tavily
+ *    （v1.17 A3：zhipu 已随直连死层删除，INV-80 墓碑守卫）
  *  - enabled=false（tavily）应被 ProviderRegistry 跳过 → listNames() 不含 tavily
  *  - 加载失败 → fail（架构问题，阻塞 ready）
  *
@@ -1345,19 +1345,14 @@ function checkProviderRegistry(): DoctorCheck {
  * 13. quota_ledger_initialized（v0.2 §3.1.2）：已配置 Key 的 api_key provider
  *    都生成了非空 QuotaLedger（keys.length > 0 → ledger != null）。
  *
- *  - zhipu 配 Key → zhipu.ledger != null
  *  - brave 配 Key → brave.ledger != null
+ *    （v1.17 A3：zhipu 直连 provider 已删——机器 MCP 复用不走 QuotaLedger）
  *  - 配了 Key 但 ledger 为 null → fail（QuotaLedger 构造异常）
  *  - 未配 Key 的 provider → 不检查（enabled 但 keys 空 → ledger=null 是合规行为）
  */
-function checkQuotaLedger(
-  braveKeysCsv: string,
-  zhipuKey: string | undefined,
-): DoctorCheck {
+function checkQuotaLedger(braveKeysCsv: string): DoctorCheck {
   // 复刻 config.ts 的 keys 注入逻辑，避免 loadConfig 触网 / 依赖 cacheDir
   const configs = BUILTIN_PROVIDERS.map((p) => ({ ...p }));
-  const zhipu = configs.find((c) => c.name === "zhipu");
-  if (zhipu && zhipuKey) zhipu.keys = [zhipuKey];
   const brave = configs.find((c) => c.name === "brave");
   if (brave) {
     const keys = braveKeysCsv
@@ -1518,7 +1513,7 @@ async function checkCloudBrowserManualSwitch(opts: {
 /**
  * HEAD 探测 cloud 浏览器 endpoint（doctor #21 内部用）。
  *
- * 语义（与 #3 zhipu_endpoint_reachable 同范式）：
+ * 语义（与 #21 cloud endpoint HEAD 探测同范式）：
  *  - 2xx/3xx/4xx 都算"可达"（TCP/TLS+HTTP 通即可；401/403 也说明 endpoint 活着）
  *  - 5xx → "unreachable"（不稳定）
  *  - 网络错 / timeout → "unreachable"
@@ -2633,8 +2628,10 @@ async function checkConfigFile(): Promise<DoctorCheck> {
  * web_search_prime/bigmodel.cn + headers.Authorization）：
  *  - 命中 → pass：detail 报 hostname（如 open.bigmodel.cn），不报完整 url（path 可含
  *                token 片段，保守只给 host）+ 永不报 Authorization 值（INV-72）
- *  - 未命中 → warn（零配置兼容；不阻塞 ready）：用户没配机器 MCP，Lasso 自动降级到
- *            search.zhipu（需单独配 ZHIPU_API_KEY 或 ~/.lasso/config.json）
+ *  - 未命中 → warn（零配置兼容；不阻塞 ready）：本机无 API 搜索主力源——仅剩
+ *            Brave（需 key）/ serp_http 裸 HTTP 快探 / browse_headless 实搜兜底（免费）。
+ *            要 API 档请配置 web-search-prime MCP（推荐，零配置复用）或 BRAVE_API_KEYS
+ *            （v1.17 A3：zhipu 直连档已删，ZHIPU_API_KEY 不再是出路——如实披露不淡化）
  *
  * **安全（INV-72 衍生）**：
  *  - 本函数不直接读 ~/.claude.json；调 detectMachineSearchMcp()（read-only + try/catch）
@@ -2652,9 +2649,9 @@ function checkMachineSearchMcp(): DoctorCheck {
         status: "warn",
         // 不报 path（可能含用户名）+ 不报 url（不存在）+ 不报 key（不存在）
         detail:
-          "~/.claude.json 未发现 web-search-prime MCP（type=http + url 含 web_search_prime/bigmodel.cn + Authorization）",
+          "~/.claude.json 未发现 web-search-prime MCP（type=http + url 含 web_search_prime/bigmodel.cn + Authorization）——本机无 API 搜索主力源：仅剩 Brave（需 key）/裸 HTTP 快探/无头实搜兜底（免费）",
         next_step:
-          "（可选，零配置兼容）机器装过 web-search-prime MCP 即自动复用其 key；否则需配 ZHIPU_API_KEY（doc/KEY-GUIDE.md）",
+          "（可选，零配置兼容）要 API 档请配置 web-search-prime MCP（推荐——机器装过即自动复用其 key）或 BRAVE_API_KEYS；零配置仍可用免费兜底链搜索（doc/KEY-GUIDE.md）",
       };
     }
     // 提取 hostname —— 用 URL 构造器（detector 已校验 url 是 string；构造失败 → 退化为 "(invalid url)" 兜底）
@@ -2810,7 +2807,7 @@ async function checkSteelEndpointReachable(opts: {
  *  - 期待「跑出低 lies」=范式误解（需 C++ 源码级补丁 = Camoufox 范式 = v2.0+ 架构扩张）。
  *
  * 流程（parse15 §3.3）：
- *  1. skipNetwork → warn-skip（同 #3/#4/#21 范式）
+ *  1. skipNetwork → warn-skip（同 #4/#21 范式）
  *  2. clientProvider() → null → warn（9222 未开 / HeadlessChannel 未就绪）
  *  3. StealthEngine.injectProfile(client, profile) 注入与运行时一致的 16 路 evasion
  *     （parse15 §3.3 步骤 3：测的不是 Lasso stealth 须注入一致）
@@ -2832,7 +2829,7 @@ async function checkStealthCreepjsRegression(opts: {
 }): Promise<DoctorCheck> {
   const CHECK_NAME = "stealth_creepjs_regression";
 
-  // (1) skipNetwork → warn-skip（同 #3/#4/#21 范式）
+  // (1) skipNetwork → warn-skip（同 #4/#21 范式）
   if (opts.skipNetwork) {
     return {
       name: CHECK_NAME,

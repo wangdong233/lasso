@@ -183,10 +183,10 @@ describe("RpmLimiter — 多 provider 隔离", () => {
     l.record("search.brave");
     l.record("search.brave");
     expect(l.allow("search.brave", 2)).toBe(false);
-    // zhipu 不受影响
-    expect(l.allow("search.zhipu", 2)).toBe(true);
-    l.record("search.zhipu");
-    expect(l.currentUsage("search.zhipu")).toBe(1);
+    // machine_mcp 不受影响
+    expect(l.allow("search.machine_mcp", 2)).toBe(true);
+    l.record("search.machine_mcp");
+    expect(l.currentUsage("search.machine_mcp")).toBe(1);
     expect(l.currentUsage("search.brave")).toBe(2);
   });
 

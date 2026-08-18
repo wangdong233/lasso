@@ -66,6 +66,18 @@ import {
 //   追加进 actionDispatch Map
 // INV-33 守：pdf + console + network 三 action 必经 dispatch Map，禁第二套 dispatch
 import { doPdf, doConsole, doNetwork } from "../browse/cdp-actions.js";
+// v1.17 Phase F（parse24 §6.2 C2）：include_refs opt-in——refs 注入/附录/click-by-ref
+//   纯函数 helper（expr 构造 + 附录格式化；无 SDK 依赖，单测友好）
+import {
+  buildExtractRefsExpr,
+  buildRefClickExpr,
+  buildRefFillExpr,
+  buildRefLocateExpr,
+  formatRefsAppendix,
+  REF_APPENDIX_HEADING,
+  REF_PATTERN,
+  type ExtractRef,
+} from "../browse/extract-refs.js";
 
 // ============================================================
 // 类型
@@ -317,7 +329,7 @@ export abstract class BrowseChannel extends UiChannel {
           action,
           state_id: stateId,
           content_path: contentPath,
-          preview: truncatePreview(partial.preview ?? ""),
+          preview: truncatePreviewKeepingRefs(partial.preview ?? ""),
           title: partial.title,
           final_url: partial.final_url ?? url,
           // v1.1（parse12 §3.3.1）：markdown 档元数据透传（仅 extract_mode=markdown* 时 partial 含这些字段）
@@ -329,9 +341,14 @@ export abstract class BrowseChannel extends UiChannel {
           // v1.14.0：markdown 档正文别名字段——文档语义一直是 data.markdown，但实现只给
           // preview（搜索方案重审 verify 时两拨人先后读错字段误判「markdown 空」）。
           // 纯增量：raw 档无此字段（byte-identical 不变），markdown* 档=preview 同值。
+          // v1.17（verify ⑤）：markdown/preview 均改 refs 附录感知截断（正文截断、
+          // 附录钉尾——否则长页 include_refs 的附录被 4000 上限切掉，ref 不可达）。
           ...(partial.markdown_engine
-            ? { markdown: truncatePreview(partial.preview ?? "") }
+            ? { markdown: truncatePreviewKeepingRefs(partial.preview ?? "") }
             : {}),
+          // v1.17 Phase F（parse24 §6.2 C2 + 冲突 #8）：raw 档 + include_refs=true 的
+          // 诚实标注（运行时忽略，schema 不拒——宽松进严格出）。缺省关时不填。
+          ...(partial.ignored_include_refs ? { ignored_include_refs: true } : {}),
         },
         served_by: this.name,
         fallback_used: false,
@@ -838,19 +855,30 @@ async function doExtract(
   // ---------- v1.1 mode 分流（parse12 §3.3.1；INV-66 raw byte-identical v1.0） ----------
   // 铁律：extract_mode 未传 / "raw" → 完全走 v1.0 take_snapshot 路径（零改）。
   //       INV-66 守：raw 档不调 extractMarkdown / 不静态 import markdown-extractor。
+  // v1.17 Phase F（parse24 §6.2 C2 + 冲突 #8）：include_refs 是 opt-in（缺省关 =
+  // byte-identical，INV-66 手法）。raw 档 + include_refs=true → 运行时忽略 +
+  // 诚实标注 ignored_include_refs:true（宽松进严格出，schema 不拒——raw 档走
+  // take_snapshot a11y 树，无 HTML 可注入 uid；refs 是 markdown 档专属能力）。
+  const includeRefs = opts.include_refs === true;
   const mode = opts.extract_mode;
   if (mode === undefined || mode === "raw") {
     // v1.0 路径 byte-identical：take_snapshot → a11y 文本树
     const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
     const { title, text } = extractSnapshot(r);
-    return { title, preview: text };
+    return includeRefs ? { title, preview: text, ignored_include_refs: true } : { title, preview: text };
   }
 
   // ---------- markdown / markdown_cited 档（v1.1 新增） ----------
   // 取渲染后 HTML（evaluate_script 注入 document.documentElement.outerHTML）。
   // raw 档不走此路径 → INV-66 raw 零回归；markdown 档 dynamic import lazy-load 引擎。
   // W1-DEF-1（v1.8）：函数表达式（上游 0.3.0 契约），不再传 IIFE 语句串。
-  const expr = `() => {
+  //
+  // v1.17 Phase F（C2）：include_refs=true 时 expr 顺带注入 data-lasso-uid="r1"..
+  // 并返回 refs（与 HighRiskGate.buildAssessExpr 的 uid 查找同属性名闭环）；
+  // 缺省 expr 逐字节不变（byte-identical 基线）。
+  const expr = includeRefs
+    ? buildExtractRefsExpr()
+    : `() => {
     try {
       return JSON.stringify({
         html: document.documentElement.outerHTML,
@@ -867,6 +895,7 @@ async function doExtract(
     html: string;
     url: string;
     title: string;
+    refs?: ExtractRef[];
   } | undefined) ?? { html: "", url: "", title: "" };
 
   if (!parsed.html) {
@@ -885,9 +914,17 @@ async function doExtract(
     enableCitations: mode === "markdown_cited",
   });
 
+  // v1.17 Phase F（C2）：refs 附录追加在 markdown 末尾（正文零内嵌标记——
+  // data-lasso-uid 是 HTML 属性，turndown 转换后不可见；既有黄金断言主文不受扰）。
+  // refs 缺失（非 include_refs 档）/ 空数组（页面无交互元素）→ 无附录。
+  let preview = mdResult.markdown;
+  if (includeRefs && parsed.refs && parsed.refs.length > 0) {
+    preview = `${preview}\n\n${formatRefsAppendix(parsed.refs)}`;
+  }
+
   return {
     title: mdResult.title ?? parsed.title ?? undefined,
-    preview: mdResult.markdown,
+    preview,
     // markdown 专属元数据（v1.1 扩展；raw 档不填，v1.0 调用方不读）
     ...(mdResult.byline ? { byline: mdResult.byline } : {}),
     ...(mdResult.citations ? { citations: mdResult.citations } : {}),
@@ -903,8 +940,38 @@ async function doClick(
   // 选项驱动：opts.selectors.click 是 a11y uid
   const uid = opts.selectors?.click;
   if (!uid) throw new Error("click: opts.selectors.click (uid) required");
+  // v1.17 Phase F（parse24 §6.2 C2）：Lasso 自产 ref（^r\d+$，extract include_refs
+  // 注入的 data-lasso-uid）→ evaluate_script 定位后 JS click。与 trusted CDP click
+  // 的差异如实文档化（个别框架不响应 JS click → CC 回退快照 uid 路径，两路径并存）。
+  if (REF_PATTERN.test(uid)) {
+    return clickByRef(c, uid);
+  }
   await c.callTool("click", { uid });
   return { preview: `clicked ${uid}` };
+}
+
+/**
+ * C2 click-by-ref：querySelector miss → throw ref_stale_re_snapshot
+ * （classifyBrowseError → didnt；不猜不自动重试——页面变了就重新 extract）。
+ */
+async function clickByRef(
+  c: McpClient,
+  ref: string,
+): Promise<Partial<BrowseResult>> {
+  const r = (await c.callTool("evaluate_script", {
+    function: buildRefClickExpr(ref),
+  })) as EvaluateResult;
+  const v = parseEvalResult(r) as { ok?: boolean; reason?: string; tag?: string } | undefined;
+  if (v?.ok) {
+    return { preview: `clicked ${ref} (${v.tag ?? "?"} via lasso ref)` };
+  }
+  if (v?.reason === "ref_stale") {
+    throw new Error(
+      `ref_stale_re_snapshot: ref "${ref}" not found in DOM (page changed since extract? re-run extract with include_refs)`,
+    );
+  }
+  // eval_error / 解析失败（页面未就绪 / CSP / 通道断）→ unknown 档（classifyBrowseError）
+  throw new Error(`ref_click_failed:${v?.reason ?? "unparsable_eval"}:${ref}`);
 }
 
 async function doFill(
@@ -915,7 +982,47 @@ async function doFill(
   // opts.selectors 是 { uid: value } 多字段表（fill_form 一次填多个）
   const elements = opts.selectors;
   if (!elements) throw new Error("fill: opts.selectors required");
-  const fillElems = Object.entries(elements).map(([uid, value]) => ({ uid, value }));
+  const entries = Object.entries(elements);
+  // v1.17 Phase F（C2）：键匹配 ^r\d+$ 的是 Lasso ref → JS 填充路径；其余键照旧
+  // 走 fill_form（uid 透传）。纯 uid 表 = 现行路径 byte-identical（单次 fill_form）。
+  const refEntries = entries.filter(([k]) => REF_PATTERN.test(k));
+  const uidEntries = entries.filter(([k]) => !REF_PATTERN.test(k));
+
+  if (refEntries.length > 0) {
+    // 副作用前预检：任一 ref miss → 不填任何字段直接抛 ref_stale（无部分填充）
+    const loc = (await c.callTool("evaluate_script", {
+      function: buildRefLocateExpr(refEntries.map(([k]) => k)),
+    })) as EvaluateResult;
+    const locV = parseEvalResult(loc) as { ok?: boolean; missing?: string[] } | undefined;
+    if (!locV?.ok) {
+      throw new Error(
+        `ref_stale_re_snapshot: refs [${(locV?.missing ?? refEntries.map(([k]) => k)).join(", ")}] not found in DOM (page changed since extract? re-run extract with include_refs)`,
+      );
+    }
+    // ref 填充（native value setter + input/change dispatch）
+    const fillR = (await c.callTool("evaluate_script", {
+      function: buildRefFillExpr(refEntries.map(([k, v]) => ({ ref: k, value: v }))),
+    })) as EvaluateResult;
+    const fillV = parseEvalResult(fillR) as { ok?: boolean; filled?: string[]; errors?: string[] } | undefined;
+    if (!fillV?.ok) {
+      const errs = fillV?.errors ?? [];
+      if (errs.some((e) => e.includes("ref_stale"))) {
+        throw new Error(`ref_stale_re_snapshot: ${errs.join("; ")}`);
+      }
+      throw new Error(`ref_fill_failed:${errs.join(";") || "unparsable_eval"}`);
+    }
+    // 混合表：非 ref 键照旧 fill_form（ref 已填，剩余 uid 一次填完）
+    if (uidEntries.length > 0) {
+      await c.callTool("fill_form", {
+        elements: uidEntries.map(([uid, value]) => ({ uid, value })),
+      });
+    }
+    return {
+      preview: `filled ${entries.length} fields (${refEntries.length} via lasso ref)`,
+    };
+  }
+
+  const fillElems = entries.map(([uid, value]) => ({ uid, value }));
   await c.callTool("fill_form", { elements: fillElems });
   return { preview: `filled ${fillElems.length} fields` };
 }
@@ -1007,6 +1114,23 @@ function truncatePreview(s: string): string {
 }
 
 /**
+ * v1.17（doc/25 verify ⑤，真机实证）：refs 附录感知截断——长页正文超
+ * PREVIEW_MAX_CHARS 时朴素 truncatePreview 会把**缀在末尾**的
+ * "## Interactive refs" 附录整段切掉（books.toscrape 实测：正文 5529 字符 +
+ * 附录 → data.markdown 只剩前 4000，附录不可见 → C2 ref 句柄经 MCP 响应
+ * 不可达，失去存在意义）。本函数：正文照常截断，附录**钉在截断结果之后**
+ * （附录自带 cap 50 refs，长度有界）。无附录（缺省关 / raw 档）行为与
+ * truncatePreview 完全一致（byte-identical）。
+ */
+export function truncatePreviewKeepingRefs(s: string): string {
+  const idx = s.indexOf(REF_APPENDIX_HEADING);
+  if (idx < 0) return truncatePreview(s);
+  const body = truncatePreview(s.slice(0, idx).replace(/\n+$/, ""));
+  const appendix = s.slice(idx);
+  return `${body}\n\n${appendix}`;
+}
+
+/**
  * browse 错误 → outcome（10 §D.1）。
  *  - NEEDS_MANUAL_2FA → didnt（明确「需人」信号，不 fallback）
  *  - 404 / 403 / NXDOMAIN / ENOTFOUND → didnt
@@ -1029,5 +1153,8 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   if (m.includes("screenshot_write_failed")) return "didnt";
   if (m.includes("dns_or_nav_error")) return "didnt";
   if (m.includes("http_404")) return "didnt";
+  // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt
+  // （不 fallback、不猜——CC 重新 extract with include_refs 取新 refs）
+  if (m.includes("ref_stale")) return "didnt";
   return "unknown";
 }

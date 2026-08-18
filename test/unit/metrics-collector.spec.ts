@@ -24,11 +24,11 @@ describe("MetricsCollector — record + snapshot", () => {
 
   it("单 channel 单 record：total=1, success_rate=1 / 0", () => {
     const m = new MetricsCollector();
-    m.record("search.zhipu", "worked", 100);
+    m.record("search.machine_mcp", "worked", 100);
     const snap = m.snapshot();
     expect(snap).toHaveLength(1);
     expect(snap[0]).toMatchObject({
-      channel: "search.zhipu",
+      channel: "search.machine_mcp",
       total: 1,
       success_count: 1,
       failure_count: 0,
@@ -63,14 +63,14 @@ describe("MetricsCollector — record + snapshot", () => {
 
   it("多 channel 独立累积（INV-44 per-channel 维度）", () => {
     const m = new MetricsCollector();
-    m.record("search.zhipu", "worked", 100);
-    m.record("search.zhipu", "worked", 200);
+    m.record("search.machine_mcp", "worked", 100);
+    m.record("search.machine_mcp", "worked", 200);
     m.record("browse_headless", "error", 50);
     const snap = m.snapshot();
     expect(snap).toHaveLength(2);
-    const zhipu = snap.find((s) => s.channel === "search.zhipu");
+    const machineMcp = snap.find((s) => s.channel === "search.machine_mcp");
     const headless = snap.find((s) => s.channel === "browse_headless");
-    expect(zhipu?.total).toBe(2);
+    expect(machineMcp?.total).toBe(2);
     expect(headless?.total).toBe(1);
     expect(headless?.failure_count).toBe(1);
   });

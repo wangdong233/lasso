@@ -6,7 +6,7 @@
  *  - fanOutSearch: 多源 worked → engine="multi" + count <= limit
  *  - fanOutSearch: executor 抛 reject → 记入 partial_failures
  *  - fanOutSearch: 空源列表 → unknown + error=no_sources
- *  - allocateLimit: CJK vs EN 语言启发式（zhipu/brave boost）
+ *  - allocateLimit: CJK vs EN 语言启发式（machine_mcp/brave boost；v1.17 A3 从 zhipu 改名）
  *  - allocateLimit: quotaRemaining 比例分配
  *  - allocateLimit: 每源 capacity >= 1
  *  - allocateLimit: 空数组
@@ -36,7 +36,7 @@ function worked(
         snippet: r.snippet ?? "",
       })),
       count: results.length,
-      engine: channel.includes("zhipu") ? "zhipu" : "brave",
+      engine: channel.includes("machine_mcp") ? "machine_mcp" : "brave",
       region: "auto",
     },
     served_by: channel,
@@ -62,12 +62,12 @@ function unknown(channel: string, error: string): InteractResult<SearchResult> {
 describe("fanOutSearch — 多源聚合 worked", () => {
   it("两源都 worked → outcome=worked + engine=multi + count=聚合数", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 5 },
+      { name: "search.machine_mcp", capacity: 5 },
       { name: "search.brave", capacity: 5 },
     ];
     const executor = async (name: string): Promise<InteractResult<SearchResult>> => {
-      if (name === "search.zhipu")
-        return worked("search.zhipu", [
+      if (name === "search.machine_mcp")
+        return worked("search.machine_mcp", [
           { title: "z1", url: "https://z1.test" },
           { title: "z2", url: "https://z2.test" },
         ]);
@@ -83,7 +83,7 @@ describe("fanOutSearch — 多源聚合 worked", () => {
     expect(r.data).not.toBeNull();
     expect(r.data!.engine).toBe("multi");
     expect(r.data!.count).toBe(3);
-    expect(r.served_by).toBe("search.zhipu,search.brave");
+    expect(r.served_by).toBe("search.machine_mcp,search.brave");
     expect(r.retrieval_method).toBe("multi_source_fanout");
     // 默认不外泄 served_by 到 results（attribution 由 withAttribution 后处理）
     expect(r.data!.results[0]).not.toHaveProperty("served_by");
@@ -91,13 +91,13 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 
   it("聚合后按 original_rank 排序 + 截断到 limit", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 10 },
+      { name: "search.machine_mcp", capacity: 10 },
       { name: "search.brave", capacity: 10 },
     ];
     // 每源返 3 条；limit=4 → 截断到 4 条（按 original_rank 排）
     const executor = async (name: string) => {
-      if (name === "search.zhipu")
-        return worked("search.zhipu", [
+      if (name === "search.machine_mcp")
+        return worked("search.machine_mcp", [
           { title: "z1", url: "https://z1.test" },
           { title: "z2", url: "https://z2.test" },
           { title: "z3", url: "https://z3.test" },
@@ -114,12 +114,12 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 
   it("一源 worked + 一源 unknown → 聚合 worked，记 partial_failures", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 5 },
+      { name: "search.machine_mcp", capacity: 5 },
       { name: "search.brave", capacity: 5 },
     ];
     const executor = async (name: string) => {
-      if (name === "search.zhipu")
-        return worked("search.zhipu", [{ title: "z1", url: "https://z1.test" }]);
+      if (name === "search.machine_mcp")
+        return worked("search.machine_mcp", [{ title: "z1", url: "https://z1.test" }]);
       return unknown("search.brave", "HTTP 429");
     };
     const r = await fanOutSearch("q", 10, sources, executor);
@@ -134,12 +134,12 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 
   it("一源 worked + 一源 reject（throw）→ 聚合 worked + partial_failures 记 reject", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 5 },
+      { name: "search.machine_mcp", capacity: 5 },
       { name: "search.brave", capacity: 5 },
     ];
     const executor = async (name: string) => {
-      if (name === "search.zhipu")
-        return worked("search.zhipu", [{ title: "z1", url: "https://z1.test" }]);
+      if (name === "search.machine_mcp")
+        return worked("search.machine_mcp", [{ title: "z1", url: "https://z1.test" }]);
       throw new Error("network_error");
     };
     const r = await fanOutSearch("q", 10, sources, executor);
@@ -151,7 +151,7 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 
   it("全源失败 → outcome=unknown + partial_failures 全记 + served_by 是所有源", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 5 },
+      { name: "search.machine_mcp", capacity: 5 },
       { name: "search.brave", capacity: 5 },
     ];
     const executor = async (name: string) =>
@@ -160,21 +160,21 @@ describe("fanOutSearch — 多源聚合 worked", () => {
     expect(r.outcome).toBe("unknown");
     expect(r.data).toBeNull();
     expect(r.error).toBe("all_sources_failed");
-    expect(r.served_by).toBe("search.zhipu,search.brave");
+    expect(r.served_by).toBe("search.machine_mcp,search.brave");
     expect(r.partial_failures).toHaveLength(2);
     expect(r.partial_failures!.map((p) => p.channel).sort()).toEqual([
       "search.brave",
-      "search.zhipu",
+      "search.machine_mcp",
     ]);
   });
 
   it("单源 worked → served_by 是该源名（无逗号）", async () => {
-    const sources: FanoutSource[] = [{ name: "search.zhipu", capacity: 5 }];
+    const sources: FanoutSource[] = [{ name: "search.machine_mcp", capacity: 5 }];
     const executor = async () =>
-      worked("search.zhipu", [{ title: "z1", url: "https://z1.test" }]);
+      worked("search.machine_mcp", [{ title: "z1", url: "https://z1.test" }]);
     const r = await fanOutSearch("q", 10, sources, executor);
     expect(r.outcome).toBe("worked");
-    expect(r.served_by).toBe("search.zhipu");
+    expect(r.served_by).toBe("search.machine_mcp");
     expect(r.partial_failures).toBeUndefined();
   });
 
@@ -189,11 +189,11 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 
   it("200-but-empty（worked 但 results=[]）→ 视为该源失败记 partial_failures", async () => {
     const sources: FanoutSource[] = [
-      { name: "search.zhipu", capacity: 5 },
+      { name: "search.machine_mcp", capacity: 5 },
       { name: "search.brave", capacity: 5 },
     ];
     const executor = async (name: string) => {
-      if (name === "search.zhipu") {
+      if (name === "search.machine_mcp") {
         // 200 + 空数组（10 §D.1 关键信号）
         return {
           outcome: "worked",
@@ -201,10 +201,10 @@ describe("fanOutSearch — 多源聚合 worked", () => {
             query: "q",
             results: [],
             count: 0,
-            engine: "zhipu",
+            engine: "machine_mcp",
             region: "auto",
           },
-          served_by: "search.zhipu",
+          served_by: "search.machine_mcp",
           fallback_used: false,
           retrieval_method: "test",
         } satisfies InteractResult<SearchResult>;
@@ -214,7 +214,7 @@ describe("fanOutSearch — 多源聚合 worked", () => {
     const r = await fanOutSearch("q", 10, sources, executor);
     expect(r.outcome).toBe("worked");
     expect(r.partial_failures).toHaveLength(1);
-    expect(r.partial_failures![0].channel).toBe("search.zhipu");
+    expect(r.partial_failures![0].channel).toBe("search.machine_mcp");
   });
 });
 
@@ -222,46 +222,58 @@ describe("fanOutSearch — 多源聚合 worked", () => {
 // allocateLimit
 // ============================================================
 describe("allocateLimit — 语言启发式 + quota 比例", () => {
-  it("CJK query → zhipu 容量 > brave（langBoost 0.7 vs 0.3）", () => {
+  it("CJK query → machine_mcp 容量 > brave（langBoost 0.7 vs 0.3；CJK 优势自智谱上游等价继承）", () => {
     const sources = [
-      { name: "search.zhipu", quotaRemaining: 1000, quotaPerMonth: 1000 },
+      { name: "search.machine_mcp", quotaRemaining: 1000, quotaPerMonth: 1000 },
       { name: "search.brave", quotaRemaining: 1000, quotaPerMonth: 1000 },
     ];
     const r = allocateLimit(10, sources, "Rust 异步编程"); // CJK
-    const zhipu = r.find((s) => s.name === "search.zhipu")!;
+    const machineMcp = r.find((s) => s.name === "search.machine_mcp")!;
     const brave = r.find((s) => s.name === "search.brave")!;
-    expect(zhipu.capacity).toBeGreaterThan(brave.capacity);
-    expect(zhipu.capacity + brave.capacity).toBeGreaterThanOrEqual(10);
+    expect(machineMcp.capacity).toBeGreaterThan(brave.capacity);
+    expect(machineMcp.capacity + brave.capacity).toBeGreaterThanOrEqual(10);
   });
 
-  it("EN query → brave 容量 > zhipu", () => {
+  it("CJK langBoost 命中 machine_mcp 源名（v1.17 A3 改名回归锁：includes 检测 machine_mcp 非 zhipu）", () => {
+    // 同 quota 下 machine_mcp 与 brave 的容量比 = 0.7:0.3 → 约 7:3
     const sources = [
-      { name: "search.zhipu", quotaRemaining: 1000, quotaPerMonth: 1000 },
+      { name: "search.machine_mcp", quotaRemaining: 100, quotaPerMonth: 100 },
+      { name: "search.brave", quotaRemaining: 100, quotaPerMonth: 100 },
+    ];
+    const r = allocateLimit(100, sources, "中文查询");
+    const machineMcp = r.find((s) => s.name === "search.machine_mcp")!;
+    const brave = r.find((s) => s.name === "search.brave")!;
+    expect(machineMcp.capacity / brave.capacity).toBeGreaterThan(2); // 0.7/0.3 ≈ 2.33
+  });
+
+  it("EN query → brave 容量 > machine_mcp", () => {
+    const sources = [
+      { name: "search.machine_mcp", quotaRemaining: 1000, quotaPerMonth: 1000 },
       { name: "search.brave", quotaRemaining: 1000, quotaPerMonth: 1000 },
     ];
     const r = allocateLimit(10, sources, "rust async programming");
-    const zhipu = r.find((s) => s.name === "search.zhipu")!;
+    const machineMcp = r.find((s) => s.name === "search.machine_mcp")!;
     const brave = r.find((s) => s.name === "search.brave")!;
-    expect(brave.capacity).toBeGreaterThan(zhipu.capacity);
+    expect(brave.capacity).toBeGreaterThan(machineMcp.capacity);
   });
 
   it("quotaRemaining 比例：余量多的源多分", () => {
     const sources = [
-      { name: "search.zhipu", quotaRemaining: 100, quotaPerMonth: 1000 },
+      { name: "search.machine_mcp", quotaRemaining: 100, quotaPerMonth: 1000 },
       { name: "search.brave", quotaRemaining: 2000, quotaPerMonth: 2000 },
     ];
     // EN query：brave langBoost=0.7 × quotaWeight=1.0=0.7；
-    //          zhipu langBoost=0.3 × quotaWeight=0.1=0.03
-    // → brave >> zhipu
+    //          machine_mcp langBoost=0.3 × quotaWeight=0.1=0.03
+    // → brave >> machine_mcp
     const r = allocateLimit(20, sources, "rust");
-    const zhipu = r.find((s) => s.name === "search.zhipu")!;
+    const machineMcp = r.find((s) => s.name === "search.machine_mcp")!;
     const brave = r.find((s) => s.name === "search.brave")!;
-    expect(brave.capacity).toBeGreaterThan(zhipu.capacity);
+    expect(brave.capacity).toBeGreaterThan(machineMcp.capacity);
   });
 
   it("每源 capacity >= 1（即使 quotaRemaining=0）", () => {
     const sources = [
-      { name: "search.zhipu", quotaRemaining: 0, quotaPerMonth: 1000 },
+      { name: "search.machine_mcp", quotaRemaining: 0, quotaPerMonth: 1000 },
       { name: "search.brave", quotaRemaining: 0, quotaPerMonth: 2000 },
     ];
     const r = allocateLimit(5, sources, "x");
@@ -270,7 +282,7 @@ describe("allocateLimit — 语言启发式 + quota 比例", () => {
 
   it("quotaPerMonth=0 → 退化为 weight=1（不抛错）", () => {
     const sources = [
-      { name: "search.zhipu", quotaRemaining: 100, quotaPerMonth: 0 },
+      { name: "search.machine_mcp", quotaRemaining: 100, quotaPerMonth: 0 },
       { name: "search.brave", quotaRemaining: 100, quotaPerMonth: 0 },
     ];
     const r = allocateLimit(10, sources, "test");

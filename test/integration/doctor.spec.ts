@@ -6,7 +6,7 @@
  *  - 每 fail 项有 next_step
  *  - 各种 mock 场景：
  *      · Node <20 → fail (node_version)
- *      · ZHIPU_API_KEY 缺失 → fail (zhipu_api_key) → ready=false
+ *      · ZHIPU_API_KEY 已退役（v1.17 A3：zhipu_keys_retired 静态提示，非 blocker）
  *      · cacheDir 只读 → fail (cache_writable)
  *      · 全 pass（skipNetwork + skipInvariants）→ ready=true
  *
@@ -57,7 +57,6 @@ function findCheck(
 describe("runDoctor — 结构合法性（验收 #2）", () => {
   it("checks.length >= 10", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -67,7 +66,6 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
 
   it("包含 ready:bool + blockers:string[] + timestamp + lasso_version", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -78,21 +76,25 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
     expect(r.lasso_version).toBe(LASSO_VERSION);
   });
 
-  it("fail 项必须含 next_step（除了 cache/serp 等结构性失败）", async () => {
+  it("fail 项必须含 next_step（cache/serp 等结构性失败除外）", async () => {
+    // v1.17 A3 前该测试靠 zhipu_api_key fail 凑失败样本；zhipu 检查已删（INV-80 墓碑），
+    // 改用不可写 cacheDir 制造结构性 fail 样本。
+    const impossible = process.platform === "win32"
+      ? "Z:\\\\nonexistent-lasso-test"
+      : "/proc/lasso-cannot-create";
     const r = await runDoctor({
-      zhipuKey: undefined, // 必 fail
-      cacheDir: tempCache,
+      cacheDir: impossible,
       skipNetwork: true,
       skipInvariants: true,
     });
     const failed = r.checks.filter((c) => c.status === "fail");
     expect(failed.length).toBeGreaterThan(0);
     for (const c of failed) {
-      // cache_writable / ssrf_config 这类失败 next_step 可能不在 first batch
-      // 但 zhipu_api_key 这类必须有指引
-      if (c.name === "zhipu_api_key") {
-        expect(c.next_step).toBeTruthy();
+      // cache_writable / search_cache_dir_writable 这类结构性失败 next_step 可能不在 first batch
+      if (c.name === "cache_writable" || c.name === "search_cache_dir_writable") {
+        continue;
       }
+      expect(c.next_step).toBeTruthy();
     }
   });
 
@@ -106,8 +108,9 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "node_version",
-        "zhipu_api_key",
-        "zhipu_endpoint_reachable",
+        // v1.17 A3：zhipu_api_key / zhipu_endpoint_reachable 已删（zhipu 直连死层清除），
+        // 替换为 zhipu_keys_retired 静态退役提示（INV-80 墓碑）
+        "zhipu_keys_retired",
         "cdp_mcp_installable",
         "chrome_binary",
         "cdp_9222_logged_in",
@@ -121,31 +124,45 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
 });
 
 describe("runDoctor — 场景判定", () => {
-  it("ZHIPU_API_KEY 缺失 → zhipu_api_key=fail → ready=false", async () => {
+  it("v1.17 A3：zhipu_keys_retired（键未配）→ pass + 非 blocker（已删除的检查不再是 ready 门）", async () => {
     const r = await runDoctor({
-      zhipuKey: undefined,
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(findCheck(r, "zhipu_api_key").status).toBe("fail");
-    expect(r.blockers).toContain("zhipu_api_key");
-    expect(r.ready).toBe(false);
+    const c = findCheck(r, "zhipu_keys_retired");
+    expect(c.status).toBe("pass");
+    expect(r.blockers).not.toContain("zhipu_keys_retired");
+    // 已删的两 check 不回潮（INV-80 墓碑镜像）
+    expect(r.checks.map((x) => x.name)).not.toContain("zhipu_api_key");
+    expect(r.checks.map((x) => x.name)).not.toContain("zhipu_endpoint_reachable");
   });
 
-  it("ZHIPU_API_KEY 配置 + cache 可写 + 跳过触网 → ready=true", async () => {
+  it("v1.17 A3：ZHIPU_API_KEY 残留 → zhipu_keys_retired=warn（静态退役提示，非 blocker）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
+      zhipuKey: "retired-legacy-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(findCheck(r, "zhipu_api_key").status).toBe("pass");
+    const c = findCheck(r, "zhipu_keys_retired");
+    expect(c.status).toBe("warn");
+    expect(c.detail).toContain("ZHIPU_API_KEY");
+    expect(c.next_step).toBeTruthy();
+    // warn 不阻塞 ready（存量 config 不炸）
+    expect(r.blockers).not.toContain("zhipu_keys_retired");
+  });
+
+  it("cache 可写 + 跳过触网 → ready=true", async () => {
+    const r = await runDoctor({
+      cacheDir: tempCache,
+      skipNetwork: true,
+      skipInvariants: true,
+    });
     expect(findCheck(r, "cache_writable").status).toBe("pass");
     expect(findCheck(r, "ssrf_config").status).toBe("pass");
     expect(findCheck(r, "serp_selectors").status).toBe("pass");
     // 跳过的 check 不算 fail
-    expect(findCheck(r, "zhipu_endpoint_reachable").status).toBe("warn");
     expect(findCheck(r, "cdp_mcp_installable").status).toBe("warn");
     expect(findCheck(r, "cdp_9222_logged_in").status).toBe("warn");
     expect(findCheck(r, "invariants").status).toBe("warn");
@@ -158,7 +175,6 @@ describe("runDoctor — 场景判定", () => {
       ? "Z:\\\\nonexistent-lasso-test"
       : "/proc/lasso-cannot-create";
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: impossible,
       skipNetwork: true,
       skipInvariants: true,
@@ -197,7 +213,6 @@ describe("runDoctor — 场景判定", () => {
 describe("runDoctor — v0.2 4 项新 check", () => {
   it("checks 总数 ≥ 14（v0.1 10 + v0.2 4）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -207,7 +222,6 @@ describe("runDoctor — v0.2 4 项新 check", () => {
 
   it("11. brave_keys 未配置 → warn（不阻塞 ready）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -222,7 +236,6 @@ describe("runDoctor — v0.2 4 项新 check", () => {
 
   it("11. brave_keys 配置 → pass + 含合并配额（N × 1000，S-1：2026-02 免费档取消）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -244,7 +257,9 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     expect(c.status).toBe("pass");
     // TAVILY_WATCH enabled=false → 不应出现在 listNames
     expect(c.detail).not.toContain("tavily");
-    expect(c.detail).toContain("zhipu");
+    // v1.17 A3：zhipu provider 已删（BUILTIN 4 条：brave/browse_headless/browse_logged_in；
+    // tavily enabled=false 跳过 → listNames 3 条）
+    expect(c.detail).not.toContain("zhipu");
     expect(c.detail).toContain("brave");
   });
 
@@ -260,9 +275,8 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     expect(c.detail).toContain("0 QuotaLedger");
   });
 
-  it("13. quota_ledger_initialized：zhipu + brave 配 Key → 2 QuotaLedger 装配", async () => {
+  it("13. quota_ledger_initialized：brave 配 Key → 1 QuotaLedger 装配（v1.17 A3：zhipu 已删）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-zhipu-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -270,12 +284,11 @@ describe("runDoctor — v0.2 4 项新 check", () => {
     });
     const c = findCheck(r, "quota_ledger_initialized");
     expect(c.status).toBe("pass");
-    expect(c.detail).toContain("2 QuotaLedger");
+    expect(c.detail).toContain("1 QuotaLedger");
   });
 
   it("14. search_cache_dir_writable → pass + 路径含 search-cache 子目录", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -288,7 +301,6 @@ describe("runDoctor — v0.2 4 项新 check", () => {
   it("14. search_cache_dir_writable 失败 → fail + blocker", async () => {
     const impossible = "/proc/lasso-cannot-create";
     const r = await runDoctor({
-      zhipuKey: "fake-key",
       cacheDir: impossible,
       skipNetwork: true,
       skipInvariants: true,
@@ -322,7 +334,6 @@ describe("runDoctor — v0.2 4 项新 check", () => {
 describe("runDoctor — runtime_state section（v0.6）", () => {
   it("未注入 runtimeState → report 不含 runtime_state 字段（零回归）", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -332,7 +343,6 @@ describe("runDoctor — runtime_state section（v0.6）", () => {
 
   it("注入 runtimeState provider → report.runtime_state 反映 snapshot", async () => {
     const r = await runDoctor({
-      zhipuKey: "fake",
       cacheDir: tempCache,
       skipNetwork: true,
       skipInvariants: true,
@@ -347,7 +357,7 @@ describe("runDoctor — runtime_state section（v0.6）", () => {
             reason: "test",
           },
           {
-            name: "search.zhipu",
+            name: "search.machine_mcp",
             kind: "provider",
             enabled: true,
           },

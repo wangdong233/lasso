@@ -2,7 +2,7 @@
  * runtime-hot-plug 集成测（parse7 §5.3 + §6.2 —— provider 热插拔端到端）
  *
  * 验证 index.ts v0.6 接线段 + hot-reload.applyHotReload 真能联动：
- *  1. 初始 registry 仅有 zhipu（brave 未注入 keys）
+ *  1. 初始 registry 无 search API provider（v1.17 A3：zhipu 已删）
  *  2. applyHotReload([brave2config]) →
  *     - registry.add(brave2) 成功（INV-40）
  *     - bag.register("search.brave2")（INV-36）
@@ -241,7 +241,7 @@ describe("admin provider_add / provider_remove 端到端", () => {
     const registry = new ProviderRegistry([...BUILTIN_PROVIDERS, brave2Config]);
     const { adminRec, bag } = wireAdminForTest(
       registry,
-      ["search.zhipu", "brave2"],
+      ["search.machine_mcp", "brave2"],
     );
 
     const result = (await adminRec.handler({
@@ -261,7 +261,7 @@ describe("admin provider_add / provider_remove 端到端", () => {
 
   it("provider_remove 缺 reason → ok=false error（强制思考）", async () => {
     const registry = new ProviderRegistry([...BUILTIN_PROVIDERS, brave2Config]);
-    const { adminRec } = wireAdminForTest(registry, ["search.zhipu", "brave2"]);
+    const { adminRec } = wireAdminForTest(registry, ["search.machine_mcp", "brave2"]);
 
     const result = (await adminRec.handler({
       action: "provider_remove",
@@ -296,7 +296,7 @@ describe("admin provider_add / provider_remove 端到端", () => {
     const registry = new ProviderRegistry(BUILTIN_PROVIDERS);
     const { server } = makeMockServerForHotPlug();
     const toolManager = new ToolManager(server);
-    const bag = new CapabilityBag(["search.zhipu"]);
+    const bag = new CapabilityBag(["search.machine_mcp"]);
 
     // addProvider
     await addProvider(brave2Config, registry, bag, toolManager);
@@ -329,7 +329,7 @@ function makeMockServerForHotPlug(): { server: McpServer } {
  */
 function wireAdminForTest(
   registry: ProviderRegistry,
-  initialBag: string[] = ["search.zhipu"],
+  initialBag: string[] = ["search.machine_mcp"],
 ): {
   server: McpServer;
   bag: CapabilityBag;

@@ -3,9 +3,10 @@
  *
  * 真源（优先级低→高）：
  *   1. config 文件 ~/.lasso/config.json（v1.3 新增；扁平 JSON，key 名同 env；user-friendly 默认层）
- *   2. env (ZHIPU_API_KEY / BRAVE_API_KEYS / LASSO_CDP_PORT / LASSO_CACHE_DIR /
- *           LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*；BING_API_KEYS 容忍读但已退役不消费——见
- *           底部 v1.15 Phase A 注） —— 覆盖 config 文件（向后兼容）
+ *   2. env (BRAVE_API_KEYS / LASSO_CDP_PORT / LASSO_CACHE_DIR /
+ *           LASSO_SEARCH_FREE_ONLY / LASSO_SSRF_*；ZHIPU_API_KEY / ZHIPU_ENDPOINT /
+ *           BING_API_KEYS 容忍读但已退役不消费——见底部 v1.15 / v1.17 注）
+ *           —— 覆盖 config 文件（向后兼容）
  *
  * v1.3 Phase A（本提交）：config 文件机制落地。
  *   - DONE v1.3：读 ~/.lasso/config.json 扁平 JSON（LASSO_CONFIG_PATH 可覆盖路径）；
@@ -26,6 +27,13 @@
  *    Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，2026-08-17 核实），
  *    bing provider 永不注册进 providers map（存量用户 config 不炸；doctor #11c
  *    bing_keys_retired 检测到非空键 → warn 建议删除）。INV-54 墓碑守卫防回潮。
+ *
+ * v1.17 A3（doc/25 裁决③：zhipu 直连 API channel 删除，machine_mcp 保留）：
+ *  - ZHIPU_API_KEY / ZHIPU_ENDPOINT env / config 文件键**容忍读但不消费**（静默忽略）：
+ *    zhipu provider 永不注册进 providers map、不注入任何 provider keys
+ *    （存量用户 config 不炸；doctor zhipu_keys_retired 检测到非空键 → warn 建议删除）。
+ *    INV-80 墓碑守卫防回潮。智谱搜索能力的现行载体 = search.machine_mcp（机器
+ *    ~/.claude.json 已配的 web-search-prime MCP，零配置复用）。
  */
 import * as os from "node:os";
 import * as path from "node:path";
@@ -38,8 +46,8 @@ import { logger } from "../util/logger.js";
 export interface LassoConfig {
   runId: string;
   providers: Map<string, ProviderConfig>;
-  zhipuApiKey: string | undefined;
-  zhipuEndpoint: string;
+  // v1.17 A3：zhipuApiKey / zhipuEndpoint 字段已删（zhipu 直连 channel 死层清除；
+  // ZHIPU_API_KEY / ZHIPU_ENDPOINT 键容忍读但不消费，doctor zhipu_keys_retired 提示）
   cdpPort: number;
   /**
    * v1.11（round1 T10）：浏览器出口代理（env LASSO_PROXY；默认 "" 不代理）。
@@ -254,6 +262,8 @@ export function loadConfigFileEnv(
 export const CONFIG_TEMPLATE: Record<string, unknown> = {
   _comment:
     "Lasso config file. Flat JSON: keys match env variable names (see doc/KEY-GUIDE.md). Fill only the keys you need. Booleans use true/false; CSV keys like BRAVE_API_KEYS are comma-separated strings. Env variables override this file (backward compatible).",
+  // v1.17 A3：ZHIPU_API_KEY / ZHIPU_ENDPOINT 已退役（tolerated-but-ignored；
+  // 静默忽略 + doctor zhipu_keys_retired 提示删除；照 BING_API_KEYS 先例保留键位）
   ZHIPU_API_KEY: "",
   BRAVE_API_KEYS: "",
   BING_API_KEYS: "",
@@ -327,12 +337,9 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   const providers = new Map<string, ProviderConfig>();
   for (const p of BUILTIN_PROVIDERS) providers.set(p.name, { ...p });
 
-  // v0.1：注入 ZHIPU_API_KEY（单值）
-  const zhipuKey = env.ZHIPU_API_KEY;
-  if (zhipuKey) {
-    const zhipu = providers.get("zhipu");
-    if (zhipu) zhipu.keys = [zhipuKey];
-  }
+  // v1.17 A3（zhipu 直连删除）：ZHIPU_API_KEY / ZHIPU_ENDPOINT 键容忍但**不消费**——
+  // 不注册 zhipu provider、不注入任何 provider keys（照 v1.15 BING_API_KEYS 先例；
+  // doctor zhipu_keys_retired 提示退役；INV-80 墓碑守卫禁 providers.set("zhipu")）。
 
   // v0.2 新增：Brave 多 Key CSV（parse2 §3.1.4 / §4.2）
   // BRAVE_API_KEYS="key1,key2,key3" 优先；兼容单值 BRAVE_API_KEY。
@@ -349,9 +356,6 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   // v1.15 Phase A（Bing 死层清除）：BING_API_KEYS / BING_API_KEY 键容忍但**不注册**
   // bing provider（Bing Search APIs 2025-08-11 全量退役；静默忽略存量配置，
   // doctor #11c bing_keys_retired 提示删除；INV-54 墓碑守卫禁 providers.set("bing")）。
-
-  const zhipuEndpoint =
-    env.ZHIPU_ENDPOINT ?? providers.get("zhipu")?.endpoint_url ?? "";
 
   // v1.11（round1 T12）：NaN/越界守卫统一数值解析范式（与 parseHeadlessIdleMs 同款；
   //   修复 L340 裸 parseInt：用户配 "abc" → NaN 静默下渗 CDP 连接层，报错更晚更怪）
@@ -384,8 +388,6 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     runId: opts.runId,
     providers,
     registry,
-    zhipuApiKey: zhipuKey,
-    zhipuEndpoint,
     cdpPort,
     proxy,
     cacheDir,

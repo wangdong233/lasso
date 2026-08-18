@@ -297,3 +297,25 @@ export const fetchFeedAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: true,
 };
+
+// ============================================================
+// search_local（doc/25 裁决④ B1 第四通道，2026-08-18）
+// ============================================================
+/**
+ * search_local tool annotations。
+ *
+ * 四象限归属（与 doctor / read_text 同档——纯本地只读）：
+ *   |  tool          | readOnly | openWorld | 含义                              |
+ *   |  ------------- | -------- | --------- | --------------------------------- |
+ *   |  search_local  |   true   |   false   | 只读查本地私有数据；零网络        |
+ *
+ * - readOnlyHint=true：Chrome History 复制快照只读查询（源库零写 API，
+ *   INV-81(a)）；mdfind 只读元数据（stat mtime，不读文件内容）。
+ * - openWorldHint=false：纯本地（INV-81(d) 零网络是架构属性）——浏览历史是
+ *   高敏数据，openWorld=false 让 CC 把它当「读用户机器」而非「触外网」对待，
+ *   权限提示面更准确。
+ */
+export const searchLocalAnnotations: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: false,
+};

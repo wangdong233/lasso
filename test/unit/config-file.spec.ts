@@ -179,45 +179,59 @@ describe("loadConfigFileEnv — 零配置 + 解析", () => {
 // loadConfig（end-to-end file→env 合并）
 // ============================================================
 describe("loadConfig — file→env 合并", () => {
-  it("file 值作 base：opts.env 未提供该 key 时 file 兜底", () => {
+  it("file 值作 base：opts.env 未提供该 key 时 file 兜底（经 BRAVE_API_KEYS 验证）", () => {
     writeFileSync(
       configFile,
-      JSON.stringify({ ZHIPU_API_KEY: "from-file" }),
+      JSON.stringify({ BRAVE_API_KEYS: "from-file" }),
     );
     const cfg = loadConfig({
       runId: "test-run",
       env: { LASSO_CONFIG_PATH: configFile },
     });
-    expect(cfg.zhipuApiKey).toBe("from-file");
+    expect(cfg.providers.get("brave")?.keys).toEqual(["from-file"]);
   });
 
   it("env 覆盖 file：同名 key env 赢（向后兼容：-e KEY=VAL 不破）", () => {
     writeFileSync(
       configFile,
-      JSON.stringify({ ZHIPU_API_KEY: "from-file" }),
+      JSON.stringify({ BRAVE_API_KEYS: "from-file" }),
     );
     const cfg = loadConfig({
       runId: "test-run",
       env: {
         LASSO_CONFIG_PATH: configFile,
-        ZHIPU_API_KEY: "from-env",
+        BRAVE_API_KEYS: "from-env",
       },
     });
-    expect(cfg.zhipuApiKey).toBe("from-env");
+    expect(cfg.providers.get("brave")?.keys).toEqual(["from-env"]);
   });
 
   it("opts.env 替换 process.env（测试契约：opts.env 提供时 process.env 不污染）", () => {
-    // 即使 process.env.ZHIPU_API_KEY 被测试 runner 设了，opts.env 提供时它不应渗入
+    // 即使 process.env.BRAVE_API_KEYS 被测试 runner 设了，opts.env 提供时它不应渗入
     writeFileSync(
       configFile,
-      JSON.stringify({ ZHIPU_API_KEY: "from-file" }),
+      JSON.stringify({ BRAVE_API_KEYS: "from-file" }),
     );
     const cfg = loadConfig({
       runId: "test-run",
-      env: { LASSO_CONFIG_PATH: configFile }, // 不含 ZHIPU_API_KEY
+      env: { LASSO_CONFIG_PATH: configFile }, // 不含 BRAVE_API_KEYS
     });
-    // 应取 file 值（不被 process.env.ZHIPU_API_KEY 覆盖）
-    expect(cfg.zhipuApiKey).toBe("from-file");
+    // 应取 file 值（不被 process.env.BRAVE_API_KEYS 覆盖）
+    expect(cfg.providers.get("brave")?.keys).toEqual(["from-file"]);
+  });
+
+  it("v1.17 A3：ZHIPU_API_KEY 容忍读但不消费——不注册 provider、无 keys 注入", () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({ ZHIPU_API_KEY: "retired-key", ZHIPU_ENDPOINT: "https://retired.test/mcp" }),
+    );
+    const cfg = loadConfig({
+      runId: "test-run",
+      env: { LASSO_CONFIG_PATH: configFile },
+    });
+    // zhipu provider 永不存在（INV-80 墓碑；doctor zhipu_keys_retired 提示）
+    expect(cfg.providers.get("zhipu")).toBeUndefined();
+    expect(cfg.registry.get("zhipu")).toBeUndefined();
   });
 
   it("file boolean 规范化后正确驱动 LASSO_ALLOW_CLOUD_BROWSER 语义", () => {
@@ -297,12 +311,14 @@ describe("loadConfig — file→env 合并", () => {
     expect(parseCdpPort("9400")).toBe(9400);
   });
 
-  it("零配置：无 file + 无 env key → loadConfig 仍可用（zhipuApiKey undefined）", () => {
+  it("零配置：无 file + 无 env key → loadConfig 仍可用（v1.17 A3：zhipu 字段已删）", () => {
     const cfg = loadConfig({
       runId: "test-run",
       env: { LASSO_CONFIG_PATH: path.join(dir, "nonexistent.json") },
     });
-    expect(cfg.zhipuApiKey).toBeUndefined();
+    // v1.17 A3：zhipuApiKey / zhipuEndpoint 字段已从 LassoConfig 删除
+    expect(cfg).not.toHaveProperty("zhipuApiKey");
+    expect(cfg).not.toHaveProperty("zhipuEndpoint");
     expect(cfg.cdpPort).toBe(9222); // 默认
   });
 
@@ -416,9 +432,11 @@ describe("writeConfigTemplate — init 模板生成", () => {
   });
 
   it("CONFIG_TEMPLATE 顶层导出含所有 KEY-GUIDE 已知 key", () => {
-    // 守：模板覆盖用户最常配的 key（不漏 ZHIPU/BRAVE/BING 三大 search 源）
+    // 守：模板覆盖用户最常配的 key（ZHIPU/BING 是 tolerated-but-ignored 退役键——
+    // v1.17 A3 起保留键位提示删除，照 BING_API_KEYS 先例）
     const keys = Object.keys(CONFIG_TEMPLATE);
     expect(keys).toContain("ZHIPU_API_KEY");
+    expect(keys).toContain("ZHIPU_ENDPOINT");
     expect(keys).toContain("BRAVE_API_KEYS");
     expect(keys).toContain("BING_API_KEYS");
     expect(keys).toContain("LASSO_ALLOW_CLOUD_BROWSER");

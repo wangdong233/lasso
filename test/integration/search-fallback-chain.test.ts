@@ -1,14 +1,15 @@
 /**
  * engine="fallback_chain" 集成测（parse10 §3 + §5 + §6 V1-V4 CI 验收；
- * v1.15 Phase A 修订：Bing 死层清除后链 = machine_mcp → zhipu → brave → browse_headless；
- * v1.15 Phase B 修订：browse_headless 之前插入 serp_http 裸 HTTP 快探层（parse22），
- * 链 = machine_mcp → zhipu → brave → serp_http → browse_headless → recording_replay）。
+ * v1.15 Phase A 修订：Bing 死层清除；
+ * v1.15 Phase B 修订：browse_headless 之前插入 serp_http 裸 HTTP 快探层（parse22）；
+ * v1.17 A3 修订：zhipu 直连档删除后链 = machine_mcp → brave → serp_http →
+ * browse_headless → recording_replay（INV-80 墓碑守卫）。
  *
  * 守护要点（parse10 §1 决策 4 + §3.2 + §3.4 + §1 边界表 7 场景）：
  *  1. **零回归**：engine="auto" 默认路径 byte-identical v0.8（不进 fallback_chain 分支）。
  *  2. **plan 构造器**：FallbackChain 构造 plan 后交 FallbackDecider.runWithFallback 执行
  *     （INV-55 单一 fallback 引擎；本测试 grep 验 runFallbackChain 内不循环）。
- *  3. **降级链**：zhipu unknown → brave unknown → browse_headless。
+ *  3. **降级链**：machine_mcp unknown → brave unknown → browse_headless。
  *     每档单独验（不一次性把各档都 unknown，便于排查哪档熔断逻辑出错）。
  *  4. **全源熔断 + replay 兜底**：两源 + browse_headless 全失败 + recordingStore 命中
  *     → served_by="recording_replay"；未命中 → tri-state didnt（诚实不伪造）。
@@ -39,7 +40,7 @@ import type {
   BraveChannel,
   BraveOpts,
 } from "../../src/channels/BraveChannel.js";
-import type { SearchChannel } from "../../src/channels/SearchChannel.js";
+import type { MachineMcpSearchChannel } from "../../src/channels/MachineMcpSearchChannel.js";
 import type { BrowseResult, InteractResult, SearchResult } from "../../src/types.js";
 import type { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
 // v1.15 Phase B（parse22 §5.2）：serp_http 快探层链序断言
@@ -48,19 +49,19 @@ import type { HttpSerpExec } from "../../src/serp/http-serp.js";
 // ============================================================
 // stub channel factories
 // ============================================================
-function makeStubSearch(impl: {
+function makeStubMachineMcp(impl: {
   search: (
     q: string,
     opts: { limit: number; engine: string; region: string; no_cache: boolean },
   ) => Promise<InteractResult<SearchResult>>;
-}): SearchChannel {
+}): MachineMcpSearchChannel {
   return {
-    name: "search.zhipu",
+    name: "search.machine_mcp",
     search: vi.fn(impl.search),
     isAvailable: vi.fn(async () => true),
     status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
     healthCheck: vi.fn(async () => "healthy" as const),
-  } as unknown as SearchChannel;
+  } as unknown as MachineMcpSearchChannel;
 }
 
 function makeStubBrave(impl: {
@@ -153,13 +154,13 @@ afterEach(async () => {
 // runFallbackChainEngine 直调测（不经 MCP server.tool 装配）
 // ============================================================
 describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
-  it("V1：zhipu worked → 直接返回 served_by=search.zhipu + fallback_used=false", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => workedSearch("search.zhipu")),
+  it("V1：machine_mcp worked → 直接返回 served_by=search.machine_mcp + fallback_used=false", async () => {
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => workedSearch("search.machine_mcp")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => {
-        throw new Error("brave should not be called when zhipu works");
+        throw new Error("brave should not be called when machine_mcp works");
       }),
       isAvailable: async () => true,
     });
@@ -171,7 +172,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -193,26 +194,27 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       /* braveAllowedByFreeTier */ true,
-      /* zhipuAllowedByFreeTier */ true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
-    expect(result.served_by).toBe("search.zhipu");
+    expect(result.served_by).toBe("search.machine_mcp");
     expect(result.fallback_used).toBe(false);
+    // A1 质量轴：machine_mcp API 源 → quality="api"
+    expect(result.quality).toBe("api");
     expect(result.data).not.toBeNull();
     expect(result.data!.results).toHaveLength(2);
     expect(brave.search).not.toHaveBeenCalled();
   });
 
-  it("V2：zhipu unknown → brave worked（fallback_used=true + served_by=search.brave）", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "HTTP 429")),
+  it("V2：machine_mcp unknown → brave worked（fallback_used=true + served_by=search.brave）", async () => {
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "HTTP 429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => workedSearch("search.brave")),
@@ -226,7 +228,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -247,13 +249,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       null,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
@@ -261,14 +262,14 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     expect(result.fallback_used).toBe(true);
     expect(result.actions_and_results).toBeDefined();
     expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
+      "search.machine_mcp",
       "search.brave",
     ]);
   });
 
-  it("V3：zhipu + brave 全 unknown → browse_headless SERP scrape 兜底 worked", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+  it("V3：machine_mcp + brave 全 unknown → browse_headless SERP scrape 兜底 worked", async () => {
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -294,7 +295,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -315,13 +316,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       null,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
@@ -333,12 +333,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     // v1.15 Phase A（INV-54 墓碑守卫）：审计链无 search.bing 档（死层清除）
     expect(
       result.actions_and_results!.map((a) => a.channel),
-    ).toEqual(["search.zhipu", "search.brave", "browse_headless"]);
+    ).toEqual(["search.machine_mcp", "search.brave", "browse_headless"]);
   });
 
   it("V4a：全源 + browse_headless 全熔断 + 无 recordingStore → tri-state didnt（诚实不伪造）", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -358,7 +358,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -380,22 +380,21 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       null,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("didnt");
     expect(result.retrieval_method).toBe("fallback_exhausted");
     expect(result.data).toBeNull();
     expect(result.served_by).toBe("browse_headless");
-    // 审计链完整（3 channel 都试过：zhipu → brave → browse_headless）
+    // 审计链完整（3 channel 都试过：machine_mcp → brave → browse_headless）
     expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
+      "search.machine_mcp",
       "search.brave",
       "browse_headless",
     ]);
@@ -412,8 +411,8 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     );
 
     // 全源失败
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -432,7 +431,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -453,19 +452,20 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     // 命中 replay：outcome=worked + served_by=recording_replay
     expect(result.outcome).toBe("worked");
     expect(result.served_by).toBe("recording_replay");
     expect(result.retrieval_method).toBe("recording_replay");
+    // A1 质量轴（v1.17 Phase B）：回放是过去快照 → quality="stale"
+    expect(result.quality).toBe("stale");
     expect(result.fallback_used).toBe(true);
     expect(result.data).not.toBeNull();
     expect(result.data!.results).toHaveLength(2);
@@ -490,8 +490,8 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     await fs.utimes(file, threeDaysAgo, threeDaysAgo);
 
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -509,7 +509,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     });
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -529,13 +529,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness=day */ "day",
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     // 陈旧 fixture 被新鲜度门拒绝：不是 worked/recording_replay，而是透传原熔断结果
@@ -555,8 +554,8 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     await fs.utimes(file, twoHoursAgo, twoHoursAgo);
 
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -574,7 +573,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     });
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -594,13 +593,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness=day */ "day",
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     // 窗内 fixture 正常回放
@@ -612,8 +610,8 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
     const recordingStore = new RecordingStore(recordingsDir);
     // 故意不录任何 fixture
 
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -632,7 +630,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -653,13 +651,12 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("didnt");
@@ -669,12 +666,13 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
 });
 
 // ============================================================
-// free_only 过滤（v1.15 Phase A：Bing key=[] 跳过场景已随死层清除删除）
+// free_only 过滤（v1.15 Phase A：Bing 场景已删；v1.17 A3：zhipuAllowed 参数已删——
+// 仅剩 braveAllowed；machine_mcp L1 不过滤、未注入时诚实空链）
 // ============================================================
 describe("engine=fallback_chain —— free_only 过滤", () => {
   it("free_only=L1 排除所有 search provider → channelOrder 仅含 browse_headless → 全源熔断返 didnt", async () => {
-    const search = makeStubSearch({
-      search: vi.fn(async () => workedSearch("search.zhipu")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => workedSearch("search.machine_mcp")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => workedSearch("search.brave")),
@@ -693,7 +691,7 @@ describe("engine=fallback_chain —— free_only 过滤", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -708,27 +706,26 @@ describe("engine=fallback_chain —— free_only 过滤", () => {
       };
     };
 
-    // 模拟 L1 过滤：所有 search provider 都不在允许集
-    // → zhipu/brave 全 false → channelOrder 仅含 browse_headless
+    // 模拟 L1 过滤：API search provider（brave）不在允许集且 machine_mcp 未注入
+    // → channelOrder 仅含 browse_headless
     const result = await runFallbackChainEngine(
       "test query",
       10,
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       null,
       /* braveAllowed */ false,
-      /* zhipuAllowed */ false,
+      /* machineMcp（未注入——L1 无 API 源只剩 browse_headless 兜底） */
     );
 
     // browse_headless 兜底也失败 → didnt
     expect(result.outcome).toBe("didnt");
-    // 两源 search 都未被调用（free_only 过滤掉）
-    expect(search.search).not.toHaveBeenCalled();
+    // API search 源未被调用（free_only 过滤掉 brave；machine_mcp 未注入）
+    expect(brave.search).not.toHaveBeenCalled();
     expect(brave.search).not.toHaveBeenCalled();
     // browse_headless 被调（cross_modal 兜底不受 free_only 影响）
     expect(headless.browse).toHaveBeenCalled();
@@ -744,8 +741,8 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
     const recordingStore = new RecordingStore(recordingsDir, true);
     expect(recordingStore.isEnabled()).toBe(true);
 
-    const search = makeStubSearch({
-      search: vi.fn(async () => workedSearch("search.zhipu")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => workedSearch("search.machine_mcp")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => {
@@ -761,7 +758,7 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -782,13 +779,12 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
@@ -806,8 +802,8 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
     const recordingStore = new RecordingStore(recordingsDir);
     expect(recordingStore.isEnabled()).toBe(false);
 
-    const search = makeStubSearch({
-      search: vi.fn(async () => workedSearch("search.zhipu")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => workedSearch("search.machine_mcp")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => {
@@ -823,7 +819,7 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
@@ -844,13 +840,12 @@ describe("engine=fallback_chain —— 录制 + 回放语义（INV-57..59）", (
       "cn",
       false,
       /* freshness (v1.11 T6) */ undefined,
-      search,
       brave,
       browseHeadlessExec,
       decider,
       recordingStore,
       true,
-      true,
+      /* machineMcp (v1.17 A3：首位源注入) */ machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
@@ -913,8 +908,8 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
   function makeChainFixtures(
     headlessImpl: () => Promise<InteractResult<BrowseResult>>,
   ) {
-    const search = makeStubSearch({
-      search: vi.fn(async () => unknownSearch("search.zhipu", "429")),
+    const machineMcp = makeStubMachineMcp({
+      search: vi.fn(async () => unknownSearch("search.machine_mcp", "429")),
     });
     const brave = makeStubBrave({
       search: vi.fn(async () => unknownSearch("search.brave", "429")),
@@ -923,7 +918,7 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
     const headless = makeStubHeadless({ browse: vi.fn(headlessImpl) });
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["search.brave", new CircuitBreaker()],
         ["serp_http", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
@@ -937,10 +932,10 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
         error: r.error,
       };
     };
-    return { search, brave, headless, decider, browseHeadlessExec };
+    return { machineMcp, brave, headless, decider, browseHeadlessExec };
   }
 
-  it("PB-1：zhipu → brave 全 unknown → serp_http worked → browse_headless 不被调（快探短路）", async () => {
+  it("PB-1：machine_mcp → brave 全 unknown → serp_http worked → browse_headless 不被调（快探短路）", async () => {
     const fx = makeChainFixtures(async () => {
       throw new Error("browse_headless should not be called when serp_http works");
     });
@@ -952,23 +947,21 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
       "cn",
       false,
       undefined,
-      fx.search,
       fx.brave,
       fx.browseHeadlessExec,
       fx.decider,
       null,
       true,
-      true,
-      /* machineMcp */ null,
+      /* machineMcp (v1.17 A3：首位源) */ fx.machineMcp,
       /* httpSerp (v1.15 Phase B) */ exec,
     );
 
     expect(result.outcome).toBe("worked");
     expect(result.served_by).toBe("serp_http:ddg");
     expect(calls).toEqual(["test query"]);
-    // 审计链：zhipu → brave → serp_http（browse_headless 未进链）
+    // 审计链：machine_mcp → brave → serp_http（browse_headless 未进链）
     expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
+      "search.machine_mcp",
       "search.brave",
       "serp_http",
     ]);
@@ -994,14 +987,12 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
       "cn",
       false,
       undefined,
-      fx.search,
       fx.brave,
       fx.browseHeadlessExec,
       fx.decider,
       null,
       true,
-      true,
-      null,
+      /* machineMcp (v1.17 A3：首位源) */ fx.machineMcp,
       httpSerpUnknown("serp_http_challenge"),
     );
 
@@ -1010,7 +1001,7 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
     // 链序断言：serp_http 条目存在且在 browse_headless 之前
     const channels = result.actions_and_results!.map((a) => a.channel);
     expect(channels).toEqual([
-      "search.zhipu",
+      "search.machine_mcp",
       "search.brave",
       "serp_http",
       "browse_headless",
@@ -1042,20 +1033,19 @@ describe("runFallbackChainEngine —— serp_http 快探层（browse_headless �
       "cn",
       false,
       undefined,
-      fx.search,
       fx.brave,
       fx.browseHeadlessExec,
       fx.decider,
       null,
       true,
-      true,
-      // 不传 httpSerp（缺省 null）——Phase A 基线行为 byte-identical
+      // machineMcp 注入 + 不传 httpSerp（缺省 null）——链 = machine_mcp → brave → browse_headless
+      fx.machineMcp,
     );
 
     expect(result.outcome).toBe("worked");
     expect(result.served_by).toBe("browse_headless");
     expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-      "search.zhipu",
+      "search.machine_mcp",
       "search.brave",
       "browse_headless",
     ]);

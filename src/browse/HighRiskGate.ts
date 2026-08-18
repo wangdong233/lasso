@@ -24,10 +24,21 @@
  *  - 若目标元素无法定位（uid 不是 DOM selector / 页面未就绪）：**不拦**（让 channel
  *    自己报错，避免误拦合法操作 —— parse3 §7.1 R-v03-3 缓解）。
  *  - 任何 evaluate 异常：返回 blocked=false + reason="gate_error:*"（保守放过）。
+ *
+ * v1.17 Phase E（parse24 §6.1 C1）：elicitation opt-in 二参。
+ *  - 构造器第二可选参 elicitationPort（未传 / null = 现行行为 byte-identical）。
+ *  - 命中 pattern 后 port 存在 → confirmHighRisk：accept → blocked=false +
+ *    reason="high_risk_elicited:<kind>"（审计链可见曾拦过并经人确认）；decline /
+ *    unavailable → 现行 blocked=true 路径 byte-identical（StepEngine 零改）。
+ *  - accept 无记忆（INV-14 anti-gaming 的 elicitation 延伸）：每次命中独立确认，
+ *    gate 不持跨调用状态；pattern 表仍代码级 const。
+ *  - port 自身异常 → 按 unavailable 处理（fail-closed：宁可误拦不可放行——
+ *    StepEngine 对 assessStep 异常的兜底是放行，端口异常绝不能上抛）。
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import type { Step } from "./steps-types.js";
 import { logger } from "../util/logger.js";
+import type { ElicitationPort } from "../interact/ElicitationPort.js";
 
 // ============================================================
 // HighRiskAssessment
@@ -101,9 +112,13 @@ export const READONLY_ACTIONS: ReadonlySet<string> = new Set([
 export class HighRiskGate {
   /**
    * @param clientSupplier 懒获取 McpClient（每次 assessStep 调一次，避免构造时绑定）
+   * @param elicitationPort v1.17 Phase E（parse24 §6.1）：可选 elicitation 端口。
+   *        未传 / null = 现行行为（命中 → blocked，零回归）；注入且客户端声明
+   *        elicitation.form 能力时，命中 → 回合内人确认（accept 才放行本次）。
    */
   constructor(
     private readonly clientSupplier: () => Promise<McpClient>,
+    private readonly elicitationPort: ElicitationPort | null = null,
   ) {}
 
   /**
@@ -175,6 +190,42 @@ export class HighRiskGate {
         reason?: string;
       };
       if (verdict.kind) {
+        // v1.17 Phase E（parse24 §6.1）：port 注入时先回合内人确认。
+        // accept → blocked=false + reason="high_risk_elicited:<kind>"（审计可见）；
+        // decline / unavailable / port 异常 → 现行 blocked 路径 byte-identical。
+        if (this.elicitationPort) {
+          let decision: "accept" | "decline" | "unavailable";
+          try {
+            decision = await this.elicitationPort.confirmHighRisk(
+              verdict.kind,
+              verdict.html ?? "",
+            );
+          } catch (e) {
+            // fail-closed：端口违反「永不 throw」契约 → 按 unavailable（不放到
+            // StepEngine 的 assessStep 异常兜底——那里是 blocked=false 放行）
+            logger.warn({
+              evt: "high_risk_gate_port_threw",
+              action: step.action,
+              error: String(e),
+            });
+            decision = "unavailable";
+          }
+          if (decision === "accept") {
+            logger.info({
+              evt: "high_risk_elicited_continue",
+              kind: verdict.kind,
+            });
+            return {
+              blocked: false,
+              reason: `high_risk_elicited:${verdict.kind}`,
+            };
+          }
+          logger.info({
+            evt: "high_risk_elicited_blocked",
+            kind: verdict.kind,
+            decision,
+          });
+        }
         return {
           blocked: true,
           reason: `high_risk_pattern:${verdict.kind}`,

@@ -8,7 +8,8 @@
  *
  * Phase D 接线：
  *  - SubprocessManager（spawn chrome-devtools-mcp，zombie reaper）
- *  - 3 channels：SearchChannel（智谱 streamable-http）/ HeadlessChannel / LoggedInChannel
+ *  - 3 channels：MachineMcpSearchChannel（条件装配，智谱 MCP 复用）/ HeadlessChannel / LoggedInChannel
+ *    （v1.17 A3：zhipu 直连 SearchChannel 已删——INV-80 墓碑守卫）
  *  - FallbackDecider + 3 CircuitBreaker（per-channel 60s 短熔断）
  *  - SSRF allowRanges（loadSsrfConfig）
  *  - 4 tools：search / browse_headless / browse_logged_in / doctor
@@ -32,7 +33,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config/config.js";
+import { loadConfig, loadConfigFileEnv } from "./config/config.js";
 import { getConfigFilePath, writeConfigTemplate } from "./config/config.js";
 import { logger } from "./util/logger.js";
 // v1.8 Phase E（D6）：fanout RPM 限频 per-process 单例
@@ -41,10 +42,11 @@ import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
 import { SubprocessManager } from "./subprocess/SubprocessManager.js";
 import { RustBridge } from "./subprocess/RustBridge.js";
-import { SearchChannel } from "./channels/SearchChannel.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
 // v1.15 Phase A（Bing 死层清除）：BingChannel 第三源已删（Bing Search APIs
 // 2025-08-11 全量退役；INV-54 墓碑守卫禁回潮，见 providers.ts 墓碑说明）。
+// v1.17 A3（doc/25 裁决③）：zhipu 直连 SearchChannel 已删（INV-80 墓碑守卫；
+// 智谱能力由 MachineMcpSearchChannel 机器 MCP 复用承载）。
 // v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
 // 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时实例化；否则不注册保零回归
 import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
@@ -80,6 +82,8 @@ import { runDoctor } from "./doctor/doctor.js";
 import { buildDoctorCliOptions } from "./doctor/doctor-cli.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
+// v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate elicitation 端口（SDK 1.30.0 elicitInput）
+import { SdkElicitationPort } from "./interact/ElicitationPort.js";
 import { registerBrowserbaseTool } from "./tools/browserbase.js";
 import { registerSteelTool } from "./tools/steel.js";
 import { registerDoctorTool } from "./tools/doctor-tool.js";
@@ -108,6 +112,10 @@ import { registerFetchFeedTool } from "./tools/fetch-feed.js";
 // browse/StepEngine 超 48KiB spill 后 continue_hint 指向的工具经 MCP 不可达，
 // wave1 T-TOOLS-13/T-TOOLS-08 采证 6 处 description 指向 + continue_hint 落空）
 import { registerReadTextTool } from "./tools/read-text.js";
+// doc/25 裁决④（B1 第四通道，2026-08-18）：search_local 本地私有数据搜索
+// （Chrome History 多 profile 只读 + mdfind；Notes deferred v2）——纯本地工具
+// 直连范式（照 read_text/doctor-tool 先例，不建 BaseChannel；INV-81 隐私红线）
+import { registerSearchLocalTool } from "./search-local/register-search-local-tool.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -138,6 +146,8 @@ import { SerpHealthMonitor } from "./serp/SerpHealthMonitor.js";
 // v1.15 Phase B（parse22）：serp_http 裸 HTTP 快探层（browse_headless 之前 ~1s 探针）
 import { rawSerpSearch, SERP_HTTP_ALLOWED_HOSTS } from "./serp/http-serp.js";
 import type { HttpSerpExec } from "./serp/http-serp.js";
+// v1.17 Phase C（A2′ 自研第二跳）：content_blocks 正文富化依赖
+import type { ContentSecondHopDeps } from "./search/ContentSecondHop.js";
 // v0.8 M0.8 接线（parse9 §3 + §2.2 + §7.2 Phase B）—— logged_in 持久化层
 // 守 INV-48：cookie 落盘 AES-256-GCM（CookieStore 实装）
 // 守 INV-49：加密包文件 mode 0o600 + 目录 mode 0o700
@@ -211,7 +221,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.16.0";
+const LASSO_SERVER_VERSION = "1.17.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -258,9 +268,10 @@ function readCloudBrowserEnv(): {
 // ============================================================
 async function runDoctorCli(argv: string[]): Promise<void> {
   // v1.3 Phase B：doctor CLI 也走 loadConfig（file→env 合并），与 MCP doctor tool 一致。
-  // 守用户硬约束②：配置文件改的 key 在 CLI doctor 也要反映——否则用户按 README 跑 lasso config init
-  // 填了 key，lasso doctor 仍报"ZHIPU_API_KEY 未设置"，体验断裂。
-  // env 仍优先（loadConfig 合并顺序 file→env；既有 -e KEY=VAL / shell env 用户零回归）。
+  // 守用户硬约束②：配置文件改的 key 在 CLI doctor 也要反映（env 仍优先——loadConfig
+  // 合并顺序 file→env；既有 -e KEY=VAL / shell env 用户零回归）。
+  // v1.17 A3：zhipuKey / zhipuEndpoint 参数已删（zhipu 直连死层清除；doctor 改报
+  // zhipu_keys_retired 静态退役提示）。
   const config = loadConfig({ runId: "doctor-cli" });
   // v1.8 Phase D（D11）：`lasso doctor --stealth-check` —— README 承诺落地。
   // flag 解析 + provider 装配独立在 doctor-cli.ts（可单测；probeCreepjs 仍只在
@@ -268,9 +279,11 @@ async function runDoctorCli(argv: string[]): Promise<void> {
   // 两处白名单）。
   const stealth = buildDoctorCliOptions(argv);
   const report = await runDoctor({
-    zhipuKey: config.zhipuApiKey,
-    zhipuEndpoint: config.zhipuEndpoint,
     cdpPort: config.cdpPort,
+    // v1.17 A3：zhipu_keys_retired 静态退役提示需看到 config 文件里的**残留**键
+    // （file→env 合并语义：env 优先；容忍读不消费——INV-80 墓碑容许此读取）。
+    zhipuKey:
+      process.env.ZHIPU_API_KEY ?? loadConfigFileEnv().ZHIPU_API_KEY,
     ...stealth.doctorOpts,
   });
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
@@ -361,7 +374,7 @@ async function runMcpServer(): Promise<void> {
     evt: "lasso_start",
     run_id: runId,
     version: LASSO_SERVER_VERSION,
-    zhipu_key_present: !!config.zhipuApiKey,
+    // v1.17 A3：zhipu_key_present 已删（zhipu 直连死层清除；智谱能力=机器 MCP 复用）
     brave_key_present: !!process.env.BRAVE_API_KEYS || !!process.env.BRAVE_API_KEY,
     cdp_port: config.cdpPort,
   });
@@ -393,10 +406,8 @@ async function runMcpServer(): Promise<void> {
   const cookieStoreFactory = (profileName: string): CookieStore =>
     new CookieStore(config.cacheDir, profileName);
 
-  const search = new SearchChannel(
-    config.zhipuEndpoint,
-    config.zhipuApiKey,
-  );
+  // v1.17 A3（doc/25 裁决③）：zhipu 直连 SearchChannel 装配段已删（INV-80 墓碑守卫；
+  // 智谱能力现行载体 = machine_mcp 机器 MCP 复用，见下方装配段）。
 
   // ----- v1.4 Phase A：机器 MCP 复用（parse-v1.4 §Phase A）-----
   // **零配置优先**：detectMachineSearchMcp() 读 ~/.claude.json mcpServers，找 type=http +
@@ -506,7 +517,8 @@ async function runMcpServer(): Promise<void> {
   // v1.15 Phase A（Bing 死层清除）：v0.9 的 BingChannel 装配段已删（Bing Search APIs
   // 2025-08-11 全量退役，微软 lifecycle 公告，2026-08-17 核实）。providers 表不再注册
   // bing（config.ts 静默忽略 BING_API_KEYS；doctor #11c bing_keys_retired 提示删除）；
-  // fallback_chain 链变为 machine_mcp → zhipu → brave → browse_headless。
+  // v1.17 A3：zhipu 直连档亦删（ZHIPU_API_KEYS 同款容忍忽略 + doctor zhipu_keys_retired）；
+  // fallback_chain 链变为 machine_mcp → brave → serp_http → browse_headless。
 
   // ----- v0.9 Phase B 装配 search-recordings RecordingStore（parse10 §3.4 + INV-57）-----
   // engine="fallback_chain" 全源熔断时 replay 最后兜底（命中返 worked + served_by="recording_replay"）。
@@ -562,7 +574,7 @@ async function runMcpServer(): Promise<void> {
   // v0.4 M0.4b 加 desktop.appleScript + desktop.cgEvent 两档 breaker（parse5 §3.5.4）
   // v0.4 M0.4c 加 browse_cloud.browserbase / browse_cloud.stagehand 两档 breaker（条件；parse5 §3.2）
   const breakers = new Map<string, CircuitBreaker>([
-    ["search.zhipu", new CircuitBreaker()],
+    // v1.17 A3：search.zhipu breaker 已删（zhipu 直连死层清除；INV-80 墓碑守卫）
     ["search.brave", new CircuitBreaker()],
     // v1.15 Phase A：search.bing breaker 已删（Bing 死层清除；INV-54 墓碑守卫）
     // v1.4 Phase A（parse-v1.4 §Phase A）：search.machine_mcp breaker
@@ -736,9 +748,20 @@ async function runMcpServer(): Promise<void> {
     });
   logger.info({ evt: "serp_http_layer_wired", hosts: SERP_HTTP_ALLOWED_HOSTS.length });
 
+  // ----- v1.17 Phase C（A2′ 自研第二跳）：content_blocks 正文富化装配（parse24 §3）-----
+  // fetch 经 SubprocessManager.httpAgents 池（per-origin 懒建；INV-32 单一真源
+  // 不 new Agent——与上面 serpHttpExec 同款包装）；SSRF 纵深与 browse/fetch_url/
+  // serp_http 共用同一 ssrfConfig（INV-31 同函数同 config）。
+  // 未传该参时 content_blocks 参数被诚实忽略（search.ts 注入式手法，零回归）。
+  const contentHopDeps: ContentSecondHopDeps = {
+    fetchImpl: ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+      subproc.acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
+    ssrfConfig,
+  };
+  logger.info({ evt: "content_second_hop_wired", budget_chars: 6000 });
+
   registerSearchTool(
     server,
-    search,
     decider,
     browseHeadlessExec,
     brave,
@@ -746,8 +769,9 @@ async function runMcpServer(): Promise<void> {
     searchCache,
     serpHealth,
     // v0.9 Phase B（parse10 §3）：searchRecordings 注入
-    // v1.15 Phase A：bing 参数已删（Bing 死层清除；fallback_chain 走
-    // machine_mcp → zhipu → brave → serp_http → browse_headless）
+    // v1.15 Phase A：bing 参数已删（Bing 死层清除）；v1.17 A3：search: SearchChannel
+    // 参数已删（zhipu 直连死层清除；fallback_chain 走
+    // machine_mcp → brave → serp_http → browse_headless）
     searchRecordings,
     // v1.4 Phase A（parse-v1.4 §Phase A）：machineMcpSearch 机器 MCP 复用注入
     // detector 未命中 → undefined → fallback_chain channelOrder 不含 search.machine_mcp
@@ -760,8 +784,17 @@ async function runMcpServer(): Promise<void> {
     // v1.15 Phase B（parse22 §2.1）：serp_http 快探注入（fallbacks 变
     // [serp_http, browse_headless]；未注入则零回归）
     serpHttpExec,
+    // v1.17 Phase C（A2′ 第二跳）：content_blocks 正文富化依赖注入
+    // （未注入则 content_blocks 参数诚实忽略，零回归 byte-identical）
+    contentHopDeps,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig, callerTier);
+
+  // ----- v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate elicitation 端口注入 -----
+  // logged_in 构造早于 McpServer（装配序），此处 setter 补注入。端口内部预检
+  // clientCapabilities.elicitation.form：未声明（CC <2.1.76 等）→ unavailable →
+  // 现行 blocked 行为 byte-identical（裁决红线测试钉死）。
+  logged_in.setElicitationPort(new SdkElicitationPort(server));
   registerDesktopTool(server, desktop, decider);
   // v0.4 M0.4c：cloud 浏览器工具条件注册（parse5 §3.2 + §6.3 #16）
   // 默认 OFF：未双重解锁时 server.listTools() 不含 browserbase（INV-25 守）
@@ -787,6 +820,10 @@ async function runMcpServer(): Promise<void> {
   registerNetworkTool(server, headless, ssrfConfig);
   // v1.8 Phase D（D1）：read_text 注册（@oN 续页；readOnly + 非 openWorld，INV-5）
   registerReadTextTool(server);
+  // doc/25 裁决④（B1 第四通道）：search_local 本地私有搜索注册
+  // （Chrome History + mdfind 两源先行；Notes deferred_v2 诚实 didnt）
+  // 纯本地只读、零网络（INV-81(d)）；四处联动第 2 处（INV-81(f)）
+  registerSearchLocalTool(server);
   // v0.9 Phase B（parse10 §3.3 + §6 M3 手测）：wayback_lookup 独立 tool
   // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
   // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
@@ -799,8 +836,7 @@ async function runMcpServer(): Promise<void> {
   // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
   // 显式标 DoctorOptions 类型让 v0.6 接线段可以注入 runtimeState（无 TS narrowing 限制）。
   const doctorOpts: Parameters<typeof registerDoctorTool>[1] = {
-    zhipuKey: config.zhipuApiKey,
-    zhipuEndpoint: config.zhipuEndpoint,
+    // v1.17 A3：zhipuKey / zhipuEndpoint 已删（zhipu 直连死层清除）
     cdpPort: config.cdpPort,
     cacheDir: config.cacheDir,
     // v0.3.5：doctor tool 也走 desktopChecks（desktop bridge 注入；parse4 §3.4.2）
@@ -902,6 +938,10 @@ async function runMcpServer(): Promise<void> {
     // v1.8 Phase D（D1）：read_text 归到独立虚拟 channel（与 fetch/screenshot/pdf/network
     // 同范式——无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
     read_text: "read_text",
+    // doc/25 裁决④（B1 第四通道）：search_local 归到独立虚拟 channel
+    // （与 read_text 同范式——纯本地工具，无子进程、无 bag entry，
+    // 仅 ToolManager caller-tier 隔离用；四处联动第 3 处，INV-81(f)）
+    search_local: "search_local",
     doctor: "doctor",
   };
   const sdkRegisteredTools = (server as unknown as {
@@ -937,9 +977,12 @@ async function runMcpServer(): Promise<void> {
     initialCapabilities.push("browse_cloud_steel");
   }
   // search providers（dot 形式 "search.<name>"）
-  initialCapabilities.push("search.zhipu");
+  // v1.17 A3：search.zhipu 无条件加入段已删（zhipu 直连死层清除；INV-80 墓碑守卫）
   if (brave) {
     initialCapabilities.push("search.brave");
+  }
+  if (machineMcpSearch) {
+    initialCapabilities.push("search.machine_mcp");
   }
   // v1.15 Phase A：search.bing 条件加入段已删（Bing 死层清除；装配层永不出 bing channel）
   // desktop providers（ProviderConfig.name 已是 "desktop.<tier>" 形式）
@@ -1023,7 +1066,7 @@ async function runMcpServer(): Promise<void> {
   // （走 v0.6 既有 onChange → toolManager.disableChannel + subproc.shutdownOne 链）
   const longBreakers = new Map<string, LongCircuitBreaker>();
   for (const name of [
-    "search.zhipu",
+    // v1.17 A3：search.zhipu 长熔断已删（zhipu 直连死层清除；INV-80 墓碑守卫）
     "search.brave",
     // v1.15 Phase A：search.bing 长熔断已删（Bing 死层清除；INV-54 墓碑守卫）
     "browse_headless",

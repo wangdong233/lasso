@@ -21,8 +21,10 @@
 > - **推荐：配置文件**——跑 `lasso config init` 创建 `~/.lasso/config.json`，按需编辑。文件是**扁平 JSON**，key 名同环境变量名（无需学新 schema）：
 >
 >   ```json
->   { "ZHIPU_API_KEY": "你的key", "BRAVE_API_KEYS": "k1,k2,k3" }
+>   { "BRAVE_API_KEYS": "k1,k2,k3" }
 >   ```
+>
+>   （搜索主路径是**机器智谱 MCP 复用，零配置**——见 A-1；Brave 是可选第二源。v1.17 起 `ZHIPU_API_KEY` 已退役不再被消费。）
 >
 > - **高级/临时覆盖：env 变量**——`claude mcp add -e KEY=VAL`、shell `~/.zshrc` / `~bashrc`、或 MCP client 的 `env` 块仍生效；**env 优先级高于配置文件**（向后兼容：既有 env 用户不破）。
 >
@@ -34,7 +36,7 @@
 
 | key / 变量 | 用途 | 哪里获取 | 必填 | 免费额度 | 最后核实 |
 |---|---|---|---|---|---|
-| `ZHIPU_API_KEY` | 搜索（默认引擎，中文主力） | [智谱开放平台](https://open.bigmodel.cn/console/apikey) | 要用搜索就**必填** | 按 token 计费（有新用户额度） | 2026-08-17 |
+| `ZHIPU_API_KEY` | ~~搜索~~ **已退役（v1.17）** | ——（不再被消费） | 不需要配；历史配置静默忽略 | 智谱能力改经机器 MCP 复用（零配置，见 A-1） | 2026-08-18 |
 | `BRAVE_API_KEYS` | 搜索第二源（自动降级用） | [Brave Search API](https://brave.com/search/api/) | 需信用卡 | **~1000 次/月**（$5/月额度，2026-02 起免费档取消） | 2026-08-17 |
 | `BING_API_KEYS` | （已关停）配置键保留 | ~~Azure 门户~~ 2025-08-11 退役 | 否 | 不可用 | 2026-08-17 |
 | `LASSO_ALLOW_CLOUD_BROWSER` | 云浏览器总开关（值设 `true`） | 无需申请 | 启用云浏览器时**必填** | — | — |
@@ -49,49 +51,18 @@
 
 ## A. 搜索
 
-### 1. 智谱（`ZHIPU_API_KEY`）—— 默认引擎，中文主力
+### 1. 智谱搜索 —— 默认引擎，中文主力（机器 MCP 复用，零配置）
 
-> 📅 **本节数额事实最后核实：2026-08-17**（方式：智谱开放平台控制台注册亲历 + 官网 pricing 页亲取；「新用户赠送额度」的具体数值未公开精确值，以平台公示为准）。
+> 📅 **本节事实最后核实：2026-08-18**（v1.17 A3 起 Lasso 的智谱接入只此一条路；`ZHIPU_API_KEY` 直连档已删除）。
 
-> 💡 **零配置优先（v1.4 新）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`），可以不配 `ZHIPU_API_KEY`**。机器 MCP 临时限流或失败 → 自动降级到 Lasso 自己的 `ZHIPU_API_KEY`（按下面填）→ Brave → 裸 HTTP 快探（`serp_http`，v1.15 新：约 1 秒、不起浏览器直接抓搜索结果页——实测部分引擎对无浏览器客户端反而更不设防）→ `browse_headless` 无头浏览器实搜兜底（Bing 层已整层移除：上游 2025-08-11 退役）。快探与实搜都不需要任何 key。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
+> 💡 **零配置即主路径（v1.17 起唯一受支持方式）**：如果你机器已经配过智谱 `web-search-prime` MCP（在 `~/.claude.json` 的 `mcpServers` 里，type=http + url 含 `web_search_prime`/`bigmodel.cn` + `headers.Authorization`），**Lasso 启动时自动检测复用它的 key 作搜索首选源（`search.machine_mcp`）——什么都不用配**。机器 MCP 临时限流或失败 → 自动降级到 Brave（配了 key 时）→ 裸 HTTP 快探（`serp_http`，v1.15 新：约 1 秒、不起浏览器直接抓搜索结果页——实测部分引擎对无浏览器客户端反而更不设防）→ `browse_headless` 无头浏览器实搜兜底（Bing 层已整层移除：上游 2025-08-11 退役）。快探与实搜都不需要任何 key。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass`（host=open.bigmodel.cn）还是 `warn`（未检测到——此时本机无 API 搜索主力源，仅剩 Brave（需 key）/裸 HTTP 快探/无头实搜兜底）。安全：Lasso 只读不写 `~/.claude.json`，永不 log Authorization 值。
 
-**去哪申请**：<https://open.bigmodel.cn/console/apikey>
+**怎么「配」**：给 Claude Code 配一次智谱 `web-search-prime` MCP（这正是很多机器已有的配置），Lasso 自动复用。Lasso 侧**没有任何要填的 key**。
 
-**步骤**：
-1. 打开 [智谱开放平台](https://open.bigmodel.cn/console/apikey)，注册账号（手机号即可）。
-2. 进入「API Keys」页面，点「创建 API Key」。
-3. 复制生成的 key（格式形如 `xxxxxxxxxxxxx.yyyyyyyyyyyyy`，即 `{id}.{secret}`）。
-
-**怎么配**：
-
-**推荐：写进 `~/.lasso/config.json`**（跑 `lasso config init` 创建）：
-
-```json
-{
-  "ZHIPU_API_KEY": "你刚才复制的key"
-}
-```
-
-或临时覆盖（env，优先级高于配置文件）：export `ZHIPU_API_KEY=...` 到 shell，或写进其他 MCP client 的 `env` 块：
-
-```json
-{
-  "mcpServers": {
-    "lasso": {
-      "command": "npx",
-      "args": ["-y", "lasso-mcp"],
-      "env": {
-        "ZHIPU_API_KEY": "你刚才复制的key"
-      }
-    }
-  }
-}
-```
-
-> 🔴 **红线警告：不要用 Code Plan 的 `ZAI_API_KEY` 顶替**
-> 智谱的 **Code Plan 套餐 key**（形如 `ZAI_API_KEY`，绑定 `z.ai` 端点 + 工具白名单）**不能**用于 Lasso 搜索。违规调用会触发白名单校验、可能封号。请务必走上面开放平台的 `ZHIPU_API_KEY` 路径。（与 media-gen-mcp 同一红线。）
-
-**免费额度**：智谱按 token 计费，新用户注册有赠送额度，具体数值以平台公示为准。
+> 🔴 **`ZHIPU_API_KEY` / `ZHIPU_ENDPOINT` 已退役（v1.17）**：Lasso 不再支持自有智谱直连 key——配置键在 config 文件 / env 中**容忍存在但静默忽略**（照 `BING_API_KEYS` 先例，存量配置不炸）；`lasso doctor` 的 `zhipu_keys_retired` 检查会提示删除。
+>
+> 🔴 **红线警告（沿用）：不要用 Code Plan 的 `ZAI_API_KEY` 顶替**
+> 智谱的 **Code Plan 套餐 key**（形如 `ZAI_API_KEY`，绑定 `z.ai` 端点 + 工具白名单）**不能**用于 Lasso 搜索。违规调用会触发白名单校验、可能封号。（与 media-gen-mcp 同一红线。）
 
 ---
 
@@ -99,7 +70,7 @@
 
 > 📅 **本节数额事实最后核实：2026-08-17**（方式：brave.com/search/api 官网 pricing 页亲取 + API 控制台亲历 + Attribution 要求核对）。
 >
-> **⚠️ 2026-02 起免费档已取消**：Brave 原先的「Free 计划 2000 次/月免信用卡」已下架。现在所有计划都是付费制，每计划附带 **$5/月免费额度**（Search 计划 $5/千次，约 **1000 次/月**）；超出额度后绑定的信用卡**自动按量扣费、无消费上限**。免费搜索主力请用智谱（见上文），Brave 作为可选增强。（官网 FAQ 的「free plans … will not be charged」措辞与此处口径存在张力，已登记进本手册首期重核清单，见顶部维护规则。）
+> **⚠️ 2026-02 起免费档已取消**：Brave 原先的「Free 计划 2000 次/月免信用卡」已下架。现在所有计划都是付费制，每计划附带 **$5/月免费额度**（Search 计划 $5/千次，约 **1000 次/月**）；超出额度后绑定的信用卡**自动按量扣费、无消费上限**。免费搜索主力是机器智谱 MCP 复用（见 A-1，零配置），Brave 作为可选增强。（官网 FAQ 的「free plans … will not be charged」措辞与此处口径存在张力，已登记进本手册首期重核清单，见顶部维护规则。）
 
 **去哪申请**：<https://brave.com/search/api/>
 
@@ -115,7 +86,6 @@
 
 ```json
 {
-  "ZHIPU_API_KEY": "你的智谱key",
   "BRAVE_API_KEYS": "你的bravekey"
 }
 ```
@@ -124,7 +94,7 @@
 
 （env 覆盖同样支持：`export BRAVE_API_KEYS=k1,k2`，优先级高于配置文件。）
 
-**费用提醒**：想只花免费额度的话，月查询量控制在 ~1000 次以内；要绝对不被扣费就别绑卡、不配 Brave——智谱 + 免费兜底已覆盖日常搜索。
+**费用提醒**：想只花免费额度的话，月查询量控制在 ~1000 次以内；要绝对不被扣费就别绑卡、不配 Brave——机器智谱 MCP 复用 + 免费兜底已覆盖日常搜索。
 
 ---
 
@@ -134,9 +104,11 @@
 >
 > **微软已于 2025-08-11 完全退役 Bing Search APIs**（[官方公告](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement)），所有实例一并停用，新账号无法再创建资源。`BING_API_KEYS` 配置键在 Lasso 中保留但会被静默忽略（v1.15 起 Bing 死层整层移除——provider 不再注册，存量 config 不报错；`lasso doctor` 会提示建议删除），且没有可用的 key 来源了。
 
-第二源请选 Brave（上文）；免费搜索靠智谱 + 兜底实搜（Lasso 自带 DuckDuckGo → Brave 双引擎兜底，无需配置）。
+第二源请选 Brave（上文）；免费搜索靠机器智谱 MCP 复用 + 兜底实搜（Lasso 自带 DuckDuckGo → Brave 双引擎兜底，无需配置）。同批退役提示：智谱直连 key（`ZHIPU_API_KEY`）已于 v1.17 删除——两键都是「保留但静默忽略 + doctor 提示删除」处理。
 
-> 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），智谱 / Brave 通用（Bing 已关停）——不用往查询词里手写日期，也不用配任何 key。
+> 💡 **时效过滤无需任何配置**（v1.11）：搜索时直接对 Claude 说「搜最近一周 / 最近一个月的 X」，会自动带 `freshness` 参数（day / week / month / year），machine_mcp（智谱上游）/ Brave 通用（Bing 已关停）——不用往查询词里手写日期，也不用配任何 key。
+
+> 💡 **两个 v1.17 新能力同样零 key**：① `search` 的 `content_blocks`（搜完并发抓 top N 条正文、按查询裁剪 ~6k 字符/条；抓不到的条目如实标注，蓝链照给）——纯本地裸 HTTP，无付费依赖；② 新工具 `search_local`（本机 Chrome 浏览历史 + Spotlight 文件索引的私有搜索——只读、只返标题/链接/时间/标题片段，永不全量导出正文）。
 
 ---
 
@@ -283,7 +255,6 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 
 ```json
 {
-  "ZHIPU_API_KEY": "你的智谱key",
   "LASSO_ALLOW_CLOUD_BROWSER": true,
   "BROWSERBASE_API_KEY": "你的browserbasekey"
 }
@@ -301,7 +272,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 |---|---|---|---|
 | `LASSO_CDP_PORT` | 登录态 Chrome 的调试端口 | `9222` | 端口被其他程序占用 |
 | `LASSO_CACHE_DIR` | 缓存 / 状态文件根目录 | `~/.cache/lasso` | 想换存储位置（如放外置盘） |
-| `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源（Brave 计量计费属 L4，会被排除；智谱属 L2 保留） |
+| `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源：Brave 计量计费属 L4 会被排除；machine_mcp 复用是 L1 零成本、**永远保留**（v1.17 起 registry 内唯一 API 源是 Brave，L1/L2/L3 档由 machine_mcp 兜底；无机器 MCP 时诚实返空结果） |
 | `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
@@ -309,7 +280,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
 | `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 禁用（常驻到 `chrome-stop`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |
-| `ZHIPU_ENDPOINT` | 智谱端点覆盖 | 智谱官方端点 | 自建反代时 |
+| `ZHIPU_ENDPOINT` | ~~智谱端点覆盖~~ **已退役（v1.17）** | ——（不再被消费） | 无；历史配置静默忽略（与 `ZHIPU_API_KEY` 同批退役，`zhipu_keys_retired` 提示删除） |
 
 > 关于 fake-ip 代理网络：如果你用 Surge / Clash 的 TUN 模式（fake-ip），`198.18.0.0/15` 网段已内置放行，无需额外配置 `LASSO_SSRF_ALLOW_RANGES`。
 >
@@ -367,7 +338,7 @@ lasso doctor
 - 桌面授权是否通过
 - 缓存目录是否可写
 
-doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为准**，不在这里背数字），其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）、`#21 tcc_event_synthesizing`（macOS 15+ 事件合成授权，坐标鼠标用，v1.11 新）；另有 `proxy_config` 回显（`LASSO_PROXY` 配没配、只影响无头/Steel，v1.11 新）。v1.14 起还有两项：`lasso doctor --deep`（或 `LASSO_DOCTOR_DEEP=1`）会对 Brave 发**一次**最小真实请求（消耗 1 次额度）探测 key 有效性 + 计划层级——200/401/403/429 四分类人话输出，注册撞墙前先跑它；`bing_keys_retired` 静态提示（配了已退役的 `BING_API_KEYS` 会建议删除）。
+doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为准**，不在这里背数字），其中几个跟本指南相关的关键项：`#36 machine_search_mcp`（机器智谱 MCP 是否复用）、`#37 steel_endpoint_reachable`（Steel Docker 是否可达，v1.6 新）、`#38 stealth_creepjs_regression`（反检测回归门禁，v1.7 新，需 `lasso doctor --stealth-check` 才实跑——它会驱动 creepjs 检测页对比基线，验证 `browse_headless` 的反检测效果）、`#21 tcc_event_synthesizing`（macOS 15+ 事件合成授权，坐标鼠标用，v1.11 新）；另有 `proxy_config` 回显（`LASSO_PROXY` 配没配、只影响无头/Steel，v1.11 新）。v1.14 起还有两项：`lasso doctor --deep`（或 `LASSO_DOCTOR_DEEP=1`）会对 Brave 发**一次**最小真实请求（消耗 1 次额度）探测 key 有效性 + 计划层级——200/401/403/429 四分类人话输出，注册撞墙前先跑它；`bing_keys_retired` / `zhipu_keys_retired` 静态提示（配了已退役的 `BING_API_KEYS` / `ZHIPU_API_KEY` / `ZHIPU_ENDPOINT` 会建议删除；均零触网）。
 
 `ready: true` 就可以正常用了。**遇到任何错误，第一步永远是 `lasso doctor`。**
 
@@ -379,12 +350,11 @@ doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为�
 
 ```json
 {
-  "ZHIPU_API_KEY": "你的智谱key",
   "BRAVE_API_KEYS": "bravekey1,bravekey2,bravekey3"
 }
 ```
 
-（`BING_API_KEYS` 已随 Bing Search APIs 退役而无可用来源，示例不再包含；若历史配置里还留着，`lasso doctor` 会提示删除。）
+（搜索主路径是机器智谱 MCP 复用，零配置无需任何键。`BING_API_KEYS` 已随 Bing Search APIs 退役、`ZHIPU_API_KEY` 已随 v1.17 智谱直连删除而无可用来源，示例均不再包含；若历史配置里还留着，`lasso doctor` 会提示删除。）
 
 然后跑一次自检：
 
@@ -392,7 +362,7 @@ doctor 的检查项随版本持续增长（**以 `lasso doctor` 实跑输出为�
 lasso doctor
 ```
 
-> 用其他 MCP client 想走 env？把上面 JSON 的键值对填进 server 的 `env` 块即可（env 优先级**高于**配置文件；见 [A 节智谱示例](#1-智谱zhipu_api_key-默认引擎中文主力)的 JSON 片段）。安装命令本身仍是零配置的 `claude mcp add lasso -- npx -y lasso-mcp`。
+> 用其他 MCP client 想走 env？把上面 JSON 的键值对填进 server 的 `env` 块即可（env 优先级**高于**配置文件；见 [A 节 Brave 示例](#2-brave-searchbrave_api_keys-可选第二源现为付费计划--每月-5-免费额度)的 JSON 片段）。安装命令本身仍是零配置的 `claude mcp add lasso -- npx -y lasso-mcp`。
 
 ---
 

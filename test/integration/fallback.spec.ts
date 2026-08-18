@@ -2,8 +2,9 @@
  * 跨模态 fallback 旅程测（parse1 §5.2 + §4.4 + §6 验收 #3/#5）
  *
  * 端到端验证：
- *  - search 工具：智谱 unknown → 自动 fallback 到 browse_headless（百度 SERP scrape）
- *    （验收 #5：search → browse_headless 跨模态 fallback）
+ *  - search 工具：machine_mcp unknown → 自动 fallback 到 browse_headless（SERP scrape）
+ *    （验收 #5：search → browse_headless 跨模态 fallback；v1.17 A3 起首位 API 源
+ *     是 machine_mcp——zhipu 直连档已删，INV-80 墓碑守卫）
  *  - browse_headless 工具：headless unknown → 自动 fallback 到 browse_logged_in
  *    （验收 #3：tri-state outcome 触发 fallback）
  *  - fallback_used 标志 + served_by 切换 + retrieval_method 变化
@@ -26,7 +27,7 @@ import { CircuitBreaker } from "../../src/fallback/CircuitBreaker.js";
 import { registerSearchTool } from "../../src/tools/search.js";
 import { registerBrowseTools } from "../../src/tools/browse.js";
 import type { BrowseResult, InteractResult, SearchResult } from "../../src/types.js";
-import type { SearchChannel } from "../../src/channels/SearchChannel.js";
+import type { MachineMcpSearchChannel } from "../../src/channels/MachineMcpSearchChannel.js";
 import type { HeadlessChannel } from "../../src/channels/HeadlessChannel.js";
 import type { LoggedInChannel } from "../../src/channels/LoggedInChannel.js";
 import type { SsrfConfig } from "../../src/ssrf/ssrf-guard.js";
@@ -38,20 +39,20 @@ import type { SsrfConfig } from "../../src/ssrf/ssrf-guard.js";
  * 把 channel 的 search/browse 替换成 spy，返回受控 InteractResult。
  * 不用 vi.mock 整个模块——直接 new 真实 channel 再 override 方法即可。
  */
-function makeStubSearch(impl: {
+function makeStubMachineMcp(impl: {
   search: (
     q: string,
     opts: { limit: number; engine: string; region: string; no_cache: boolean },
   ) => Promise<InteractResult<SearchResult>>;
-}): SearchChannel {
+}): MachineMcpSearchChannel {
   const ch = {
-    name: "search.zhipu",
+    name: "search.machine_mcp",
     search: vi.fn(impl.search),
     isAvailable: vi.fn(async () => true),
     status: vi.fn(async () => ({ available: true, latency_ms: 10 })),
     healthCheck: vi.fn(async () => "healthy" as const),
   };
-  return ch as unknown as SearchChannel;
+  return ch as unknown as MachineMcpSearchChannel;
 }
 
 function makeStubBrowse(
@@ -144,15 +145,15 @@ function parseToolResult(text: string): InteractResult {
 // cases
 // ============================================================
 describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
-  it("智谱 unknown + browse_headless SERP 抽出链接 → fallback_used=true + served_by=browse_headless", async () => {
-    // 智谱限流：返回 unknown
-    const search = makeStubSearch({
+  it("machine_mcp unknown + browse_headless SERP 抽出链接 → fallback_used=true + served_by=browse_headless", async () => {
+    // machine_mcp 限流：返回 unknown
+    const machineMcp = makeStubMachineMcp({
       search: vi.fn(async () => ({
         outcome: "unknown",
         data: null,
-        served_by: "search.zhipu",
+        served_by: "search.machine_mcp",
         fallback_used: false,
-        retrieval_method: "zhipu_api",
+        retrieval_method: "machine_mcp_api",
         error: "HTTP 429",
       })),
     });
@@ -177,7 +178,7 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
 
     const decider = new FallbackDecider(
       new Map([
-        ["search.zhipu", new CircuitBreaker()],
+        ["search.machine_mcp", new CircuitBreaker()],
         ["browse_headless", new CircuitBreaker()],
       ]),
     );
@@ -185,7 +186,6 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
     const { client, shutdown } = await startServer((server) => {
       registerSearchTool(
         server,
-        search,
         decider,
         async (url) => {
           // BrowseExec thin wrapper：把 BrowseResult 映射成 serp/extract 期望的形状
@@ -196,6 +196,14 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
             error: r.error,
           };
         },
+        // v1.17 A3：可选源注入（brave/registry/cache/serpHealth/recordingStore 全缺省）
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        // machineMcp（第 9 参）
+        machineMcp,
       );
     });
 
@@ -208,15 +216,17 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
       expect(result.outcome).toBe("worked");
       expect(result.fallback_used).toBe(true);
       expect(result.served_by).toBe("browse_headless");
+      // A1 质量轴（v1.17 Phase B）：跨模态兜底实搜 → quality="scrape"
+      expect(result.quality).toBe("scrape");
       // v1.11 T9：英文 query 走 DDG 兜底（CJK query 才走 baidu）
       expect(result.retrieval_method).toBe("serp_scrape_ddg");
       expect(result.data).not.toBeNull();
       expect(result.data!.engine).toBe("ddg_serp");
       expect(result.data!.results.length).toBeGreaterThan(0);
-      // 审计链：search.zhipu unknown + browse_headless worked
+      // 审计链：search.machine_mcp unknown + browse_headless worked
       expect(result.actions_and_results).toHaveLength(2);
       expect(result.actions_and_results!.map((a) => a.channel)).toEqual([
-        "search.zhipu",
+        "search.machine_mcp",
         "browse_headless",
       ]);
     } finally {
@@ -224,20 +234,20 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
     }
   });
 
-  it("智谱 worked → 不触发 fallback（fallback_used=false, served_by=search.zhipu）", async () => {
-    const search = makeStubSearch({
+  it("machine_mcp worked → 不触发 fallback（fallback_used=false, served_by=search.machine_mcp）", async () => {
+    const machineMcp = makeStubMachineMcp({
       search: vi.fn(async () => ({
         outcome: "worked",
         data: {
           query: "x",
           results: [{ title: "T", url: "https://x.test", snippet: "" }],
           count: 1,
-          engine: "zhipu",
+          engine: "machine_mcp",
           region: "cn",
         },
-        served_by: "search.zhipu",
+        served_by: "search.machine_mcp",
         fallback_used: false,
-        retrieval_method: "zhipu_api",
+        retrieval_method: "machine_mcp_api",
       })),
     });
 
@@ -249,14 +259,24 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
 
     const decider = new FallbackDecider(new Map());
     const { client, shutdown } = await startServer((server) => {
-      registerSearchTool(server, search, decider, async (url) => {
-        const r = await (headless as HeadlessChannel).browse(url, "snapshot", {});
-        return {
-          outcome: r.outcome,
-          data: r.data ? { preview: r.data.preview } : null,
-          error: r.error,
-        };
-      });
+      registerSearchTool(
+        server,
+        decider,
+        async (url) => {
+          const r = await (headless as HeadlessChannel).browse(url, "snapshot", {});
+          return {
+            outcome: r.outcome,
+            data: r.data ? { preview: r.data.preview } : null,
+            error: r.error,
+          };
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        machineMcp,
+      );
     });
 
     try {
@@ -267,7 +287,9 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
       const result = parseToolResult(resp.content[0]!.text) as InteractResult<SearchResult>;
       expect(result.outcome).toBe("worked");
       expect(result.fallback_used).toBe(false);
-      expect(result.served_by).toBe("search.zhipu");
+      expect(result.served_by).toBe("search.machine_mcp");
+      // A1 质量轴：machine_mcp 首位成功 → quality="api"
+      expect(result.quality).toBe("api");
       expect(headless.browse).not.toHaveBeenCalled();
     } finally {
       await shutdown();

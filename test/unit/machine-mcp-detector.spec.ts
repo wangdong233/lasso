@@ -16,7 +16,7 @@
  *    - 默认 ~/.claude.json
  *    - LASSO_MACHINE_CLAUDE_JSON_PATH 覆盖
  *    - 空 / 空白覆盖退化默认
- *  - 安全：返回的 authorization 字段是完整 "Bearer xxx" 串（与 ZhipuSearchChannel 同格式，
+ *  - 安全：返回的 authorization 字段是完整 "Bearer xxx" 串（machine_mcp 直接透传，
  *    McpClient.connectHttp 直接用）
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -364,7 +364,7 @@ describe("detectMachineSearchMcp — 安全（INV-72）", () => {
     });
     const r = detectMachineSearchMcp(env());
     expect(r).not.toBeNull();
-    // 完整串透传：detector 不做拆解 / 重组（保 ZhipuSearchChannel 同范式）
+    // 完整串透传：detector 不做拆解 / 重组（channel 构造器原样接收）
     expect(r!.authorization.startsWith("Bearer ")).toBe(true);
     expect(r!.authorization).toBe("Bearer production-key-XYZ");
   });

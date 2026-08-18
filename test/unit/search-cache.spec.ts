@@ -137,10 +137,10 @@ describe("SearchCache — canonical key 归一", () => {
 // INV-11: attribution key 含 engine + region + limit
 // ============================================================
 describe("SearchCache — INV-11 attribution key（含 engine+region+limit）", () => {
-  it("不同 engine 不互相命中（zhipu vs brave vs auto）", async () => {
+  it("不同 engine 不互相命中（machine_mcp vs brave vs auto）", async () => {
     const cache = new SearchCache(cacheDir);
-    await cache.set("rust", "zhipu", "cn", 10, workedResult("z", []));
-    expect(await cache.get("rust", "zhipu", "cn", 10)).not.toBeNull();
+    await cache.set("rust", "machine_mcp", "cn", 10, workedResult("z", []));
+    expect(await cache.get("rust", "machine_mcp", "cn", 10)).not.toBeNull();
     expect(await cache.get("rust", "brave", "cn", 10)).toBeNull();
     expect(await cache.get("rust", "auto", "cn", 10)).toBeNull();
   });

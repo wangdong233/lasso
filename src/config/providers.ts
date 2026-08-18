@@ -5,7 +5,7 @@
  * interface 定义只在 types.ts；这里只是 import + 实例化，不 redefine。
  *
  * v0.2 升级（parse2 §3.1.2）：
- *  - ZHIPU 补 6 字段
+ *  - （ZHIPU 直连 provider 已随 v1.17 A3 删除——见下方墓碑说明）
  *  - 新增 BRAVE（结构化 API 第二源，仅引三项硬数据）
  *  - 新增 TAVILY_WATCH（policy_risk=acquired，enabled=false 占位）
  *  - BROWSE_HEADLESS / BROWSE_LOGGED_IN 补 enabled + tags
@@ -16,26 +16,23 @@
 import type { ProviderConfig } from "../types.js";
 
 /**
- * 智谱 web-search-prime —— 唯一的 api_key 型 provider（search 主通道）。
- * endpoint 来自智谱 MCP 文档（parse1 §4.1）：streamable-http + Bearer header。
+ * Zhipu web-search-prime 直连 —— **已删除**（v1.17 A3，doc/25 裁决③：保留
+ * machine_mcp 智谱 MCP 复用，删除 Lasso 自有 key 的 zhipu 直连 API channel）。
  *
- * v0.2 补字段：L2（免费层需 Key，token 计费），中文主力 fallback_order=0。
+ * 清除范围（INV-80 墓碑守卫，防回潮）：
+ *  - channels/SearchChannel.ts 已删（ZhipuSearchChannel 整类）；index.ts 不再装配
+ *    search.zhipu；ZHIPU_RECENCY_MAP 迁入 MachineMcpSearchChannel.ts（就近持有）；
+ *  - providers.ts 不再有 ZHIPU ProviderConfig / BUILTIN_PROVIDERS 项；
+ *  - config.ts 不消费 ZHIPU_API_KEY（键容忍读但不注入任何 provider）；
+ *  - FallbackChain DEFAULT_FALLBACK_ORDER 不含 search.zhipu；engine enum 无 "zhipu"。
+ *
+ * 智谱能力的现行载体：MACHINE_MCP（机器 ~/.claude.json 已配的 web-search-prime MCP
+ * key，Lasso 借力不拥有；fallback_chain 首位 + auto 扇出源）。
+ *
+ * 配置兼容（存量用户 config 不炸）：
+ *  - ZHIPU_API_KEY / ZHIPU_ENDPOINT env / config 文件键仍可存在（loadConfig 静默
+ *    忽略，不报错）；doctor zhipu_keys_retired 检测到非空 → warn 建议删除（零触网）。
  */
-const ZHIPU: ProviderConfig = {
-  name: "zhipu",
-  type: "api_key",
-  endpoint_url: "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
-  keys: [], // 从 process.env.ZHIPU_API_KEY 注入（见 config.ts）
-  free_quota_per_month: 0, // 智谱未公开精确值（doctor warn）
-  quota_model: "token", // 智谱按 token 计费（v0.2 在 QuotaLedger 退化为按请求计数）
-  fallback_order: 0, // 中文主力
-  free_tier_level: "L2",
-  policy_risk: "safe",
-  licence: "mit",
-  commercial_safe: true,
-  tags: ["search"],
-  enabled: true,
-};
 
 /**
  * chrome-devtools-mcp --headless --isolated —— self_hosted 型（无 key、无 quota）。
@@ -97,7 +94,7 @@ const BRAVE: ProviderConfig = {
   keys: [], // config.ts 从 BRAVE_API_KEYS CSV 注入
   free_quota_per_month: 1000, // $5/月赠送额度 ÷ $5/千次 ≈1000 次/月（2026-08-17 核实；免费档 2026-02 已取消）
   quota_model: "monthly",
-  fallback_order: 3, // 英文/质量层（zhipu=0 主力，brave=3 兜底英文）
+  fallback_order: 3, // 英文/质量层（中文主力是 machine_mcp=-1 复用；brave=3 兜底英文）
   free_tier_level: "L4", // 付费计量计费 + 需绑卡（2026-02 免费档取消；L2 只留给无条件免费层）
   policy_risk: "safe", // 无收购风险（对照 Tavily=Nebius 2026-02）
   licence: "apache2",
@@ -136,7 +133,7 @@ const TAVILY_WATCH: ProviderConfig = {
 /**
  * desktop.ax —— AXAPI 主路径 provider（parse4 §3.2.1 + §3.5）。
  *
- * 与 zhipu/brave 的差异：
+ * 与 api_key 型 search provider（brave）的差异：
  *  - type=self_hosted（无 key、无 quota；本机 rust helper）
  *  - 不经 QuotaLedger（doctor #13 quota_ledger_initialized 跳过）
  *  - endpoint_url=null（IPC 走 stdin/stdout JSON-lines，非 HTTP）
@@ -311,15 +308,15 @@ export { BROWSERBASE, STAGEHAND };
  *
  * **零配置优先**（parse-v1.4 §1 用户需求）：
  *  - 用户机器已装过 web-search-prime MCP（headers.Authorization 含 Bearer key）
- *    时，Lasso 直接借力该 key 先搜；额度不足/失败 → fallback 链降级到 search.zhipu。
- *  - 不需用户在 Lasso config 再配一遍 ZHIPU_API_KEY（key 来自机器，不在 Lasso 拥有域内）。
+ *    时，Lasso 直接借力该 key 先搜；额度不足/失败 → fallback 链降级到 brave → 兜底链。
+ *  - 零配置即用（key 来自机器，不在 Lasso 拥有域内；v1.17 A3 起是智谱能力唯一载体）。
  *
  * **conditional 装配**（INV-72 守）：
  *  - 默认 enabled=false（占位；不进 BUILTIN_PROVIDERS，保 v1.3 测试断言）
  *  - index.ts 装配段调 detectMachineSearchMcp()：
  *      - 命中 → 实例化 MachineMcpSearchChannel + 注册到 registry（临时 enabled=true）
- *      - 未命中 → skip（链路降级到 search.zhipu，byte-identical v1.3）
- *  - 用户 key 在 headers.Authorization（非 env）—— 与 ZHIPU/BRAVE 两源的本质差异：
+ *      - 未命中 → skip（链路降级到 brave → serp_http → browse_headless 免费兜底链）
+ *  - 用户 key 在 headers.Authorization（非 env）—— 与 BRAVE 源的本质差异：
  *    本 provider 不走 QuotaLedger（机器 key 不在 Lasso 计费域内；失败就 fallback）
  *
  * **安全红线（INV-72）**：
@@ -418,7 +415,7 @@ export const STEEL_PROVIDERS: readonly ProviderConfig[] = [STEEL];
 export { STEEL };
 
 export const BUILTIN_PROVIDERS: readonly ProviderConfig[] = [
-  ZHIPU,
+  // v1.17 A3：ZHIPU 直连项已删（死层清除；INV-80 墓碑守卫——智谱能力由 MACHINE_MCP 承载）
   BROWSE_HEADLESS,
   BROWSE_LOGGED_IN,
   BRAVE,

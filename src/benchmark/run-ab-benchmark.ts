@@ -22,10 +22,12 @@
  *     （669ms / 14.89 Agent Score；配额口径 = $5/月赠送额度 ≈1000 次，2026-08-17 核实）。
  *
  * 简单性铁律（01）：
- *   - 本文件不引 MCP server / FallbackDecider，直接 stub 两个 channel.search 的合成本
- *     （parse2 §3.7 spec：benchmark 自己 mock 两 channel + 5 query × 3 rounds）
- *   - 不绕过 BraveChannel / ZhipuSearchChannel 的真实实现：通过 ENV 开关切换 stub vs real
- *     （LASSO_BENCH_REAL=1 时走真实 channel，需配置 BRAVE_API_KEYS + ZHIPU_API_KEY）
+ *   - 本文件不引 MCP server / FallbackDecider，直接 stub channel.search 的合成本
+ *     （parse2 §3.7 spec：benchmark 自己 mock channel + 5 query × 3 rounds）
+ *   - 不绕过 BraveChannel 的真实实现：通过 ENV 开关切换 stub vs real
+ *     （LASSO_BENCH_REAL=1 时走真实 channel，需配置 BRAVE_API_KEYS）
+ *   - v1.17 A3：zhipu 直连档已删（INV-80 墓碑守卫）——基准保 brave 单侧；
+ *     智谱侧成本基线改用 machine_mcp 实测（不进本 stub 基准）
  *
  * 借鉴：parse2 §3.7；05 §0-3 否决；10 §4.3 Brave 三项硬数据。
  */
@@ -80,7 +82,7 @@ function printUsage(): void {
       "  --report <path>        结构化 JSON 报告输出路径（默认 reports/ab-<date>.json）",
       "  --rounds <n>           每组每 query 跑几遍取中位（默认 3）",
       "  --concurrent <n>       并发组 batch size（默认 5）",
-      "  --real                 走真实 channel（需 BRAVE_API_KEYS + ZHIPU_API_KEY env 配齐）",
+      "  --real                 走真实 channel（需 BRAVE_API_KEYS env 配齐；v1.17 起 brave 单侧）",
       "                          默认 false：用合成 stub（无网络也能跑通，验收 #1 流程闭环）",
       "  -h, --help             帮助",
       "",
@@ -96,7 +98,7 @@ interface QuerySet {
   en: string[];
 }
 
-type ProviderName = "zhipu" | "brave";
+type ProviderName = "brave"; // v1.17 A3：zhipu 档已删（INV-80 墓碑；brave 单侧）
 
 interface LatencySample {
   query: string;
@@ -136,7 +138,7 @@ interface BenchReport {
 // ============================================================
 /**
  * 合成 channel：不触网，模拟 worked + 模拟 latency。
- * Brave 中位 ~ 669ms（AIMultiple 引用，仅作 stub 默认值），zhipu 模拟 350-800ms 区间。
+ * Brave 中位 ~ 669ms（AIMultiple 引用，仅作 stub 默认值）；600-800ms 区间。
  *
  * 重要：这是 stub 不是真实基准；生产决策必须 LASSO_BENCH_REAL=1 重跑。
  */
@@ -144,7 +146,7 @@ function makeStubChannel(
   provider: ProviderName,
 ): (q: string) => Promise<InteractResult<SearchResult>> {
   return (q: string) => {
-    const baseLatency = provider === "brave" ? 600 + Math.random() * 200 : 350 + Math.random() * 400;
+    const baseLatency = 600 + Math.random() * 200;
     return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
@@ -174,20 +176,11 @@ function makeStubChannel(
 // ============================================================
 // 真实 channel 装配（LASSO_BENCH_REAL=1）
 // ============================================================
-async function makeRealChannel(
-  provider: ProviderName,
-): Promise<(q: string) => Promise<InteractResult<SearchResult>>> {
+async function makeRealChannel(): Promise<
+  (q: string) => Promise<InteractResult<SearchResult>>
+> {
   // 动态 import 避免无 env keys 时构造失败
-  if (provider === "zhipu") {
-    const { ZhipuSearchChannel } = await import("../channels/SearchChannel.js");
-    const endpoint = process.env.ZHIPU_ENDPOINT ??
-      "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp";
-    const key = process.env.ZHIPU_API_KEY;
-    if (!key) throw new Error("ZHIPU_API_KEY missing for --real mode");
-    const ch = new ZhipuSearchChannel(endpoint, key);
-    return (q: string) =>
-      ch.search(q, { limit: 5, engine: "zhipu", region: "cn", no_cache: false });
-  }
+  // （v1.17 A3：zhipu 分支已删——zhipu 直连 channel 死层清除，INV-80 墓碑守卫）
   // brave
   const { BraveChannel } = await import("../channels/BraveChannel.js");
   const { QuotaLedger } = await import("../config/quota-ledger.js");
@@ -228,7 +221,7 @@ async function runColdWarm(
 ): Promise<LatencySample[]> {
   const samples: LatencySample[] = [];
   for (const { q, lang } of queries) {
-    for (const provider of ["zhipu", "brave"] as ProviderName[]) {
+    for (const provider of ["brave"] as ProviderName[]) {
       const exec = providers[provider];
       for (let round = 0; round < rounds; round++) {
         // cold：每个 round 重置（v0.2 简化：cold = round 内第一次）
@@ -251,7 +244,7 @@ async function runConcurrent(
 ): Promise<LatencySample[]> {
   const samples: LatencySample[] = [];
   const batch = queries.slice(0, Math.min(batchSize, queries.length));
-  for (const provider of ["zhipu", "brave"] as ProviderName[]) {
+  for (const provider of ["brave"] as ProviderName[]) {
     const exec = providers[provider];
     for (let round = 0; round < rounds; round++) {
       const t0 = Date.now();
@@ -363,14 +356,12 @@ async function main(): Promise<void> {
     `[bench] mode=${opts.real ? "real" : "stub"} queries=${queries.length} rounds=${opts.rounds}\n`,
   );
 
-  const zhipuExec = opts.real
-    ? await makeRealChannel("zhipu")
-    : makeStubChannel("zhipu");
   const braveExec = opts.real
-    ? await makeRealChannel("brave")
+    ? await makeRealChannel()
     : makeStubChannel("brave");
 
-  const providers = { zhipu: zhipuExec, brave: braveExec };
+  // v1.17 A3：providers 表 brave 单侧（zhipu 档已删）
+  const providers = { brave: braveExec };
 
   const coldWarmSamples = await runColdWarm(queries, providers, opts.rounds);
   const concurrentSamples = await runConcurrent(

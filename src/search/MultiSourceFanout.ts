@@ -29,7 +29,7 @@ import type { RpmLimiter } from "../util/rpm-limiter.js";
 // 类型
 // ============================================================
 export interface FanoutSource {
-  /** channel 全名（如 "search.zhipu" / "search.brave"），由 caller 给定 */
+  /** channel 全名（如 "search.machine_mcp" / "search.brave"），由 caller 给定 */
   name: string;
   /** 该源此次分配的 limit（由 allocateLimit 算出） */
   capacity: number;
@@ -262,7 +262,9 @@ function safeStr(x: unknown): string {
  *
  *  - quotaWeight = max(0.1, quotaRemaining / quotaPerMonth)
  *    （quotaPerMonth=0 时退化为 1；quotaRemaining=0 仍保 0.1 兜底，让该源拿到至少 1 条）
- *  - langBoost：CJK query → 含 "zhipu" 的源 *0.7 / 其他 *0.3
+ *  - langBoost：CJK query → 含 "machine_mcp" 的源 *0.7 / 其他 *0.3
+ *               （machine_mcp 后端就是智谱 web_search_prime，CJK 优势等价继承——
+ *                v1.17 A3 从 includes("zhipu") 改名，行为同型）
  *               非 CJK    → 含 "brave" 的源 *0.7 / 其他 *0.3
  *  - 每源 capacity = max(1, round(totalLimit × weight_i / Σweight))
  *
@@ -290,7 +292,7 @@ export function allocateLimit(
         ? Math.max(0.1, s.quotaRemaining / s.quotaPerMonth)
         : 1;
     const langBoost = isCJK
-      ? s.name.includes("zhipu")
+      ? s.name.includes("machine_mcp")
         ? 0.7
         : 0.3
       : s.name.includes("brave")

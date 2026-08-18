@@ -44,7 +44,7 @@ describe("aggregatePartialFailures — 基础聚合", () => {
 
   it("全 worked → 空数组（v0.2 简化：worked 一律不算 partial_failure）", () => {
     const r = aggregatePartialFailures([
-      worked("search.zhipu"),
+      worked("search.machine_mcp"),
       worked("search.brave"),
     ]);
     expect(r).toEqual([]);
@@ -53,11 +53,11 @@ describe("aggregatePartialFailures — 基础聚合", () => {
   it("全 unknown/didnt → 全记（按原顺序）", () => {
     const now = 1_700_000_000_000;
     const r = aggregatePartialFailures(
-      [unknown("search.zhipu", "timeout"), didnt("search.brave", "429")],
+      [unknown("search.machine_mcp", "timeout"), didnt("search.brave", "429")],
       now,
     );
     expect(r).toEqual([
-      { channel: "search.zhipu", error: "timeout", timestamp: now },
+      { channel: "search.machine_mcp", error: "timeout", timestamp: now },
       { channel: "search.brave", error: "429", timestamp: now },
     ]);
   });
@@ -66,7 +66,7 @@ describe("aggregatePartialFailures — 基础聚合", () => {
     const now = 1_700_000_000_000;
     const r = aggregatePartialFailures(
       [
-        worked("search.zhipu"),
+        worked("search.machine_mcp"),
         unknown("search.brave", "brave_status_429"),
         didnt("search.ddg", "blocked"),
       ],
@@ -93,7 +93,7 @@ describe("aggregatePartialFailures — 基础聚合", () => {
 
   it("partial_count 字段不影响 v0.2 行为（worked + partial_count → 仍不算失败）", () => {
     const r = aggregatePartialFailures([
-      { channel: "search.zhipu", outcome: "worked", partial_count: 3 },
+      { channel: "search.machine_mcp", outcome: "worked", partial_count: 3 },
     ]);
     expect(r).toEqual([]);
   });
@@ -112,10 +112,10 @@ describe("aggregatePartialFailures — PerSourceResult 兼容 InteractResult 形
     };
     const r2: InteractResult<SearchResult> = {
       outcome: "worked",
-      data: { query: "x", results: [], count: 0, engine: "zhipu", region: "cn" },
-      served_by: "search.zhipu",
+      data: { query: "x", results: [], count: 0, engine: "machine_mcp", region: "cn" },
+      served_by: "search.machine_mcp",
       fallback_used: false,
-      retrieval_method: "zhipu_api",
+      retrieval_method: "machine_mcp_api",
     };
     // InteractResult 与 PerSourceResult 形状兼容（多了字段不影响）
     const aggregated = aggregatePartialFailures(
@@ -165,7 +165,7 @@ describe("countFailedChannels", () => {
   it("多 channel 各一次 → 全计", () => {
     const pf: PartialFailure[] = [
       { channel: "search.brave", error: "429", timestamp: 1 },
-      { channel: "search.zhipu", error: "timeout", timestamp: 2 },
+      { channel: "search.machine_mcp", error: "timeout", timestamp: 2 },
       { channel: "browse_headless", error: "serp_scrape_empty", timestamp: 3 },
     ];
     expect(countFailedChannels(pf)).toBe(3);
@@ -183,7 +183,7 @@ describe("aggregatePartialFailures — 与 fanOutSearch 内嵌聚合等价", () 
     const now = 1_700_000_000_000;
     const r = aggregatePartialFailures(
       [
-        worked("search.zhipu"),
+        worked("search.machine_mcp"),
         unknown("search.brave", "brave_status_429"),
         // 模拟 rejected：caller 已 safeStr 成 error string
         unknown("search.exa", "429"),

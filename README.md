@@ -67,8 +67,8 @@ Lasso 本体**完全免费 + MIT 开源**。每一项能力到底要不要花钱
 | 能力 | 费用 | 说明 |
 |---|---|---|
 | Lasso 本体（MCP server + 全部核心能力） | ✅ 免费 | MIT 开源，永远免费 |
-| 搜索（智谱 + Brave） | ✅ 智谱免费起步 | 智谱按 token 计费（新用户有赠送额度），机器已配智谱 MCP 则零配置可用；Brave 现为付费计划含 $5/月额度（2026-02 起免费档取消）；Lasso 还自带免费实搜兜底，一家不配也有搜索 |
-| 抓公开页 / 截图 / PDF / 网络审计 / 抓原始字节 | ✅ 免费 | 本地运行，无 key 无付费 |
+| 搜索（机器智谱 MCP 复用 + Brave） | ✅ 通常零配置 | 机器已配智谱 web-search-prime MCP 即自动复用（主路径，无需任何搜索 key）；Brave 为可选付费计划含 $5/月额度（2026-02 起免费档取消）；Lasso 还自带免费实搜兜底，一家不配也有搜索。v1.17 起 Lasso 不再支持自有智谱直连 key（`ZHIPU_API_KEY` 已退役） |
+| 抓公开页 / 截图 / PDF / 网络审计 / 抓原始字节 / 本地私有搜索（v1.17：历史+文件） | ✅ 免费 | 本地运行，无 key 无付费 |
 | 抓登录态页面（复用本机 Chrome） | ✅ 免费 | 本地运行，无 key 无付费 |
 | 控桌面（macOS / Windows / Linux） | ✅ 免费 | 本地构建运行，仅需系统授权；**可选** Apple 开发者账号 \$99/年做签名持久授权（不签名也能用，只是每次重授权） |
 | 云浏览器 · 自托管 Steel（v1.6 新） | ✅ 免费 | 本地 Docker 跑 Steel（Apache-2.0 开源），**零 per-session 费 + cookie 不出本地**；需 `LASSO_ALLOW_CLOUD_BROWSER=true` + `STEEL_ENDPOINT=http://localhost:3000` |
@@ -99,7 +99,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 - 直接取 JSON 接口或文件的**原始返回**
 - 控制 macOS 原生 app（Finder / Mail / 系统设置等，需在系统设置里勾一下授权）
 
-> 💡 **搜索也可能零配置可用**：如果你机器的 `~/.claude.json` 已经配过智谱 `web-search-prime` MCP，Lasso 启动时自动检测复用，连 `ZHIPU_API_KEY` 都不用单独配——搜索直接能用。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是不是 `pass` 就知道。
+> 💡 **搜索默认零配置可用**：如果你机器的 `~/.claude.json` 已经配过智谱 `web-search-prime` MCP，Lasso 启动时自动检测复用——搜索直接能用，不需要配任何搜索 key（v1.17 起这是唯一受支持的智谱接入方式）。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是不是 `pass` 就知道。
 
 第一份产出——直接对 Claude 说：
 
@@ -107,7 +107,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 ### 想要更多？（都在[配置详解](#配置详解)）
 
-- **搜东西** → 填一个智谱 key（机器已配智谱 MCP 则不用）
+- **搜东西** → 通常零配置（机器已配智谱 MCP 即可）；想加第二源再配 Brave key
 - **抓登录态页** → 跑一次 `lasso launch-chrome`
 - **控 macOS 桌面** → 跑一次 `lasso doctor` 授权
 
@@ -123,15 +123,25 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/KEY-GUIDE
 
 > 你：「搜一下 X」 → 结构化搜索结果
 
-默认走智谱（中文主力），可再配 Brave 做多源（Bing 上游已关停且死层已移除，配置键保留但会被静默忽略）。**任一家临时限流或挂掉，自动切下一家，你无感**。某家免费额度用完也不影响整体。
+默认优先复用机器的智谱 MCP（中文主力，零配置），可选再配 Brave 做多源（Bing 与智谱直连两个死层均已移除，历史配置键保留但会被静默忽略）。**任一家临时限流或挂掉，自动切下一家，你无感**。某家免费额度用完也不影响整体。
+
+> 搜完想**顺手拿正文**：说「搜索并带 3 条正文」（`content_blocks: 1-5`，v1.17）——拿到蓝链后立刻并发抓 top N 页面正文，按你的查询词**裁剪到 ~6k 字符**（导语必留、关键词段优先），一步拿到「链接 + 能直接读的内容」。抓不到的条目**如实标注**（`fetch_failed` / `not_html`），蓝链照给，你或 AI 再决定要不要开浏览器补。零付费依赖，不起浏览器。
 
 要查**新闻、版本动向**这类时效内容，直接说「搜最近一周 / 最近一个月的 X」——自动带时效过滤（day / week / month / year，v1.11），不用往查询词里手写日期。
+
+### 搜你电脑里的东西（v1.17 新）
+
+> 你：「我最近看过哪些关于 X 的页面」 / 「本地哪些文件提到 X」 → 本地私有搜索
+
+`search_local` 直查你本机的 **Chrome 浏览历史**（多 Profile 都扫）和 **Spotlight 文件索引**（mdfind）——不出网、不碰云。隐私红线内置：**只返回标题 / 链接 / 时间 / 标题匹配片段，永不全量导出页面内容**，单次最多 50 条，对源库只读。Apple Notes 全文检索暂未开放（诚实返回「未实现」而不是装作查过了）。
 
 ### 抓公开页（不用登录）
 
 > 你：「抓 example.com 的文字」 → 干净正文，三种粒度可选
 
 自动剥掉导航条、广告、侧边栏等冗余，**省 30–70% 字数**（也更省钱）。GitHub / Reddit / Hacker News / Wikipedia / Substack / Medium 等 **20 多个高频站点走专用抽取器**，表格、数学公式这些结构也不丢（v1.12）——正文里的链接都是完整可点的绝对地址。要带引用角标（适合做调研、喂给 RAG）也能一句话切换。
+
+> 读完想**就地续操作**（点按钮 / 填表单）：说「抽取时带上交互句柄」（`include_refs`，v1.17）——markdown 末尾附一张 `[r1] button "提交"` 式句柄表（正文本身零标记），之后「点 r1」「往 r2 填 X」直接按句柄定位，不用再跑整页快照。页面变了句柄会**诚实失效**（返回 didnt + 提示重新抽取，不瞎猜不自动重试）。
 
 > **v1.5 起，`browse_headless` 默认开启反检测**（伪装 UA / 抹除 `navigator.webdriver` / 伪造 webgl、plugins、codecs 等共十几路）。**无需配置，自动生效**——很多「检测 headless」的站点现在能直接抓（v1.8 修复了一个注入静默失效的缺陷，现在是真的生效，且注入失败会在日志里如实报错）。v1.11 起反检测在**浏览器启动层**就生效：UA、视口、语言随档案统一下发，网络层 HTTP 头和页面 JS 看到的是同一套值，不再自相矛盾；v1.12 起 macOS 上默认指纹**与你的系统对齐**（不再「UA 说 Windows、机器特征招供 macOS」）。只有 Cloudflare 级重度反爬才需要走云浏览器（见下方「反爬强攻」）。想验证反检测效果？跑 `lasso doctor --stealth-check` 看 creepjs 检测对比。
 
@@ -142,6 +152,8 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/KEY-GUIDE
 复用你**本机已经登录好的 Chrome**——你自己把 2FA 解了，Lasso 接管后续抓取。支持私有的 GitHub 仓库、公司内网、付费订阅内容等。
 
 > 🔴 **红线**：Lasso **不替你解** 2FA / 短信验证码 / CAPTCHA / 邮件魔法链接。这些必须你在本机 Chrome 里手动过一次。
+
+> 🛡️ **高风险操作回合内确认**（v1.17）：自动操作碰到富文本编辑器、拖拽、瞬态弹窗这类高风险 pattern 时，若你的客户端支持 elicitation（Claude Code ≥ 2.1.76），会在**同一回合内**弹确认让你选「继续 / 跳过 / 终止」——选了继续才执行，不再直接中断整轮重来。老客户端行为不变（照旧安全拦截）。**确认只对当次有效**：每次命中都会再问你，不会记住授权。
 
 ### 直接抓字节（最快最省）
 
@@ -203,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.16.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.17.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -216,7 +228,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.16，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.17，点开看每版改了什么）</summary>
+
+- **v1.17**：五项升级——① 智谱直连 key 退役（`ZHIPU_API_KEY` 不再消费；智谱能力由机器 web-search-prime MCP 复用唯一承载，搜索默认零配置）② `search` 新增 `content_blocks` 第二跳（搜完并发抓 top N 正文、查询相关裁剪 ~6k 字符，失败条目如实标注，零付费依赖）③ 新工具 `search_local`（Chrome 浏览历史 + Spotlight 本地私有搜索，隐私红线：只返标题/链接/时间，禁全文导出）④ 高风险操作支持回合内 elicitation 确认（老客户端零影响）⑤ `browse extract` 新增 `include_refs` 交互句柄（`[r1]` 式附录 + 按句柄点击/填写，页面变了诚实失效）。搜索结果统一带 `quality` 质量轴标注（api / scrape / stale）。
 
 - **v1.16**：新增 `fetch_feed` 工具（RSS / Atom / JSON Feed → 结构化条目；追版本号、退役时间线、官方公告这类「要新」的问题直接问源，不再等搜索索引）+ 修复搜索缓存新鲜度缺陷（`freshness=day` 的结果此前可能被缓存成最多 7 天的陈货，现在 day 档 24 小时即过期；全源熔断时的录制回放也会按 freshness 窗口拒掉过期 fixture，不再拿陈年录像充数）。
 - **v1.15**：Bing 死层彻底清除（Bing Search APIs 2025-08-11 全量退役——删代码非标注；历史 `BING_API_KEYS` 静默忽略、`lasso doctor` 提示删除）+ 无头浏览器之前新增**裸 HTTP 快探层**（API 层全挂时先用无浏览器直连抓一次搜索结果页，约 1 秒，探不到再启动无头浏览器慢路径；真机实测英文命中 20 条结果仅 1.9 秒，而无头浏览器路径 5.3 秒且被验证码挡成 0 条；百度验证码/首页壳等软挡页不伪造成功，自动升级浏览器复核）。
@@ -239,7 +253,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 | 你想干什么 | 要配什么 |
 |---|---|
 | 抓公开页 / 截图 / PDF / 看第三方资源 / 抓原始字节 / 控桌面 | **什么都不用配** |
-| 搜东西 | 一个智谱 key（免费申请；机器已配智谱 MCP 则连这都不用） |
+| 搜东西 | 通常零配置（机器智谱 MCP 复用）；可选 Brave key（付费计划） |
 | 搜索几乎不挂 | 再加 Brave key（付费计划含每月 $5 额度；不配也有免费兜底实搜） |
 | 抓登录态页面 | 跑一次 `lasso launch-chrome` |
 | 控 macOS 桌面 | 跑一次 `lasso doctor` 授权 |
@@ -251,26 +265,21 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 **先看要不要配**：如果你机器已经配过智谱 `web-search-prime` MCP，Lasso 会**自动检测复用它的 key**，什么都不用填。跑 `lasso doctor` 看 `#36 machine_search_mcp` 是 `pass` 就是这种情况。
 
-**要配就三步**：
+**要配就两步**（可选——机器 MCP 已覆盖时完全不用配）：
 
 ```bash
 lasso config init        # 创建 ~/.lasso/config.json
 ```
 
-```json
-{ "ZHIPU_API_KEY": "你的智谱key" }
-```
-
-存盘即生效。**想更稳**再加 Brave（付费计划含 $5/月额度 ≈1000 次，需信用卡——2026-02 起免费档取消；配了任一家挂了自动切，多个 key 逗号隔开各带额度）：
+想**更稳 / 要多源扇出**再加 Brave（付费计划含 $5/月额度 ≈1000 次，需信用卡——2026-02 起免费档取消；配了挂了自动切，多个 key 逗号隔开各带额度）：
 
 ```json
-{
-  "ZHIPU_API_KEY": "你的智谱key",
-  "BRAVE_API_KEYS": "bravekey1,bravekey2"
-}
+{ "BRAVE_API_KEYS": "bravekey1,bravekey2" }
 ```
 
-> 降级顺序：机器 MCP 复用 → 智谱 → Brave → 无头浏览器实搜兜底（v1.14 起英文兜底双引擎：DuckDuckGo 失败/空结果自动再试一次 Brave 实搜；v1.15 起无头浏览器之前先加一层**裸 HTTP 快探**（约 1 秒，无浏览器直接抓搜索结果页——实测部分搜索引擎对「无浏览器」反而更不设防），探不到再启动无头浏览器慢路径）。前一个挂了自动切下一个。（Bing 源已随上游 2025-08-11 退役整层移除；历史配置里的 `BING_API_KEYS` 会被静默忽略，`lasso doctor` 会提示删除。）
+> ⚠️ **`ZHIPU_API_KEY` 已于 v1.17 退役**：智谱直连 API channel 整层删除，历史配置里的该键**会被静默忽略**（`lasso doctor` 的 `zhipu_keys_retired` 项会提示你删掉它）。智谱搜索能力现在**只**通过机器 web-search-prime MCP 复用承载（上面第一段，零配置）。
+
+> 降级顺序：机器 MCP 复用 → Brave（配了 key 时）→ 无头浏览器实搜兜底（v1.14 起英文兜底双引擎：DuckDuckGo 失败/空结果自动再试一次 Brave 实搜；v1.15 起无头浏览器之前先加一层**裸 HTTP 快探**（约 1 秒，无浏览器直接抓搜索结果页——实测部分搜索引擎对「无浏览器」反而更不设防），探不到再启动无头浏览器慢路径）。前一个挂了自动切下一个。（Bing 源已随上游 2025-08-11 退役整层移除、智谱直连档已于 v1.17 删除；历史配置里的 `BING_API_KEYS` / `ZHIPU_API_KEY` 会被静默忽略，`lasso doctor` 会提示删除。）
 
 key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/KEY-GUIDE.md#a-搜索)。常用命令：`lasso --version` / `lasso --help`（v1.8 起未知命令打印用法非零退出，不再静默挂起）。
 
@@ -375,7 +384,7 @@ lasso launch-chrome
 | macOS 桌面控制不工作 | 「系统设置 → 隐私与安全 → 辅助功能 / 屏幕录制」里勾上 `lasso-rust-helper`（`lasso doctor` 会引导你） |
 | 抓登录态页面失败 | 在你本机 Chrome 里手动登录一次（2FA 也手动解），再说「打开我已登录的 X」 |
 | 存 PDF 失败 | 改说「把这一页截个整页长图」即可 |
-| 搜索一直没结果 | 检查 key 是否过期 / 额度用完；配多家（智谱 + Brave）可大幅降低失败率 |
+| 搜索一直没结果 | 跑 `lasso doctor` 看 `machine_search_mcp` / `brave_keys`；Brave key 是否过期或额度用完；机器 MCP 复用 + 免费实搜兜底本身零配置可用 |
 | 链接打不开 | 改说「这个链接找不到了，找找存档」，去查互联网档案馆 |
 | 提示要内网访问被拒 | 确认 URL 没写错；TUN 代理网络已默认放行，其他内网需手动允许 |
 | 想验证反检测效果 | 跑 `lasso doctor --stealth-check`，会驱动 creepjs 检测页对比基线（可选，不影响日常使用） |

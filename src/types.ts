@@ -27,11 +27,21 @@ export type Outcome = "worked" | "didnt" | "unknown";
 // 统一交付信封（InteractResult）
 // ============================================================
 /**
+ * A1 质量轴（v1.17 Phase B，doc/24 decision-A A1 + doc/25 裁决①）：
+ *  - "api"    结构化 API 响应（search.machine_mcp / search.brave，含 fanout 聚合）
+ *  - "scrape" 页面抓取产物（serp_http:* / browse_headless / browse_logged_in / browse_cloud_*）
+ *  - "stale"  录制回放（recording_replay，过去快照）
+ * 静态映射零启发式；单一真源 src/search/QualityTag.ts；optional——缺省不影响任何既有形状。
+ */
+export type SearchQuality = "api" | "scrape" | "stale";
+
+/**
  * 所有 channel 返回给 tool 层（再给 MCP client）的统一信封。
- *  - served_by        : 实际服务的 channel（如 "search.zhipu" / "browse_headless"）
+ *  - served_by        : 实际服务的 channel（如 "search.machine_mcp" / "browse_headless"）
  *  - fallback_used    : primary 失败、由 fallback 路径服务时为 true
- *  - retrieval_method : 具体手段（"zhipu_api" / "serp_scrape_baidu" / "chrome_devtools_mcp"）
+ *  - retrieval_method : 具体手段（"machine_mcp_api" / "serp_scrape_baidu" / "chrome_devtools_mcp"）
  *  - actions_and_results : Skyvern 风格审计链（每次尝试一行，v0.1 简化版，v0.3 升级为 Step 粒度）
+ *  - quality          : A1 质量轴（v1.17 Phase B；静态映射 by served_by，可选字段）
  */
 export interface InteractResult<T = unknown> {
   outcome: Outcome;
@@ -39,6 +49,8 @@ export interface InteractResult<T = unknown> {
   served_by: string;
   fallback_used: boolean;
   retrieval_method: string;
+  /** v1.17 Phase B（A1）：质量轴（api/scrape/stale）；仅在 search 工具出口打标，缺省=未标 */
+  quality?: SearchQuality;
   actions_and_results?: Array<{
     channel: string;
     outcome: Outcome | "error";
@@ -52,16 +64,39 @@ export interface InteractResult<T = unknown> {
 // ============================================================
 // SearchResult（search channel 输出）
 // ============================================================
+/**
+ * A2′ 第二跳 per-result 状态（v1.17 Phase C，doc/25 裁决② + parse24 §3.2 步骤 5；
+ * 单一真源 src/search/ContentSecondHop.ts）：
+ *  - "ok"            拿到裁剪后正文（content 必填）
+ *  - "fetch_failed"  SSRF 拒 / 网络错 / 超时 / 非 2xx / 3xx 未跟随 / 超预算跳过
+ *  - "not_html"      content-type 非 HTML，如实跳过
+ *  - "extract_failed" 抽取引擎失败或空正文
+ * tri-state 诚实：第二跳失败不改变主结果 outcome/served_by（enrichment 非 fallback）。
+ */
+export type ContentBlockStatus = "ok" | "fetch_failed" | "not_html" | "extract_failed";
+
+/**
+ * 蓝链基线形状 {title,url,snippet,source?}（INV-11 契约）+ A2′ 第二跳可选增强字段
+ * （content_blocks=N opt-in 时仅 top N 条携带；缺省 = 全部缺席 = byte-identical 基线）。
+ */
+export interface SearchResultItem {
+  title: string;
+  url: string;
+  snippet: string;
+  source?: string;
+  /** A2′（v1.17 Phase C）：content_blocks opt-in 时第二跳抓取的查询相关裁剪正文 */
+  content?: string;
+  /** A2′：content 为不完整子集时 true（裁剪丢段或 body 字节级截断）；缺省 = 完整 */
+  truncated?: boolean;
+  /** A2′：第二跳四态标注（top N 条必带；抓失败条目保留蓝链字段 + 此标注） */
+  content_status?: ContentBlockStatus;
+}
+
 export interface SearchResult {
   query: string;
-  results: Array<{
-    title: string;
-    url: string;
-    snippet: string;
-    source?: string;
-  }>;
+  results: SearchResultItem[];
   count: number;
-  engine: string; // "zhipu" / "baidu_serp"
+  engine: string; // "machine_mcp" / "brave" / "multi" / "baidu_serp" / "serp_http_ddg"
   region: string; // "cn" / "us"
 }
 
@@ -102,6 +137,12 @@ export interface BrowseResult {
   citations?: Array<{ n: number; url: string }>;
   /** markdown 档：服务引擎名（"defuddle+turndown" / fallback "turndown-only"） */
   markdown_engine?: string;
+  /**
+   * v1.17 Phase F（parse24 §6.2 C2 + 冲突 #8）：extract_mode 未传/"raw" 且
+   * options.include_refs=true 时填 true——raw 档运行时忽略 include_refs 并诚实
+   * 标注（宽松进严格出，schema 不拒）。缺省关时无此字段（byte-identical）。
+   */
+  ignored_include_refs?: boolean;
 }
 
 // ============================================================
@@ -168,6 +209,20 @@ export interface BrowseOptions {
    *       snapshot/navigate/screenshot 等忽略（守 raw 路径 byte-identical v1.0）。
    */
   extract_mode?: "raw" | "markdown" | "markdown_cited";
+  /**
+   * v1.17 Phase F（parse24 §6.2 C2）：extract 的交互句柄 opt-in（缺省关）。
+   *
+   *  - true + extract_mode=markdown/markdown_cited：抽取 expr 顺带注入
+   *    data-lasso-uid="r1".. 到交互元素（a/button/input/select/textarea/[role=…]
+   *    等，cap 50/页），markdown 末尾追加 "## Interactive refs" 附录（正文零内嵌
+   *    标记）；后续 click/fill 的 selectors 键传 "r1".. 即按 ref 定位（JS click +
+   *    native value setter）。ref 失效（页面已变）→ didnt + ref_stale_re_snapshot
+   *    （不猜不自动重试——重新 extract 取新 refs）。
+   *  - true + extract_mode 未传/"raw"：运行时忽略 + 返回 ignored_include_refs:true
+   *    诚实标注（宽松进严格出，schema 不拒；冲突 #8 定案）。
+   *  - 缺省（undefined/false）：现行行为 byte-identical（INV-66 手法）。
+   */
+  include_refs?: boolean;
 }
 
 // ============================================================
@@ -262,14 +317,14 @@ export type Health = "healthy" | "degraded" | "down";
 // ============================================================
 /**
  * AttributedResult（F3.1.8，多源扇出后单条结果带来源标签）。
- * CC 可据此在结果中看到「这条来自 zhipu / 这条来自 brave」。
+ * CC 可据此在结果中看到「这条来自 machine_mcp / 这条来自 brave」。
  */
 export interface AttributedResult {
   title: string;
   url: string;
   snippet: string;
   source?: string;
-  /** "search.zhipu" / "search.brave" / "browse_headless" */
+  /** "search.machine_mcp" / "search.brave" / "browse_headless" */
   served_by: string;
   /** 原引擎内排名（rerank 用） */
   original_rank?: number;

@@ -48,7 +48,10 @@ describe("F-2 doctor deep probe 422 分类（源码级 + 行为锚定）", () =>
 describe("markdown 别名（v1.14.0）", () => {
   it("browseSingle 对 markdown* 档透出 data.markdown=preview；raw 档无此字段", () => {
     const src = readFileSync("src/channels/BrowseChannel.ts", "utf8");
-    // 别名展开存在且以 markdown_engine 为条件（raw 档不触发）
-    expect(src).toMatch(/\.\.\.\(partial\.markdown_engine\s*\?\s*\{\s*markdown:\s*truncatePreview\(partial\.preview/);
+    // 别名展开存在且以 markdown_engine 为条件（raw 档不触发）。
+    // v1.17（verify ⑤）：截断改 refs 附录感知版（正文截断、附录钉尾——长页
+    // include_refs 的附录不再被 PREVIEW_MAX_CHARS 切掉）；无附录时与朴素
+    // truncatePreview byte-identical，本锚点语义不变。
+    expect(src).toMatch(/\.\.\.\(partial\.markdown_engine\s*\?\s*\{\s*markdown:\s*truncatePreviewKeepingRefs\(partial\.preview/);
   });
 });

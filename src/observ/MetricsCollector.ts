@@ -7,7 +7,7 @@
  *  - **不开第二套 logger**：内部 emit 仍走既有 logger.info/warn（INV-4 衍生）
  *  - **主路径低开销**：record() 仅 push 到 RingBuffer（O(1)）；p50/p95 仅 snapshot() 时算
  *
- * 维度（INV-44）：**per-channel**（"search.zhipu" / "browse_headless" / "desktop.ax" / ...）。
+ * 维度（INV-44）：**per-channel**（"search.machine_mcp" / "browse_headless" / "desktop.ax" / ...）。
  *  - record 必带 channel 名（无 channel 不入窗）
  *  - 同一 channel 的样本累积在同一 RingBuffer
  *

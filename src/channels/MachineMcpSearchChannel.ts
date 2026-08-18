@@ -1,26 +1,29 @@
 /**
  * MachineMcpSearchChannel —— v1.4 Phase A 机器 MCP 复用通道。
  *
- * 与 ZhipuSearchChannel 同形（McpClient.connectHttp + callTool web_search_prime），
- * 区别在 key 来源：
- *  - ZhipuSearchChannel：endpoint + apiKey 来自 Lasso config（Lasso 自己的 key）
- *  - MachineMcpSearchChannel：endpoint + authorization 来自 ~/.claude.json 探测
+ * McpClient.connectHttp + callTool web_search_prime 范式（v1.17 A3 起
+ * 是该范式在 Lasso 内的唯一持有者——zhipu 直连 API channel 已删除，
+ * doc/25 裁决③：保留 machine_mcp，删除 Lasso 自有 key 的直连档）：
+ *  - endpoint + authorization 来自 ~/.claude.json 探测
  *    （CC 已配过的 web-search-prime MCP key，Lasso 借力不拥有）
  *
- * **零配置优先**：机器装过 web-search-prime MCP 就能搜，不需用户单独配 ZHIPU_API_KEY。
+ * **零配置优先**：机器装过 web-search-prime MCP 就能搜（fallback_chain 首位 +
+ * engine="auto" 扇出源；v1.17 A3 起不再要求用户单独配任何搜索 key）。
  *
  * **零回归**（INV-72）：detectMachineSearchMcp() 返 null 时 index.ts 不实例化本类
- *  → FallbackChain 跳过 search.machine_mcp → 行为等价 v1.3（byte-identical）。
+ *  → FallbackChain 跳过 search.machine_mcp → 行为等价（byte-identical）。
  *
  * 失败策略（额度不足/网络/解析）→ outcome=didnt/unknown → fallback 链自动降级到
- * search.zhipu（现有 FallbackDecider 机制；本类不自造 fallback 循环，守 INV-4）。
+ * search.brave → serp_http → browse_headless（现有 FallbackDecider 机制；本类
+ * 不自造 fallback 循环，守 INV-4）。
  *
  * 安全（INV-72）：
  *  - 构造接 { url, authorization }（来自 detector，不直接读 ~/.claude.json）
  *  - 永不 log authorization 值（log 只说 detected/missing；由 index.ts 装配段负责）
  *  - search() 失败只 log 简短 error 字符串（绝不回显 authorization）
  *
- * 借鉴：ZhipuSearchChannel（同 McpClient.connectHttp + callTool web_search_prime 范式）。
+ * 借鉴：McpClient.connectHttp + callTool web_search_prime 范式（v1.4 起源自 zhipu 直连
+ * channel；v1.17 A3 该直连档删除后本类是范式唯一持有者）。
  */
 import { BaseChannel } from "./BaseChannel.js";
 import type {
@@ -33,12 +36,24 @@ import type {
 } from "../types.js";
 import { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
-// v1.12（round2 T2-5）：freshness 透传（与 SearchChannel 调同一 web_search_prime
-// 上游，参数名 search_recency_filter 已被 SearchChannel 实证）
-import { ZHIPU_RECENCY_MAP } from "./SearchChannel.js";
+// v1.17 A3（doc/25 裁决③）：ZHIPU_RECENCY_MAP 随 zhipu 直连 channel 删除迁入本文件
+// （单一消费者，就近持有）。v1.12（round2 T2-5）实证：web_search_prime 上游参数名
+// search_recency_filter，枚举 oneDay/oneWeek/oneMonth/oneYear。
+/**
+ * SearchFreshness → web_search_prime 上游 search_recency_filter 值映射。
+ * 上游枚举（MCP tool schema 实证）：oneDay/oneWeek/oneMonth/oneYear。
+ * （v1.11 起实证；v1.17 A3 从 channels/SearchChannel.ts 迁入——INV-80 墓碑容许本常量，
+ *   名字保留「ZHIPU」是因为上游本就是智谱 web_search_prime API。）
+ */
+export const ZHIPU_RECENCY_MAP: Record<string, string> = {
+  day: "oneDay",
+  week: "oneWeek",
+  month: "oneMonth",
+  year: "oneYear",
+};
 
 // ============================================================
-// 公共选项（与 ZhipuSearchChannel.SearchOpts 同构，便于 caller 复用）
+// 公共选项（v1.17 A3 起是 search MCP 源的唯一 opts 形）
 // ============================================================
 export interface MachineMcpSearchOpts {
   limit: number;
@@ -113,7 +128,7 @@ export class MachineMcpSearchChannel extends BaseChannel {
   }
 
   /**
-   * 调一次 web_search_prime（同 ZhipuSearchChannel.callTool 参数）。
+   * 调一次 web_search_prime（connectHttp + callTool 范式）。
    * 永不抛异常——所有路径走 InteractResult。
    */
   async search(
@@ -122,7 +137,7 @@ export class MachineMcpSearchChannel extends BaseChannel {
   ): Promise<InteractResult<SearchResult>> {
     if (!(await this.isAvailable())) {
       return {
-        outcome: "unknown", // 配置缺失不是 definitive 否；让 fallback 链尝试 search.zhipu
+        outcome: "unknown", // 配置缺失不是 definitive 否；让 fallback 链降级 search.brave → 兜底链
         data: null,
         served_by: this.name,
         fallback_used: false,
@@ -145,7 +160,7 @@ export class MachineMcpSearchChannel extends BaseChannel {
       })) as { content?: Array<{ type: string; text?: string }> };
 
       const parsed = parseMachineMcpContent(resp?.content);
-      // 同 ZhipuSearchChannel §D.1：200 但 0 结果 = unknown（触发跨模态 fallback）
+      // 10 §D.1：200 但 0 结果 = unknown（触发跨模态 fallback）
       const outcome: Outcome = parsed.length === 0 ? "unknown" : "worked";
 
       return {
@@ -181,7 +196,7 @@ export class MachineMcpSearchChannel extends BaseChannel {
   // ============================================================
   private async _getClient(): Promise<McpClient> {
     if (this.client) return this.client;
-    // 直接传完整 Authorization 串（detector 已保证含 "Bearer " 前缀；与 ZhipuSearchChannel 同范式）
+    // 直接传完整 Authorization 串（detector 已保证含 "Bearer " 前缀）
     this.client = await McpClient.connectHttp(
       { name: "lasso-search-machine-mcp", version: "1.4.0" },
       this.endpoint,
@@ -192,12 +207,20 @@ export class MachineMcpSearchChannel extends BaseChannel {
 }
 
 // ============================================================
-// 响应解析（与 ZhipuSearchChannel.parseZhipuContent 同形；抽到本文件以便独立测）
+// 响应解析（抽到本文件以便独立测；search_results / results / 裸数组 / 双重编码 四兼容）
 // ============================================================
 /**
- * web_search_prime MCP 返回 content[0].text 是 JSON 字符串：
+ * web_search_prime MCP 返回 content[0].text 是 JSON 字符串，历史形态：
  *   { search_results: [{ title, link, content, media, ... }] }
- * 兼容 { results: [...] } 变体。任何解析失败 → 返回空数组（触发 unknown fallback）。
+ * 兼容 { results: [...] } 变体。
+ *
+ * **v1.17 真机实测（doc/25 verify ②）**：上游现行形态是**双重编码裸数组**——
+ * text = JSON.stringify(JSON.stringify([{ title, link, content, refer }, ...]))，
+ * 即 JSON.parse 一次得到 string、再 parse 一次才得到数组（2026-08-18 本机
+ * open.bigmodel.cn 实抓实证；items 键 = title/link/content/refer）。旧单次
+ * 解析对此恒得 [] → outcome=unknown → 每次 machine_mcp 真机搜索都静默降级
+ * scrape 链（A3「智谱能力唯一载体」失效）——本修复为 verify 轮必修项。
+ * 任何解析失败 → 返回空数组（触发 unknown fallback）。
  */
 export function parseMachineMcpContent(content: unknown): SearchResult["results"] {
   if (!Array.isArray(content)) return [];
@@ -206,12 +229,18 @@ export function parseMachineMcpContent(content: unknown): SearchResult["results"
   );
   if (!textBlock?.text) return [];
   try {
-    const obj = JSON.parse(textBlock.text) as Record<string, unknown>;
-    const arr = (obj.search_results ?? obj.results ?? []) as Array<
-      Record<string, unknown>
-    >;
+    // 剥层：最多 3 次（实测 2 次；上限防病态深编码）。非 string 即停。
+    let parsed: unknown = textBlock.text;
+    for (let i = 0; i < 3 && typeof parsed === "string"; i++) {
+      parsed = JSON.parse(parsed);
+    }
+    // 形态归一：裸数组（现行上游）或 { search_results | results } 对象（历史/兼容）。
+    const arr: unknown = Array.isArray(parsed)
+      ? parsed
+      : ((parsed as Record<string, unknown>)?.search_results ??
+        (parsed as Record<string, unknown>)?.results ?? []);
     if (!Array.isArray(arr)) return [];
-    return arr
+    return (arr as Array<Record<string, unknown>>)
       .map((r) => ({
         title: String(r.title ?? ""),
         url: String(r.link ?? r.url ?? ""),
@@ -225,7 +254,7 @@ export function parseMachineMcpContent(content: unknown): SearchResult["results"
 }
 
 /**
- * 错误 → outcome（与 ZhipuSearchChannel.classifyError 同源 10 §D.1）。
+ * 错误 → outcome（10 §D.1）。
  * 404/403/NXDOMAIN/ENOTFOUND = didnt（明确否）；其余（timeout/429/5xx/网络）= unknown。
  */
 function classifyError(e: unknown): Outcome {

@@ -9,7 +9,7 @@
  *
  * 与 v0.2 PartialFailures.aggregatePartialFailures 的关系（parse2 §3.6.1）：
  *  - aggregatePartialFailures 是**纯函数**：per-source 数组 → PartialFailure[]
- *    （扇出场景：zhipu worked / brave 429）。本无状态、无副作用。
+ *    （扇出场景：machine_mcp worked / brave 429）。本无状态、无副作用。
  *  - BudgetTracker 是**有状态累加器**：随 chain 推进逐步 recordPartial()，最后
  *    flushInto() 一次性透传。两者形状一致（都往 InteractResult.partial_failures
  *    写），方便 doctor / 告警统一处理。

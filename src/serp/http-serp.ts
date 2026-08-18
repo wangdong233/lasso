@@ -7,7 +7,8 @@
  * 对部分 SERP 反而更不容易被判 bot。故 API 层全挂时先用裸 HTTP 探一次，
  * 探不到再升真浏览器。
  *
- * 新降级链：machine_mcp → zhipu → brave → **serp_http** → browse_headless → recording_replay。
+ * 新降级链：machine_mcp → brave → **serp_http** → browse_headless → recording_replay
+ * （v1.17 A3：zhipu 直连档已删，INV-80 墓碑守卫）。
  *
  * verify 真机修订（2026-08-17，两处正确性修复）：
  *  - 归一化剥噪声块：转换前剥 <style>/<script>/<noscript>、转换后删 markdown

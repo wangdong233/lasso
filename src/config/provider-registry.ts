@@ -88,7 +88,7 @@ export class ProviderRegistry {
   }
 
   /**
-   * 按 provider 名字查（如 "zhipu" / "brave"）。
+   * 按 provider 名字查（如 "brave" / "machine_mcp"）。
    *
    * v0.4 M0.4a（parse5 §3.4.3）：加可选 policyFilter 参数。
    *  - 未传 → 行为完全等价 v0.3.5（零回归）

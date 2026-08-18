@@ -155,7 +155,7 @@ export class RecordingStore {
    * 注意：本方法 **不检查 LASSO_RECORD_SEARCH** —— 回放与录制是独立开关
    * （parse10 §3.4：即便录制关了，过去落盘的 fixture 仍可回放）。
    *
-   * @param engine 录制时的 engine 名（如 "zhipu" / "brave" / "browse_headless"）
+   * @param engine 录制时的 engine 名（如 "fallback_chain" / "brave" / "browse_headless"）
    * @param query  原始 query 字符串
    * @returns tri-state InteractResult，data.snapshot 是录制原文
    */

@@ -33,7 +33,7 @@ function makeProvider(
 }
 
 describe("filterByFreeTier — 四级分级", () => {
-  it("L1：只允许 L1 provider（zhipu=L2 / brave=L4 都被过滤）", () => {
+  it("L1：只允许 L1 provider（machine_mcp=L2 档示例 / brave=L4 都被过滤）", () => {
     const providers = [
       makeProvider("ddg", "L1"),
       makeProvider("zhipu", "L2"),
@@ -111,15 +111,17 @@ describe("filterByFreeTier — 四级分级", () => {
     expect(filterByFreeTier([], "L4")).toEqual([]);
   });
 
-  it("实际内置层级（S-1 后）：zhipu=L2 / brave=L4 → L2 只放 zhipu，L4 都通过", () => {
+  it("实际内置层级（S-1 后 + v1.17 A3）：brave=L4 唯一 API 源 → L2 全滤（machine_mcp L1 在 registry 外）", () => {
     // 2026-02 起 Brave 免费档取消（计量计费 + 绑卡）→ 改判 L4；
     // 显式 free_only=L2 不得再放行 Brave（21-搜索方案重审 S-1）。
+    // v1.17 A3：zhipu（L2）已随直连死层删除（INV-80 墓碑）——L2 档 registry 内
+    // 无可放行源；machine_mcp 是 L1 但 enabled=false 不进 registry，由 search.ts
+    // auto 路径显式兑现降级（见 attributed-search.spec free_only 测试）。
     const builtins = [
-      makeProvider("zhipu", "L2"),
       makeProvider("brave", "L4"),
     ];
-    expect(filterByFreeTier(builtins, "L4")).toHaveLength(2);
-    expect(filterByFreeTier(builtins, "L2").map((p) => p.name)).toEqual(["zhipu"]);
+    expect(filterByFreeTier(builtins, "L4")).toHaveLength(1);
+    expect(filterByFreeTier(builtins, "L2")).toHaveLength(0);
     expect(filterByFreeTier(builtins, "L1")).toHaveLength(0);
   });
 });
