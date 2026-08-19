@@ -228,8 +228,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.17.2，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.18.0，点开看每版改了什么）</summary>
 
+- **v1.18.0**：静默守则落地（把「能静默就静默；需要你时才弹、用完自动收回后台」明文为运行守则，见「隐私与安全」）——① 🔴 修复 **server 退出会杀掉你的登录窗口**：Claude 会话结束 / CC 重启时，visible 登录 Chrome 此前被无差别强杀（真机三次复现实锤），现在与「用户拥有的窗口永不自动关」同款豁免；② 新增可选的**登录完成自动收窗**：`"LASSO_AUTO_HIDE_AFTER_LOGIN": true`（默认关）后不用记 `chrome-hide`——观察到登录页消失 + 等 10 秒 + 确认没人正在用，自动把窗口收进后台（拿不准就不收，`chrome-show` 随时可逆）；③ 守则句写入文档（README / KEY-GUIDE / ARCHITECTURE），新增架构不变量 INV-82 守住以上红线。
 - **v1.17.2**：静默性全面审计落地（真机六维实测：焦点/窗口/Dock/音频/通知/资源）——① 修复「连你自己开的可见 Chrome」时 lasso 会**改写你第一个 tab 内容**的缺陷：现在 lasso 在你的 Chrome 里自建一个后台 tab 干活（不抢焦点、不激活），会话结束自动关掉，你的 tab 一律不动；② 修复 tab 管理的契约错配（`close_page` 参数形态），且关 tab 现在只可能落在 lasso 自己开的 tab 上（登记制，类型层面保证）；③ 隐私文档新增**静默性矩阵**（每条通道×每维打扰的实测结论，见「隐私与安全」）。
 - **v1.17**：五项升级——① 智谱直连 key 退役（`ZHIPU_API_KEY` 不再消费；智谱能力由机器 web-search-prime MCP 复用唯一承载，搜索默认零配置）② `search` 新增 `content_blocks` 第二跳（搜完并发抓 top N 正文、查询相关裁剪 ~6k 字符，失败条目如实标注，零付费依赖）③ 新工具 `search_local`（Chrome 浏览历史 + Spotlight 本地私有搜索，隐私红线：只返标题/链接/时间，禁全文导出）④ 高风险操作支持回合内 elicitation 确认（老客户端零影响）⑤ `browse extract` 新增 `include_refs` 交互句柄（`[r1]` 式附录 + 按句柄点击/填写，页面变了诚实失效）。搜索结果统一带 `quality` 质量轴标注（api / scrape / stale）。
 
@@ -286,11 +287,23 @@ key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/KEY
 
 ### 二、抓登录态页面（✅ 免费 · 一行命令，不用 key）
 
+**首次使用（要登录一次，三步）**：
+
+```bash
+lasso launch-chrome --mode visible   # 1. 弹出窗口（默认 hidden 是零窗口，没法登录）
+#    2. 在这个窗口里登录你的账号（2FA 自己解）
+lasso chrome-hide                    # 3. 登录完转回后台静默（登录态留在 profile）
+```
+
+嫌第 3 步也要记？在 `~/.lasso/config.json` 配 `"LASSO_AUTO_HIDE_AFTER_LOGIN": true`（v1.18，默认关）：Claude 会话在跑的时候，它会自己观察到登录页消失、再等 10 秒确认你登录完，**自动把窗口收进后台**（拿不准就不收，只会漏收不会误收；想再看随时 `chrome-show`）。这个登录窗口现在也不会被 Claude 会话重启杀掉（v1.18 修复——之前 server 一退出窗口就没了）。
+
+之后**一行命令**就行——默认零窗口静默档直接继承上次的登录态：
+
 ```bash
 lasso launch-chrome
 ```
 
-第一次在这个窗口登录你的账号（2FA 自己解），**登录态之后一直复用**。以后对 Claude说「打开我已登录的 Jira」就行。
+以后对 Claude 说「打开我已登录的 Jira」就行。想再看窗口随时 `lasso chrome-show`（可逆，登录态不动）。
 
 - 默认**零窗口静默**干活、不抢焦点、永远静音；想看着它干加 `--mode visible`
 - 用完**约 60 秒自动关**，不用记着收尾；手动关随时 `lasso chrome-stop`
@@ -304,9 +317,11 @@ lasso launch-chrome
 - v1.8 起默认用 Lasso 独立 profile（Chrome 136+ 禁止对默认 profile 开调试端口，老办法会秒退）；复用已有 profile 用 `lasso launch-chrome --profile <目录>`。
 - 启动后自动探活调试端口，Chrome 没起来 / 端口被占会明确报错，不假报成功。
 - 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。
+- 登录后自动收窗：`LASSO_AUTO_HIDE_AFTER_LOGIN`（默认 false；开启后只在「见过登录页 → 登录页消失 → 等 10 秒 → Claude 没在用」四关全过时才收，收错方向保守——拿不准就不收）。等待时长 `LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`（默认 10000）。只在 server 会话运行期间生效（CLI 单独 `launch-chrome` 没有调度器，仍走手动 `chrome-hide`）。
 - 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
 - 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；它起的 Chrome 在 Dock / 任务栏会多一个图标（浏览器有头进程的注册行为，lasso 控制不了），要零图标用 `browse_headless`；`browse_logged_in` 连**你自己开的可见 Chrome** 时会在你的 Chrome 里临时开一个后台 tab 干活（不抢焦点不发声，结束自动关，v1.17.2 起你的 tab 一律不被改写）——但你的 Chrome 本身不静音（lasso 不改写你的浏览器参数），浏览到自动播放页面会真出声；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
 - chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
+- `chrome-hide` / `chrome-show` 同样只动台账在案的 Chrome（按 pid 定向，永不碰你手动开的浏览器）；hide 只隐藏窗口，进程/登录态/CDP 全保留。
 
 </details>
 
@@ -366,6 +381,8 @@ lasso launch-chrome
 ## 隐私与安全
 
 你的数据是你的。
+
+> 🤫 **运行守则**（v1.18 起明文）：能后台静默干的就静默干——零窗口、不抢焦点、永远静音；确实需要你时（登录、2FA、高风险确认）才弹一次，你处理完它自动转回后台静默，不需要你记着收尾。
 
 - **登录 cookie 永不导出**，除非你显式同意并加密落盘。Lasso 不会把你的登录态偷偷传到任何地方。
 - **桌面操作日志只在本地**，零远程上报。Lasso 不向任何第三方上报你的操作。

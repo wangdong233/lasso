@@ -1,0 +1,13 @@
+{
+  "titles": [
+    {
+      "tag": "div",
+      "cls": "article-title.iget-common-c1",
+      "t": "发刊词丨只给你地道的经济学思维",
+      "p": "div.iget-pc:0>div:1>div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0>div:1>div.article-title:1",
+      "h": 36
+    }
+  ],
+  "coverP": "div.iget-pc:0>div:1>div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0>div:1>div.article-cover:0",
+  "infoP": "div.iget-pc:0>div:1>div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0>div:1>div.article-info:2"
+}

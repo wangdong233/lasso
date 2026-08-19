@@ -1,0 +1,4 @@
+{
+  "_raw": "Error: k.className.split is not a function\npptr:evaluateHandle;performEvaluation%20(file%3A%2F%2F%2Fprivate%2Ftmp%2Fnpm-cache%2F_npx%2F7bdebd52403a7aa1%2Fnode_modules%2Fchrome-devtools-mcp%2Fbuild%2Fsrc%2Ftools%2Fscript.js%3A161%3A69):9:96",
+  "_outcome": "worked"
+}

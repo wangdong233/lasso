@@ -118,15 +118,41 @@
 
 要抓「你已登录的页面」（Jira 待办、GitHub 私有仓库、公司内网等），先启动一个带调试端口的 Chrome，它会**复用你本机 Chrome 的全部登录态**（包括 2FA 你自己解过的会话）。
 
-**怎么配**：
+> 🤫 **这条链的运行守则**（v1.18 明文）：平时零窗口静默；只有登录这一次需要你——弹窗出来你在里面登录（2FA 自己解），登录完它就该**自动回到后台静默**，不该让你记着收尾。推荐姿势二选一：
+>
+> **姿势一（手动，永远可用）——三步**：
+>
+> ```bash
+> lasso launch-chrome --mode visible   # 1. 弹出窗口（默认 hidden 是零窗口，没法登录）
+> #    2. 在窗口里登录账号（2FA 自己解）
+> lasso chrome-hide                    # 3. 登录完转回后台静默（登录态留在 profile）
+> ```
+>
+> **姿势二（自动，v1.18 新增，默认关）——两步**：在 `~/.lasso/config.json` 配
+>
+> ```json
+> { "LASSO_AUTO_HIDE_AFTER_LOGIN": true }
+> ```
+>
+> 之后第 3 步不需要你做：Claude 会话（server）在跑时，它观察到登录页消失、再等
+> `LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`（默认 10000ms）确认你登录完、且自己没在
+> 用这个 Chrome，就把窗口收进后台。**收错方向保守**：四个条件（见过登录页 → 登录页
+> 消失 → 过等待窗 → Claude 没在用）任一不满足就不收，探测失败也不收——最坏情况
+> = 漏收，退回姿势一的手动 `chrome-hide`，不会误收你在看的窗口。想再看窗口随时
+> `lasso chrome-show`（可逆）。诚实边界：自动收窗只在 server 会话运行期间生效
+> （调度器活在 server 进程里）；CLI 单独 `launch-chrome` 后没起过 Claude 会话的
+> 场景仍走手动。另：v1.18 修复了 server 退出强杀 visible 登录窗口的缺陷——这个
+> 窗口的存活不再依赖 Claude 会话活着，只有显式 `chrome-stop` 或你自己关它。
+
+**之后（一行命令，静默档直接继承登录态）**：
 
 ```bash
 lasso launch-chrome
 ```
 
-跑一次即可。命令会自动探测 macOS / Linux / Windows 上的 Chrome 路径并启动，之后对 Claude 说「打开我已登录的 Jira」就会自动连上。
+跑一次即可。命令会自动探测 macOS / Linux / Windows 上的 Chrome 路径并启动，之后对 Claude 说「打开我已登录的 Jira」就会自动连上。想再看窗口随时 `lasso chrome-show`（可逆：只隐藏/恢复窗口，进程、登录态、CDP 全保留；hide/show 同 chrome-stop 一样只动台账在案、验证过 pid 归属的 Chrome，永不碰你手动开的浏览器）。
 
-> v1.8 行为变化：① 默认注入 Lasso 独立的 `--user-data-dir`（`~/.cache/lasso/chrome-profile-default`）——Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退；第一次在这个窗口里登录，之后该 profile 的登录态一直复用。也可 `lasso launch-chrome --profile <目录>` 指定已有 profile。② 启动后探活 CDP `/json/version`（3 秒窗口）：Chrome 没起来 / 端口被占会明确报错（`chrome_exited` / `port_in_use` / `cdp_not_ready`），不再「返回 ok 但其实连不上」。
+> v1.8 行为变化：① 默认注入 Lasso 独立的 `--user-data-dir`（`~/.cache/lasso/chrome-profile-default`）——Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退；首次用上面的 visible 三步在这个 profile 里登录一次，之后该 profile 的登录态一直复用（v1.10 起默认 hidden 档零窗口，登录必须走 visible 档）。也可 `lasso launch-chrome --profile <目录>` 指定已有 profile。② 启动后探活 CDP `/json/version`（3 秒窗口）：Chrome 没起来 / 端口被占会明确报错（`chrome_exited` / `port_in_use` / `cdp_not_ready`），不再「返回 ok 但其实连不上」。
 
 > 桌面端口默认 `9222`，被占用时可用 `LASSO_CDP_PORT=9223` 改端口（见 [高级调优](#e-高级调优可选全不配)）。
 

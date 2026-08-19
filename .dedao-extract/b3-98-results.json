@@ -1,0 +1,281 @@
+[
+  {
+    "chapterDir": "课前必读(1讲)",
+    "title": "发刊词丨只给你地道的经济学思维",
+    "expectAudio": false,
+    "phases": {
+      "switch": {
+        "mode": "already",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 1696,
+        "imgs": 6,
+        "imgsNotLoaded": 0,
+        "docH": 27664
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 0,
+        "audioTags": 0,
+        "timeInfo": true,
+        "wrapChildren": [
+          "DIV.pageControl",
+          "DIV.",
+          "DIV.article-body",
+          "DIV.article-time-info",
+          "DIV.my-comment",
+          "DIV.message-v2"
+        ],
+        "bodyLen": 1696
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 0,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "hid": {
+          ".iget-header": 1,
+          "div.course-nav": 1,
+          "aside.iget-side-button": 1,
+          "div.course-nav-mask": 1,
+          ".iget-audio-player": 1,
+          ".article-note-editor": 1,
+          "aside.notes-wrap": 1,
+          ".iget-global-prompt": 1
+        },
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        },
+        "rectBefore": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "rectAfter": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "docHBefore": 14654,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-",
+          "figure.",
+          "img.big-image"
+        ],
+        "docHAfter": 14644
+      },
+      "print": {
+        "ok": true,
+        "err": null,
+        "tabUrl": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz"
+      }
+    },
+    "assertFails": [],
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/课前必读(1讲)/发刊词丨只给你地道的经济学思维.pdf",
+    "pdfBytes": 1794013
+  },
+  {
+    "chapterDir": "01-经济学本源之一：东西不够(110讲)",
+    "title": "第001讲丨战俘营里的经济组织",
+    "expectAudio": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第001讲丨战俘营里的经济组织",
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 3742,
+        "imgs": 5,
+        "imgsNotLoaded": 0,
+        "docH": 13752
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ",
+        "title": "第001讲丨战俘营里的经济组织",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 1,
+        "audioTags": 0,
+        "timeInfo": true,
+        "wrapChildren": [
+          "DIV.pageControl",
+          "DIV.",
+          "DIV.article-body",
+          "DIV.article-time-info",
+          "DIV.my-comment",
+          "DIV.message-v2"
+        ],
+        "bodyLen": 3742
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 1,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "hid": {
+          ".iget-header": 1,
+          "div.course-nav": 1,
+          "aside.iget-side-button": 1,
+          "div.course-nav-mask": 1,
+          ".iget-audio-player": 1,
+          ".article-note-editor": 1,
+          "aside.notes-wrap": 1,
+          ".iget-global-prompt": 1
+        },
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        },
+        "rectBefore": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "rectAfter": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "docHBefore": 7226,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-",
+          "figure.",
+          "img.big-image"
+        ],
+        "docHAfter": 7216
+      },
+      "print": {
+        "ok": true,
+        "err": null,
+        "tabUrl": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ"
+      }
+    },
+    "assertFails": [],
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第001讲丨战俘营里的经济组织.pdf",
+    "pdfBytes": 1030208
+  },
+  {
+    "chapterDir": "01-经济学本源之一：东西不够(110讲)",
+    "title": "第002讲丨马粪争夺案",
+    "expectAudio": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第002讲丨马粪争夺案",
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 2133,
+        "imgs": 3,
+        "imgsNotLoaded": 0,
+        "docH": 16357
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE",
+        "title": "第002讲丨马粪争夺案",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 1,
+        "audioTags": 0,
+        "timeInfo": true,
+        "wrapChildren": [
+          "DIV.pageControl",
+          "DIV.",
+          "DIV.article-body",
+          "DIV.article-time-info",
+          "DIV.my-comment",
+          "DIV.message-v2"
+        ],
+        "bodyLen": 2133
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 1,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "hid": {
+          ".iget-header": 1,
+          "div.course-nav": 1,
+          "aside.iget-side-button": 1,
+          "div.course-nav-mask": 1,
+          ".iget-audio-player": 1,
+          ".article-note-editor": 1,
+          "aside.notes-wrap": 1,
+          ".iget-global-prompt": 1
+        },
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        },
+        "rectBefore": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "rectAfter": {
+          "x": 0,
+          "y": 60,
+          "w": 1200
+        },
+        "docHBefore": 4211,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-",
+          "figure.",
+          "img.big-image"
+        ],
+        "docHAfter": 4201
+      },
+      "print": {
+        "ok": true,
+        "err": null,
+        "tabUrl": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE"
+      }
+    },
+    "assertFails": [],
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第002讲丨马粪争夺案.pdf",
+    "pdfBytes": 645508
+  }
+]

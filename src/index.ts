@@ -222,7 +222,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.17.3";
+const LASSO_SERVER_VERSION = "1.18.1";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -469,12 +469,24 @@ async function runMcpServer(): Promise<void> {
   // chrome-stop（探活→ps 归属验证→SIGTERM→树杀→删账；零新 kill 路径）。
   // 0 = 禁用（chrome_idle_reaper_disabled；台账 Chrome 常驻到 chrome-stop / 停机）。
   let chromeReaper: ChromeIdleReaper | null = null;
-  if (config.launchIdleMs > 0) {
+  // C2（v1.18，doc/28 D-2）：autoHideAfterLogin 开启时 reaper 也要跑（visible 记录
+  // 的「登录完成→自动 hide」由 reaper tick 驱动，与 idle 收割同一调度器——不建
+  // 第二套 timer）。idle 关闭 + autoHide 关闭才整体禁用。
+  if (config.launchIdleMs > 0 || config.autoHideAfterLogin) {
     chromeReaper = startChromeIdleReaper({
       defaultIdleMs: config.launchIdleMs,
       touchPorts: new Set([config.cdpPort]),
+      autoHideAfterLogin: config.autoHideAfterLogin,
+      autoHideDelayMs: config.autoHideAfterLoginDelayMs,
       logFn: (p) => logger.info(p),
     });
+    if (config.autoHideAfterLogin) {
+      logger.info({
+        evt: "chrome_auto_hide_after_login_enabled",
+        delay_ms: config.autoHideAfterLoginDelayMs,
+        note: "ledger visible Chrome auto-hides after login wall clears + delay (opt-in LASSO_AUTO_HIDE_AFTER_LOGIN; reversible via chrome-show)",
+      });
+    }
   } else {
     logger.info({
       evt: "chrome_idle_reaper_disabled",
@@ -1348,8 +1360,12 @@ async function runMcpServer(): Promise<void> {
   process.on("exit", () => {
     // v1.9（parse17 §3.6 机制二）：exit 钩子同步收尾台账 Chrome（零 await 纪律，
     // W1-DEF-6 先例——同步版跳过 SIGTERM 优雅步，ps 验证归属后 killTreeSync 直杀）。
+    // D-5（v1.18，doc/28-静默守则审计 verify §6 三次复现实锤）：exit 钩子同样
+    // modes:["hidden"]——P1（v1.17.3）只修了优雅 shutdown 路径，本兜底路径曾把
+    // 用户 visible 登录窗口整树 SIGKILL（stdin EOF 即触发）。visible 档关闭出口
+    // 只有显式 chrome-stop；台账条目保留（进程还活着，不能清账孤儿化）。
     try {
-      stopLaunchedChromesSync((p) => logger.info(p));
+      stopLaunchedChromesSync({ modes: ["hidden"], logFn: (p) => logger.info(p) });
     } catch {
       // best-effort：exit 钩子绝不能抛
     }

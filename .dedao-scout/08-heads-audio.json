@@ -1,0 +1,117 @@
+{
+  "heads": [
+    {
+      "tag": "h3",
+      "t": "更新提示",
+      "p": "div.iget-pc:0>div.iget-header:0>div.home-header:0>div.iget-update-reminder:3>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#听妙人讲妙书，跟刘勃学国学",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:1>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#跟万维钢和全球精英大脑同步",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:2>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#一起看中国经济的新动向",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:3>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#跟王路练习深度思考",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:4>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#视频日记",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:5>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#听吴军讲财商",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:6>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#得到大脑×得到录音卡，用起来！",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:7>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#听费勇讲了凡四训",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:8>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    },
+    {
+      "tag": "h3",
+      "t": "#听赵金刚讲王阳明",
+      "p": "div#addTopic-noteInputArea.add-topic-list:1>div.scroll-wrapper:0>ul.add-topic-allList:2>li.choice-wrapper:9>div.choice:0>figure.iget-card:0>figcaption.detail:1>h3.title:0"
+    }
+  ],
+  "audN": 10,
+  "auds": [
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:0>div.article-wrapper:0>div.artical-usage-info:2>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:1>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:2>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:3>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:4>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:6>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:7>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:8>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:9>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    },
+    {
+      "tag": "div",
+      "cls": "play-btn.iconfont",
+      "src": "",
+      "p": "div.ps:0>div:0>div.chapter-mod:1>ul.course-module:1>li.iget-common-f5:10>div.article-wrapper:0>div.artical-usage-info:1>div.play-btn:1"
+    }
+  ]
+}

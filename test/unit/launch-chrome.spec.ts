@@ -417,7 +417,7 @@ describe("launchChrome —— W1-DEF-7 CDP 探活（探活成功 / 失败 / 端�
     expect(fetch.urls.length).toBe(2); // 1 次预检 + 1 次探活即通
   });
 
-  it("探活失败：10 次全不通且子进程未退 → ok=false + error=cdp_not_ready", async () => {
+  it("探活失败（模块默认 visible 档）：40 次全不通且子进程未退 → ok=false + cdp_not_ready + mayStillBeStarting", async () => {
     const mockSpawn = makeMockSpawn();
     const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
     const result = await launchChrome({
@@ -429,8 +429,55 @@ describe("launchChrome —— W1-DEF-7 CDP 探活（探活成功 / 失败 / 端�
     });
     expect(result.ok).toBe(false);
     expect(result.error).toBe("cdp_not_ready");
-    // 1 次预检 + 10 次探活（CDP_PROBE_ATTEMPTS）
-    expect(fetch.urls.length).toBe(11);
+    // P8（v1.18.1）：visible 档窗口 10→40 次（冷启动实测可超 3s，主循环亲历
+    // cdp_not_ready 误报而 Chrome 实起）+ mayStillBeStarting 诚实标注
+    expect((result as { mayStillBeStarting?: boolean }).mayStillBeStarting).toBe(true);
+    // 1 次预检 + 40 次探活（CDP_PROBE_ATTEMPTS_VISIBLE）
+    expect(fetch.urls.length).toBe(41);
+  });
+
+  it("P8：hidden 档维持 10 次探活窗口（无窗口创建，1.7s 实测即通）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+      launchMode: "hidden",
+    });
+    expect(result.error).toBe("cdp_not_ready");
+    expect(fetch.urls.length).toBe(11); // 1 预检 + 10（CDP_PROBE_ATTEMPTS）
+  });
+
+  it("P8：probeAttempts 显式覆盖分档默认（注入 3 次）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+      probeAttempts: 3,
+    });
+    expect(result.error).toBe("cdp_not_ready");
+    expect(fetch.urls.length).toBe(4); // 1 预检 + 3
+  });
+
+  it("P8：chrome_exited 不带 mayStillBeStarting（真失败与慢启动可区分）", async () => {
+    const mockSpawn = makeMockSpawn(5678, "immediate-exit");
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const result = await launchChrome({
+      platform: "mac",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      fetchFn: fetch.fetchFn,
+    });
+    expect(result.error).toBe("chrome_exited");
+    expect((result as { mayStillBeStarting?: boolean }).mayStillBeStarting).toBeUndefined();
   });
 
   it("端口占用：预检即有响应 → ok=false + error=port_in_use 且不 spawn", async () => {

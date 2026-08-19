@@ -140,6 +140,7 @@ outcome = worked | didnt | unknown
 - **stdin-EOF 收尾**（v1.12）：CC 异常退出 → 父进程死 → stdin EOF → 复用幂等 shutdown；受管子进程不再孤儿到 zombie reaper 1h 阈值（上游 SDK #2002 的进程侧缓解）
 - **停机链全路径有界**（v1.13）：Steel 会话释放双层 3s 上界（停机链 race 3s + fetch `AbortSignal.timeout(3s)`）——自托管 Steel 停摆/endpoint 悬挂（实测可挂 ~301s）不再拖死退出
 - **`LASSO_PROXY` 出口代理**（v1.11）：headless 经 `--proxy-server`、Steel 经 session `proxyUrl`；**`browse_logged_in` 永不读取**（用户真实 Chrome 出口原样，铁律）；doctor `proxy_config` 回显
+- **用户运行守则生命周期**（v1.18，doc/28-静默守则审计）：① **D-5 修复**——exit 钩子收尾与优雅停机同裁决 `modes:["hidden"]`（`stopLaunchedChromesSync` 增加 modes 过滤）：visible 登录窗口的存活期不再 = 当前 server 会话存活期（此前 stdin EOF 即被整树 SIGKILL，三次复现实锤）；② **C2 opt-in 自动恢复**——`LASSO_AUTO_HIDE_AFTER_LOGIN=1` 时 chrome-idle-reaper 对台账 visible Chrome 做「登录墙消失 + 延迟窗（默认 10s，`LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`）+ agent 安静」三检后 PID 定向 hide 转后台静默（默认 off；hide 非 kill，`chrome-show` 可逆；失效方向安全——判据不满足就降级回手动）。INV-82 守六组断言
 
 ## 4. desktop：四档新实现（v1.11 → v1.13，从「能看」到「能点」）
 
@@ -195,6 +196,7 @@ AxBackend interface（三平台同构 OutlineNode 契约）
 8. **不变量脚本化**（CI 守门）：**81 条 INV** 静态 grep + 形状测，防 refactor 回退；另有 `inv-selftest` 20 样本「注入违规 → 必红」复证（见 §10）
 9. **平台差异隔离在 backend 内部**：AxBackend 三平台同构 OutlineNode 契约；TS 层零平台字面量
 10. **质量轴静态映射**（v1.17 A1）：`quality`（api/scrape/stale）按 `served_by` 静态映射，零启发式——宁缺毋假（查不到就不标）
+11. **用户运行守则**（v1.18，doc/28-静默守则审计确立为设计宪法）：「能后台静默执行就尽量后台静默执行；不能完全静默则用户介入后**及时恢复**静默执行」。三条可判定子句——S1 能静默则静默（存在零打扰路径时不选非静默实现）/ S2 介入最小化（只在不可避免处介入，信号明确及时，范本 = C1 elicitation 同轮继续）/ S3 及时恢复（自动化三档：L2 系统自动 > L1 CC 可调 > L0 人工；kill 永远不是恢复手段——hide 才是）
 
 ## 6. 边界（08 §7）
 
@@ -311,7 +313,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | 全量功能测试 | doc/17 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
 | 契约锁 | chrome-devtools-mcp@**1.7.0** version pin（`LOCKED_CDP_MCP_VERSION` 单一真源） | 上游小版本升级不破 Lasso；迁移要点见 §2.1 | SubprocessManager.ts |
 
-## 11. 不变量（81 条）分类
+## 11. 不变量（82 条）分类
 
 | 范畴 | INV 编号 | 守的是什么 |
 |---|---|---|
@@ -329,6 +331,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | v1.9-v1.10 浏览器生命周期 | INV-77 / 78 | 台账 + chrome-stop 归属验证 / tab 快照恢复三守卫 / hidden 档 flag 集不漂移 / idle reaper 零第二 kill 原语 |
 | v1.11 1.7.0 迁移守护 | INV-79 | 版本锁 1.7.0 / 遥测关 / --wsEndpoint / launch 级 stealth / 零哑 flag 形态 |
 | v1.14-v1.17 运营事实与死层清除 | INV-54 / 80 | 死层墓碑：Bing（BingChannel 全链删、配置静默忽略）/ zhipu 直连（无 SearchChannel 类 / engine enum 无 "zhipu" / config 键容忍不消费 / doctor 报 retired） |
+| v1.18 用户运行守则生命周期 | **82** | D-5 exit 钩子 modes:['hidden']（visible 登录窗口不被 server 退出杀死）/ C2 自动 hide 默认 off + 只挂 visible 分支永不进 kill 路径 / 四重护栏（见墙→延迟窗→agent 安静→失败降级）/ hide 走 chrome-hide PID 定向 / 延迟窗默认单一真源 |
 
 完整 INV 列表 + 释义见 `src/invariants/check-invariants.mjs` 顶部注释。
 
@@ -422,11 +425,11 @@ $ lasso launch-chrome
 
 ## 14. 版本与发布
 
-- **当前版本**：`1.17.2`（doc/27 静默性全面审计落地：S-7 自建后台 tab + S-10 close_page 契约与所有权修复、INV-78(d) 精化；2026-08-19）
+- **当前版本**：`1.18.0`（doc/28 静默守则审计修复轮：D-5 exit 钩子 visible 生存 + C2 登录后自动 hide opt-in + INV-82 + 守则入文档；2026-08-19）
 - **version 真源**：`package.json` + `src/index.ts:LASSO_SERVER_VERSION` + `src/doctor/doctor.ts:LASSO_VERSION`（INV-63 守：三处必字面量一致）
 - **doctor readiness**：全量 check pass → `ready: true`（检查项随版本增长，以实跑输出为准）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁四链**：`npm run build` / `npm test`（2253）/ `npm run check-invariants`（81）/ `npm run inv-selftest`（20）+ `cargo test`（207）
+- **门禁四链**：`npm run build` / `npm test`（2292）/ `npm run check-invariants`（82）/ `npm run inv-selftest`（23）+ `cargo test`（207）
 
 ## 15. 质量与决策主线（doc/19 → doc/25 → doc/17）
 

@@ -212,6 +212,43 @@ const VIOLATION_SAMPLES = [
       replace: ["query_len: args.query.length", "query: args.query"],
     },
   },
+  {
+    // v1.18（doc/28 fix-2）：INV-82 (a)——exit 钩子丢 modes 过滤（D-5 事故形态
+    // 复刻：P1 只修优雅路径、exit 兜底回潮无条件杀全台账）→ 红。
+    inv: "INV-82",
+    desc: "exit 钩子 stopLaunchedChromesSync 丢 modes:['hidden']（D-5 回潮）",
+    file: "index.ts",
+    mutation: {
+      replace: [
+        'stopLaunchedChromesSync({ modes: ["hidden"], logFn: (p) => logger.info(p) })',
+        "stopLaunchedChromesSync({ logFn: (p) => logger.info(p) })",
+      ],
+    },
+  },
+  {
+    // v1.18（doc/28 fix-2）：INV-82 (b)——C2 默认翻 on（opt-in 裁决破坏）→ 红。
+    inv: "INV-82",
+    desc: "登录后自动 hide 默认翻 on（opt-in 裁决破坏）",
+    file: "config/config.ts",
+    mutation: {
+      replace: [
+        "LASSO_AUTO_HIDE_AFTER_LOGIN: false,",
+        "LASSO_AUTO_HIDE_AFTER_LOGIN: true,",
+      ],
+    },
+  },
+  {
+    // v1.18（doc/28 fix-2）：INV-82 (d)——护栏①（从未见墙不 hide）拆除 → 红。
+    inv: "INV-82",
+    desc: "auto-hide 护栏①拆除（从未见墙也允许 hide）",
+    file: "launcher/chrome-idle-reaper.ts",
+    mutation: {
+      replace: [
+        "if (!loginWallSeen.has(rec.port)) return; // 护栏①",
+        "if (loginWallSeen.size < 0) return; // 护栏① removed (mutation)",
+      ],
+    },
+  },
 ];
 
 // ============================================================

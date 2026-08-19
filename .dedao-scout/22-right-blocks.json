@@ -1,0 +1,70 @@
+{
+  "found": true,
+  "kids": [
+    {
+      "i": 0,
+      "tag": "div",
+      "cls": "pageControl.iget-common-c2",
+      "h": 40,
+      "t": "收起目录 设置文本 文字 小字号 中字号 大字号"
+    },
+    {
+      "i": 1,
+      "tag": "div",
+      "cls": "",
+      "h": 491,
+      "t": "发刊词丨只给你地道的经济学思维 薛兆丰的经济学课"
+    },
+    {
+      "i": 2,
+      "tag": "div",
+      "cls": "article-body",
+      "h": 14348,
+      "t": "从2010年起，我每年都在北京大学讲授《经济学原"
+    },
+    {
+      "i": 3,
+      "tag": "div",
+      "cls": "article-time-info.iget-common-c3",
+      "h": 30,
+      "t": "首次发布: 2017年2月20日 10:56"
+    },
+    {
+      "i": 4,
+      "tag": "div",
+      "cls": "my-comment",
+      "h": 305,
+      "t": "我的留言 王栋 打开悬浮窗 全屏 写留言，与作者"
+    },
+    {
+      "i": 5,
+      "tag": "div",
+      "cls": "message-v2",
+      "h": 6323,
+      "t": "用户留言 全部 精选 筛选 综合排序 最新发布 "
+    }
+  ],
+  "inner": [
+    {
+      "i": 0,
+      "tag": "div",
+      "cls": "article-cover",
+      "h": 345,
+      "t": ""
+    },
+    {
+      "i": 1,
+      "tag": "div",
+      "cls": "article-title.iget-common-c1",
+      "h": 36,
+      "t": "发刊词丨只给你地道的经济学思维"
+    },
+    {
+      "i": 2,
+      "tag": "div",
+      "cls": "article-info",
+      "h": 70,
+      "t": "薛兆丰的经济学课"
+    }
+  ]
+}

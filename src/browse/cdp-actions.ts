@@ -64,6 +64,24 @@ export const CDP_UPSTREAM_TOOL_NAMES = Object.freeze({
 });
 
 /**
+ * P10（v1.18.1，得到实战问题集 P10）：lasso action → 上游工具名（BrowseChannel
+ * browseSingle 前置门的查表）。锁定的 chrome-devtools-mcp@1.7.0 实测**不暴露**
+ * `pdf` 工具（-32602 "Tool pdf not found"，npx 缓存 tools/ 目录白盒核实无 pdf），
+ * 此前单 action pdf 先 NAV_FIRST 白导航一次才在 callTool 处失败（outcome=unknown
+ * 假可重试）。本表 + BrowseChannel 前置门把「上游工具缺失」在导航前判为诚实 didnt。
+ */
+export const ACTION_TO_UPSTREAM_TOOL: Readonly<Record<string, string>> = Object.freeze({
+  pdf: CDP_UPSTREAM_TOOL_NAMES.pdf,
+  network: CDP_UPSTREAM_TOOL_NAMES.network_log,
+  console: CDP_UPSTREAM_TOOL_NAMES.console_log,
+});
+
+/**
+ * P10：上游工具缺失探测在 BrowseChannel.isUpstreamToolMissing（per-client
+ * 缓存 + listTools 失败放行策略归 channel 层）；本文件只提供查表。
+ */
+
+/**
  * Lasso network_filter → 上游 resourceTypes 映射（1.7.0 list_network_requests
  * FILTERABLE_RESOURCE_TYPES：document/stylesheet/image/media/font/script/xhr/fetch/...）。
  * "all" / "3rd-party" 不过滤（3rd-party 判定在 network.ts 工具层，host 精确匹配）。

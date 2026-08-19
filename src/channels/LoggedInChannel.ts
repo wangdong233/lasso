@@ -370,6 +370,82 @@ export class LoggedInChannel extends BrowseChannel {
   }
 
   /**
+   * P6（v1.18.1，得到实战问题集 P6）："No page selected" 零页面自愈。
+   *
+   * 覆盖形态（server4-stderr.log 05:26:04 白盒实证）：上一代 server 停机把台账
+   * 清空后遗留的 hidden Chrome（--no-startup-window，0 page target）——
+   *  - precreateBackgroundTabIfHidden 判定门（台账 launchMode==="hidden"）跳过；
+   *  - ensureOwnPageSelected 因 list_pages 零页列表 parse null 而 silent bail；
+   *  - 上游所有页级调用经 getSelectedMcpPage 抛 "No page selected"。
+   *
+   * 自愈（全用已实证零打扰原语，与 ensureOwnPageSelected 同款）：
+   *  1. CdpClient.createBackgroundTarget（Target.createTarget {background:true}，
+   *     E7 零抢焦）预建 about:blank；
+   *  2. list_pages id-diff 归因（上游 targetCreated 事件异步，2 轮 × 300ms）；
+   *     零页起步 → 任何新页皆本操作所建，但归因不唯一仍放弃（宁失败不误选）；
+   *  3. select_page {pageId}（不带 bringToFront = 零激活纯指针切换）。
+   * 任一步失败 → false（browseSingle 走原错误路径，classify 落 unknown）。永不 throw。
+   */
+  protected override async recoverNoPageSelected(c: McpClient): Promise<boolean> {
+    try {
+      // 1. 建前列表作 id-diff 基线（零页形态 parse null → 空基线）
+      const before = await this.listUpstreamPages(c);
+      const beforeIds = new Set((before ?? []).map((p) => p.pageId));
+      // 2. CDP 预建 background tab（失败返 null → 诚实 false）
+      const cdp = new CdpClient(this.cdpPort);
+      let targetId: string | null = null;
+      try {
+        targetId = await cdp.createBackgroundTarget("about:blank");
+      } finally {
+        await cdp.close();
+      }
+      if (!targetId) return false;
+      // 3. id-diff 归因新页
+      let fresh: UpstreamPageEntry | undefined;
+      for (let attempt = 0; attempt < 2 && fresh === undefined; attempt++) {
+        if (attempt > 0) await sleep(300);
+        const after = await this.listUpstreamPages(c);
+        if (after === null) continue;
+        const news = after.filter((p) => !beforeIds.has(p.pageId));
+        if (news.length === 1) {
+          fresh = news[0];
+        } else if (news.length > 1) {
+          logger.warn({
+            evt: "no_page_selfheal_ambiguous",
+            new_pages: news.length,
+            cdp_port: this.cdpPort,
+          });
+          return false;
+        }
+      }
+      if (fresh === undefined) {
+        logger.warn({
+          evt: "no_page_selfheal_not_visible",
+          targetId,
+          cdp_port: this.cdpPort,
+        });
+        return false;
+      }
+      // 4. 上游选中（零激活纯指针切换）——browseSingle 随即原样重试该 action
+      await c.callTool("select_page", { pageId: fresh.pageId });
+      logger.info({
+        evt: "no_page_selfheal_selected",
+        pageId: fresh.pageId,
+        targetId,
+        cdp_port: this.cdpPort,
+      });
+      return true;
+    } catch (e) {
+      logger.warn({
+        evt: "no_page_selfheal_failed",
+        error: String(e),
+        cdp_port: this.cdpPort,
+      });
+      return false;
+    }
+  }
+
+  /**
    * v1.17.2：读上游 `list_pages` → 解析为 UpstreamPageEntry[]。
    * 返 null = 列表不可解析（空响应 / 上游格式漂移）——调用方降级。
    */

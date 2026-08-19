@@ -1,0 +1,105 @@
+{
+  "cleanup": {
+    "cleaned": true
+  },
+  "diag": {
+    "scrollH": 14654,
+    "maxVisibleBottom": 14654,
+    "gap": 0,
+    "bodyMb": "0px",
+    "htmlH": "682px",
+    "pageRemainder": 10,
+    "tails": [
+      {
+        "tag": "div",
+        "cls": "iget-pc",
+        "bottom": 14654,
+        "h": 14654,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "得到一下\n             得到"
+      },
+      {
+        "tag": "div",
+        "cls": "",
+        "bottom": 14654,
+        "h": 14654,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "薛兆丰的经济学课\n     \n     "
+      },
+      {
+        "tag": "div",
+        "cls": "iget-articles",
+        "bottom": 14654,
+        "h": 14654,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "薛兆丰的经济学课\n     \n     "
+      },
+      {
+        "tag": "div",
+        "cls": "",
+        "bottom": 14654,
+        "h": 0,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "确认退出编辑吗？\n     当前笔记尚未"
+      },
+      {
+        "tag": "div",
+        "cls": "article-note-editor",
+        "bottom": 14654,
+        "h": 0,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "确认退出编辑吗？\n     当前笔记尚未"
+      },
+      {
+        "tag": "aside",
+        "cls": "notes-wrap",
+        "bottom": 14654,
+        "h": 0,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "收起\n       取消 写笔记 发布 "
+      },
+      {
+        "tag": "div",
+        "cls": "",
+        "bottom": 14654,
+        "h": 0,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "编辑\n           \n     "
+      },
+      {
+        "tag": "div",
+        "cls": "iget-global-prompt",
+        "bottom": 14654,
+        "h": 0,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "知道了"
+      },
+      {
+        "tag": "div",
+        "cls": "article",
+        "bottom": 14634,
+        "h": 14574,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "发刊词丨只给你地道的经济学思维\n    "
+      },
+      {
+        "tag": "div",
+        "cls": "article-wrap",
+        "bottom": 14634,
+        "h": 14574,
+        "mb": "0px",
+        "pb": "0px",
+        "txt": "发刊词丨只给你地道的经济学思维\n    "
+      }
+    ]
+  }
+}

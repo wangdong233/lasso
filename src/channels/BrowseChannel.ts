@@ -65,7 +65,12 @@ import {
 // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：doPdf + doConsole + doNetwork
 //   追加进 actionDispatch Map
 // INV-33 守：pdf + console + network 三 action 必经 dispatch Map，禁第二套 dispatch
-import { doPdf, doConsole, doNetwork } from "../browse/cdp-actions.js";
+import {
+  doPdf,
+  doConsole,
+  doNetwork,
+  ACTION_TO_UPSTREAM_TOOL,
+} from "../browse/cdp-actions.js";
 // v1.17 Phase F（parse24 §6.2 C2）：include_refs opt-in——refs 注入/附录/click-by-ref
 //   纯函数 helper（expr 构造 + 附录格式化；无 SDK 依赖，单测友好）
 import {
@@ -94,6 +99,12 @@ export type ActionHandler = (
 
 /** preview 字段软上限（≈1k tokens；粗算 4 chars/token）。 */
 const PREVIEW_MAX_CHARS = 4000;
+
+/**
+ * P6（v1.18.1）：上游 0 page target 时页级调用的错误签名
+ * （chrome-devtools-mcp McpContext.getSelectedMcpPage 的 Error 文本原样）。
+ */
+const NO_PAGE_SELECTED_RE = /\bNo page selected\b/;
 
 // ============================================================
 // BrowseChannel 抽象
@@ -284,6 +295,62 @@ export abstract class BrowseChannel extends UiChannel {
   /**
    * v0.2 单 action 路径（原 browse() 实装，零行为变更；仅迁出便于 browse() 入口分流）。
    */
+  /**
+   * W2-DEF-N1 的执行体（P6 v1.18.1 抽出以便自愈重试原样复跑）：
+   * NAV_FIRST 采集类 action 先导航，再跑 handler。
+   */
+  private async dispatchAction(
+    c: McpClient,
+    action: string,
+    url: string,
+    options: BrowseOptions,
+    handler: ActionHandler,
+  ): Promise<Partial<BrowseResult>> {
+    if (NAV_FIRST_ACTIONS.has(action)) {
+      const nav = this.actionDispatch.get("navigate");
+      if (nav) await nav(c, url, options);
+    }
+    return await handler(c, url, options);
+  }
+
+  /**
+   * P6（v1.18.1，得到实战问题集 P6）："No page selected" 零页面自愈钩子。
+   * 默认 false（HeadlessChannel 上游自管浏览器无 0-page 形态，行为零变化）；
+   * LoggedInChannel override：CDP 预建 background tab + 上游 select_page，
+   * 成功返 true → browseSingle 原样重试一次该 action。
+   */
+  protected async recoverNoPageSelected(_c: McpClient): Promise<boolean> {
+    return false;
+  }
+
+  /**
+   * P10（v1.18.1）：上游工具缺失探测（带 per-client 缓存——同一上游子进程
+   * 生命周期内工具集不变；listTools 抛错 → false 放行，让真实调用浮出错误）。
+   */
+  private async isUpstreamToolMissing(
+    c: McpClient,
+    toolName: string,
+  ): Promise<boolean> {
+    let known = this.upstreamToolsByClient.get(c);
+    if (known === undefined) {
+      try {
+        const tools = await c.listTools();
+        known = new Set(tools.map((t) => t.name));
+      } catch {
+        known = null; // 探测失败：永久放行该 client（不猜）
+      }
+      this.upstreamToolsByClient.set(c, known);
+    }
+    if (known === null) return false;
+    return !known.has(toolName);
+  }
+
+  /** P10：per-client 上游工具名缓存（null = 探测失败档，放行）。 */
+  private readonly upstreamToolsByClient = new WeakMap<
+    McpClient,
+    Set<string> | null
+  >();
+
   private async browseSingle(
     url: string,
     action: string,
@@ -304,15 +371,46 @@ export abstract class BrowseChannel extends UiChannel {
     try {
       const c = await this.getMcpClient();
       this.touchKeepalive(); // v1.9：action dispatch 后保活（防 idle watchdog 误杀）
+      // P10（v1.18.1，得到实战问题集 P10）：上游工具缺失前置门（导航**之前**）。
+      // 锁定的 chrome-devtools-mcp@1.7.0 实测不暴露 `pdf` 工具——此前单 action pdf
+      // 先 NAV_FIRST 白导航一次（logged_in 场景还会把当前页换掉）才在 callTool 处
+      // 失败，outcome=unknown 假可重试。此门把 cdp-actions.ts 头注释承诺的
+      // 「upstream_unsupported:<action> 诚实 didnt」语义落地到 browse 路径。
+      // listTools 每 client 只探一次（结果缓存）；探测自身失败 → 放行（不猜）。
+      const upstreamTool = ACTION_TO_UPSTREAM_TOOL[action];
+      if (upstreamTool && (await this.isUpstreamToolMissing(c, upstreamTool))) {
+        return {
+          outcome: "didnt",
+          data: null,
+          served_by: this.name,
+          fallback_used: false,
+          retrieval_method: `upstream_unsupported:${action}`,
+          error: `upstream_unsupported:${action}:tool_${upstreamTool}_not_in_listTools`,
+        };
+      }
       // W2-DEF-N1（v1.8.1）：URL 驱动的采集类 action 先导航到目标页——
       // 此前 doNetwork/doScreenshot/doPdf 直接在当前页（首会话 = about:blank）执行，
       // network 恒 0 entries（wave2 实证）。navigate 失败（404/DNS/...）由下方
       // catch 统一 classify；wrapNavigate 的 afterNavigate 顺带注入 stealth。
-      if (NAV_FIRST_ACTIONS.has(action)) {
-        const nav = this.actionDispatch.get("navigate");
-        if (nav) await nav(c, url, options);
+      let partial: Partial<BrowseResult>;
+      try {
+        partial = await this.dispatchAction(c, action, url, options, handler);
+      } catch (e) {
+        // P6（v1.18.1，得到实战问题集 P6）：上游 chrome-devtools-mcp 在 0 page
+        // target 状态（--no-startup-window 起的 Chrome；台账被上一代 server 停机
+        // 清空的遗留 Chrome——precreate 判定门跳过 + ensureOwnPageSelected 零页
+        // silent bail）下所有页级调用抛 "No page selected"（getSelectedMcpPage）。
+        // 自愈钩子（LoggedInChannel：CDP 预建 background tab + select_page）成功 →
+        // 原样重试一次；失败/不支持 → 原错误路径（classify 落 unknown）。
+        if (
+          NO_PAGE_SELECTED_RE.test(String(e)) &&
+          (await this.recoverNoPageSelected(c))
+        ) {
+          partial = await this.dispatchAction(c, action, url, options, handler);
+        } else {
+          throw e;
+        }
       }
-      const partial = await handler(c, url, options);
 
       // 写盘 + 短指针（v0.1 简化版；v0.3 升 StateStore LRU + stateId 反查）
       const stateId = randomUUID();
@@ -1067,6 +1165,14 @@ async function doEvaluate(
   const r = (await c.callTool("evaluate_script", {
     function: `() => {\n${opts.js}\n}`,
   })) as EvaluateResult;
+  // P5（v1.18.1，得到实战问题集 P5）：上游错误假成功治理——与 doWait
+  // （W-DEF-R11-1 v1.17.1 同病同修）同范式：McpClient.callTool 对 is_error 不
+  // throw，此前不检 → 协议超时（"Network.enable timed out"）/ 无页面
+  // （"No page selected"）/ 脚本异常堆栈全部被当 preview 返回，outcome 恒 worked。
+  // isError → throw eval_upstream_error → classifyBrowseError 落 unknown（可重试）。
+  if (r.isError) {
+    throw new Error(`eval_upstream_error:${(extractEvalPreview(r)).slice(0, 120)}`);
+  }
   // 经 parseEvalResult 解围栏取脚本返回值；拿不到就退回原文展示
   const v = parseEvalResult(r);
   const preview =
@@ -1075,8 +1181,27 @@ async function doEvaluate(
       : typeof v === "string"
         ? v
         : JSON.stringify(v).slice(0, PREVIEW_MAX_CHARS);
+  // P5 兜底：isError 标志缺失但响应文本即错误本体（上游 1.7.0 performEvaluation
+  // 把 evaluateHandle 异常序列化进 content 的形态；签名窄匹配防误伤正常返回值）。
+  // 仅在 v==null（未解析出脚本值 = 响应非 ```json 围栏形态）时检查。
+  if (v == null && UPSTREAM_EVAL_ERROR_SIGNATURES.some((re) => re.test(preview))) {
+    throw new Error(`eval_upstream_error:${preview.slice(0, 120)}`);
+  }
   return { preview: truncatePreview(preview) };
 }
+
+/**
+ * P5：上游 evaluate 错误文本签名（实测三种形态，问题集 P5 白盒证据）——
+ * ① 协议超时 "Network.enable timed out. Increase the 'protocolTimeout' …"
+ * ② 脚本异常序列化 "Error: xxx\npptr:evaluateHandle; …"
+ * ③ 零页面 "No page selected"（McpContext.js:250 整串恰为此）
+ * 窄匹配（锚定/整串），正常脚本返回值（如查无元素取到的页面文案）不误伤。
+ */
+const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
+  /timed out\. Increase the 'protocolTimeout'/,
+  /^Error:[\s\S]*\bpptr:/,
+  /^No page selected$/,
+];
 
 // ============================================================
 // SDK 返回结构解析
@@ -1170,5 +1295,11 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt
   // （不 fallback、不猜——CC 重新 extract with include_refs 取新 refs）
   if (m.includes("ref_stale")) return "didnt";
+  // P10（v1.18.1，得到实战问题集 P10）：上游工具缺失是确定性「明确不可得」
+  // （锁定的 chrome-devtools-mcp@1.7.0 无 pdf 工具，-32602 "Tool pdf not found"；
+  // 重试/fallback 都无济于事）→ didnt。此前落 unknown 假可重试——steps 链里
+  // pdf step 死后整链 unknown（extract-batch1.mjs 实测 chain_failed:unknown:*）。
+  if (m.includes("upstream_unsupported:")) return "didnt";
+  if (/tool \S+ not found/.test(m) || m.includes("unknown tool")) return "didnt";
   return "unknown";
 }

@@ -7,8 +7,26 @@
  * （工作流 agent 的 MCP 脚本）退出时停机钩子 stopLaunchedChromes({all:true})
  * 把台账 Chrome 全关——用户登录窗口被砸（台账清空 + 进程归零实证）。
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+// 台账隔离（review-03 F-1 修复）：P3 的 launchChrome 注入测试会经 recordLaunch
+// 写磁盘台账——此前无 LASSO_LAUNCHED_CHROMES_PATH 覆盖，全量套跑一次就往真实
+// ~/.cache/lasso/launched-chromes.json 落一条陈旧 entry（实测 pid 42 污染）。
+let __tmpDir: string;
+
+beforeEach(async () => {
+  __tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "lasso-p1-lifecycle-"));
+  process.env.LASSO_LAUNCHED_CHROMES_PATH = path.join(__tmpDir, "launched-chromes.json");
+});
+
+afterEach(async () => {
+  delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+  await fs.promises.rm(__tmpDir, { recursive: true, force: true });
+});
 
 describe("P1 visible Chrome 生命周期保护", () => {
   it("chrome-stop：modes:['hidden'] 过滤后 visible 记录不被选中（白盒：过滤逻辑存在且按 launchMode）", async () => {
@@ -24,9 +42,12 @@ describe("P1 visible Chrome 生命周期保护", () => {
     expect(src).toMatch(/stopLaunchedChromes\(\{ all: true, modes: \["hidden"\]/);
   });
 
-  it("idle reaper：visible 记录直接 continue（永不 idle 收割）", () => {
+  it("idle reaper：visible 记录直接 continue（永不 idle 收割；C2 autoHide 分支也在 continue 之前，不进 kill 路径）", () => {
     const src = readFileSync("src/launcher/chrome-idle-reaper.ts", "utf8");
-    expect(src).toMatch(/launchMode === "visible"\) continue/);
+    // v1.18 C2 后形态：visible 分支是块体（autoHide 可选步 + continue），
+    // continue 仍先于任何 stopFn 调用（kill 豁免语义不变）
+    const m = src.match(/launchMode === "visible"\) \{[\s\S]{0,400}?continue;/);
+    expect(m).not.toBeNull();
   });
 
   it("行为验证：modes 过滤路径可安全执行（空台账 no-op 不炸）", async () => {

@@ -21,6 +21,7 @@
  *                     + v1.8 wave1 修复清单（doc/17-执行记录/wave1-summary.md §4）加 INV-76 上游契约 + 接线回归守护（W1-DEF-1..10 / D1-D2 / D6-D8 / D11 / F-CLI-01）
  *                     + v1.17 A3（doc/25 五项裁决裁决③）加 INV-80 zhipu 直连死层清除墓碑守卫（machine_mcp 保留为智谱能力唯一载体）
  *                     + v1.17 Phase D（doc/25 五项裁决裁决④ B1 第四通道）加 INV-81 search_local 本地私有搜索隐私红线（只读/无全文导出/limit≤50/零网络/日志 query_len/四处联动/notes_deferred_v2）
+ *                     + v1.18（doc/28-静默守则审计 fix-2）加 INV-82 用户运行守则生命周期红线（D-5 exit 钩子 modes 过滤 + C2 登录后自动 hide opt-in 四重护栏）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -108,6 +109,7 @@
  *  INV-75 creepjs 门禁纯 doctor 侧零回归守护（INV-73/74 后）；INV-76 v1.8 wave1 修复回归守护 —— 上游 chrome-devtools-mcp@0.3.0 契约（evaluate_script 函数表达式 / wait_for text string / take_screenshot 自落盘+stat 校验）+ CdpClient Storage 域 + launch-chrome 探活 + 孤儿清理 + rust crash 归因 + screenshot_region 跨语言配对（TS↔rust-helper）+ caller-tier 接线 + read_text 四处联动 + CLI 惯例（--version/--stealth-check/未知参数非零退）—— v1.8
  *  INV-80 zhipu 直连死层清除墓碑（v1.17 A3，doc/25 裁决③）—— channels/SearchChannel.ts 不存在；无 ZhipuSearchChannel import / "search.zhipu" 字面量；DEFAULT_FALLBACK_ORDER 无 zhipu；providers 无 ZHIPU ProviderConfig；config 不消费 ZHIPU_API_KEY（键容忍读）；doctor zhipu_keys_retired；engine enum 无 "zhipu"
  *  INV-81 search_local 本地私有搜索隐私红线（v1.17 Phase D，doc/25 裁决④）—— 源库禁写（唯一写面 mkdtemp 临时目录）；无 content 全文导出字段；limit≤50 硬顶；模块零网络（import 白名单）；日志只记 query_len；四处联动（注册器+index.ts 注册+V5_TOOL_TO_CHANNEL+descriptions）；notes_deferred_v2 诚实 didnt
+ *  INV-82 用户运行守则生命周期红线（v1.18，doc/28-静默守则审计）—— exit 钩子 modes:['hidden']（D-5 visible 登录窗口生存）；同步版过滤同款 + 零 await；C2 登录后自动 hide 默认 off（opt-in）；只挂 visible 分支永不进 kill 路径；四重护栏（见墙/延迟窗/agent 安静/失败降级）机械化；hide 走 chrome-hide PID 定向；延迟窗默认单一真源（reaper 导出，config 引用）
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -4430,6 +4432,87 @@ const assertions = [
 
       // ----- (g) notes deferred 诚实 didnt -----
       if (!/notes_deferred_v2/.test(regCode)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // v1.18（doc/28-静默守则审计）INV-82 —— 用户运行守则生命周期红线
+  // ============================================================
+  // 守（D-5 修复 + C2 opt-in 自动 hide，6 组断言）：
+  //  INV-82  v1.18 用户运行守则生命周期红线（doc/28 audit/fix-2/verify）：
+  //    (a) exit 钩子 stopLaunchedChromesSync 传 modes:["hidden"]（D-5：P1 v1.17.3
+  //        只修了优雅 shutdown，exit 兜底路径曾把用户 visible 登录窗口整树
+  //        SIGKILL——verify §6 三次复现实锤）；同步版过滤与 async 版同款
+  //        （launchMode ?? "hidden"）+ 零 await 纪律
+  //    (b) C2 auto-hide 默认 off：CONFIG_TEMPLATE LASSO_AUTO_HIDE_AFTER_LOGIN=false
+  //        + parse 仅显式真值（1/true/yes/on）
+  //    (c) reaper 内 auto-hide 只挂在 visible 分支（considerAutoHide 在 continue
+  //        之前；visible 永不进 stopFn kill 路径——N4）
+  //    (d) 四重护栏机械化：①从未见墙不 hide（loginWallSeen 前置 return）②延迟窗
+  //        （wallClearSince + autoHideDelayMs）③agent 安静度（touchMap lastUse）④
+  //        探测失败重置 + hide 失败永久降级（autoHideDone）
+  //    (e) hide 走 chrome-hide.ts PID 定向原语（import 契约；无第二套 AppleScript）
+  //    (f) 延迟窗默认单一真源（reaper 导出常量；config 从 reaper import）
+  {
+    id: "INV-82-silence-charter-lifecycle",
+    desc:
+      "v1.18：用户运行守则生命周期红线（doc/28 静默守则审计）——" +
+      "（a）exit 钩子 modes:['hidden']（D-5：visible 登录窗口不再被 server 退出杀死）+ " +
+      "同步版过滤零 await；（b）登录后自动 hide 默认 off（opt-in 裁决）；（c）auto-hide " +
+      "只挂 visible 分支且永不进 kill 路径；（d）四重护栏（见墙→延迟窗→agent 安静→失败降级）" +
+      "全部机械化存在；（e）hide 走 chrome-hide PID 定向原语；（f）延迟窗默认单一真源",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const indexCode = stripComments(byPath(/^index\.ts$/)?.text ?? "");
+      const stopSrc = byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "";
+      const stopCode = stripComments(stopSrc);
+      const reaperSrc = byPath(/^launcher\/chrome-idle-reaper\.ts$/)?.text ?? "";
+      const reaperCode = stripComments(reaperSrc);
+      const configCode = stripComments(byPath(/^config\/config\.ts$/)?.text ?? "");
+
+      // ----- (a) D-5：exit 钩子 + 同步版 modes 过滤 -----
+      if (!/stopLaunchedChromesSync\(\{ modes: \["hidden"\]/.test(indexCode)) return false;
+      const syncBody = stopSrc.match(
+        /export function stopLaunchedChromesSync[\s\S]*?\n\}/,
+      );
+      if (!syncBody) return false;
+      if (!/opts\.modes[\s\S]{0,200}launchMode \?\? "hidden"/.test(syncBody[0])) return false;
+      if (/\bawait\b/.test(syncBody[0])) return false; // exit 钩子零 await 纪律
+
+      // ----- (b) C2 默认 off + 显式真值解析 -----
+      if (!/LASSO_AUTO_HIDE_AFTER_LOGIN:\s*false/.test(configCode)) return false;
+      if (!/parseAutoHideAfterLogin/.test(configCode)) return false;
+      if (!/"1" \|\| v === "true" \|\| v === "yes" \|\| v === "on"/.test(configCode)) return false;
+      if (!/autoHideAfterLogin: false|autoHideAfterLogin === true/.test(reaperCode)) {
+        return false; // reaper 侧 opt-in 门（默认关）
+      }
+
+      // ----- (c) auto-hide 只挂 visible 分支（kill 豁免不破） -----
+      const visibleBranch = reaperCode.match(
+        /launchMode === "visible"\) \{[\s\S]{0,400}?continue;/,
+      );
+      if (!visibleBranch) return false;
+      if (!/considerAutoHide/.test(visibleBranch[0])) return false; // autoHide 在块内、continue 前
+      if (!/autoHideAfterLogin\) await considerAutoHide/.test(reaperCode)) return false;
+
+      // ----- (d) 四重护栏存在性 -----
+      if (!/loginWallSeen\.has\(rec\.port\)\) return/.test(reaperCode)) return false; // ①
+      if (!/wallClearSince\.get\(rec\.port\)/.test(reaperCode)) return false; // ②
+      if (!/autoHideDelayMs\) return/.test(reaperCode)) return false; // ②延迟窗门
+      if (!/touchMap\.get\(rec\.port\)/.test(reaperCode)) return false; // ③（idle 收割与 autoHide 共用活动源）
+      if (!/chrome_auto_hide_probe_error/.test(reaperCode)) return false; // ④探测失败
+      if (!/autoHideDone\.set\(rec\.port, "failed"\)/.test(reaperCode)) return false; // ④永久降级
+      if (!/wallClearSince\.delete\(rec\.port\)/.test(reaperCode)) return false; // 失败/再见墙重置
+
+      // ----- (e) hide 原语单一真源（chrome-hide PID 定向） -----
+      if (!/chrome-hide\.js/.test(reaperSrc)) return false;
+      if (!/hideChromeByPid/.test(reaperCode)) return false;
+      if (/killTreeSync|process\.kill/.test(reaperCode)) return false; // INV-78c 红线在 C2 扩展后仍成立
+
+      // ----- (f) 延迟窗默认单一真源 -----
+      if (!/AUTO_HIDE_AFTER_LOGIN_DELAY_MS = 10_000/.test(reaperCode)) return false;
+      if (!/AUTO_HIDE_AFTER_LOGIN_DELAY_MS/.test(configCode)) return false; // config 从 reaper 取默认
 
       return true;
     },

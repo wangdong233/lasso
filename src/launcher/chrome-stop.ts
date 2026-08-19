@@ -195,24 +195,55 @@ export async function stopLaunchedChromes(
 // ============================================================
 // 同步路径（process.on("exit") 钩子；零 await 纪律——W1-DEF-6 先例）
 // ============================================================
+/** 同步版选项（D-5（v1.18，doc/28-静默守则审计 verify §6）：与 async 版同款 modes 过滤 + 可注入）。 */
+export interface ChromeStopSyncOptions {
+  /**
+   * D-5（v1.18）：exit 钩子收尾同样只许碰 hidden——visible 档是用户拥有的窗口，
+   * 任何 server 进程退出（优雅 shutdown 之外的 exit 钩子兜底路径）都无权关闭它。
+   * P1（v1.17.3）只修了优雅停机路径；本参数把同一裁决补到 exit 钩子。
+   */
+  modes?: Array<"hidden" | "visible">;
+  /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
+  aliveFn?: (pid: number) => boolean;
+  /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
+  psFn?: (pid: number) => string;
+  /** 测试注入：树杀原语（默认 util/kill-tree killTreeSync；reason 恒 "chrome-stop-exit"）。 */
+  killTreeFn?: (pid: number) => void;
+  /** 结构化日志注入。 */
+  logFn?: LedgerLogFn;
+}
+
 /**
  * 同步版收尾：readLedgerSync + ps 验证 + killTreeSync 直杀（跳过 SIGTERM 优雅步
  * ——exit 钩子不能等）。红线同上：cmdline 验证不通过绝不 kill，只清陈旧台账。
+ * D-5（v1.18）：modes 过滤与 async 版同款（缺省不过滤 = CLI 显式语义不变）。
  */
-export function stopLaunchedChromesSync(logFn?: LedgerLogFn): ChromeStopResult {
-  const log = logFn ?? (() => {});
-  const ledger = readLedgerSync();
+export function stopLaunchedChromesSync(
+  opts: ChromeStopSyncOptions = {},
+): ChromeStopResult {
+  const log = opts.logFn ?? (() => {});
+  const aliveFn = opts.aliveFn ?? defaultAliveFn;
+  const psFn = opts.psFn ?? defaultPsFn;
+  // 未注入时循环内走默认直杀（killTreeSync 保持在 verifyOwnership 守卫之后——
+  // 源码顺序即红线顺序，chrome-ledger.spec.ts 以此为锚）
+  const killTreeFn = opts.killTreeFn;
+  let targets = readLedgerSync();
+  // D-5（v1.18）：mode 过滤（P1 裁决补全到 exit 钩子路径；缺省 launchMode 按 hidden）
+  if (opts.modes) {
+    targets = targets.filter((r) => opts.modes!.includes(r.launchMode ?? "hidden"));
+  }
   const stopped: ChromeStopResult["stopped"] = [];
-  for (const rec of ledger) {
-    if (!defaultAliveFn(rec.pid)) {
+  for (const rec of targets) {
+    if (!aliveFn(rec.pid)) {
       stopped.push({ port: rec.port, pid: rec.pid, action: "already_dead" });
       continue;
     }
-    if (!verifyOwnership(rec.pid, rec.profileDir, defaultPsFn)) {
+    if (!verifyOwnership(rec.pid, rec.profileDir, psFn)) {
       stopped.push({ port: rec.port, pid: rec.pid, action: "pid_reused_skipped" });
       continue;
     }
-    killTreeSync(rec.pid, "chrome-stop-exit");
+    if (killTreeFn) killTreeFn(rec.pid);
+    else killTreeSync(rec.pid, "chrome-stop-exit");
     stopped.push({ port: rec.port, pid: rec.pid, action: "killed" });
   }
   if (stopped.length > 0) {

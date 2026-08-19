@@ -42,6 +42,8 @@ import type { FreeTierLevel, ProviderConfig } from "../types.js";
 import { BUILTIN_PROVIDERS } from "./providers.js";
 import { ProviderRegistry } from "./provider-registry.js";
 import { logger } from "../util/logger.js";
+// C2（v1.18，doc/28 D-2）：延迟窗默认值单一真源在 reaper（消费方语义所有者）
+import { AUTO_HIDE_AFTER_LOGIN_DELAY_MS } from "../launcher/chrome-idle-reaper.js";
 
 export interface LassoConfig {
   runId: string;
@@ -83,6 +85,15 @@ export interface LassoConfig {
    * env LASSO_LAUNCH_MODE（默认 "hidden" = 0 窗口零打扰；"visible" = v1.9 可见行为）。
    */
   launchMode: "hidden" | "visible";
+  /**
+   * C2（v1.18，doc/28-静默守则审计 D-2）：台账 visible 档 Chrome「登录完成 →
+   * 自动 hide 转后台静默」（chrome-idle-reaper 四重护栏：见墙→墙消失→延迟窗→
+   * agent 无近期活动；失败降级不 hide）。env LASSO_AUTO_HIDE_AFTER_LOGIN
+   * （默认 false，**opt-in**——假阳性会把用户正在看的窗口收走，交用户裁决）。
+   */
+  autoHideAfterLogin: boolean;
+  /** C2：登录墙消失后的等待窗 ms（env LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS；默认 10_000）。 */
+  autoHideAfterLoginDelayMs: number;
 }
 
 export interface LoadConfigOptions {
@@ -168,6 +179,23 @@ function parseLaunchMode(raw: string | undefined): "hidden" | "visible" {
   if (raw === "visible") return "visible";
   if (raw === "hidden") return "hidden";
   return DEFAULT_LAUNCH_MODE;
+}
+
+/**
+ * C2（v1.18）：LASSO_AUTO_HIDE_AFTER_LOGIN 解析——仅显式真值开启（1/true/yes/on），
+ * 其余一律 false。默认 off 是裁决本体（audit C2：「必须 opt-in + 默认关」）。
+ */
+function parseAutoHideAfterLogin(raw: string | undefined): boolean {
+  const v = (raw ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/** C2：LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS 解析（负数/NaN/未设 → 默认 10s）。 */
+function parseAutoHideDelayMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return AUTO_HIDE_AFTER_LOGIN_DELAY_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return AUTO_HIDE_AFTER_LOGIN_DELAY_MS;
+  return n;
 }
 
 // ============================================================
@@ -283,6 +311,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
   LASSO_LAUNCH_MODE: "hidden",
   LASSO_LAUNCH_IDLE_MS: 60000,
+  // C2（v1.18，doc/28 D-2）：登录完成自动转后台静默（opt-in；默认 false）
+  LASSO_AUTO_HIDE_AFTER_LOGIN: false,
+  LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,
   // v1.11（round1 T10）：浏览器出口代理（browse_headless + Steel 生效；
   // browse_logged_in 永不读取——用户真实 Chrome 出口原样）
   LASSO_PROXY: "",
@@ -395,6 +426,11 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   // v1.10（parse18 机制一/二）：台账 Chrome 用完即关阈值 + 启动档（0 = 禁用 reaper）
   const launchIdleMs = parseLaunchIdleMs(env.LASSO_LAUNCH_IDLE_MS);
   const launchMode = parseLaunchMode(env.LASSO_LAUNCH_MODE);
+  // C2（v1.18，doc/28 D-2）：登录完成自动转后台（opt-in 默认 off）+ 延迟窗
+  const autoHideAfterLogin = parseAutoHideAfterLogin(env.LASSO_AUTO_HIDE_AFTER_LOGIN);
+  const autoHideAfterLoginDelayMs = parseAutoHideDelayMs(
+    env.LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS,
+  );
 
   return {
     runId: opts.runId,
@@ -408,5 +444,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     headlessIdleMs,
     launchIdleMs,
     launchMode,
+    autoHideAfterLogin,
+    autoHideAfterLoginDelayMs,
   };
 }

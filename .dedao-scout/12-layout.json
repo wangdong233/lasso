@@ -1,0 +1,75 @@
+{
+  "n": 10,
+  "items": [
+    {
+      "w": 700,
+      "h": 21637,
+      "x": 340,
+      "cls": "article-body-wrap",
+      "p": "div:1>div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0"
+    },
+    {
+      "w": 700,
+      "h": 14348,
+      "x": 340,
+      "cls": "article-body",
+      "p": "div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0>div.article-body:2"
+    },
+    {
+      "w": 700,
+      "h": 14348,
+      "x": 340,
+      "cls": "iget_rich-text-panel--container.iget_rich-text-panel__small",
+      "p": "div.article:2>div.article-wrap:0>div.article-body-wrap:0>div.article-body:2>div.iget_rich-text-panel--container:0"
+    },
+    {
+      "w": 700,
+      "h": 14348,
+      "x": 340,
+      "cls": "editor-show",
+      "p": "div.article-wrap:0>div.article-body-wrap:0>div.article-body:2>div.iget_rich-text-panel--container:0>div.editor-show:0"
+    },
+    {
+      "w": 700,
+      "h": 6323,
+      "x": 340,
+      "cls": "message-v2",
+      "p": "div.iget-articles:0>div.article:2>div.article-wrap:0>div.article-body-wrap:0>div.message-v2:5"
+    },
+    {
+      "w": 700,
+      "h": 6153,
+      "x": 340,
+      "cls": "message-list-wrap",
+      "p": "div.article:2>div.article-wrap:0>div.article-body-wrap:0>div.message-v2:5>div.message-list-wrap:2"
+    },
+    {
+      "w": 700,
+      "h": 5993,
+      "x": 340,
+      "cls": "iget-note-list",
+      "p": "div.message-v2:5>div.message-list-wrap:2>ul.message-list:0>li:0>div.iget-note-list:0"
+    },
+    {
+      "w": 300,
+      "h": 2824,
+      "x": 20,
+      "cls": "",
+      "p": "div.iget-articles:0>div.course-nav:1>div.course-schedule:2>div.ps:0>div:0"
+    },
+    {
+      "w": 300,
+      "h": 2670,
+      "x": 20,
+      "cls": "chapter-mod.iget-common-c1",
+      "p": "div.course-nav:1>div.course-schedule:2>div.ps:0>div:0>div.chapter-mod:1"
+    },
+    {
+      "w": 300,
+      "h": 682,
+      "x": 20,
+      "cls": "course-nav",
+      "p": "div.iget-pc:0>div:1>div.iget-articles:0>div.course-nav:1"
+    }
+  ]
+}

@@ -83,6 +83,11 @@ export interface LaunchChromeOptions {
   /** 探活轮询间隔（默认 300ms；测试传 1ms 提速）。W1-DEF-7。 */
   probeIntervalMs?: number;
   /**
+   * 探活轮询次数覆盖（P8 v1.18.1 测试注入）。缺省按 launchMode 分档：
+   * hidden = CDP_PROBE_ATTEMPTS（3s）；visible = CDP_PROBE_ATTEMPTS_VISIBLE（12s）。
+   */
+  probeAttempts?: number;
+  /**
    * 覆盖默认隔离 profile 目录（测试注入）。
    * 生产默认 ~/.cache/lasso/chrome-profile-default（W1-DEF-7）。
    */
@@ -146,13 +151,26 @@ export interface LaunchChromeResult {
   profileDir?: string;
   candidateSources?: Array<{ source: string; path: string; desc: string }>;
   error?: string;
+  /**
+   * P8（v1.18.1）：error=cdp_not_ready 时为 true——Chrome 可能仍在慢启动，
+   * 调用方可选择等待复探（curl /json/version）而非判死。
+   */
+  mayStillBeStarting?: boolean;
 }
 
 // ============================================================
 // W1-DEF-7（v1.8 Phase B）常量：CDP 探活
 // ============================================================
-/** 探活轮询次数：3s 窗口内 10 次（默认 300ms 间隔）。 */
+/** 探活轮询次数（hidden 档）：3s 窗口内 10 次（默认 300ms 间隔）。 */
 export const CDP_PROBE_ATTEMPTS = 10;
+/**
+ * P8（v1.18.1，得到实战问题集 P8）：visible 档探活轮询次数——12s 窗口。
+ * 可见档冷启动（首窗口创建 + profile 恢复，重 profile / 低速盘 / 高负载时）
+ * 实测可超 3s（主循环亲历 ok:false cdp_not_ready 但 Chrome 实起）；hidden 档
+ * 无窗口创建，1.7s 内即通（chrome_ledger_recorded→chrome_hide_fuse_ok 实测），
+ * 维持 10 次。
+ */
+export const CDP_PROBE_ATTEMPTS_VISIBLE = 40;
 /** 探活轮询默认间隔。 */
 export const CDP_PROBE_INTERVAL_MS = 300;
 /** 单次探活 fetch 超时（默认 fetchFn 用 AbortSignal.timeout）。 */
@@ -243,6 +261,12 @@ export async function launchChrome(
   const port = opts.port ?? 9222;
   const fetchFn = opts.fetchFn ?? defaultProbeFetch;
   const probeIntervalMs = opts.probeIntervalMs ?? CDP_PROBE_INTERVAL_MS;
+  const mode0 = opts.launchMode ?? "visible"; // 模块默认保守 visible；hidden 由 CLI/config 层传
+  // P8（v1.18.1）：探活窗口按档分档——visible 冷启动（首窗口 + profile 恢复）
+  // 实测可超 3s，给 12s；hidden 无窗口创建维持 3s。
+  const probeAttempts =
+    opts.probeAttempts ??
+    (mode0 === "visible" ? CDP_PROBE_ATTEMPTS_VISIBLE : CDP_PROBE_ATTEMPTS);
   // W1-DEF-7：默认注入隔离 --user-data-dir（显式 --profile 优先）。
   const profileDir =
     opts.profileDir ?? opts.defaultProfileDir ?? defaultChromeProfileDir();
@@ -322,7 +346,7 @@ export async function launchChrome(
 
   // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile；
   //    v1.10 parse18 §3.2：launchMode 分档 + 反节流三件套/mute 两档恒加 + 去重）
-  const mode = opts.launchMode ?? "visible"; // 模块默认保守 visible；hidden 由 CLI/config 层传
+  const mode = mode0; // P8：解析上移至函数头（探活窗口分档需先知 mode）
   const plat = opts.platform ?? process.platform;
   const log = opts.logFn ?? defaultLaunchLog;
   const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPid(pid));
@@ -377,7 +401,7 @@ export async function launchChrome(
     child.unref();
     const pid = child.pid ?? undefined;
     // 6. CDP 探活轮询（W1-DEF-7）：3s 窗口内 10 次 /json/version，通才 ok
-    for (let attemptNo = 0; attemptNo < CDP_PROBE_ATTEMPTS; attemptNo++) {
+    for (let attemptNo = 0; attemptNo < probeAttempts; attemptNo++) {
       if (exited) break;
       try {
         const r = await fetchFn(cdpVersionUrl(port));
@@ -521,6 +545,10 @@ export async function launchChrome(
     profileDir,
     candidateSources,
     error: exited ? "chrome_exited" : "cdp_not_ready",
+    // P8（v1.18.1）：cdp_not_ready ≠ 启动失败——Chrome 可能仍在慢启动（探活窗口
+    // 已按 visible 档放宽到 12s，仍超窗时显式告知调用方「可等待复探后再判」，
+    // 别按 ok:false 走清理/重试逻辑误杀活进程）。chrome_exited 不带此标记。
+    ...(exited ? {} : { mayStillBeStarting: true }),
   };
 }
 
