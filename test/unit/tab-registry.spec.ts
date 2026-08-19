@@ -1,5 +1,5 @@
 /**
- * TabRegistry 单测（parse9 §3.3 + §5.1；v1.17.2 doc/27 S-10 契约重订）
+ * TabRegistry 单测（parse9 §3.3 + §5.1；v1.17.3 doc/27 S-10 契约重订）
  *
  * 覆盖（mock McpClient.callTool，不连真 Chrome；list_pages 桩用**真实上游 1.7.0
  * 文本格式** `## Pages` / `<id>: <title> (<url>) [selected]`，兼作 parser 覆盖）：

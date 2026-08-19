@@ -34,6 +34,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs, constants as fsConstants } from "node:fs";
+import * as Net from "node:net";
 import os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
@@ -99,8 +100,31 @@ export interface LaunchChromeOptions {
   hideFn?: (pid: number | undefined) => { ok: boolean; reason?: string };
   /** 保险丝延迟（默认 1.5s；测试传 1ms 提速）。 */
   fuseDelayMs?: number;
+  /**
+   * P3（v1.17.3，得到实战）：TCP 层占用探测注入。预检 /json/version 非 ok/抛错
+   * 但端口 TCP 可连时，说明端口被**非 CDP 进程**占住（实测：用户日常 Chrome 的
+   * 内部服务占 9222 IPv4）——继续 spawn 会导致 Chrome CDP 绑定静默失败
+   * （报 cdp_not_ready 而进程活着，难排查）。注入式设计：核心缺省不探测
+   * （既有测试 preCheckOk:false 语义不破），CLI 装配层传真实实现。
+   */
+  tcpProbeFn?: (port: number) => Promise<boolean>;
   /** 结构化日志注入（默认 stderr 单行 JSON；index.ts 侧可用 logger 包）。 */
   logFn?: LedgerLogFn;
+}
+
+/**
+ * P3：真实 TCP 可连性探测（300ms 超时）。connect 成功=端口被某进程占住。
+ * 仅 CLI 装配层注入；单测注入 stub。
+ */
+export function tcpConnectable(port: number, host = "127.0.0.1"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Net.Socket();
+    socket.setTimeout(300);
+    socket.once("connect", () => { socket.destroy(); resolve(true); });
+    socket.once("timeout", () => { socket.destroy(); resolve(false); });
+    socket.once("error", () => { socket.destroy(); resolve(false); });
+    socket.connect(port, host);
+  });
 }
 
 /**
@@ -281,7 +305,19 @@ export async function launchChrome(
       };
     }
   } catch {
-    // 连不上 = 端口空闲，继续
+    // 连不上 = 端口空闲或被非 CDP 进程占住（P3：tcpProbeFn 注入时区分）
+  }
+  // P3（v1.17.3）：/json/version 非 ok / 抛错，但 TCP 层可连 → 非 CDP 进程占口。
+  // 继续spawn 会让 Chrome 绑定静默失败（cdp_not_ready 假象）。诚实拒绝并建议换口。
+  if (opts.tcpProbeFn && (await opts.tcpProbeFn(port))) {
+    return {
+      ok: false,
+      binaryPath: found.path,
+      port,
+      profileDir,
+      candidateSources,
+      error: `port_in_use_non_cdp:port ${port} is TCP-occupied by a non-CDP process (Chrome bind would silently fail); launch with a different --port`,
+    };
   }
 
   // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile；
@@ -521,7 +557,7 @@ export async function launchChrome(
  */
 export async function runLaunchChromeCli(
   argv: string[] = process.argv.slice(3),
-  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number },
+  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number; tcpProbeFn?: (port: number) => Promise<boolean> },
 ): Promise<void> {
   const opts = mergeLaunchDefaults(parseLaunchChromeArgs(argv), defaults);
   const result = await launchChrome(opts);
@@ -537,9 +573,11 @@ export async function runLaunchChromeCli(
  */
 export function mergeLaunchDefaults(
   opts: LaunchChromeOptions,
-  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number },
+  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number; tcpProbeFn?: (port: number) => Promise<boolean> },
 ): LaunchChromeOptions {
   if (!opts.launchMode && defaults?.launchMode) opts.launchMode = defaults.launchMode;
+  // P3（v1.17.3）：CLI 装配层注入的 TCP 探测透传（核心缺省不探测）
+  if (!opts.tcpProbeFn && defaults?.tcpProbeFn) opts.tcpProbeFn = defaults.tcpProbeFn;
   if (opts.idleMs === undefined && defaults?.idleMs !== undefined) {
     opts.idleMs = defaults.idleMs;
   }

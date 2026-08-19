@@ -208,7 +208,7 @@ describe("TabSession —— 恢复（红线：绝不关用户原有 tab）", () 
     expect(close.calls).toHaveLength(0); // 宁少关不误关
   });
 
-  // W-DEF-R11-2（v1.17.1 ft-round1 R11 真机修）：lasso 主流路径 = 导航既有 tab
+  // W-DEF-R11-2（v1.17.3 ft-round1 R11 真机修）：lasso 主流路径 = 导航既有 tab
   // （targetId 稳定、url 已变）+ 开新 tab。纯 url 判定会把该形态误判 browser_restarted
   // → tab_restore 恒 no-op。修正后 targetId 通道放行 → 关闭快照后新增 tab。
   it("快照 tab 被 navigate（同 targetId 异 url）+ 新增 tab → restore 关闭新增（不再误判 browser_restarted）", async () => {

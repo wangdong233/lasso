@@ -46,9 +46,29 @@ export interface ChromeHideOptions {
  *
  * @param pid launch-chrome spawn 返回的 Chrome 根进程 pid（台账在案）
  */
+/** P4（v1.17.3）：show 变体——登录后需要再看窗口时恢复可见。 */
+export function showChromeByPid(
+  pid: number | undefined,
+  opts: ChromeHideOptions = {},
+): ChromeHideResult {
+  return setChromeVisibleByPid(pid, opts, true);
+}
+
 export function hideChromeByPid(
   pid: number | undefined,
   opts: ChromeHideOptions = {},
+): ChromeHideResult {
+  return setChromeVisibleByPid(pid, opts, false);
+}
+
+/**
+ * P4（v1.17.3）：PID 定向 visible 开关共用实现（hide=false / show=true）。
+ * 「登录时弹窗、登录后 chrome-hide 转后台静默」用法的产品出口。
+ */
+function setChromeVisibleByPid(
+  pid: number | undefined,
+  opts: ChromeHideOptions,
+  visible: boolean,
 ): ChromeHideResult {
   const platform = opts.platform ?? process.platform;
   // 非 mac no-op（Windows 保险丝本版不实现：#W-pending，文档级方案）
@@ -59,7 +79,7 @@ export function hideChromeByPid(
   const script =
     'tell application "System Events"\n' +
     "  repeat with p in (application processes whose name is \"Google Chrome\")\n" +
-    `    if unix id of p is ${pid} then set visible of p to false\n` +
+    `    if unix id of p is ${pid} then set visible of p to ${visible ? "true" : "false"}\n` +
     "  end repeat\n" +
     "end tell";
   const execFn =

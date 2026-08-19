@@ -159,7 +159,8 @@ import { ProfileRegistry } from "./logged-in/ProfileRegistry.js";
 import { CookieStore } from "./logged-in/CookieStore.js";
 // v1.0 Phase C/D（parse11 §3.2 + §3.3 + §7.2）：launcher + replay-baseline 子命令
 // INV-64 守：launcher/*.ts 不引新 npm dep（仅 node:* 内置）；index.ts 仅 import 子命令入口
-import { runLaunchChromeCli } from "./launcher/launch-chrome.js";
+import { runLaunchChromeCli, tcpConnectable } from "./launcher/launch-chrome.js";
+import { runChromeHideShowCli } from "./launcher/chrome-hideshow-cli.js";
 import {
   runChromeStopCli,
   stopLaunchedChromes,
@@ -221,7 +222,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.17.2";
+const LASSO_SERVER_VERSION = "1.17.3";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -1298,9 +1299,11 @@ async function runMcpServer(): Promise<void> {
     }
     // v1.9（parse17 §3.6 机制二）：停机收尾台账 Chrome（3s 上界；失败 warn 不阻断停机）。
     // 只杀台账在案且 cmdline 验证 --user-data-dir 归属的 pid（chrome-stop 红线）。
+    // P1（v1.17.3，得到实战根因）：modes:["hidden"]——visible 档是用户拥有的窗口
+    // （登录/查看中），短命 server 退出无权关闭；关闭出口只有显式 chrome-stop。
     try {
       await Promise.race([
-        stopLaunchedChromes({ all: true, logFn: (p) => logger.info(p) }),
+        stopLaunchedChromes({ all: true, modes: ["hidden"], logFn: (p) => logger.info(p) }),
         new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
       ]);
     } catch (e) {
@@ -1441,6 +1444,8 @@ async function main(): Promise<void> {
     await runLaunchChromeCli(process.argv.slice(3), {
       launchMode: cliCfg.launchMode,
       idleMs: cliCfg.launchIdleMs,
+      // P3（v1.17.3）：CLI 装配层注入真实 TCP 探测（核心缺省关闭保测试语义）
+      tcpProbeFn: tcpConnectable,
     });
     return;
   }
@@ -1448,6 +1453,13 @@ async function main(): Promise<void> {
   // 收尾 launch-chrome 起的 Chrome（cmdline 验证归属后才杀；幂等 exit 0）。
   if (process.argv[2] === "chrome-stop") {
     await runChromeStopCli();
+    return;
+  }
+  // P4（v1.17.3，得到实战新用法）：`lasso chrome-hide [--port N|--all]` / `chrome-show`——
+  // 「需要登录时弹 visible 窗口、登录完成后 hide 转后台静默执行」的产品出口。
+  // 红线沿用：只操作台账在案 + cmdline 归属验证通过的 pid（复用 chrome-stop 的目标选择）。
+  if (process.argv[2] === "chrome-hide" || process.argv[2] === "chrome-show") {
+    await runChromeHideShowCli(process.argv[2] === "chrome-show");
     return;
   }
   // v1.0 Phase C（parse11 §3.2 + §7.2）：`lasso replay-baseline [--strict]`

@@ -167,7 +167,7 @@ describe("W1-DEF-2 — wait action 传非空 string 数组（1.7.0 契约）", (
     expect(r.outcome).toBe("worked");
   });
 
-  // W-DEF-R11-1（v1.17.1 ft-round1 R11 真机修）：probe2 W1/W2 实证两缺口——
+  // W-DEF-R11-1（v1.17.3 ft-round1 R11 真机修）：probe2 W1/W2 实证两缺口——
   // ① expect.timeout_ms 被静默忽略（恒烧上游默认 30s）；② 上游超时以 isError
   // 响应返回（callTool 不 throw），不检则文本从未出现仍报 worked（假成功）。
   it("expect.timeout_ms 透传 wait_for.timeout（ms 整数）", async () => {

@@ -38,6 +38,13 @@ export interface ChromeStopOptions {
   port?: number;
   /** 全部台账记录。 */
   all?: boolean;
+  /**
+   * P1（v1.17.3，得到实战根因）：按 launchMode 过滤目标。停机收尾传
+   * ["hidden"] —— visible 档是用户拥有的窗口（登录/查看中），任何 server
+   * 进程退出都无权关闭它（短命 server 退出曾把用户登录窗口砸掉）。
+   * chrome-stop CLI 显式操作不过滤（用户主动=最高权限）。
+   */
+  modes?: Array<"hidden" | "visible">;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -129,9 +136,13 @@ export async function stopLaunchedChromes(
   const sleepFn = opts.sleepFn ?? defaultSleep;
 
   const ledger = readLedgerSync();
-  const targets = opts.port !== undefined
+  let targets = opts.port !== undefined
     ? ledger.filter((r) => r.port === opts.port)
     : ledger; // 无 port = --all
+  // P1（v1.17.3）：mode 过滤——停机收尾只碰 hidden（visible 归用户，只有显式 chrome-stop 能关）
+  if (opts.modes) {
+    targets = targets.filter((r) => opts.modes!.includes(r.launchMode ?? "hidden"));
+  }
 
   const stopped: ChromeStopResult["stopped"] = [];
   for (const rec of targets) {

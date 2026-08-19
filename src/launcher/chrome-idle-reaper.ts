@@ -114,6 +114,10 @@ export function startChromeIdleReaper(
     const now = nowFn();
     const ledger = readLedgerFn();
     for (const rec of ledger) {
+      // P1（v1.17.3，得到实战根因）：visible 档 Chrome 是**用户拥有的窗口**
+      // （用户在里面登录/查看），永不 idle 收割——关闭出口只有显式 chrome-stop。
+      // hidden 档维持「用完即关」语义。
+      if (rec.launchMode === "visible") continue;
       const idleMs = rec.idleMs ?? defaultIdleMs;
       if (idleMs <= 0) continue; // record 级禁用（parse18 §2.5 per-launch 覆盖）
       const lastUse = Math.max(rec.launchedAt, touchMap.get(rec.port) ?? 0);
