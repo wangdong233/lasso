@@ -1,0 +1,20 @@
+{
+  "dropped": [
+    {
+      "src": "201702231741511789529690.jpg",
+      "nat": "1080x607"
+    }
+  ],
+  "shrunk": [],
+  "skipped": [],
+  "chunked": [
+    {
+      "src": "202001312350009731973001.jpg",
+      "from": 10385,
+      "strips": 119,
+      "chunkPx": 88
+    }
+  ],
+  "hygiene": "orphans-widows",
+  "docHAfter": 14241
+}

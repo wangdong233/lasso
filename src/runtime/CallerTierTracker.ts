@@ -77,14 +77,19 @@ export function callerCapExceededResult(
  * 默认 per-caller 60s 上限。
  *
  * INV-38：必须是模块顶级 const；env LASSO_CALLER_CAP_DEFAULT 可在构造期覆盖；
- *         调用点禁硬编码魔法数（100）。
+ *         调用点禁硬编码魔法数。
  *
- * 选 100 的依据（parse7 §3.3）：
- *  - CC 默认不传 callerId → 全部归 "anonymous" 共享此配额
- *  - 100/min 对人驱动 LLM workflow 足够（典型 ≤10 calls/min）
- *  - 可经 env 调（实测后校准，parse7 §6.2 性能验收 + R-RT-5 风险缓解）
+ * P26（v1.18.2，2026-08-19 设计反转——得到全量实战 192 章被误限的教训）：
+ *  - 旧默认 100/min 是 v0.6 时代「多调用方分层」想象的遗留——Lasso 实为
+ *    **单用户本地 stdio MCP**，不存在「滥用者」威胁模型；唯一被限的就是
+ *    用户自己的批量脚本（实证：全量引擎单 server 高频调用 100/60s 打满，
+ *    413 章中 192 章秒败）。
+ *  - 新默认 **Infinity = 直接放行**（正常业务永不设限）；配额机制降级为
+ *    **opt-in 成本自控工具**：env LASSO_CALLER_CAP_DEFAULT 显式设置或
+ *    admin caller_cap_set 才生效（想给自己限流防跑飞的用户用它）。
+ *  - 计数（used/窗口）保持工作——观测价值不丢，只是默认不禁行。
  */
-export const DEFAULT_CALLER_CAP = 100;
+export const DEFAULT_CALLER_CAP = Number.POSITIVE_INFINITY;
 
 /**
  * 滑动窗大小（默认 60s，与「per-minute」语义对齐）。

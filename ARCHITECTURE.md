@@ -13,6 +13,17 @@ Lasso 是 Claude Code 的**全交互**对外抓手 MCP（浏览器 + 桌面 + �
 
 四条交互通道：`search` / `browse_headless` / `browse_logged_in` / `desktop`，加 **`search_local` 本地私有搜索**（doc/24 裁决 B1「第四通道」：Chrome 历史 / Spotlight 文件，纯本地只读）与条件解锁的 `browse_cloud_steel` 云通道。所有通道共享同一套 fallback 范式 / 状态模型 / 工具风格（R-CI-02 红线：禁第二套做法）；`search_local` 是唯一例外——纯本地只读查询无网络面、无 fallback 语义，走「工具直连」范式（照 `read_text` / `doctor-tool` 先例，不建 Channel 子类，防空壳对称 R-ABS-01）。
 
+### 部署模型声明（守卫设计判据，v1.18.2 doc/29 确立）
+
+Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户在自己的机器上经 Claude Code 拉起一个 Lasso server 进程，没有多租户、没有远程调用方、没有对抗性租户争抢资源。由此确立守卫设计判据——**任何限额 / 熔断 / 拦截类守卫，其威胁模型必须存在于这个部署形态**：
+
+- **为「多租户滥用」想象的守卫**（调用方配额、防 gaming 类限额）默认一律放开（Infinity / opt-in）——单用户自己「滥用」自己的工具不构成威胁；保留为显式 env 自控工具（如 `LASSO_CALLER_CAP_DEFAULT`，v1.18.1 P26）。
+- **环境瞬态 ≠ 策略拦截**：DNS 失败 / 超时 / 连接错是网络条件（TUN 断网、代理抖动、captive portal），语义必须是 `unknown`（可重试），不得误分类为 `didnt`（明确否 / 政策拦截终答）——v1.18.2 F1/Y2。
+- **环境瞬态不得升级惩罚**：长熔断（60min disable）只喂「持续故障类」（配额耗尽 / 凭据失效），DNS / 超时类毛刺归 60s 短熔断自愈——v1.18.2 F2。
+- **豁免区**：SSRF 本体（私网 / 协议 / userinfo / deny 段）、2FA 红线（HighRiskGate + ElicitationPort fail-closed）、云通道付费双重解锁、防注入白名单——这些的威胁模型在单用户本地形态下**依然成立**（恶意网页 / 误触付费 / 注入攻击），保留原强度，不在放开之列。
+
+> 判据的完整审计（47 处命中逐个裁决：4 修复 + 5 黄 + 19 保留）见 [`doc/29-错配机制审计/`](./doc/29-错配机制审计/)。
+
 ## 2. 整体分层
 
 ```

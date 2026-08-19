@@ -1,0 +1,94 @@
+{
+  "aligned": [
+    {
+      "i": 0,
+      "src": "201702171629097538443686.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/17/201702171629097538443686.jpg",
+      "nat": "1080x532",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 345,
+      "imgH": 345,
+      "mh": null,
+      "rel": 338,
+      "pg": 0,
+      "actualPage": 1,
+      "printImgH": 336
+    },
+    {
+      "i": 1,
+      "src": "201702171639419889922629.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/17/201702171639419889922629.jpg",
+      "nat": "1080x532",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 271,
+      "imgH": 271,
+      "mh": "271px",
+      "rel": 1457,
+      "pg": 1,
+      "actualPage": 2,
+      "printImgH": 272
+    },
+    {
+      "i": 2,
+      "src": "201702171747423100584039.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/17/201702171747423100584039.jpg",
+      "nat": "1080x532",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 345,
+      "imgH": 345,
+      "mh": null,
+      "rel": 2524,
+      "pg": 2,
+      "actualPage": 4,
+      "printImgH": 336
+    },
+    {
+      "i": 3,
+      "src": "201704182138539660981349.png",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201704/18/201704182138539660981349.png",
+      "nat": "1280x280",
+      "natW": 1280,
+      "natH": 280,
+      "chunked": false,
+      "figH": 153,
+      "imgH": 153,
+      "mh": null,
+      "rel": 3303,
+      "pg": 3,
+      "actualPage": 4,
+      "printImgH": 149
+    },
+    {
+      "i": 4,
+      "src": "202001312350009731973001.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/202001/31/202001312350009731973001.jpg",
+      "nat": "750x11127",
+      "natW": 750,
+      "natH": 11127,
+      "chunked": true,
+      "figH": 10385,
+      "imgH": 10385,
+      "mh": "none",
+      "rel": 3476,
+      "pg": 3,
+      "actualPage": 4,
+      "printImgH": 10371
+    }
+  ],
+  "targets": [
+    {
+      "holePage": 3,
+      "holeCss": 291,
+      "idx": 2,
+      "src": "201702171747423100584039.jpg",
+      "fromPrintH": 336,
+      "mh": 249
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+[
+  {
+    "title": "发刊词丨只给你地道的经济学思维",
+    "switchMs": 15601,
+    "inner": 1722,
+    "base": {
+      "ok": true,
+      "bytes": 1794013,
+      "path": "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/scratch/fk-r3-base.pdf"
+    },
+    "s09": {
+      "ok": true,
+      "bytes": 1792118,
+      "path": "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/scratch/fk-r3-s09.pdf"
+    },
+    "fixInner": 1722,
+    "fixSameAsBase": true,
+    "fix": {
+      "ok": true,
+      "bytes": 1700533,
+      "path": "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/scratch/fk-r3-fix.pdf"
+    },
+    "totalMs": 20795
+  },
+  {
+    "title": "第003讲丨看得见的和看不见的",
+    "switchMs": 13518,
+    "inner": 2817,
+    "base": {
+      "ok": true,
+      "bytes": 855438,
+      "path": "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/scratch/l003-r3-base.pdf"
+    },
+    "fixInner": 2817,
+    "fixSameAsBase": true,
+    "fix": {
+      "ok": true,
+      "bytes": 761100,
+      "path": "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/scratch/l003-r3-fix.pdf"
+    },
+    "totalMs": 18073
+  }
+]

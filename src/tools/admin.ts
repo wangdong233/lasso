@@ -519,8 +519,11 @@ export function registerAdminTool(
 
             // ---------- v1.8 Phase D（D7）：breaker_reset —— 熔断手工唤醒 ----------
             // mutation（必传 name + reason）。对同名 channel 的短熔断（CircuitBreaker）
-            // 与长熔断（LongCircuitBreaker）同时 reset 到 closed；不联动 CapabilityBag
-            // （长熔断 open 时 bag 已被 disable，仍需 capability_enable 显式恢复——保守设计）。
+            // 与长熔断（LongCircuitBreaker）同时 reset 到 closed。
+            // v1.18.2（doc/29 F2c 恢复闭环）：若该 channel 的 capability 是被
+            // long_circuit_open disable 的，reset 时联动 bag.enable（admin 显式
+            // reset 即「我认为该恢复了」——只恢复熔断造成的 disable，不越权恢复
+            // admin 手工 capability_disable 的通道）。
             case "breaker_reset": {
               const err = requireArgs(action, args, ["name", "reason"]);
               if (err) return err;
@@ -542,9 +545,24 @@ export function registerAdminTool(
               };
               shortBreaker?.reset();
               longBreaker?.reset();
+              // F2c：条件联动 enable（reason 守卫——只恢复熔断自己造成的 disable）
+              let capabilityRestored = false;
+              const capSnap = deps.bag
+                ?.snapshot()
+                .find((s) => s.name === args.name);
+              if (
+                capSnap &&
+                !capSnap.enabled &&
+                capSnap.reason === "long_circuit_open"
+              ) {
+                capabilityRestored = await deps.bag!.enable(args.name!, {
+                  callerId: callerId,
+                });
+              }
               audit(action, callerId, args.reason, {
                 name: args.name,
                 before,
+                capability_restored: capabilityRestored,
               });
               return ok(action, {
                 name: args.name,
@@ -555,7 +573,12 @@ export function registerAdminTool(
                   short: shortBreaker?.state ?? null,
                   long: longBreaker?.state ?? null,
                 },
-                note: "breaker state reset to closed; if capability was disabled by long_circuit_open, run capability_enable to restore it (reset does not auto-enable)",
+                ...(capabilityRestored
+                  ? { capability_restored: true }
+                  : {}),
+                note: capabilityRestored
+                  ? "breaker state reset to closed; capability disabled by long_circuit_open was re-enabled (doc/29 F2c)"
+                  : "breaker state reset to closed; capability (if disabled manually or still needed off) unchanged — run capability_enable to restore it",
               });
             }
 

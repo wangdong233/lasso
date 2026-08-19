@@ -247,7 +247,9 @@ export class FallbackDecider {
       if (thrownError !== null) {
         breaker?.recordFailure();
         // v0.7：长熔断也记失败（可能触发 open → bag.disable）；await 保证 onOpen 完成
-        await longBreaker?.recordFailure();
+        // v1.18.2（doc/29 F2a）：传 error 供喂入分类——仅持续故障类（429/quota/凭据）
+        // 计数；环境瞬态（DNS/timeout/连接错）只归短熔断，不升级 60min disable。
+        await longBreaker?.recordFailure(thrownError);
         // v0.7：metrics 记一次失败
         this.metrics?.record(channelName, "error", Date.now() - attemptStart);
         actions_and_results.push({
@@ -313,7 +315,8 @@ export class FallbackDecider {
 
       // outcome === "unknown"
       breaker?.recordFailure();
-      await longBreaker?.recordFailure();
+      // v1.18.2（doc/29 F2a）：同 executor-throw 路径——传 error 供长熔断喂入分类
+      await longBreaker?.recordFailure(r.error ?? r.outcome);
       if (!isFallbackWorthy(r.outcome, r.error)) {
         // unknown 但明确"不该 fallback"（2FA / 404 / 403 / NXDOMAIN 被误报成 unknown）
         const terminal: InteractResult<T> = {

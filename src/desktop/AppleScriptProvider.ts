@@ -35,7 +35,7 @@
  *                                    （注入尝试 → 短路停止链）
  *
  *   Rust 端错误（透传）：
- *     - error_kind=tcc_denied     → outcome=didnt（明确缺权限，不 fallback）
+ *     - error_kind=tcc_denied     → outcome=unknown（v1.18.2 doc/29 Y4：Automation TCC 被拒是本档权限缺失，链继续试下一档；不再短路）
  *     - error_kind=not_macos      → outcome=didnt（明确不支持，不 fallback）
  *     - error_kind=script_not_in_whitelist / param_not_in_whitelist / param_value_invalid
  *                                 → outcome=didnt（层 1 已挡；若漂移到层 2 仍是明确"否"）
@@ -59,11 +59,15 @@ import {
 // 错误契约 helper
 // ============================================================
 /**
- * 明确"否"的 error_kind（层 1/2 拒绝或缺权限；应短路 outcome=didnt 不触发 fallback）。
+ * 明确"否"的 error_kind（层 1/2 拒绝；应短路 outcome=didnt 不触发 fallback）。
  * 其他 error_kind（applescript_exec_failed 等）视为 unknown，允许 fallback 走下一档。
+ *
+ * v1.18.2（doc/29 Y4）：tcc_denied 移出本集 → unknown。AppleScript 的 Automation
+ * TCC（本档权限）被拒 ≠ cgEvent 档（Input Monitoring/Accessibility，另一份权限）
+ * 也没戏——didnt 会短路降级链；unknown 让链继续。
+ * 白名单/参数类保留 didnt：那是防注入红线（F3.10.8，跨档确定性）。
  */
 const DIDNT_ERROR_KINDS = new Set<string>([
-  "tcc_denied",
   "not_macos",
   "invalid_params",
   "script_not_in_whitelist",

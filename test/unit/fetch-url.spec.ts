@@ -7,7 +7,7 @@
  *  3. content-type 分流：html / json / text / binary
  *  4. redirect:"manual" 拒跟随 3xx（防 SSRF 绕过；返 location 给 caller 二次显式调）
  *  5. 4xx → didnt；5xx → unknown；2xx → worked（tri-state）
- *  6. timeout → unknown；ENOTFOUND → didnt
+ *  6. timeout → unknown；ENOTFOUND → unknown（v1.18.2 doc/29 Y2：DNS/连接错环境瞬态，可重试）
  *  7. bounded output > 48 KiB 自动落盘 .txt + @oN ref
  *  8. max_bytes 截断（content-length > max_bytes → didnt）
  *  9. INV-32 守护：经 subproc.acquireHttpClient（不裸 fetch / 不 new Agent）
@@ -134,6 +134,38 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
     expect(r.retrieval_method).toBe("ssrf_blocked");
     expect(r.error).toContain("ssrf_blocked:private_ip:10.0.0.1");
     expect(r.served_by).toBe("lasso.ssr_guard");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ---- v1.18.2（doc/29 F1）：DNS 环境瞬态 ≠ 策略拦截 ----
+  it("F1: DNS 解析失败（dns_failed）→ outcome=unknown + retrieval_method=ssrf_dns_unresolved（可重试，非「政策拦截」终答）", async () => {
+    setDns([], "getaddrinfo ENOTFOUND flaky.test");
+    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const r = await doFetchUrl(
+      "https://flaky.test/chapter-1",
+      DEFAULT_OPTS,
+      subproc,
+      EMPTY_CONFIG,
+    );
+    // 环境瞬态（TUN 断网 / DNS 抖动）必须落 unknown（可重试），
+    // 不得伪装成 didnt「明确否 / 政策拦截」（104 章批跑实证误判）。
+    expect(r.outcome).toBe("unknown");
+    expect(r.retrieval_method).toBe("ssrf_dns_unresolved");
+    expect(r.error).toContain("ssrf_dns_unresolved:dns_failed:");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("F1: DNS 空记录（dns_empty）→ outcome=unknown + ssrf_dns_unresolved", async () => {
+    setDns([]); // lookup 返回空数组，无 err
+    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const r = await doFetchUrl(
+      "https://empty-records.test/",
+      DEFAULT_OPTS,
+      subproc,
+      EMPTY_CONFIG,
+    );
+    expect(r.outcome).toBe("unknown");
+    expect(r.retrieval_method).toBe("ssrf_dns_unresolved");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -586,7 +618,7 @@ describe("fetch_url — tri-state outcome", () => {
 // 错误分类（parse6 §3.1.3 outcomeFromFetchError）
 // ============================================================
 describe("fetch_url — 错误分类", () => {
-  it("ENOTFOUND → didnt（host 不存在）", async () => {
+  it("ENOTFOUND → unknown（doc/29 Y2：TUN/代理环境 DNS 高频瞬态，可重试——不再是「host 不存在」终答）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND nope.test"));
     const { subproc } = makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
@@ -595,11 +627,11 @@ describe("fetch_url — 错误分类", () => {
       subproc,
       EMPTY_CONFIG,
     );
-    expect(r.outcome).toBe("didnt");
+    expect(r.outcome).toBe("unknown");
     expect(r.error).toContain("ENOTFOUND");
   });
 
-  it("ECONNREFUSED → didnt（明确拒绝连接）", async () => {
+  it("ECONNREFUSED → unknown（doc/29 Y2：代理未起/服务暂不可达是环境瞬态，可重试）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 93.184.216.34:443"));
     const { subproc } = makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
@@ -608,7 +640,7 @@ describe("fetch_url — 错误分类", () => {
       subproc,
       EMPTY_CONFIG,
     );
-    expect(r.outcome).toBe("didnt");
+    expect(r.outcome).toBe("unknown");
   });
 
   it("AbortError（timeout）→ unknown", async () => {

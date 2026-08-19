@@ -34,7 +34,7 @@ import type {
   PdfResult,
 } from "../types.js";
 import type { HeadlessChannel } from "../channels/HeadlessChannel.js";
-import { ssrfGuard, type SsrfConfig } from "../ssrf/ssrf-guard.js";
+import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
 import { PDF_DESCRIPTION } from "./descriptions.js";
 import { pdfAnnotations } from "./annotations.js";
@@ -122,14 +122,17 @@ export async function doPdfTool(
 ): Promise<InteractResult<PdfResult>> {
   // ---------- 1. SSRF 守门（与 browse_headless 同函数同 config） ----------
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
-  if (!ssrfResult.allowed) {
+if (!ssrfResult.allowed) {
+    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
+    const d = ssrfDenial(ssrfResult.reason);
     return {
-      outcome: "didnt",
+      outcome: d.outcome,
       data: null,
       served_by: "lasso.ssr_guard",
       fallback_used: false,
-      retrieval_method: "ssrf_blocked",
-      error: `ssrf_blocked:${ssrfResult.reason}`,
+      retrieval_method: d.retrieval_method,
+      error: d.error,
     };
   }
 
@@ -188,15 +191,21 @@ export async function doPdfTool(
         ".pdf", // v0.5 新增 extension 参数；落盘 @oN.pdf（mode 0o600）
       );
     } catch (e) {
-      // envelope 单条 16 MiB 上限保护：超限（base64 PDF > 16 MiB ≈ 原 PDF 12 MiB）
-      // → outcome=didnt + error；不崩
+      // v1.18.2（doc/29 F4）envelope 失败二分：
+      //  - 单条 >16MiB（single cap，数据异常）→ didnt（明确否，调方缩范围）
+      //  - store 耗尽（防御分支；LRU 淘汰后数学不可达）→ unknown（会话状态须自愈，
+      //    不得把「PDF 已抓到、只是投递信封异常」报成语义否定）
+      const msg = String(e);
+      const isStoreExhausted = msg.includes("store exhausted");
       return {
-        outcome: "didnt",
+        outcome: isStoreExhausted ? "unknown" : "didnt",
         data: { url: rawUrl },
         served_by: result.served_by,
         fallback_used: false,
-        retrieval_method: "envelope_cap_exceeded",
-        error: `pdf_envelope_failed:${String(e).slice(0, 200)}`,
+        retrieval_method: isStoreExhausted
+          ? "envelope_store_degraded"
+          : "envelope_single_cap_exceeded",
+        error: `pdf_envelope_failed:${msg.slice(0, 200)}`,
       };
     }
   }

@@ -171,6 +171,13 @@ export interface BrowseOptions {
   screenshot?: ScreenshotSpec;
   timeout_ms?: number;
   no_cache?: boolean;
+  /**
+   * v1.18.2（doc/29 F3+Y1）：steps chain 总时间预算（ms），默认 120s。
+   * 慢站/长 SPA/多步表单等合法长链可显式放宽（钳制上限 600s=10min——
+   * BudgetTracker.MAX_CHAIN_BUDGET_MS；防误配 1e9 之类的失控值）。
+   * 超预算终止语义是 unknown（自限=瞬态可重试），不是 didnt（doc/29 F3）。
+   */
+  budget_ms?: number;
   /** v0.5 新增（parse6 §3.3.5）—— pdf action 专用字段（cdp-actions.ts doPdf 读） */
   /** PDF 纸张大小；chrome-devtools-mcp `pdf` 工具透传 CDP Page.printToCDP paperSize */
   pdf_format?: "A4" | "Letter" | "Legal" | "Tabloid";

@@ -308,6 +308,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
 | `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 禁用（常驻到 `chrome-stop`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |
+| `LASSO_CALLER_CAP_DEFAULT` | 单个 Claude Code 会话 60s 内最多调用 Lasso 工具的次数（自控防失控循环） | **不限制**（`Infinity`，v1.18.1 起） | 担心失控循环烧配额时显式设一个数（如 `120`）；计数照常记录（`admin` 可查），只是默认不再拦截 |
 | `ZHIPU_ENDPOINT` | ~~智谱端点覆盖~~ **已退役（v1.17）** | ——（不再被消费） | 无；历史配置静默忽略（与 `ZHIPU_API_KEY` 同批退役，`zhipu_keys_retired` 提示删除） |
 
 > 关于 fake-ip 代理网络：如果你用 Surge / Clash 的 TUN 模式（fake-ip），`198.18.0.0/15` 网段已内置放行，无需额外配置 `LASSO_SSRF_ALLOW_RANGES`。

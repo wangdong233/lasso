@@ -1,0 +1,530 @@
+[
+  {
+    "tag": "fk",
+    "chapterDir": "课前必读(1讲)",
+    "title": "发刊词丨只给你地道的经济学思维",
+    "expectAudio": false,
+    "phases": {
+      "switch": {
+        "mode": "already",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 1696,
+        "imgs": 6,
+        "imgsNotLoaded": 0,
+        "docH": 33631
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 0,
+        "audioTags": 0,
+        "timeInfo": true,
+        "bodyLen": 1696
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 0,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "docH": [
+          14654,
+          14644
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      }
+    },
+    "droppedImages": [
+      {
+        "src": "201702231741511789529690.jpg",
+        "nat": "1080x607"
+      }
+    ],
+    "iterations": [
+      {
+        "iter": 1,
+        "pdf": "v3-fk-it1.pdf",
+        "holes": [
+          {
+            "page": 2,
+            "tailPct": 29.9
+          }
+        ]
+      },
+      {
+        "iter": 2,
+        "pdf": "v3-fk-it2.pdf",
+        "holes": [
+          {
+            "page": 3,
+            "tailPct": 27.8
+          }
+        ]
+      },
+      {
+        "iter": 3,
+        "pdf": "v3-fk-it3.pdf",
+        "holes": []
+      }
+    ],
+    "assertFails": [],
+    "sikao": {
+      "found": false,
+      "headerCount": 0,
+      "headersText": [],
+      "phraseCount": 0
+    },
+    "promoAudit": {
+      "figCount": 6,
+      "lastSrc": "201702231741511789529690.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/23/201702231741511789529690.jpg",
+      "lastNat": "1080x607",
+      "M2": true,
+      "M3": true,
+      "M4": true,
+      "afterSummary": [],
+      "fetchBytes": 92833,
+      "decision": "drop"
+    },
+    "promoMd5": {
+      "md5": "7127ed550d5aeb9b75697030579c9aa4",
+      "bytes": 92833,
+      "match": true
+    },
+    "fixScreen": {
+      "dropped": [
+        {
+          "src": "201702231741511789529690.jpg",
+          "nat": "1080x607"
+        }
+      ],
+      "shrunk": [],
+      "skipped": [],
+      "chunked": [
+        {
+          "src": "202001312350009731973001.jpg",
+          "from": 10385,
+          "strips": 119,
+          "chunkPx": 88
+        }
+      ],
+      "hygiene": "orphans-widows",
+      "docHAfter": 14241
+    },
+    "innerTextInvariant": true,
+    "md": {
+      "title": "发刊词丨只给你地道的经济学思维",
+      "blocks": 21,
+      "imgs": 5,
+      "unknown": {}
+    },
+    "bestIter": 3,
+    "qc": {
+      "zeroLoss": {
+        "missing": [],
+        "missingEmpty": true,
+        "inOrder": true,
+        "pdfChars": 1700,
+        "domChars": 1680
+      },
+      "promo": [],
+      "holes": [],
+      "pages": 14,
+      "innerTextInvariant": true,
+      "sikaoPdfCount": 0,
+      "sikaoExpected": 0
+    },
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/课前必读(1讲)/发刊词丨只给你地道的经济学思维.pdf",
+    "pdfBytes": 1726901,
+    "sha256": "1af7ccb1e0fa5427c2858b651be88c9f67ee4ecebb9e96fc952d38a34b6d9ef8",
+    "images": {
+      "total": 5,
+      "downloaded": 0,
+      "reused": 5,
+      "collision": 0,
+      "failed": []
+    },
+    "mdPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/课前必读(1讲)/发刊词丨只给你地道的经济学思维.md",
+    "mdBytes": 5601
+  },
+  {
+    "tag": "l001",
+    "chapterDir": "01-经济学本源之一：东西不够(110讲)",
+    "title": "第001讲丨战俘营里的经济组织",
+    "expectAudio": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第001讲丨战俘营里的经济组织",
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 3742,
+        "imgs": 5,
+        "imgsNotLoaded": 0,
+        "docH": 19049
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ",
+        "title": "第001讲丨战俘营里的经济组织",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 1,
+        "audioTags": 0,
+        "timeInfo": true,
+        "bodyLen": 3742
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 1,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "docH": [
+          7226,
+          7216
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      }
+    },
+    "droppedImages": [
+      {
+        "src": "201702231752373381321946.jpg",
+        "nat": "1080x607"
+      }
+    ],
+    "iterations": [
+      {
+        "iter": 1,
+        "pdf": "v3-l001-it1.pdf",
+        "holes": [
+          {
+            "page": 1,
+            "tailPct": 31
+          },
+          {
+            "page": 4,
+            "tailPct": 14
+          }
+        ]
+      },
+      {
+        "iter": 2,
+        "pdf": "v3-l001-it2.pdf",
+        "holes": []
+      }
+    ],
+    "assertFails": [],
+    "sikao": {
+      "found": true,
+      "headerCount": 10,
+      "headersText": [
+        "1. 有人的地方就有交易",
+        "2. 战俘营中的价格与价格波动",
+        "3. 战俘营里的货币",
+        "4. 战俘营里的通胀与通缩",
+        "5. 战俘营里的跨境贸易",
+        "6. 战俘营里的户籍制度",
+        "7. 战俘营里的舆论压力",
+        "8. 战俘营中的仇富情绪",
+        "课堂小结",
+        "课后思考"
+      ],
+      "phraseCount": 1,
+      "headerIndex": 48,
+      "otherHits": [],
+      "stopReason": "figure",
+      "deleted": [
+        {
+          "tag": "p",
+          "cls": "",
+          "txt": "我们今天讲的主题是说经济规律在哪里都起作用，哪怕是在战俘营里面都起作用。现在倒过来，请你举一个例子，在这个例子里面，经济学规律是不起作用的，你能举出这样的例子吗？",
+          "chars": 81,
+          "h": 108
+        },
+        {
+          "tag": "p",
+          "cls": "",
+          "txt": "欢迎你给我留言，我们下次再见。",
+          "chars": 15,
+          "h": 46
+        }
+      ],
+      "keptTips": [],
+      "deletedChars": 96,
+      "deletedBlocks": 2,
+      "phraseCountAfter": 0,
+      "docHAfter": 6983
+    },
+    "promoAudit": {
+      "figCount": 5,
+      "lastSrc": "201702231752373381321946.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/23/201702231752373381321946.jpg",
+      "lastNat": "1080x607",
+      "M2": true,
+      "M3": true,
+      "M4": true,
+      "afterSummary": [],
+      "fetchBytes": 92833,
+      "decision": "drop"
+    },
+    "promoMd5": {
+      "md5": "7127ed550d5aeb9b75697030579c9aa4",
+      "bytes": 92833,
+      "match": true
+    },
+    "fixScreen": {
+      "dropped": [
+        {
+          "src": "201702231752373381321946.jpg",
+          "nat": "1080x607"
+        }
+      ],
+      "shrunk": [
+        {
+          "src": "201701311511319102257543.jpg",
+          "from": 345,
+          "to": 120,
+          "rem": 77
+        }
+      ],
+      "skipped": [],
+      "chunked": [],
+      "docHAfter": 6344
+    },
+    "innerTextInvariant": true,
+    "md": {
+      "title": "第001讲丨战俘营里的经济组织",
+      "blocks": 48,
+      "imgs": 4,
+      "unknown": {}
+    },
+    "bestIter": 2,
+    "qc": {
+      "zeroLoss": {
+        "missing": [],
+        "missingEmpty": true,
+        "inOrder": true,
+        "pdfChars": 3523,
+        "domChars": 3513
+      },
+      "promo": [],
+      "holes": [],
+      "pages": 7,
+      "innerTextInvariant": true,
+      "sikaoPdfCount": 0,
+      "sikaoExpected": 0
+    },
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第001讲丨战俘营里的经济组织.pdf",
+    "pdfBytes": 927814,
+    "sha256": "565b1e4df085c28c6b635c274ffc39402e3387da7424beb3e62b2a7d1a381883",
+    "images": {
+      "total": 4,
+      "downloaded": 0,
+      "reused": 4,
+      "collision": 0,
+      "failed": []
+    },
+    "mdPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第001讲丨战俘营里的经济组织.md",
+    "mdBytes": 11017
+  },
+  {
+    "tag": "l002",
+    "chapterDir": "01-经济学本源之一：东西不够(110讲)",
+    "title": "第002讲丨马粪争夺案",
+    "expectAudio": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第002讲丨马粪争夺案",
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE"
+      },
+      "stabilize": {
+        "ok": true,
+        "bodyLen": 2133,
+        "imgs": 3,
+        "imgsNotLoaded": 0,
+        "docH": 10861
+      },
+      "assert": {
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE",
+        "title": "第002讲丨马粪争夺案",
+        "hasWrap": true,
+        "cover": true,
+        "ddAudio": 1,
+        "audioTags": 0,
+        "timeInfo": true,
+        "bodyLen": 2133
+      },
+      "cleanup": {
+        "ok": true,
+        "del": {
+          "pageControl": 1,
+          "cover": true,
+          "ddAudio": 1,
+          "audioTags": 0,
+          "timeInfo": true,
+          "tailSiblingsRemoved": 3
+        },
+        "docH": [
+          4211,
+          4201
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      }
+    },
+    "droppedImages": [
+      {
+        "src": "201702231753117453076259.jpg",
+        "nat": "1080x607"
+      }
+    ],
+    "iterations": [
+      {
+        "iter": 1,
+        "pdf": "v3-l002-it1.pdf",
+        "holes": [
+          {
+            "page": 1,
+            "tailPct": 19.4
+          }
+        ]
+      },
+      {
+        "iter": 2,
+        "pdf": "v3-l002-it2.pdf",
+        "holes": []
+      }
+    ],
+    "assertFails": [],
+    "sikao": {
+      "found": true,
+      "headerCount": 6,
+      "headersText": [
+        "1.马粪案的故事",
+        "2.鼓励创造财富，还是鼓励对财富",
+        "3.鼓励人们创造财富，社会才会越",
+        "4.公正背后是效率考量",
+        "课堂小结",
+        "课后思考"
+      ],
+      "phraseCount": 1,
+      "headerIndex": 24,
+      "otherHits": [],
+      "stopReason": "figure",
+      "deleted": [
+        {
+          "tag": "p",
+          "cls": "",
+          "txt": "你能不能在生活中找一个例子，看上去是个公正的规则，但它背后其实是有效率的考量的？",
+          "chars": 40,
+          "h": 72
+        }
+      ],
+      "keptTips": [
+        "注释：\nThomas Haslem v. William A. Lockwood, 37 (Conn.) 500 Con"
+      ],
+      "deletedChars": 40,
+      "deletedBlocks": 1,
+      "phraseCountAfter": 0,
+      "docHAfter": 4049
+    },
+    "promoAudit": {
+      "figCount": 3,
+      "lastSrc": "201702231753117453076259.jpg",
+      "srcAbs": "https://piccdn3.umiwi.com/img/201702/23/201702231753117453076259.jpg",
+      "lastNat": "1080x607",
+      "M2": true,
+      "M3": true,
+      "M4": true,
+      "afterSummary": [],
+      "fetchBytes": 92833,
+      "decision": "drop"
+    },
+    "promoMd5": {
+      "md5": "7127ed550d5aeb9b75697030579c9aa4",
+      "bytes": 92833,
+      "match": true
+    },
+    "fixScreen": {
+      "dropped": [
+        {
+          "src": "201702231753117453076259.jpg",
+          "nat": "1080x607"
+        }
+      ],
+      "shrunk": [],
+      "skipped": [],
+      "chunked": [],
+      "docHAfter": 3635
+    },
+    "innerTextInvariant": true,
+    "md": {
+      "title": "第002讲丨马粪争夺案",
+      "blocks": 25,
+      "imgs": 2,
+      "unknown": {}
+    },
+    "bestIter": 2,
+    "qc": {
+      "zeroLoss": {
+        "missing": [],
+        "missingEmpty": true,
+        "inOrder": true,
+        "pdfChars": 2021,
+        "domChars": 2021
+      },
+      "promo": [],
+      "holes": [],
+      "pages": 4,
+      "innerTextInvariant": true,
+      "sikaoPdfCount": 0,
+      "sikaoExpected": 0
+    },
+    "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第002讲丨马粪争夺案.pdf",
+    "pdfBytes": 548873,
+    "sha256": "276d3014d67dbd1b6ed58a223bb0bf67990a6158d353dd5e3628f28c1448c838",
+    "images": {
+      "total": 2,
+      "downloaded": 0,
+      "reused": 2,
+      "collision": 0,
+      "failed": []
+    },
+    "mdPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第002讲丨马粪争夺案.md",
+    "mdBytes": 6321
+  }
+]

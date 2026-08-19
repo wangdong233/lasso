@@ -42,6 +42,49 @@ export interface SsrfCheckResult {
 }
 
 // ============================================================
+// v1.18.2（doc/29 F1）：SSRF 拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
+// ============================================================
+/**
+ * 「环境瞬态」reason：DNS 解析不出来（dns_failed / dns_empty）。
+ *
+ * 这是**环境条件**（TUN 断网、DNS 间歇抖动、captive portal——单用户本地部署
+ * 的高频真实场景），不是策略判决。守卫无法区分「域名真不存在」与「此刻
+ * 解析器不可用」，而误判成策略拦截会把可重试的瞬态变成终答「明确否」
+ * （得到全量首跑 104 章 DNS 间歇失败实证）。
+ */
+export function isSsrfEnvTransientReason(reason: string): boolean {
+  return reason === "dns_empty" || reason.startsWith("dns_failed");
+}
+
+/**
+ * 把一次 SSRF 拒绝映射为 tri-state 语义（9 个消费工具共用，禁各自手搓）：
+ *  - 策略确定性（invalid_url / userinfo_present / protocol / deny_range / private_ip）
+ *    → outcome=didnt（真策略拦截，不可重试）
+ *  - 环境瞬态（dns_failed / dns_empty）
+ *    → outcome=unknown（可重试；CC 可择机重试，fallback 语义畅通）
+ *
+ * retrieval_method 相应区分 ssrf_blocked / ssrf_dns_unresolved。
+ */
+export function ssrfDenial(reason: string): {
+  outcome: "didnt" | "unknown";
+  retrieval_method: "ssrf_blocked" | "ssrf_dns_unresolved";
+  error: string;
+} {
+  if (isSsrfEnvTransientReason(reason)) {
+    return {
+      outcome: "unknown",
+      retrieval_method: "ssrf_dns_unresolved",
+      error: `ssrf_dns_unresolved:${reason}`,
+    };
+  }
+  return {
+    outcome: "didnt",
+    retrieval_method: "ssrf_blocked",
+    error: `ssrf_blocked:${reason}`,
+  };
+}
+
+// ============================================================
 // 主检查
 // ============================================================
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);

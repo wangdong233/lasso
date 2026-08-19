@@ -22,6 +22,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -42,12 +43,15 @@ const SPILL_ROOT = path.join(os.tmpdir(), "lasso-output");
 // 模块状态
 // ============================================================
 /**
- * @oN → 落盘元数据。Map 保插入序便于 LRU 清理（v0.3 简单实现：暂不淘汰，
- * 只在总量超 STORE_CAP_BYTES 时拒绝新 spill）。
+ * @oN → 落盘元数据。Map 保插入序；readOutputPage 访问时 touch（delete+set 移到尾），
+ * 头部即 LRU 最老——v1.18.2（doc/29 F4）兑现「便于 LRU 清理」的承诺：
+ * 总量超 STORE_CAP_BYTES 时按 LRU 淘汰最老 spill（同步删文件），不再 throw。
  */
 const store = new Map<string, { path: string; bytes: number }>();
 let outputCounter = 0;
 let totalBytes = 0;
+/** LRU 淘汰计数（观测：doctor/测试可见会话内淘汰了多少老 spill）。 */
+let evictedCount = 0;
 
 // ============================================================
 // BoundedOutput 类型
@@ -120,7 +124,8 @@ export function applyOutputEnvelope(
 
 /**
  * read_text 工具续页：从落盘文件读 [offset, offset+limit) 字节，返回 { text, eof }。
- * @throws 若 ref 不在 store（过期或未知）
+ * v1.18.2（doc/29 F4）：读即 touch（LRU 访问刷新——正被续页读的 ref 不易被淘汰）。
+ * @throws 若 ref 不在 store（LRU 淘汰或未知）
  */
 export function readOutputPage(
   ref: string,
@@ -131,6 +136,9 @@ export function readOutputPage(
   if (!entry) {
     throw new Error(`unknown ref: ${ref}`);
   }
+  // LRU touch：删了重插移到 Map 尾（最新端）
+  store.delete(ref);
+  store.set(ref, entry);
   const full = existsSync(entry.path)
     ? readFileSync(entry.path, "utf8")
     : "";
@@ -152,16 +160,54 @@ export function getOutputCounter(): number {
   return outputCounter;
 }
 
+/** v1.18.2（doc/29 F4）：会话内 LRU 淘汰次数（观测：长会话磁盘 churn 可见）。 */
+export function getEvictedCount(): number {
+  return evictedCount;
+}
+
 // ============================================================
 // 内部 helper
 // ============================================================
+/**
+ * v1.18.2（doc/29 F4）：总量超 cap 时 **LRU 淘汰最老 spill（删 Map 头 + 删文件）**
+ * 直到放得下，而不是 throw。
+ *
+ * 旧实现（v0.3「暂不淘汰」）：totalBytes 单调递增 → 长命 server 会话累计 ≥64MiB
+ * （≈1365 个 spill；PDF base64 膨胀 1.33×，全量批次一天可撞）→ 撞后**所有**大输出
+ * 永久 throw 直至重启——未捕获路径（BrowseChannel/fetch_url）直接崩 tool、
+ * 误分类路径（pdf/network catch）把「已抓到内容」报成 didnt，并级联喂熔断。
+ *
+ * 数学保证：SINGLE_CAP(16MiB) < STORE_CAP(64MiB) → 淘汰光后新 spill 必放得下；
+ * 防御分支保留（不可达；防未来常量漂移）。
+ */
 function spillToDisk(
   ref: string,
   text: string,
   extension: ".txt" | ".pdf" = ".txt",
 ): string {
-  if (totalBytes >= STORE_CAP_BYTES) {
-    throw new Error(`output store exhausted (${STORE_CAP_BYTES} cap)`);
+  const incomingBytes = Buffer.byteLength(text, "utf8");
+  // LRU 淘汰：从 Map 头（最老/最久未读）开始，直到总占用 + 新 spill ≤ cap
+  while (
+    totalBytes + incomingBytes > STORE_CAP_BYTES &&
+    store.size > 0
+  ) {
+    const oldest = store.keys().next().value;
+    if (oldest === undefined) break;
+    const entry = store.get(oldest)!;
+    store.delete(oldest);
+    totalBytes -= entry.bytes;
+    evictedCount++;
+    try {
+      rmSync(entry.path, { force: true });
+    } catch {
+      // 删文件失败不阻塞 spill（磁盘上的孤儿文件由 OS tmp 清理兜底；内存账已减）
+    }
+  }
+  if (totalBytes + incomingBytes > STORE_CAP_BYTES) {
+    // 防御分支（LRU 后数学不可达——SINGLE_CAP < STORE_CAP；防常量漂移）
+    throw new Error(
+      `output store exhausted (single spill ${incomingBytes} > cap ${STORE_CAP_BYTES})`,
+    );
   }
   // SPILL_ROOT 目录：mode 0o700（仅当前用户可进）
   // 用 mkdirSync recursive 而非 mkdtempSync，因为我们需要固定的 "@oN.txt" 路径。
@@ -173,9 +219,8 @@ function spillToDisk(
   // 文件：mode 0o600（仅当前用户可读写）—— INV-15 + INV-34（pdf 二进制内容同源）
   writeFileSync(file, text, { mode: 0o600 });
 
-  const bytes = Buffer.byteLength(text, "utf8");
-  store.set(ref, { path: file, bytes });
-  totalBytes += bytes;
+  store.set(ref, { path: file, bytes: incomingBytes });
+  totalBytes += incomingBytes;
   return file;
 }
 
@@ -221,4 +266,5 @@ export async function _resetForTests(): Promise<void> {
   store.clear();
   outputCounter = 0;
   totalBytes = 0;
+  evictedCount = 0;
 }

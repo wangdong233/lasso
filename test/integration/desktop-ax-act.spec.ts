@@ -250,7 +250,7 @@ describe("T3 — 全项失败（非 stale）→ unknown 链继续", () => {
 // 4. 顶层错误契约照旧（tcc_denied → didnt）
 // ============================================================
 describe("T3 — 顶层 error_kind 契约照旧", () => {
-  it("tcc_denied → outcome=didnt（链短路；错误契约不变）", async () => {
+  it("tcc_denied → outcome=unknown（doc/29 Y4：本档权限缺失 → 链继续试下一档，不再短路）", async () => {
     const rust = new MockRustBridge({
       ax_act: () => {
         throw new Error("__kind__tcc_denied");
@@ -267,7 +267,7 @@ describe("T3 — 顶层 error_kind 契约照旧", () => {
     const r = await provider.act({
       actions: [{ kind: "click", ref: "@e0" }],
     });
-    expect(r.outcome).toBe("didnt");
+    expect(r.outcome).toBe("unknown");
     void rust;
   });
 });

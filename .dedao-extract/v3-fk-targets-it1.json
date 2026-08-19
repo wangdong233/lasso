@@ -1,0 +1,84 @@
+{
+  "aligned": [
+    {
+      "i": 0,
+      "src": "201702171629097538443686.jpg",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 345,
+      "imgH": 345,
+      "mh": null,
+      "rel": 338,
+      "pg": 0,
+      "actualPage": 1,
+      "printImgH": 336
+    },
+    {
+      "i": 1,
+      "src": "201702171639419889922629.jpg",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 345,
+      "imgH": 345,
+      "mh": null,
+      "rel": 1457,
+      "pg": 1,
+      "actualPage": 3,
+      "printImgH": 336
+    },
+    {
+      "i": 2,
+      "src": "201702171747423100584039.jpg",
+      "natW": 1080,
+      "natH": 532,
+      "chunked": false,
+      "figH": 345,
+      "imgH": 345,
+      "mh": null,
+      "rel": 2598,
+      "pg": 2,
+      "actualPage": 4,
+      "printImgH": 336
+    },
+    {
+      "i": 3,
+      "src": "201704182138539660981349.png",
+      "natW": 1280,
+      "natH": 280,
+      "chunked": false,
+      "figH": 153,
+      "imgH": 153,
+      "mh": null,
+      "rel": 3376,
+      "pg": 3,
+      "actualPage": 4,
+      "printImgH": 149
+    },
+    {
+      "i": 4,
+      "src": "202001312350009731973001.jpg",
+      "natW": 750,
+      "natH": 11127,
+      "chunked": true,
+      "figH": 10385,
+      "imgH": 10385,
+      "mh": "none",
+      "rel": 3550,
+      "pg": 3,
+      "actualPage": 4,
+      "printImgH": 10371
+    }
+  ],
+  "targets": [
+    {
+      "holePage": 2,
+      "holeCss": 313,
+      "idx": 1,
+      "src": "201702171639419889922629.jpg",
+      "fromPrintH": 336,
+      "mh": 271
+    }
+  ]
+}

@@ -6,6 +6,16 @@
  *  - open 持续：resetMs=60min（vs 短 60s）
  *  - 副作用：open 时经 onOpen 回调联动 CapabilityBag.disable（短熔断不联动）
  *
+ * v1.18.2（doc/29 F2）设计反转——喂入分类 + 恢复闭环：
+ *  - **喂入分类**：recordFailure(error) 只计「持续故障类」（429/quota/凭据失效/
+ *    upstream_unsupported，见 outcome.ts isSustainedFailureError）；环境瞬态
+ *    （DNS/timeout/连接错/裸 unknown）不计数——那类毛刺归 60s 短熔断管（自愈快）。
+ *    旧实现不看成因，TUN 断网 10 分钟 = 10 次 unknown → 60min disable + 杀子进程，
+ *    是为多租户持续故障想象设计的守卫惩罚单用户本地部署的正常网络抖动。
+ *  - **恢复闭环**：open/half-open → closed 的恢复转换经 onClose 回调联动
+ *    CapabilityBag.enable（装配层守卫「仅恢复 long_circuit_open 自己造成的 disable」）。
+ *    旧实现 probe 成功只关 breaker 不 enable bag，恢复断链须 admin 手工。
+ *
  * 关键设计（parse8 §3.1 R-INT-01/R-CI-02）：
  *  - **与 CircuitBreaker 并列在 src/fallback/ 目录**（INV-41 不开第二套熔断引擎模块）
  *  - **复用 BreakerState 类型**（不重定义；从 CircuitBreaker.ts import）
@@ -15,13 +25,9 @@
  *
  * 与 CircuitBreaker 的状态机同形（closed/open/half-open）但触发语义独立 —— 二者在
  * FallbackDecider 双 breaker 串联检查（短先长后），互不污染状态（parse8 §3.1 末尾）。
- *
- * 长熔断只触发 disable，不自动 enable（保守设计）：
- *  - 60min 后 half-open probe 成功 → recordSuccess → state=closed
- *  - 但 bag 仍 disabled —— admin 手工 capability_enable 显式恢复
- *  - 理由：长熔断代表"月配额耗尽类"，自动恢复风险大（用户可能已超额），由 admin 显式安全。
  */
 import type { BreakerState } from "./CircuitBreaker.js";
+import { isSustainedFailureError } from "./outcome.js";
 
 export class LongCircuitBreaker {
   state: BreakerState = "closed";
@@ -49,6 +55,12 @@ export class LongCircuitBreaker {
     private readonly onOpen?: (name: string) => Promise<void>,
     /** channel / provider 名（onOpen 回调透传 + 日志用）。 */
     private readonly name = "unknown",
+    /**
+     * v1.18.2（doc/29 F2c）：open/half-open → closed 恢复转换时回调
+     * （装配层注入条件 bag.enable——仅恢复 long_circuit_open 自己造成的 disable）。
+     * fire-and-forget（recordSuccess 在热路径不 await）；抛错吞掉只 log。
+     */
+    private readonly onClose?: (name: string) => Promise<void>,
   ) {}
 
   /**
@@ -72,11 +84,17 @@ export class LongCircuitBreaker {
   /**
    * 成功：清零失败时间戳 + 回 closed（half-open probe 成功也走这里）。
    *
-   * 注意：bag 仍 disabled（不自动 enable；保守设计，见文件头注释）。
+   * v1.18.2（doc/29 F2c）：open/half-open → closed 的**恢复转换**触发 onClose
+   * （装配层条件 bag.enable——修「probe 成功但 bag 永久 disabled」恢复断链）。
+   * 已 closed 时的常规成功不触发（无状态转换）。
    */
   recordSuccess(): void {
+    const recovering = this.state !== "closed";
     this.failureTimestamps = [];
     this.state = "closed";
+    if (recovering) {
+      this._safeOnClose();
+    }
   }
 
   /**
@@ -85,9 +103,18 @@ export class LongCircuitBreaker {
    *  - closed    → 滑动窗内 ≥ threshold → open + onOpen
    *  - open      → 幂等（不重复 onOpen；保留 openedAt）
    *
+   * v1.18.2（doc/29 F2a）喂入分类：error 非「持续故障类」（isSustainedFailureError
+   * = false，即 DNS/timeout/连接错/裸 unknown 等环境瞬态）→ **不计数不转 open**
+   * （half-open 态也保持 half-open，留给下次 probe）。环境瞬态归 60s 短熔断管。
+   * error 省略 → 按持续计（兼容既有 no-arg 调用方与单测）。
+   *
    * onOpen 抛错被 catch 不 rethrow（保守：breaker 状态成功，bag.disable 失败仅 log warn）。
    */
-  async recordFailure(): Promise<void> {
+  async recordFailure(error?: string | null): Promise<void> {
+    // isSustainedFailureError(undefined)===true（无信号按持续计，兼容 no-arg 调用方）
+    if (!isSustainedFailureError(error)) {
+      return; // 环境瞬态：不喂长熔断（doc/29 F2a——网络抖动不得升级成 60min disable）
+    }
     const now = Date.now();
     this.failureTimestamps.push(now);
     // 滑动窗：剔除 windowMs 之前的时间戳
@@ -116,8 +143,9 @@ export class LongCircuitBreaker {
   /**
    * F3.4.10 熔断 reset —— admin action 手工唤醒（不动短熔断）。
    *
-   * 设计：admin 显式 reset 后状态回 closed；但 bag 仍 disabled（reset 只清 breaker 状态，
-   * 不自动 enable channel —— 仍需 admin capability_enable 显式恢复）。
+   * 设计：admin 显式 reset 后状态回 closed；bag 联动由 admin.ts 的 breaker_reset
+   * action 自己做（条件 enable：仅恢复 reason==="long_circuit_open" 的 disable，
+   * v1.18.2 doc/29 F2c）——breaker 类不持有 bag 句柄（守 INV-42 分层）。
    */
   reset(): void {
     this.state = "closed";
@@ -169,5 +197,16 @@ export class LongCircuitBreaker {
     } catch {
       // 保守吞错：breaker 状态已 open（不可逆）；bag.disable 失败由装配层 log
     }
+  }
+
+  /**
+   * v1.18.2（doc/29 F2c）：onClose 回调包装（fire-and-forget；抛错吞掉）。
+   * 与 _safeOnOpen 同保守策略：恢复转换已生效，bag.enable 失败只留装配层日志。
+   */
+  private _safeOnClose(): void {
+    if (!this.onClose) return;
+    void this.onClose(this.name).catch(() => {
+      // 保守吞错：breaker 已 closed（不可逆）；bag.enable 失败由装配层 log
+    });
   }
 }

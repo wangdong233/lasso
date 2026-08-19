@@ -1,0 +1,697 @@
+[
+  {
+    "tag": "fk",
+    "title": "发刊词丨只给你地道的经济学思维",
+    "print": true,
+    "phases": {
+      "switch": {
+        "mode": "already",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz"
+      },
+      "stabilizeLite": {
+        "ok": true,
+        "bodyLen": 1696,
+        "imgs": 6,
+        "imgsNotLoaded": 0
+      },
+      "dump": {
+        "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz",
+        "title": "发刊词丨只给你地道的经济学思维",
+        "editorChildren": 27,
+        "figCount": 6,
+        "figs": [
+          {
+            "i": 0,
+            "figCls": "",
+            "src": "201702171629097538443686.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 1009,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 1,
+            "figCls": "",
+            "src": "201702171639419889922629.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 2128,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 2,
+            "figCls": "",
+            "src": "201702171747423100584039.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 3268,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 3,
+            "figCls": "",
+            "src": "201704182138539660981349.png",
+            "nat": "1280x280",
+            "disp": "700x153",
+            "top": 4047,
+            "h": 153,
+            "cap": null
+          },
+          {
+            "i": 4,
+            "figCls": "",
+            "src": "202001312350009731973001.jpg",
+            "nat": "750x11127",
+            "disp": "700x10385",
+            "top": 4220,
+            "h": 10385,
+            "cap": null
+          },
+          {
+            "i": 5,
+            "figCls": "",
+            "src": "201702231741511789529690.jpg",
+            "nat": "1080x607",
+            "disp": "700x393",
+            "top": 14626,
+            "h": 393,
+            "cap": null
+          }
+        ],
+        "tailKids": [
+          {
+            "idx": 19,
+            "tag": "FIGURE",
+            "cls": "",
+            "tl": 0,
+            "txt": " "
+          },
+          {
+            "idx": 20,
+            "tag": "FIGURE",
+            "cls": "",
+            "tl": 0,
+            "txt": " "
+          },
+          {
+            "idx": 21,
+            "tag": "FIGURE",
+            "cls": "",
+            "tl": 0,
+            "txt": " "
+          },
+          {
+            "idx": 22,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 23,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 24,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 25,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 26,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 11,
+            "txt": "写笔记划线删除划线复制"
+          }
+        ],
+        "lastFigIsLastChild": false,
+        "afterLastFig": "DIV.",
+        "lastFigHtml": "<figure data-module-type=\"custom\" style=\"z-index: 40; position: relative;\"><img src=\"https://piccdn3.umiwi.com/img/201702/23/201702231741511789529690.jpg\" class=\"big-image\"> <!----></figure>",
+        "showTxtTail": "是为了适应这四种基本约束而衍生出来的。我们整年的经济学课程，就从这天真的审视开始，循着这四大模块的内在逻辑，稳扎稳打地前进。一年后再回首，你已经认不得自己了。热烈欢迎你的订阅！ 写笔记划线删除划线复制",
+        "apiHit": 7,
+        "api": [
+          "https://hm.baidu.com/hm.gif?hca=4544ED1BCDDFFE33&cc=1&ck=1&cl=24-bit&ds=1440x900&vl=682&et=0&ja=0&ln=zh-cn&lo=0&lt=1787113992&rnd=1776575257&si=be36b12b82a5f4eaa42c23989d277bb0&v=1.3.2&lv=2&sn=50111&r=0&ww=1200&u=https%3A%2F%2Fwww.dedao.cn%2Fcourse%2Farticle%3Fid%3D6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz",
+          "https://www.dedao.cn/pc/bauhinia/pc/article/info",
+          "https://www.dedao.cn/api/pc/bauhinia/pc/class/purchase/article_list",
+          "https://www.dedao.cn/pc/ddarticle/v1/article/get/v2?token=KWn%2FCP3W2t1aDRlH3qcXSRMvvp93gvjjBhiIxK3K3uofEUva1VYtWR%2B6tiSM1cYSmxo7Zq4Lvw0GXFD9Q87OEZ5Sg0o%3D&sign=b23a426b357d1b83&appid=1632426125495894021&is_new=1",
+          "https://www.dedao.cn/pc/ledgers/notes/article_user_comment_list",
+          "https://www.dedao.cn/pc/ledgers/notes/article_comment_list"
+        ]
+      },
+      "cleanup": {
+        "ok": true,
+        "docHBefore": 14654,
+        "docHAfter": 14644,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-show",
+          "figure.",
+          "img.big-image"
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      },
+      "pagemap": {
+        "PAGE": 1045.728,
+        "docH": 14634,
+        "wrapTop": 60,
+        "showTop": 286,
+        "showW": 700,
+        "showH": 14348,
+        "figs": [
+          {
+            "i": 0,
+            "src": "201702171629097538443686.jpg",
+            "top": 624,
+            "h": 345,
+            "pg": 0,
+            "rem": 422,
+            "fitsNow": true
+          },
+          {
+            "i": 1,
+            "src": "201702171639419889922629.jpg",
+            "top": 1743,
+            "h": 345,
+            "pg": 1,
+            "rem": 349,
+            "fitsNow": true
+          },
+          {
+            "i": 2,
+            "src": "201702171747423100584039.jpg",
+            "top": 2884,
+            "h": 345,
+            "pg": 2,
+            "rem": 254,
+            "fitsNow": false
+          },
+          {
+            "i": 3,
+            "src": "201704182138539660981349.png",
+            "top": 3662,
+            "h": 153,
+            "pg": 3,
+            "rem": 520,
+            "fitsNow": true
+          },
+          {
+            "i": 4,
+            "src": "202001312350009731973001.jpg",
+            "top": 3836,
+            "h": 10385,
+            "pg": 3,
+            "rem": 347,
+            "fitsNow": false
+          },
+          {
+            "i": 5,
+            "src": "201702231741511789529690.jpg",
+            "top": 14241,
+            "h": 393,
+            "pg": 13,
+            "rem": 399,
+            "fitsNow": true
+          }
+        ]
+      },
+      "print": {
+        "ok": true,
+        "bytes": 1794013
+      }
+    },
+    "ms": {
+      "switch": 1439,
+      "stabilizeLite": 402,
+      "dump": 344,
+      "cleanup": 362,
+      "pagemap": 245,
+      "textFetch": 253,
+      "print": 1076,
+      "total": 4121
+    },
+    "innerTextChars": 0,
+    "innerTextFetched": 0
+  },
+  {
+    "tag": "l001",
+    "title": "第001讲丨战俘营里的经济组织",
+    "print": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第001讲丨战俘营里的经济组织",
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ"
+      },
+      "stabilizeLite": {
+        "ok": true,
+        "bodyLen": 3742,
+        "imgs": 5,
+        "imgsNotLoaded": 0
+      },
+      "dump": {
+        "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ",
+        "title": "第001讲丨战俘营里的经济组织",
+        "editorChildren": 58,
+        "figCount": 5,
+        "figs": [
+          {
+            "i": 0,
+            "figCls": "",
+            "src": "201701311504324583183795.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 1249,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 1,
+            "figCls": "",
+            "src": "201701311511319102257543.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 2808,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 2,
+            "figCls": "",
+            "src": "201702141406296037049506.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 4342,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 3,
+            "figCls": "",
+            "src": "201702141413585245474200.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 5785,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 4,
+            "figCls": "",
+            "src": "201702231752373381321946.jpg",
+            "nat": "1080x607",
+            "disp": "700x393",
+            "top": 7320,
+            "h": 393,
+            "cap": null
+          }
+        ],
+        "tailKids": [
+          {
+            "idx": 50,
+            "tag": "P",
+            "cls": "",
+            "tl": 81,
+            "txt": "我们今天讲的主题是说经济规律在哪里都起作用，哪怕是在战俘营里"
+          },
+          {
+            "idx": 51,
+            "tag": "P",
+            "cls": "",
+            "tl": 15,
+            "txt": "欢迎你给我留言，我们下次再见。 "
+          },
+          {
+            "idx": 52,
+            "tag": "FIGURE",
+            "cls": "",
+            "tl": 0,
+            "txt": " "
+          },
+          {
+            "idx": 53,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 54,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 55,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 56,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 57,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 11,
+            "txt": "写笔记划线删除划线复制"
+          }
+        ],
+        "lastFigIsLastChild": false,
+        "afterLastFig": "DIV.",
+        "lastFigHtml": "<figure data-module-type=\"custom\" style=\"z-index: 40; position: relative;\"><img src=\"https://piccdn3.umiwi.com/img/201702/23/201702231752373381321946.jpg\" class=\"big-image\"> <!----></figure>",
+        "showTxtTail": "是说经济规律在哪里都起作用，哪怕是在战俘营里面都起作用。现在倒过来，请你举一个例子，在这个例子里面，经济学规律是不起作用的，你能举出这样的例子吗？欢迎你给我留言，我们下次再见。 写笔记划线删除划线复制",
+        "apiHit": 10,
+        "api": [
+          "https://www.dedao.cn/api/pc/bauhinia/pc/class/purchase/article_list",
+          "https://www.dedao.cn/pc/ddarticle/v1/article/get/v2?token=KWn%2FCP3W2t1aDRlH3qcXSRMvvp93gvjjBhiIxK3K3uofEUva1VYtWR%2B6tiSM1cYSmxo7Zq4Lvw0GXFD9Q87OEZ5Sg0o%3D&sign=b23a426b357d1b83&appid=1632426125495894021&is_new=1",
+          "https://www.dedao.cn/pc/ledgers/notes/article_user_comment_list",
+          "https://www.dedao.cn/pc/ledgers/notes/article_comment_list",
+          "https://www.dedao.cn/api/pc/ledgers/notes/article_noteline",
+          "https://www.dedao.cn/pc/bauhinia/pc/article/info"
+        ]
+      },
+      "cleanup": {
+        "ok": true,
+        "docHBefore": 7226,
+        "docHAfter": 7216,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-show",
+          "figure.",
+          "img.big-image"
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      },
+      "pagemap": {
+        "PAGE": 1045.728,
+        "docH": 7206,
+        "wrapTop": 60,
+        "showTop": 286,
+        "showW": 700,
+        "showH": 6921,
+        "figs": [
+          {
+            "i": 0,
+            "src": "201701311504324583183795.jpg",
+            "top": 742,
+            "h": 345,
+            "pg": 0,
+            "rem": 304,
+            "fitsNow": false
+          },
+          {
+            "i": 1,
+            "src": "201701311511319102257543.jpg",
+            "top": 2301,
+            "h": 345,
+            "pg": 2,
+            "rem": 836,
+            "fitsNow": true
+          },
+          {
+            "i": 2,
+            "src": "201702141406296037049506.jpg",
+            "top": 3836,
+            "h": 345,
+            "pg": 3,
+            "rem": 347,
+            "fitsNow": true
+          },
+          {
+            "i": 3,
+            "src": "201702141413585245474200.jpg",
+            "top": 5278,
+            "h": 345,
+            "pg": 5,
+            "rem": 996,
+            "fitsNow": true
+          },
+          {
+            "i": 4,
+            "src": "201702231752373381321946.jpg",
+            "top": 6813,
+            "h": 393,
+            "pg": 6,
+            "rem": 507,
+            "fitsNow": true
+          }
+        ]
+      },
+      "print": {
+        "ok": true,
+        "bytes": 1030208
+      }
+    },
+    "ms": {
+      "switch": 1337,
+      "stabilizeLite": 836,
+      "dump": 663,
+      "cleanup": 567,
+      "pagemap": 267,
+      "textFetch": 289,
+      "print": 1106,
+      "total": 5065
+    },
+    "innerTextChars": 0,
+    "innerTextFetched": 0
+  },
+  {
+    "tag": "l002",
+    "title": "第002讲丨马粪争夺案",
+    "print": true,
+    "phases": {
+      "switch": {
+        "mode": "clicked",
+        "title": "第002讲丨马粪争夺案",
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE"
+      },
+      "stabilizeLite": {
+        "ok": true,
+        "bodyLen": 2133,
+        "imgs": 3,
+        "imgsNotLoaded": 0
+      },
+      "dump": {
+        "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE",
+        "title": "第002讲丨马粪争夺案",
+        "editorChildren": 34,
+        "figCount": 3,
+        "figs": [
+          {
+            "i": 0,
+            "figCls": "",
+            "src": "201702192344380427586191.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 1371,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 1,
+            "figCls": "",
+            "src": "201702192348580647273494.jpg",
+            "nat": "1080x532",
+            "disp": "700x345",
+            "top": 2898,
+            "h": 345,
+            "cap": null
+          },
+          {
+            "i": 2,
+            "figCls": "",
+            "src": "201702231753117453076259.jpg",
+            "nat": "1080x607",
+            "disp": "700x393",
+            "top": 4304,
+            "h": 393,
+            "cap": null
+          }
+        ],
+        "tailKids": [
+          {
+            "idx": 26,
+            "tag": "P",
+            "cls": "",
+            "tl": 40,
+            "txt": "你能不能在生活中找一个例子，看上去是个公正的规则，但它背后其"
+          },
+          {
+            "idx": 27,
+            "tag": "DIV",
+            "cls": "tips",
+            "tl": 75,
+            "txt": "注释：Thomas Haslem v. William A."
+          },
+          {
+            "idx": 28,
+            "tag": "FIGURE",
+            "cls": "",
+            "tl": 0,
+            "txt": " "
+          },
+          {
+            "idx": 29,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 30,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 31,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 32,
+            "tag": "svg",
+            "cls": "",
+            "tl": 0,
+            "txt": ""
+          },
+          {
+            "idx": 33,
+            "tag": "DIV",
+            "cls": "",
+            "tl": 11,
+            "txt": "写笔记划线删除划线复制"
+          }
+        ],
+        "lastFigIsLastChild": false,
+        "afterLastFig": "DIV.",
+        "lastFigHtml": "<figure data-module-type=\"custom\" style=\"z-index: 40; position: relative;\"><img src=\"https://piccdn3.umiwi.com/img/201702/23/201702231753117453076259.jpg\" class=\"big-image\"> <!----></figure>",
+        "showTxtTail": "背后其实是有效率的考量的？注释：Thomas Haslem v. William A. Lockwood, 37 (Conn.) 500 Connecticut, (1871) 写笔记划线删除划线复制",
+        "apiHit": 10,
+        "api": [
+          "https://www.dedao.cn/pc/ledgers/notes/article_comment_list",
+          "https://www.dedao.cn/api/pc/ledgers/notes/article_noteline",
+          "https://www.dedao.cn/pc/bauhinia/pc/article/info",
+          "https://www.dedao.cn/pc/ddarticle/v1/article/get/v2?token=KWn%2FCP3W2t1aDRlH3qYeSz3sMWo0Ard5WMCKxe8KbQbk1ERggpd69RpTKIRY1k%2FQwLDu0uAFltuz2ZHgHCAtdxi290g%3D&sign=b23a426b357d1b83&appid=1632426125495894021&is_new=1",
+          "https://www.dedao.cn/pc/ledgers/notes/article_user_comment_list",
+          "https://www.dedao.cn/pc/ledgers/notes/article_comment_list"
+        ]
+      },
+      "cleanup": {
+        "ok": true,
+        "docHBefore": 4211,
+        "docHAfter": 4201,
+        "tailChain": [
+          "div.article-body-wrap",
+          "div.article-body",
+          "div.iget_rich-text-panel--co",
+          "div.editor-show",
+          "figure.",
+          "img.big-image"
+        ],
+        "residual": {
+          "cover": 0,
+          "ddAudio": 0,
+          "timeInfo": 0,
+          "myComment": 0,
+          "messageV2": 0
+        }
+      },
+      "pagemap": {
+        "PAGE": 1045.728,
+        "docH": 4191,
+        "wrapTop": 60,
+        "showTop": 286,
+        "showW": 700,
+        "showH": 3905,
+        "figs": [
+          {
+            "i": 0,
+            "src": "201702192344380427586191.jpg",
+            "top": 864,
+            "h": 345,
+            "pg": 0,
+            "rem": 182,
+            "fitsNow": false
+          },
+          {
+            "i": 1,
+            "src": "201702192348580647273494.jpg",
+            "top": 2391,
+            "h": 345,
+            "pg": 2,
+            "rem": 746,
+            "fitsNow": true
+          },
+          {
+            "i": 2,
+            "src": "201702231753117453076259.jpg",
+            "top": 3798,
+            "h": 393,
+            "pg": 3,
+            "rem": 385,
+            "fitsNow": false
+          }
+        ]
+      },
+      "print": {
+        "ok": true,
+        "bytes": 645508
+      }
+    },
+    "ms": {
+      "switch": 2137,
+      "stabilizeLite": 419,
+      "dump": 248,
+      "cleanup": 398,
+      "pagemap": 253,
+      "textFetch": 244,
+      "print": 841,
+      "total": 4540
+    },
+    "innerTextChars": 0,
+    "innerTextFetched": 0
+  }
+]

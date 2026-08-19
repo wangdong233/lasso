@@ -10,6 +10,7 @@ import {
   outcomeAfterCheck,
   isEmptyBody,
   isFallbackWorthy,
+  isSustainedFailureError,
 } from "../../src/fallback/outcome.js";
 
 // ============================================================
@@ -208,12 +209,6 @@ describe("isFallbackWorthy", () => {
     it("forbidden → false", () => {
       expect(isFallbackWorthy("unknown", "forbidden by ACL")).toBe(false);
     });
-    it("nxdomain → false", () => {
-      expect(isFallbackWorthy("unknown", "ENOTFOUND nxdomain")).toBe(false);
-    });
-    it("enotfound → false", () => {
-      expect(isFallbackWorthy("unknown", "getaddrinfo ENOTFOUND")).toBe(false);
-    });
     it("needs_manual_2fa → false（明确需人，不 fallback）", () => {
       expect(isFallbackWorthy("unknown", "NEEDS_MANUAL_2FA")).toBe(false);
     });
@@ -241,6 +236,49 @@ describe("isFallbackWorthy", () => {
     });
     it("partial render → true", () => {
       expect(isFallbackWorthy("unknown", "partial render detected")).toBe(true);
+    });
+    // v1.18.2（doc/29 Y2）：DNS 错移回可 fallback 集——代理/TUN 环境 DNS 高频瞬态，
+    // 且下一 channel（真实 Chrome 系统栈/DoH）解析路径不同可能成功
+    it("nxdomain → true（doc/29 Y2：DNS 瞬态可 fallback）", () => {
+      expect(isFallbackWorthy("unknown", "ENOTFOUND nxdomain")).toBe(true);
+    });
+    it("enotfound → true（doc/29 Y2）", () => {
+      expect(isFallbackWorthy("unknown", "getaddrinfo ENOTFOUND")).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // v1.18.2（doc/29 F2）：长熔断喂入分类 isSustainedFailureError
+  // ============================================================
+  describe("isSustainedFailureError — 长熔断喂入分类（doc/29 F2a）", () => {
+    it("undefined / null → true（无信号按持续计，兼容 no-arg recordFailure）", () => {
+      expect(isSustainedFailureError(undefined)).toBe(true);
+      expect(isSustainedFailureError(null)).toBe(true);
+    });
+    it.each([
+      "brave_status_429",
+      "HTTP 429 Too Many Requests",
+      "rate_limit_exceeded",
+      "quota exhausted",
+      "billing_hard_limit_reached",
+      "invalid_api_key",
+      "unauthorized (401)",
+      "authentication_failed",
+      "upstream_unsupported:pdf",
+    ])("持续故障类 %s → true", (e) => {
+      expect(isSustainedFailureError(e)).toBe(true);
+    });
+    it.each([
+      "getaddrinfo ENOTFOUND flaky.test",
+      "dns_failed:getaddrinfo EAI_AGAIN",
+      "request timeout after 30000ms",
+      "connect ECONNREFUSED 127.0.0.1:9222",
+      "fetch failed",
+      "unknown", // 裸 unknown（200 空响应类）
+      "net::ERR_CONNECTION_RESET",
+      "socket hang up",
+    ])("环境瞬态 %s → false（不喂长熔断——TUN 断网 10 分钟不得升级 60min disable）", (e) => {
+      expect(isSustainedFailureError(e)).toBe(false);
     });
   });
 });

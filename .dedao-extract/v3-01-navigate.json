@@ -1,0 +1,14 @@
+{
+  "outcome": "worked",
+  "data": {
+    "url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz",
+    "action": "navigate",
+    "state_id": "cb57e1d8-8559-4aae-9884-05359b29ecb4",
+    "content_path": "/Users/wangdong/.cache/lasso/ab36e592-0ee7-45a2-896e-65613a6baca4/browse_logged_in-cb57e1d8-8559-4aae-9884-05359b29ecb4.json",
+    "preview": "navigated",
+    "final_url": "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz."
+  },
+  "served_by": "browse_logged_in",
+  "fallback_used": false,
+  "retrieval_method": "chrome_devtools_mcp"
+}

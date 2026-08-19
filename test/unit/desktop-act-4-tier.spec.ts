@@ -339,3 +339,71 @@ describe("DesktopChannel.act — INV-22/27 appleScript 注入在链路中短路"
     expect(r.actions_and_results?.[1].outcome).toBe("didnt");
   });
 });
+
+// ============================================================
+// v1.18.2（doc/29 Y4）：tcc_denied → unknown（链继续，不再短路降级链）
+// ============================================================
+describe("DesktopChannel.act — tcc_denied 不再短路降级链（doc/29 Y4）", () => {
+  it("ax 返 tcc_denied → appleScript 仍被试（AX Accessibility TCC ≠ Automation TCC）", async () => {
+    const tccErr = new Error("ax tcc denied");
+    (tccErr as { errorKind?: string }).errorKind = "tcc_denied";
+    const { desktop, rust } = assemble({
+      ping: defaultPing(),
+      ax_act: () => {
+        throw tccErr;
+      },
+      // appleScript 有 Automation 权限 → worked
+      applescript_run: () => ({
+        action: "finder_new_folder",
+        stdout: "",
+        stderr: "",
+        exit_code: 0,
+      }),
+    });
+    const r = await desktop.act({
+      appleScriptAction: "finder_new_folder",
+      appleScriptParams: {},
+    });
+    // 旧实现：ax didnt 短路 → 终答「明确否」；新：链继续 → appleScript 接住
+    expect(r.outcome).toBe("worked");
+    expect(r.fallback_used).toBe(true);
+    expect(
+      rust.calls.filter((c) => c.method === "applescript_run"),
+    ).toHaveLength(1);
+  });
+
+  it("ax tcc_denied + appleScript 无 action（unknown）→ cgEvent 仍被试", async () => {
+    const tccErr = new Error("ax tcc denied");
+    (tccErr as { errorKind?: string }).errorKind = "tcc_denied";
+    const { desktop } = assemble({
+      ping: defaultPing(),
+      ax_act: () => {
+        throw tccErr;
+      },
+      cgevent_dispatch: () => ({ results: [{ index: 0, ok: true }] }),
+    });
+    const r = await desktop.act({
+      actions: [{ kind: "press", key: "Return" }],
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.actions_and_results?.length).toBe(3); // ax → appleScript(no action) → cgEvent
+  });
+
+  it("app_not_found 仍是跨档确定性 didnt（短路不变——app 没开对全部档成立）", async () => {
+    const nfErr = new Error("app not found");
+    (nfErr as { errorKind?: string }).errorKind = "app_not_found";
+    const { desktop, rust } = assemble({
+      ping: defaultPing(),
+      ax_act: () => {
+        throw nfErr;
+      },
+    });
+    const r = await desktop.act({
+      actions: [{ kind: "click", ref: "@e1" }],
+    });
+    expect(r.outcome).toBe("didnt");
+    expect(
+      rust.calls.filter((c) => c.method === "applescript_run"),
+    ).toHaveLength(0); // 短路：不试下游
+  });
+});

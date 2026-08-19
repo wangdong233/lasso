@@ -18,6 +18,8 @@ import { describe, it, expect } from "vitest";
 import {
   BudgetTracker,
   DEFAULT_CHAIN_BUDGET_MS,
+  MAX_CHAIN_BUDGET_MS,
+  clampChainBudgetMs,
 } from "../../src/fallback/BudgetTracker.js";
 import type { InteractResult } from "../../src/types.js";
 
@@ -264,5 +266,26 @@ describe("BudgetTracker — chain 生命周期综合", () => {
     b.spend(60); // total=110 > 100
     expect(b.exhausted()).toBe(true);
     expect(b.remaining()).toBe(0);
+  });
+});
+
+// ============================================================
+// v1.18.2（doc/29 F3+Y1）：budget_ms 入参钳制
+// ============================================================
+describe("clampChainBudgetMs — budget_ms 入参钳制（doc/29 Y1）", () => {
+  it("undefined / 非法值 → DEFAULT_CHAIN_BUDGET_MS（120s）", () => {
+    expect(clampChainBudgetMs(undefined)).toBe(120_000);
+    expect(clampChainBudgetMs(Number.NaN)).toBe(120_000);
+    expect(clampChainBudgetMs(0)).toBe(120_000);
+    expect(clampChainBudgetMs(-5)).toBe(120_000);
+    expect(clampChainBudgetMs(Number.POSITIVE_INFINITY)).toBe(120_000);
+  });
+  it("合法值原样通过（120s 默认可放宽到 300s 慢站长链）", () => {
+    expect(clampChainBudgetMs(300_000)).toBe(300_000);
+    expect(clampChainBudgetMs(120_000)).toBe(120_000);
+  });
+  it("超上限截到 MAX_CHAIN_BUDGET_MS（600s=10min；防 1e9 误配失控）", () => {
+    expect(clampChainBudgetMs(600_000)).toBe(600_000);
+    expect(clampChainBudgetMs(1e9)).toBe(600_000);
   });
 });

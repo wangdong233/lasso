@@ -20,22 +20,21 @@ import {
 } from "../../../src/runtime/CallerTierTracker.js";
 
 describe("CallerTierTracker — INV-38 模块顶级 const", () => {
-  it("DEFAULT_CALLER_CAP 是 100（INV-38 选 100 依据 parse7 §3.3）", () => {
-    expect(DEFAULT_CALLER_CAP).toBe(100);
+  it("DEFAULT_CALLER_CAP 是 Infinity（P26/v1.18.2 设计反转：单用户本地 stdio 无滥用者威胁模型，默认放行；配额降级 opt-in）", () => {
+    expect(DEFAULT_CALLER_CAP).toBe(Number.POSITIVE_INFINITY);
   });
 
   it("DEFAULT_WINDOW_MS 是 60000（60s 滑动窗）", () => {
     expect(DEFAULT_WINDOW_MS).toBe(60_000);
   });
 
-  it("default 构造用 DEFAULT_CALLER_CAP（无 env 时）", () => {
+  it("default 构造用 DEFAULT_CALLER_CAP（无 env 时）——Infinity 下窗口内累计永不拒绝（计数仍工作）", () => {
     const t = new CallerTierTracker();
-    // 通过 snapshot 验证 defaultCap（首 caller 触发 _getOrCreate）
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 200; i++) {
       expect(t.tryAcquire("user")).toBe(true);
     }
-    // 第 101 次超额
-    expect(t.tryAcquire("user")).toBe(false);
+    // 计数保留（观测价值不丢）
+    expect(t.currentUsage("user")).toBe(200);
   });
 });
 
@@ -81,10 +80,10 @@ describe("CallerTierTracker.tryAcquire — 窗口内累计", () => {
     }
   });
 
-  it("default cap=100 时第 101 次返 false", () => {
+  it("default cap=Infinity 时第 101 次仍返 true（P26：正常业务永不设限）", () => {
     const t = new CallerTierTracker();
     for (let i = 0; i < 100; i++) t.tryAcquire("a");
-    expect(t.tryAcquire("a")).toBe(false);
+    expect(t.tryAcquire("a")).toBe(true);
   });
 
   it("cap=3 显式构造：前 3 次通过，第 4 次拒绝", () => {

@@ -55,7 +55,7 @@ import {
   type ExpectPollOptions,
 } from "../browse/ExpectPoll.js";
 import { StepEngine, type HighRiskGateLike } from "../browse/StepEngine.js";
-import { BudgetTracker } from "../fallback/BudgetTracker.js";
+import { BudgetTracker, DEFAULT_CHAIN_BUDGET_MS, clampChainBudgetMs } from "../fallback/BudgetTracker.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
 import {
   parseEvalResult,
@@ -278,7 +278,12 @@ export abstract class BrowseChannel extends UiChannel {
             }
           }
         }
-        const chain = await this.runChain(url, options.steps as Step[]);
+        const chain = await this.runChain(
+          url,
+          options.steps as Step[],
+          // v1.18.2（doc/29 F3+Y1）：budget_ms 显式放宽（钳制 600s；缺省 DEFAULT 120s）
+          clampChainBudgetMs(options.budget_ms),
+        );
         return this.wrapChainResult(chain);
       });
     }
@@ -476,8 +481,15 @@ export abstract class BrowseChannel extends UiChannel {
    * 注意：chain 级 budget（120s）实例化在此处（每 chain 一个新 BudgetTracker），
    * 由本方法拥有；外层 FallbackDecider 的 BudgetTracker 是另一回事（per-fallback-plan）。
    */
-  async runChain(url: string, steps: Step[]): Promise<InteractResult<ChainResult>> {
-    const budget = new BudgetTracker();
+  async runChain(
+    url: string,
+    steps: Step[],
+    /** v1.18.2（doc/29 F3+Y1）：可选预算覆盖（已钳制；缺省 DEFAULT_CHAIN_BUDGET_MS）。 */
+    budgetMs: number = DEFAULT_CHAIN_BUDGET_MS,
+  ): Promise<InteractResult<ChainResult>> {
+    // v1.18.2（doc/29 F3+Y1）：默认 120s 维持，但调用方可经 options.budget_ms 放宽
+    // （钳 600s——见 BudgetTracker.clampChainBudgetMs）；预算耗尽终止语义=unknown。
+    const budget = new BudgetTracker(budgetMs);
     const gate = this.createHighRiskGate();
     const engine = new StepEngine(this, budget, gate);
     return engine.runChain(url, steps);
@@ -514,8 +526,24 @@ export abstract class BrowseChannel extends UiChannel {
 
     // 把 ChainResult 序列化为 JSON，过 applyOutputEnvelope
     // （48KiB 上限：大 chain 会落盘 + 返回 preview + @oN ref）
+    // v1.18.2（doc/29 F4）：envelope 失败（单条 >16MiB 数据异常；store 耗尽已被
+    // LRU 淘汰根治）→ 降级 preview-only，不 throw——旧实现裸抛会崩整个 tool 且
+    // 被外层 decider 记成 unknown 喂双熔断（级联放大器）。
     const json = JSON.stringify(chain.data);
-    const envelope = applyOutputEnvelope(json, "chain result too large: narrow selectors or split into smaller steps");
+    let envelope: ReturnType<typeof applyOutputEnvelope>;
+    try {
+      envelope = applyOutputEnvelope(
+        json,
+        "chain result too large: narrow selectors or split into smaller steps",
+      );
+    } catch (e) {
+      envelope = {
+        preview: json.slice(0, 16 * 1024),
+        truncated: true,
+        total_bytes: Buffer.byteLength(json, "utf8"),
+        refine_hint: `chain result exceeded single spill cap; no @oref available (envelope degrade): narrow selectors or split into smaller steps [${String(e).slice(0, 80)}]`,
+      };
+    }
 
     // actions_and_results 的最后一个 result 提供 state_id（兼容 v0.2 BrowseResult.state_id）
     const lastResult = chain.data.actions_and_results.at(-1)?.results[0];
@@ -1286,11 +1314,14 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   if (m.includes("needs_manual_2fa")) return "didnt";
   if (m.includes("404") || m.includes("not_found")) return "didnt";
   if (m.includes("403") || m.includes("forbidden")) return "didnt";
-  if (m.includes("enotfound") || m.includes("nxdomain")) return "didnt";
-  // v1.8（W1-DEF-3 / W1-DEF-5）：screenshot 落盘失败与导航失败（404 / DNS / 连接错）
-  // 都是明确「目标不可得」信号 → didnt（不 fallback、不假装 worked）
+  // v1.18.2（doc/29 Y2）：DNS 错（enotfound/nxdomain）与导航网络错（dns_or_nav_error
+  // 家族：ERR_NAME_NOT_RESOLVED / 连接拒/重置/超时 / 断网）→ unknown。代理/TUN 环境
+  // 这些是高频瞬态（fake-ip 拦截、断网恢复期），不是页面语义否定；headless 失败
+  // 后 fallback 到 logged_in（真实 Chrome 走系统栈/DoH，解析路径不同）可能成功。
+  if (m.includes("enotfound") || m.includes("nxdomain")) return "unknown";
+  // v1.8（W1-DEF-3 / W1-DEF-5）：screenshot 落盘失败是明确「本地交付不可得」→ didnt
   if (m.includes("screenshot_write_failed")) return "didnt";
-  if (m.includes("dns_or_nav_error")) return "didnt";
+  if (m.includes("dns_or_nav_error")) return "unknown";
   if (m.includes("http_404")) return "didnt";
   // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt
   // （不 fallback、不猜——CC 重新 extract with include_refs 取新 refs）

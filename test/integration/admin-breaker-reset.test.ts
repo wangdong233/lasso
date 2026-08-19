@@ -200,3 +200,76 @@ describe("admin breaker_reset — D7 熔断手工唤醒", () => {
     expect(parsed.action).toBe("breaker_reset");
   });
 });
+
+// ============================================================
+// v1.18.2（doc/29 F2c）：breaker_reset 条件联动 bag.enable（恢复闭环 admin 路径）
+// ============================================================
+describe("admin breaker_reset — F2c 条件恢复 capability（doc/29）", () => {
+  it("bag 被 long_circuit_open disable → reset 时联动 enable（capability_restored=true）", async () => {
+    const server = makeMockServer();
+    const tm = new ToolManager(server);
+    const bag = new CapabilityBag(["browse_headless"]);
+    const callerTier = new CallerTierTracker(100);
+    const registry = new ProviderRegistry(BUILTIN_PROVIDERS);
+    const { short, long, breakers, longBreakers } = await makeOpenBreakers();
+    // 模拟长熔断 onOpen 的 bag.disable（reason="long_circuit_open"）
+    await bag.disable("browse_headless", {
+      callerId: "system",
+      reason: "long_circuit_open",
+    });
+    expect(bag.isEnabled("browse_headless")).toBe(false);
+
+    registerAdminTool({
+      bag,
+      toolManager: tm,
+      callerTier,
+      registry,
+      breakers,
+      longBreakers,
+    });
+
+    const r = await callAdmin(tm, {
+      action: "breaker_reset",
+      name: "browse_headless",
+      reason: "network recovered; wake up",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.capability_restored).toBe(true);
+    expect(short.state).toBe("closed");
+    expect(long.state).toBe("closed");
+    // 恢复闭环：breaker 与 bag 同时回到可用（不再需要第二步 capability_enable）
+    expect(bag.isEnabled("browse_headless")).toBe(true);
+  });
+
+  it("bag 是 admin 手工 disable（非熔断）→ reset 不越权 enable（保守边界）", async () => {
+    const server = makeMockServer();
+    const tm = new ToolManager(server);
+    const bag = new CapabilityBag(["browse_headless"]);
+    const callerTier = new CallerTierTracker(100);
+    const registry = new ProviderRegistry(BUILTIN_PROVIDERS);
+    const { breakers, longBreakers } = await makeOpenBreakers();
+    // admin 手工 disable（reason 非 long_circuit_open）
+    await bag.disable("browse_headless", {
+      callerId: "admin",
+      reason: "manual_maintenance",
+    });
+
+    registerAdminTool({
+      bag,
+      toolManager: tm,
+      callerTier,
+      registry,
+      breakers,
+      longBreakers,
+    });
+
+    const r = await callAdmin(tm, {
+      action: "breaker_reset",
+      name: "browse_headless",
+      reason: "reset only",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.capability_restored).toBeUndefined(); // 未恢复（不是熔断造成的 disable）
+    expect(bag.isEnabled("browse_headless")).toBe(false); // 仍禁——须显式 capability_enable
+  });
+});

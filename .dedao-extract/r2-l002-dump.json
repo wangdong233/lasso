@@ -1,0 +1,109 @@
+{
+  "url": "https://www.dedao.cn/course/article?id=Ay7GQpR6ndOgX60ReV8eBvPzMN4lwE",
+  "title": "第002讲丨马粪争夺案",
+  "editorChildren": 34,
+  "figCount": 3,
+  "figs": [
+    {
+      "i": 0,
+      "figCls": "",
+      "src": "201702192344380427586191.jpg",
+      "nat": "1080x532",
+      "disp": "700x345",
+      "top": 1371,
+      "h": 345,
+      "cap": null
+    },
+    {
+      "i": 1,
+      "figCls": "",
+      "src": "201702192348580647273494.jpg",
+      "nat": "1080x532",
+      "disp": "700x345",
+      "top": 2898,
+      "h": 345,
+      "cap": null
+    },
+    {
+      "i": 2,
+      "figCls": "",
+      "src": "201702231753117453076259.jpg",
+      "nat": "1080x607",
+      "disp": "700x393",
+      "top": 4304,
+      "h": 393,
+      "cap": null
+    }
+  ],
+  "tailKids": [
+    {
+      "idx": 26,
+      "tag": "P",
+      "cls": "",
+      "tl": 40,
+      "txt": "你能不能在生活中找一个例子，看上去是个公正的规则，但它背后其"
+    },
+    {
+      "idx": 27,
+      "tag": "DIV",
+      "cls": "tips",
+      "tl": 75,
+      "txt": "注释：Thomas Haslem v. William A."
+    },
+    {
+      "idx": 28,
+      "tag": "FIGURE",
+      "cls": "",
+      "tl": 0,
+      "txt": " "
+    },
+    {
+      "idx": 29,
+      "tag": "DIV",
+      "cls": "",
+      "tl": 0,
+      "txt": ""
+    },
+    {
+      "idx": 30,
+      "tag": "DIV",
+      "cls": "",
+      "tl": 0,
+      "txt": ""
+    },
+    {
+      "idx": 31,
+      "tag": "svg",
+      "cls": "",
+      "tl": 0,
+      "txt": ""
+    },
+    {
+      "idx": 32,
+      "tag": "svg",
+      "cls": "",
+      "tl": 0,
+      "txt": ""
+    },
+    {
+      "idx": 33,
+      "tag": "DIV",
+      "cls": "",
+      "tl": 11,
+      "txt": "写笔记划线删除划线复制"
+    }
+  ],
+  "lastFigIsLastChild": false,
+  "afterLastFig": "DIV.",
+  "lastFigHtml": "<figure data-module-type=\"custom\" style=\"z-index: 40; position: relative;\"><img src=\"https://piccdn3.umiwi.com/img/201702/23/201702231753117453076259.jpg\" class=\"big-image\"> <!----></figure>",
+  "showTxtTail": "背后其实是有效率的考量的？注释：Thomas Haslem v. William A. Lockwood, 37 (Conn.) 500 Connecticut, (1871) 写笔记划线删除划线复制",
+  "apiHit": 10,
+  "api": [
+    "https://www.dedao.cn/pc/ledgers/notes/article_comment_list",
+    "https://www.dedao.cn/api/pc/ledgers/notes/article_noteline",
+    "https://www.dedao.cn/pc/bauhinia/pc/article/info",
+    "https://www.dedao.cn/pc/ddarticle/v1/article/get/v2?token=KWn%2FCP3W2t1aDRlH3qYeSz3sMWo0Ard5WMCKxe8KbQbk1ERggpd69RpTKIRY1k%2FQwLDu0uAFltuz2ZHgHCAtdxi290g%3D&sign=b23a426b357d1b83&appid=1632426125495894021&is_new=1",
+    "https://www.dedao.cn/pc/ledgers/notes/article_user_comment_list",
+    "https://www.dedao.cn/pc/ledgers/notes/article_comment_list"
+  ]
+}

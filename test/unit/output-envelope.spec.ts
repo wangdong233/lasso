@@ -21,6 +21,7 @@ import {
   readOutputPage,
   getTotalBytes,
   getOutputCounter,
+  getEvictedCount,
   _resetForTests,
   MAX_BYTES,
   MAX_LINES,
@@ -242,19 +243,55 @@ describe("applyOutputEnvelope — 单条 16 MiB 上限", () => {
 });
 
 // ============================================================
-// store 总量上限 64 MiB
+// v1.18.2（doc/29 F4）：store 总量 64 MiB → LRU 淘汰（不再 throw）
 // ============================================================
-describe("applyOutputEnvelope — 64 MiB store 总量上限", () => {
-  it("store 累计超 64 MiB → 新 spill 抛错", () => {
-    // chunk = 8 MiB（< 16 MiB 单条上限）
-    // 8 次 spill = 64 MiB；第 9 次 totalBytes ≥ 64 MiB → 抛错
+describe("applyOutputEnvelope — 64 MiB store 总量：LRU 淘汰（doc/29 F4）", () => {
+  it("store 累计超 64 MiB → 淘汰最老 spill 腾位（不 throw；totalBytes 封顶 ~cap+单条）", () => {
+    // chunk = 8 MiB（< 16 MiB 单条上限）；8 次 = 64 MiB；第 9 次触发 LRU 淘汰
     const chunk = makeAscii(8 * 1024 * 1024);
+    const refs: string[] = [];
     for (let i = 0; i < 8; i++) {
-      applyOutputEnvelope(chunk);
+      refs.push(applyOutputEnvelope(chunk).ref!);
     }
     expect(getTotalBytes()).toBe(8 * 1024 * 1024 * 8); // 64 MiB
-    // 第 9 次应该抛错
-    expect(() => applyOutputEnvelope(chunk)).toThrow(/store exhausted/);
+    // 第 9 次：旧实现 throw「output store exhausted」→ 长会话大输出全灭；
+    // 新实现 LRU 淘汰 @o1（最老）腾 8 MiB → spill 成功
+    const ninth = applyOutputEnvelope(chunk);
+    expect(ninth.truncated).toBe(true);
+    expect(ninth.ref).toBeDefined();
+    expect(getEvictedCount()).toBe(1);
+    expect(getTotalBytes()).toBe(8 * 1024 * 1024 * 8); // 仍是 64 MiB（-8+8）
+    // @o1 已被淘汰 → 不可续页（诚实 unknown ref，非假数据）
+    expect(() => readOutputPage(refs[0]!, 0)).toThrow(/unknown ref/);
+    // @o2 仍在（未淘汰）→ 可续页
+    expect(readOutputPage(refs[1]!, 0, 100).text).toBe(makeAscii(100));
+  });
+
+  it("LRU touch：被续页读过的 ref 不先被淘汰（淘汰跳过它，踢更老的）", () => {
+    const chunk = makeAscii(8 * 1024 * 1024);
+    const r1 = applyOutputEnvelope(chunk).ref!;
+    const r2 = applyOutputEnvelope(chunk).ref!;
+    // 8 MiB × 8 = 64 MiB 满仓（r1/r2 之后再造 6 个）
+    for (let i = 0; i < 6; i++) applyOutputEnvelope(chunk);
+    // touch r1（续页读）→ r1 移到 LRU 最新端，r2 变最老
+    readOutputPage(r1, 0, 100);
+    applyOutputEnvelope(chunk); // 第 9 次 → 淘汰的应是 r2（未 touch 的最老）
+    expect(() => readOutputPage(r2, 0)).toThrow(/unknown ref/);
+    expect(readOutputPage(r1, 0, 100).text).toBe(makeAscii(100));
+  });
+
+  it("长会话炸弹回归：连续 200 次 spill 全部成功（零 throw——会话状态必须自愈）", () => {
+    const chunk = makeAscii(1024 * 1024); // 1 MiB/次（单批 PDF base64 场景缩小版）
+    for (let i = 0; i < 200; i++) {
+      const env = applyOutputEnvelope(chunk);
+      expect(env.truncated).toBe(true);
+    }
+    // 200 MiB 累计写入 → totalBytes 封顶在 [cap-chunk, cap] 区间（LRU 持续淘汰）
+    expect(getTotalBytes()).toBeLessThanOrEqual(64 * 1024 * 1024);
+    expect(getTotalBytes()).toBeGreaterThan(64 * 1024 * 1024 - 1024 * 1024);
+    expect(getEvictedCount()).toBeGreaterThanOrEqual(
+      200 - Math.floor((64 * 1024 * 1024) / (1024 * 1024)),
+    );
   });
 });
 

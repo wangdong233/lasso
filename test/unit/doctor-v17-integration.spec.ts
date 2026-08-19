@@ -244,7 +244,9 @@ describe("runDoctor #38 stealth_creepjs_regression —— 默认 + skip 路径",
 //  totalLies 比对代码 `report.totalLies > baselineTotalLies + tolerance`（doctor.ts）
 //  注入 `>`→`>=` mutant → "持平 pass" 用例（totalLies === baseline）会变 fail → killer 命中
 //
-describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2.1 项4 mutation）", () => {
+// timeout 45s（doc/29 审查官补）：runDoctor 是 spawn-heavy 用例，全量并发收集时
+// 偶发超默认 15s（隔离 3/3 绿 1.4s 级——CPU 争抢非代码回归）；放组级预算保终跑确定性。
+describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2.1 项4 mutation）", { timeout: 45_000 }, () => {
   it("baseline pending freeze（frozenAt=null）→ warn-skip（不 fail）", async () => {
     const baselinePath = path.join(tempDir, "pending-baseline.json");
     await fs.writeFile(baselinePath, PENDING_BASELINE);
@@ -471,13 +473,13 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
     expect(names).toContain("stagehand_rest_contract_probe");
   });
 
-  it("lasso_version === 1.18.1（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+  it("lasso_version === 1.18.2（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
     const r = await runDoctor({
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.18.1");
-    expect(LASSO_VERSION).toBe("1.18.1");
+    expect(r.lasso_version).toBe("1.18.2");
+    expect(LASSO_VERSION).toBe("1.18.2");
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {

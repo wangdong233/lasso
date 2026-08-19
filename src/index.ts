@@ -222,7 +222,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.18.1";
+const LASSO_SERVER_VERSION = "1.18.2";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -1116,7 +1116,8 @@ async function runMcpServer(): Promise<void> {
     longBreakers.set(
       name,
       new LongCircuitBreaker(
-        10, // threshold：1h 内 10 次失败 → open
+        10, // threshold：1h 内 10 次**持续故障类**失败 → open（doc/29 F2a 喂入分类后
+        //                              DNS/timeout 等环境瞬态不再计数——TUN 断网不再触发 60min disable）
         3_600_000, // windowMs：1h 滑动窗
         3_600_000, // resetMs：open 持续 60min
         async (n) => {
@@ -1128,6 +1129,16 @@ async function runMcpServer(): Promise<void> {
           });
         },
         name,
+        // v1.18.2（doc/29 F2c 恢复闭环）：breaker 恢复（half-open probe 成功）→
+        // 联动 bag.enable——但仅恢复长熔断**自己**造成的 disable（reason 守卫），
+        // 不越权恢复 admin 手工 capability_disable 的通道（保守边界不变）。
+        async (n) => {
+          const snap = bag.snapshot().find((s) => s.name === n);
+          if (snap && !snap.enabled && snap.reason === "long_circuit_open") {
+            logger.info({ evt: "long_circuit_recovered", channel: n });
+            await bag.enable(n, { callerId: "system" });
+          }
+        },
       ),
     );
   }

@@ -29,7 +29,7 @@ import {
   callerIdFromMeta,
   callerCapExceededResult,
 } from "../runtime/CallerTierTracker.js";
-import { ssrfGuard, type SsrfConfig } from "../ssrf/ssrf-guard.js";
+import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import {
   BROWSE_HEADLESS_DESCRIPTION,
   BROWSE_LOGGED_IN_DESCRIPTION,
@@ -60,6 +60,9 @@ const browseSchema = {
         .optional(),
       timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
+      // v1.18.2（doc/29 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
+      // （慢站/长 SPA/多步表单等合法长链显式放宽；预算耗尽终止语义=unknown 可重试）。
+      budget_ms: z.number().int().positive().max(600_000).optional(),
       // v1.8 Phase D（D2）：steps 多步链入参。BrowseChannel v0.3 起已实装 steps 分流
       // （browse() 入口 options.steps 非空 → StepEngine.runChain），但 MCP schema 缺此键
       // → zod strip → U-03 多步链经 MCP 不可达。形状对照 src/browse/steps-types.ts Step。
@@ -109,13 +112,16 @@ const browseSchema = {
 // 工具
 // ============================================================
 function ssrfBlocked(reason: string) {
+  // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+  // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
+  const d = ssrfDenial(reason);
   const payload: InteractResult<never> = {
-    outcome: "didnt",
+    outcome: d.outcome,
     data: null,
     served_by: "lasso.ssr_guard",
     fallback_used: false,
-    retrieval_method: "ssrf_blocked",
-    error: `ssrf_blocked:${reason}`,
+    retrieval_method: d.retrieval_method,
+    error: d.error,
   };
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],

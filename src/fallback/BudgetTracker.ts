@@ -34,6 +34,21 @@ import type { InteractResult, PartialFailure } from "../types.js";
  */
 export const DEFAULT_CHAIN_BUDGET_MS = 120_000;
 
+/**
+ * v1.18.2（doc/29 F3+Y1）：budget_ms 入参钳制上限（600s = 10min）。
+ * 边界本身是确定性护栏（🟢 保留）；本修复只让「预算不可配置」变成「可显式放宽」，
+ * 并钳制上限防误配（1e9 之类失控值 = 把确定性边界变成没有边界）。
+ */
+export const MAX_CHAIN_BUDGET_MS = 600_000;
+
+/** 钳制调用方传入的 budget_ms（非法值回落默认；超上限截到 MAX）。 */
+export function clampChainBudgetMs(budgetMs: number | undefined): number {
+  if (budgetMs == null || !Number.isFinite(budgetMs) || budgetMs <= 0) {
+    return DEFAULT_CHAIN_BUDGET_MS;
+  }
+  return Math.min(Math.floor(budgetMs), MAX_CHAIN_BUDGET_MS);
+}
+
 // ============================================================
 // BudgetTracker
 // ============================================================

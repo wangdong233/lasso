@@ -64,8 +64,8 @@ export interface ActionResult {
   content_path?: string;
   error?: string;
   duration_ms?: number;
-  /** expect 后置条件检查结果（F3.2.18） */
-  expect_check?: "verified" | "preexisting" | "failed" | "skipped";
+  /** expect 后置条件检查结果（F3.2.18；"error"= v1.18.2 doc/29 Y3：检查器自身抛错——基础设施异常，非后置条件为假） */
+  expect_check?: "verified" | "preexisting" | "failed" | "skipped" | "error";
 }
 
 // ============================================================

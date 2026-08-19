@@ -310,7 +310,7 @@ describe("StepEngine — expect 后置条件", () => {
     expect(r.partial_failures![0].error).toContain("expect_failed");
   });
 
-  it("runExpect 抛错 → 保守判 failed（不假装成功）", async () => {
+  it("runExpect 抛错 → unknown + expect_check=error（doc/29 Y3：基础设施异常 ≠ 后置条件为假；不假装成功也不假装「否」）", async () => {
     const { channel } = makeMockChannel([
       { outcome: "worked", expectVerdict: "verified", expectError: true },
     ]);
@@ -318,8 +318,9 @@ describe("StepEngine — expect 后置条件", () => {
     const r = await engine.runChain("https://example.com/", [
       step("click", { expect: { text: "x" } }),
     ]);
-    expect(r.outcome).toBe("didnt");
-    expect(r.data!.stopped_at?.reason).toBe("failed_postcondition");
+    expect(r.outcome).toBe("unknown");
+    expect(r.data!.stopped_at?.reason).toBe("step_error");
+    expect(r.data!.actions_and_results[0].results[0].expect_check).toBe("error");
     // 错误透传
     expect(r.data!.actions_and_results[0].results[0].error).toContain(
       "expect_error",
@@ -397,7 +398,7 @@ describe("StepEngine — stopped_at 边界", () => {
       step("navigate"),
       step("snapshot"),
     ]);
-    expect(r.outcome).toBe("didnt");
+    expect(r.outcome).toBe("unknown");
     expect(r.data!.stopped_at?.reason).toBe("budget_exceeded");
     expect(r.data!.stopped_at?.step_index).toBe(0);
     expect(r.data!.stopped_at?.detail).toContain("budget_exceeded");
@@ -426,7 +427,8 @@ describe("StepEngine — stopped_at 边界", () => {
       step("extract"),
     ]);
     // 第 1 步 spend 6ms → 第 2 步前 exhausted=true
-    expect(r.outcome).toBe("didnt");
+    // v1.18.2（doc/29 F3）：budget_exceeded → unknown（自限=瞬态可重试，非语义否定）
+    expect(r.outcome).toBe("unknown");
     expect(r.data!.stopped_at?.reason).toBe("budget_exceeded");
     expect(r.data!.stopped_at?.step_index).toBe(1);
     expect(r.data!.actions_and_results).toHaveLength(1);

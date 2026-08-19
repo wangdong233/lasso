@@ -1,0 +1,192 @@
+{
+  "tag": "l001",
+  "chapterDir": "01-经济学本源之一：东西不够(110讲)",
+  "title": "第001讲丨战俘营里的经济组织",
+  "expectAudio": true,
+  "phases": {
+    "switch": {
+      "mode": "clicked",
+      "title": "第001讲丨战俘营里的经济组织",
+      "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ"
+    },
+    "stabilize": {
+      "ok": true,
+      "bodyLen": 3742,
+      "imgs": 5,
+      "imgsNotLoaded": 0,
+      "docH": 19049
+    },
+    "assert": {
+      "url": "https://www.dedao.cn/course/article?id=ml9WNdP1QvaeKYG0PJAzx82Dyog0BZ",
+      "title": "第001讲丨战俘营里的经济组织",
+      "hasWrap": true,
+      "cover": true,
+      "ddAudio": 1,
+      "audioTags": 0,
+      "timeInfo": true,
+      "bodyLen": 3742
+    },
+    "cleanup": {
+      "ok": true,
+      "del": {
+        "pageControl": 1,
+        "cover": true,
+        "ddAudio": 1,
+        "audioTags": 0,
+        "timeInfo": true,
+        "tailSiblingsRemoved": 3
+      },
+      "docH": [
+        7226,
+        7216
+      ],
+      "residual": {
+        "cover": 0,
+        "ddAudio": 0,
+        "timeInfo": 0,
+        "myComment": 0,
+        "messageV2": 0
+      }
+    }
+  },
+  "droppedImages": [
+    {
+      "src": "201702231752373381321946.jpg",
+      "nat": "1080x607"
+    }
+  ],
+  "iterations": [
+    {
+      "iter": 1,
+      "pdf": "v3-l001-it1.pdf",
+      "holes": [
+        {
+          "page": 1,
+          "tailPct": 31
+        },
+        {
+          "page": 4,
+          "tailPct": 14
+        }
+      ]
+    },
+    {
+      "iter": 2,
+      "pdf": "v3-l001-it2.pdf",
+      "holes": []
+    }
+  ],
+  "assertFails": [],
+  "sikao": {
+    "found": true,
+    "headerCount": 10,
+    "headersText": [
+      "1. 有人的地方就有交易",
+      "2. 战俘营中的价格与价格波动",
+      "3. 战俘营里的货币",
+      "4. 战俘营里的通胀与通缩",
+      "5. 战俘营里的跨境贸易",
+      "6. 战俘营里的户籍制度",
+      "7. 战俘营里的舆论压力",
+      "8. 战俘营中的仇富情绪",
+      "课堂小结",
+      "课后思考"
+    ],
+    "phraseCount": 1,
+    "headerIndex": 48,
+    "otherHits": [],
+    "stopReason": "figure",
+    "deleted": [
+      {
+        "tag": "p",
+        "cls": "",
+        "txt": "我们今天讲的主题是说经济规律在哪里都起作用，哪怕是在战俘营里面都起作用。现在倒过来，请你举一个例子，在这个例子里面，经济学规律是不起作用的，你能举出这样的例子吗？",
+        "chars": 81,
+        "h": 108
+      },
+      {
+        "tag": "p",
+        "cls": "",
+        "txt": "欢迎你给我留言，我们下次再见。",
+        "chars": 15,
+        "h": 46
+      }
+    ],
+    "keptTips": [],
+    "deletedChars": 96,
+    "deletedBlocks": 2,
+    "phraseCountAfter": 0,
+    "docHAfter": 6983
+  },
+  "promoAudit": {
+    "figCount": 5,
+    "lastSrc": "201702231752373381321946.jpg",
+    "srcAbs": "https://piccdn3.umiwi.com/img/201702/23/201702231752373381321946.jpg",
+    "lastNat": "1080x607",
+    "M2": true,
+    "M3": true,
+    "M4": true,
+    "afterSummary": [],
+    "fetchBytes": 92833,
+    "decision": "drop"
+  },
+  "promoMd5": {
+    "md5": "7127ed550d5aeb9b75697030579c9aa4",
+    "bytes": 92833,
+    "match": true
+  },
+  "fixScreen": {
+    "dropped": [
+      {
+        "src": "201702231752373381321946.jpg",
+        "nat": "1080x607"
+      }
+    ],
+    "shrunk": [
+      {
+        "src": "201701311511319102257543.jpg",
+        "from": 345,
+        "to": 120,
+        "rem": 77
+      }
+    ],
+    "skipped": [],
+    "chunked": [],
+    "docHAfter": 6344
+  },
+  "innerTextInvariant": true,
+  "md": {
+    "title": "第001讲丨战俘营里的经济组织",
+    "blocks": 48,
+    "imgs": 4,
+    "unknown": {}
+  },
+  "bestIter": 2,
+  "qc": {
+    "zeroLoss": {
+      "missing": [],
+      "missingEmpty": true,
+      "inOrder": true,
+      "pdfChars": 3523,
+      "domChars": 3513
+    },
+    "promo": [],
+    "holes": [],
+    "pages": 7,
+    "innerTextInvariant": true,
+    "sikaoPdfCount": 0,
+    "sikaoExpected": 0
+  },
+  "pdfPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第001讲丨战俘营里的经济组织.pdf",
+  "pdfBytes": 927814,
+  "sha256": "565b1e4df085c28c6b635c274ffc39402e3387da7424beb3e62b2a7d1a381883",
+  "images": {
+    "total": 4,
+    "downloaded": 0,
+    "reused": 4,
+    "collision": 0,
+    "failed": []
+  },
+  "mdPath": "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第001讲丨战俘营里的经济组织.md",
+  "mdBytes": 11017
+}

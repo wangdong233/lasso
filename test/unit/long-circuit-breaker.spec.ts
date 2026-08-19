@@ -206,3 +206,96 @@ describe("LongCircuitBreaker — INV-41 类型复用", () => {
     expect(["closed", "open", "half-open"]).toContain(s);
   });
 });
+
+// ============================================================
+// v1.18.2（doc/29 F2）：喂入分类 + 恢复闭环 onClose
+// ============================================================
+describe("LongCircuitBreaker — F2a 喂入分类（环境瞬态不计数）", () => {
+  it("TUN 断网风暴：20 次 DNS/timeout 瞬态失败 → 仍 closed（不升级 60min disable）", async () => {
+    const onOpen = vi.fn(async () => {});
+    const b = new LongCircuitBreaker(10, 3_600_000, 3_600_000, onOpen, "browse_headless");
+    // 模拟用户断网 10 分钟：每分钟 2 次 unknown（DNS 失败 / 超时 / 连接拒）
+    for (let i = 0; i < 20; i++) {
+      await b.recordFailure("getaddrinfo ENOTFOUND site.example.com");
+      await b.recordFailure("request timeout after 30000ms");
+    }
+    expect(b.state).toBe("closed");
+    expect(b.windowFailureCount).toBe(0); // 瞬态一次都不计
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("裸 unknown（无 error 的 200 空响应类）→ 不计数", async () => {
+    const b = new LongCircuitBreaker(10, 3_600_000, 3_600_000);
+    for (let i = 0; i < 15; i++) await b.recordFailure("unknown");
+    expect(b.state).toBe("closed");
+    expect(b.windowFailureCount).toBe(0);
+  });
+
+  it("持续故障类（brave_status_429）正常计数 → threshold 次 open", async () => {
+    const onOpen = vi.fn(async () => {});
+    const b = new LongCircuitBreaker(10, 3_600_000, 3_600_000, onOpen, "search.brave");
+    for (let i = 0; i < 10; i++) await b.recordFailure("brave_status_429");
+    expect(b.state).toBe("open");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("no-arg recordFailure 保持旧语义（计数）——既有调用方零回归", async () => {
+    const b = new LongCircuitBreaker(3, 3_600_000, 3_600_000);
+    for (let i = 0; i < 3; i++) await b.recordFailure();
+    expect(b.state).toBe("open");
+  });
+
+  it("half-open 态收到瞬态失败 → 保持 half-open（不 re-open 60min，留给下次 probe）", async () => {
+    const onOpen = vi.fn(async () => {});
+    const b = new LongCircuitBreaker(2, 3_600_000, 3_600_000, onOpen, "ch");
+    await b.recordFailure("quota_exhausted");
+    await b.recordFailure("quota_exhausted");
+    expect(b.state).toBe("open");
+    fastForwardWindow(b, 3_600_001);
+    expect(b.allow()).toBe(true); // → half-open
+    expect(b.state).toBe("half-open");
+    // probe 期间 DNS 抖动失败 → 不 re-open
+    await b.recordFailure("getaddrinfo ENOTFOUND x.test");
+    expect(b.state).toBe("half-open");
+  });
+});
+
+describe("LongCircuitBreaker — F2c 恢复闭环（onClose）", () => {
+  it("open → half-open → recordSuccess：onClose 被调（装配层联动 bag.enable）", async () => {
+    const onOpen = vi.fn(async () => {});
+    const onClose = vi.fn(async () => {});
+    const b = new LongCircuitBreaker(2, 3_600_000, 3_600_000, onOpen, "ch", onClose);
+    await b.recordFailure("quota_exhausted");
+    await b.recordFailure("quota_exhausted");
+    expect(b.state).toBe("open");
+    fastForwardWindow(b, 3_600_001);
+    b.allow(); // → half-open
+    b.recordSuccess(); // probe 成功 → closed + onClose
+    expect(b.state).toBe("closed");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith("ch");
+  });
+
+  it("closed 态常规 recordSuccess 不触发 onClose（无恢复转换）", () => {
+    const onClose = vi.fn(async () => {});
+    const b = new LongCircuitBreaker(2, 3_600_000, 3_600_000, undefined, "ch", onClose);
+    b.recordSuccess();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("onClose 抛错被吞（不 rethrow、不影响状态）", async () => {
+    const onClose = vi.fn(async () => {
+      throw new Error("bag.enable failed");
+    });
+    const b = new LongCircuitBreaker(1, 3_600_000, 3_600_000, undefined, "ch", onClose);
+    await b.recordFailure("quota_exhausted");
+    expect(b.state).toBe("open");
+    fastForwardWindow(b, 3_600_001);
+    b.allow();
+    expect(() => b.recordSuccess()).not.toThrow();
+    expect(b.state).toBe("closed");
+    // fire-and-forget 是异步的——让微任务队列排空再断言
+    await Promise.resolve();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

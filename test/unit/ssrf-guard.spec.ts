@@ -36,7 +36,7 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 // 在 mock 设置好后才 import SUT（vi.mock 会被 hoist 到此条 import 之前）
-import { ssrfGuard, loadSsrfConfig } from "../../src/ssrf/ssrf-guard.js";
+import { ssrfGuard, loadSsrfConfig, ssrfDenial, isSsrfEnvTransientReason } from "../../src/ssrf/ssrf-guard.js";
 
 const EMPTY_CONFIG = { allowRanges: [], denyRanges: [] };
 
@@ -108,6 +108,40 @@ describe("ssrfGuard — DNS 阶段", () => {
     const r = await ssrfGuard("https://empty.test/x", EMPTY_CONFIG);
     expect(r.allowed).toBe(false);
     expect(r.reason).toBe("dns_empty");
+  });
+});
+
+// ============================================================
+// v1.18.2（doc/29 F1）：拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
+// ============================================================
+describe("ssrfDenial / isSsrfEnvTransientReason — F1 reason 二分", () => {
+  it("dns_failed:* → 环境瞬态 → unknown + ssrf_dns_unresolved", () => {
+    expect(isSsrfEnvTransientReason("dns_failed:getaddrinfo ENOTFOUND x")).toBe(true);
+    const d = ssrfDenial("dns_failed:getaddrinfo ENOTFOUND x");
+    expect(d.outcome).toBe("unknown");
+    expect(d.retrieval_method).toBe("ssrf_dns_unresolved");
+    expect(d.error).toContain("ssrf_dns_unresolved:dns_failed:");
+  });
+
+  it("dns_empty → 环境瞬态 → unknown + ssrf_dns_unresolved", () => {
+    expect(isSsrfEnvTransientReason("dns_empty")).toBe(true);
+    const d = ssrfDenial("dns_empty");
+    expect(d.outcome).toBe("unknown");
+    expect(d.retrieval_method).toBe("ssrf_dns_unresolved");
+  });
+
+  it.each([
+    "invalid_url",
+    "userinfo_present",
+    "protocol_not_allowed:ftp:",
+    "deny_range:10.0.0.1",
+    "private_ip:10.0.0.1",
+  ])("策略确定性 reason %s → didnt + ssrf_blocked（真策略拦截，不可重试）", (reason) => {
+    expect(isSsrfEnvTransientReason(reason)).toBe(false);
+    const d = ssrfDenial(reason);
+    expect(d.outcome).toBe("didnt");
+    expect(d.retrieval_method).toBe("ssrf_blocked");
+    expect(d.error).toBe(`ssrf_blocked:${reason}`);
   });
 });
 

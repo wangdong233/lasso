@@ -1,0 +1,15 @@
+[
+  "[12.7s] [ready 11.794s] {\"rs\":\"complete\",\"title\":\"发刊词丨只给你地道的经济学思维\",\"len\":3127}",
+  "[12.7s] \n===== [1/3] 发刊词丨只给你地道的经济学思维 =====",
+  "[14.9s] [dump] figs=6 lastIsLast=false afterLast=DIV.",
+  "[15.5s] [pagemap] docH=14634 showW=700 figs=[{\"i\":0,\"pg\":0,\"top\":624,\"h\":345,\"rem\":422,\"fit\":true},{\"i\":1,\"pg\":1,\"top\":1743,\"h\":345,\"rem\":349,\"fit\":true},{\"i\":2,\"pg\":2,\"top\":2884,\"h\":345,\"rem\":254,\"fit\":false},{\"i\":3,\"pg\":3,\"top\":3662,\"h\":153,\"rem\":520,\"fit\":true},{\"i\":4,\"pg\":3,\"top\":3836,\"h\":10385,\"rem\":347,\"fit\":false},{\"i\":5,\"pg\":13,\"top\":14241,\"h\":393,\"rem\":399,\"fit\":true}]",
+  "[16.8s] [print] {\"ok\":true,\"bytes\":1794013}",
+  "[16.8s] \n===== [2/3] 第001讲丨战俘营里的经济组织 =====",
+  "[19.6s] [dump] figs=5 lastIsLast=false afterLast=DIV.",
+  "[20.5s] [pagemap] docH=7206 showW=700 figs=[{\"i\":0,\"pg\":0,\"top\":742,\"h\":345,\"rem\":304,\"fit\":false},{\"i\":1,\"pg\":2,\"top\":2301,\"h\":345,\"rem\":836,\"fit\":true},{\"i\":2,\"pg\":3,\"top\":3836,\"h\":345,\"rem\":347,\"fit\":true},{\"i\":3,\"pg\":5,\"top\":5278,\"h\":345,\"rem\":996,\"fit\":true},{\"i\":4,\"pg\":6,\"top\":6813,\"h\":393,\"rem\":507,\"fit\":true}]",
+  "[21.9s] [print] {\"ok\":true,\"bytes\":1030208}",
+  "[21.9s] \n===== [3/3] 第002讲丨马粪争夺案 =====",
+  "[24.7s] [dump] figs=3 lastIsLast=false afterLast=DIV.",
+  "[25.3s] [pagemap] docH=4191 showW=700 figs=[{\"i\":0,\"pg\":0,\"top\":864,\"h\":345,\"rem\":182,\"fit\":false},{\"i\":1,\"pg\":2,\"top\":2391,\"h\":345,\"rem\":746,\"fit\":true},{\"i\":2,\"pg\":3,\"top\":3798,\"h\":393,\"rem\":385,\"fit\":false}]",
+  "[26.4s] [print] {\"ok\":true,\"bytes\":645508}"
+]

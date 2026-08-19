@@ -27,7 +27,7 @@ import type {
   InteractResult,
 } from "../types.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
-import { ssrfGuard, type SsrfConfig } from "../ssrf/ssrf-guard.js";
+import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
 import { routeContentType } from "../browse/content-type-router.js";
 import { FETCH_URL_DESCRIPTION } from "./descriptions.js";
@@ -97,14 +97,17 @@ export async function doFetchUrl(
 ): Promise<InteractResult<FetchUrlResult>> {
   // ---------- 1. SSRF 守门（INV-31；与 browse_headless 同函数同 config） ----------
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
-  if (!ssrfResult.allowed) {
+if (!ssrfResult.allowed) {
+    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
+    const d = ssrfDenial(ssrfResult.reason);
     return {
-      outcome: "didnt",
+      outcome: d.outcome,
       data: null,
       served_by: "lasso.ssr_guard",
       fallback_used: false,
-      retrieval_method: "ssrf_blocked",
-      error: `ssrf_blocked:${ssrfResult.reason}`,
+      retrieval_method: d.retrieval_method,
+      error: d.error,
     };
   }
 
@@ -290,10 +293,22 @@ export async function doFetchUrl(
 
   // envelope（48KiB / 2000 行自动落盘 .txt + 16KiB preview + @oN ref）
   // INV-34 同源：所有独立 tool 输出必经 applyOutputEnvelope 或 writeState
-  const envelope = applyOutputEnvelope(
-    bodyText,
-    "fetch_url: narrow by URL path or use Range header to reduce size",
-  );
+  // v1.18.2（doc/29 F4）：envelope 失败（单条 >16MiB 数据异常；store 耗尽已被
+  // LRU 淘汰根治）→ 降级 preview-only 不抛（旧实现裸抛崩 tool + 喂熔断）。
+  let envelope: ReturnType<typeof applyOutputEnvelope>;
+  try {
+    envelope = applyOutputEnvelope(
+      bodyText,
+      "fetch_url: narrow by URL path or use Range header to reduce size",
+    );
+  } catch (e) {
+    envelope = {
+      preview: bodyText.slice(0, 16 * 1024),
+      truncated: true,
+      total_bytes: bodyBuf.byteLength,
+      refine_hint: `body exceeded single spill cap; no @oref available (envelope degrade): narrow by URL path or use Range header [${String(e).slice(0, 80)}]`,
+    };
+  }
 
   // ---------- 7. 返 InteractResult<FetchUrlResult> ----------
   // 4xx = didnt（明确语义）；2xx = worked；5xx = unknown（transient，caller-tier 决定）
@@ -321,15 +336,15 @@ export async function doFetchUrl(
 
 /**
  * fetch 错误 → tri-state outcome（parse6 §3.1.3 outcomeFromFetchError）。
- *  - ENOTFOUND / NXDOMAIN → didnt（明确「这个 host 不存在」）
+ *  - ENOTFOUND / NXDOMAIN / ECONNREFUSED → unknown（v1.18.2 doc/29 Y2：
+ *    代理/TUN 环境 DNS 与连接错高频瞬态——fake-ip 拦截、断网恢复期、代理未起；
+ *    可重试语义诚实，didnt 会把「此刻环境不通」伪装成「内容明确不存在」）
  *  - abort / timeout      → unknown（caller-tier 可重试）
  *  - 其他（网络挂 / 连接重置 / TLS） → unknown
  */
-function outcomeFromFetchError(e: unknown): "didnt" | "unknown" {
-  const m = String(e).toLowerCase();
-  if (m.includes("enotfound") || m.includes("nxdomain")) return "didnt";
-  if (m.includes("econnrefused")) return "didnt";
-  // AbortError（controller.abort）/ timeout → unknown（transient）
+function outcomeFromFetchError(_e: unknown): "didnt" | "unknown" {
+  // v1.18.2（doc/29 Y2）：全部 fetch 异常均为环境瞬态 → unknown（可重试）。
+  // 保留函数形状（tri-state 注释契约 + 上游 isFallbackWorthy 排除集不变）。
   return "unknown";
 }
 

@@ -1,0 +1,20 @@
+[
+  "[12.2s] [navigate] worked",
+  "[14.4s] [ready] {\"rs\":\"complete\",\"title\":\"发刊词丨只给你地道的经济学思维\",\"len\":6335}",
+  "[14.4s] \n===== [3/3] 第002讲丨马粪争夺案 =====",
+  "[17.1s] [switch] clicked",
+  "[22.4s] [stabilize] ok=true imgs=3/3 notLoaded=0",
+  "[23.3s] [cleanup] ok=true docH 4211->4201 residual={\"cover\":0,\"ddAudio\":0,\"timeInfo\":0,\"myComment\":0,\"messageV2\":0}",
+  "[23.5s] [innerText] 2127 chars",
+  "[23.8s] [promo-audit] M2=true M3=true M4=true decision=drop bytes=92833",
+  "[23.9s] [promo-md5] 7127ed550d5aeb9b75697030579c9aa4 match=true",
+  "[24.2s] [fix-screen] dropped=[{\"src\":\"201702231753117453076259.jpg\",\"nat\":\"1080x607\"}] shrunk=[] skipped=[]",
+  "[24.5s] [innerText-invariant] true",
+  "[25.5s] [print#1] holes=[\"p1:19.4%/full0.875\"]",
+  "[26.1s] [fix-print#1] {\"applied\":[{\"idx\":0,\"src\":\"201702192344380427586191.jpg\",\"mh\":161}],\"missed\":[],\"docHAfter\":3594}",
+  "[26.9s] [print#2] holes=[]",
+  "[26.9s] [best] it2 (Σ=0.0)",
+  "[27.2s] [QC] zeroLoss.missing= inOrder=true promo=0 holes=0 pages=4",
+  "[27.2s] [PDF v2] /Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/01-经济学本源之一：东西不够(110讲)/第002讲丨马粪争夺案.pdf (0.53 MiB) holes=0",
+  "[28.0s] [chrome-guard] {\"ok\":true,\"pid\":\"85359\",\"was\":\"visible\",\"action\":\"rehidden\"}"
+]

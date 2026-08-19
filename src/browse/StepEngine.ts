@@ -26,7 +26,7 @@
  *  │ expect failed               │ didnt   │ didnt   │ failed_postcondition          │
  *  │ step 抛 timeout/429         │ unknown │ unknown │ step_error                    │
  *  │ step 抛 404/403/2FA         │ didnt   │ didnt   │ step_error                    │
- *  │ budget 超限                 │ (未跑)   │ didnt   │ budget_exceeded              │
+ *  │ budget 超限                 │ (未跑)   │ unknown │ budget_exceeded（doc/29 F3）  │
  *  │ high-risk gate block        │ (未跑)   │ didnt   │ manual_abort                  │
  *  └────────────────────────────┴─────────┴─────────┴──────────────────────────────┘
  *
@@ -129,10 +129,15 @@ export class StepEngine {
 
       // ----------------------------------------------------------
       // 1. budget 预检（F3.4.8）
+      // v1.18.2（doc/29 F3）：chainOutcome=unknown——自限闹钟响是**自身策略边界**，
+      // 不是页面语义否定；didnt 会让 decider 视「channel 健康+答案否」双熔断记
+      // recordSuccess（假健康掩蔽诊断），且 CC 被告知不可重试的「没有」。
+      // unknown 让 decider 试下一 channel + CC 可拆步/放宽 budget_ms 重试。
       // ----------------------------------------------------------
       if (this.budget.exhausted()) {
         return this.budget.flushInto(
           this.stop("budget_exceeded", i, actions_and_results, step, {
+            chainOutcome: "unknown",
             detail: `budget_exceeded: used=${this.budget.used()}ms cap=${this.budget.cap()}ms`,
           }),
         );
@@ -205,18 +210,40 @@ export class StepEngine {
       // ----------------------------------------------------------
       if (step.expect) {
         let verdict: "verified" | "preexisting" | "failed";
+        let expectErrored = false;
         try {
           verdict = await this.channel.runExpect(
             step.expect,
             partial.preSnapshot,
           );
         } catch (e) {
-          // runExpect 抛错（极端：cond 缺字段 / client 断开）
-          // 保守判 failed（INV-13：宁可不假装成功）
-          verdict = "failed";
+          // v1.18.2（doc/29 Y3）：runExpect **自身抛错**（CDP 断连/页面销毁/cond 缺字段）
+          // 是基础设施异常，不是「后置条件为假」——旧实现保守判 failed → didnt，
+          // 把环境错伪装成语义否定（与 budget_exceeded 同病）。INV-13「宁可不假装
+          // 成功」论证的是不虚报 worked；这里不虚报 worked、但也不虚报「否」：
+          // 保留 partial 原 outcome、终止为 unknown（可重试）。
+          // （wait_timeout 路径在 BrowseChannel.runExpect 已正确落 unknown，不进这里。）
+          expectErrored = true;
+          verdict = "failed"; // 占位（expect_check 用 "error" 覆写，不走 failed 分支）
           result.error = (result.error ?? "") + ` expect_error:${String(e)}`.trim();
         }
-        result.expect_check = verdict;
+        result.expect_check = expectErrored ? "error" : verdict;
+
+        if (expectErrored) {
+          // result.outcome 已是 partial.outcome（构造时赋值；此处不覆写——不掠美也不冤枉）
+          actions_and_results.push({ step, results: [result] });
+          this.budget.recordPartial({
+            channel: this.channel.name,
+            error: result.error ?? "expect_error",
+          });
+          return this.budget.flushInto(
+            this.stop("step_error", i, actions_and_results, step, {
+              chainOutcome: "unknown",
+              detail: `expect_error: ${result.error ?? "(no error)"}`,
+              error: result.error,
+            }),
+          );
+        }
 
         if (verdict === "failed") {
           // INV-13 铁律：failed → 强制 outcome=didnt + 终止 chain
