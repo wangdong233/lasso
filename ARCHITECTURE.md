@@ -1,6 +1,6 @@
 # Lasso 架构
 
-> 本文是 Lasso **v1.17.1** 的架构概览（user-first；深度架构基线见 [`doc/08`](./doc/08-media-interact-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/09`](./doc/09-media-interact-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。
+> 本文是 Lasso **v1.17.2** 的架构概览（user-first；深度架构基线见 [`doc/08`](./doc/08-media-interact-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/09`](./doc/09-media-interact-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。
 
 ## 1. 项目定位
 
@@ -290,15 +290,20 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 - **SSRF**（INV-31，fetch_url / wayback / fetch_feed / serp_http / content_blocks 同函数同 config）：默认拒私网 IP；fake-ip（198.18.0.0/15）内置放行；`redirect:"manual"` 防 302→169.254 绕过。**v1.17.1 加固**：IPv6 字面量 URL 剥括号后再 DNS lookup——此前 `[::1]` 带括号串在 TUN fake-ip 环境被当域名解析成 fake-ip，IPv6 loopback/ULA/IPv4-mapped 全部绕过（ft-round1 🔴FT-DEF-3，`src/ssrf/ssrf-guard.ts`）
 - **HighRiskGate**：同 v1.17.1 修复裸 `JSON.parse` 解析围栏响应（异常 → gate_error 保守放行，C1 红线端到端失效）——改经 upstream-response 适配器 + INV-76(m) 防复发（ft-round1 🔴FT-DEF-1′）
+- **静默性（v1.17.2，doc/27-静默性全面审计）**：六维打扰面（①OS 焦点 ②窗口 ③Dock/cmd-tab ④音频 ⑤通知 ⑥资源）逐通道白盒 + 真机审计后修复两个缺陷、固化全部边界——
+  - **S-7 修复（tab 内容劫持）**：上游 1.7.0 连接即 `selectPage(pages[0])`，v1.17.1 及之前 lasso 的 navigate 会改写用户第一个 tab（两轮真机复现）。现 `LoggedInChannel.ensureOwnPageSelected`（非台账 Chrome 路径）：`CdpClient.createBackgroundTarget`（`Target.createTarget {background:true}`，E7 实证零抢焦）自建后台 tab → 上游 `list_pages` 前后 **id-diff 唯一归因**（上游 id 是进程内单调计数器；不取最大 id，防与用户同刻开 tab 竞态误归因）→ `select_page {pageId}` **不带 bringToFront**（上游激活严格 opt-in，省略 = 纯上下文指针切换，真机实测零 OS 焦点/零 tab 激活）。自建 tab 晚于 TabSession 快照 → 会话收尾 restore 关它（用户 tab 栏零残留）。任何失败（解析/归因/CDP/select 拒绝）warn 降级维持旧行为，永不阻断 browse。
+  - **S-10 修复（close_page 契约 + 所有权）**：旧 `close_page {url}` 在 1.7.0 wire 级必被 zod 拒（-32602，实测）；且旧 reconcile 把全部列出 URL 入册（用户 tab 也是候选）。现 `TabRegistry` 按 `{pageId}` 关 + **登记制所有权**（`noteOwnPage` 只由 ensureOwnPageSelected 成功路径登记；用户 tab 无登记路径，close 淘汰在集合定义层面不可能落在用户 tab 上——红线机械化范式）。
+  - **诚实边界固化**（不可修，见 KEY-GUIDE/README 矩阵）：desktop 物理键鼠设计占用；launch-chrome hidden 的 Dock 图标（有头 Chrome 注册 Foreground ASN，LSUIElement 不可控；headless 无此问题——真机实证无 Foreground ASN）；visible 档语义即「看着干」；用户 Chrome 不静音（零注入铁律）+ 操作 tab 的 hasFocus 仿真（不抢 OS 焦点）。
+  - **守卫**：INV-78(d) 精化——`bringToFront` token 级零命中（作用域内任何 select_page 都不可能带激活开关）+ `"new_page"` 禁令新增 + S-7 实装锚（select_page 调用形 + 护栏日志事件 grep）。
 - 其余安全 INV 面（cloud 双重解锁 / appleScript 白名单 / stealth profiles / 连接池）见 §11 分类表
 
 ## 10. 测试策略
 
-| 层 | 工具 | 覆盖 | 规模（v1.17.1 终态） |
+| 层 | 工具 | 覆盖 | 规模（v1.17.2 终态） |
 |---|---|---|---|
 | 架构不变量 | `check-invariants.mjs`（自写） | INV-1..81 静态 grep + 形状测 | **81 条** |
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **20 样本**（外部契约类全覆盖；未验证 pin 显性化报告） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2240 测试**（134 文件；doc/17 ft-round1 门禁两轮独立复跑在档） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2253 测试**（135 文件；doc/17 ft-round1 门禁两轮独立复跑在档 + doc/27 静默性审计补测） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；rust-helper 自 v1.13 起零改） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | CI Linux runner |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ × 三引擎 × 多 query | 12+ fixtures |
@@ -350,6 +355,14 @@ CC → search("rust async 最新动态", freshness="week", content_blocks=3)
 ```
 CC → browse_logged_in("https://app.example.com", action="snapshot")
    → LoggedInChannel.run() → chrome-devtools-mcp@1.7.0 (:9222 CDP)
+      → getMcpClient 装配链（v1.17.2 全序）：
+         ensureRunning → onChromeUse(reaper touch)
+         → precreateBackgroundTabIfHidden（仅台账 hidden + 零 page）
+         → TabSession.takeSnapshotIfAbsent（用户 tab 基线，先于建塔）
+         → _detect2FA（attach 时读选中页）
+         → ensureOwnPageSelected（仅非台账 Chrome：建后台塔 → id-diff →
+           select_page{pageId} 无 bringToFront；失败 warn 降级）→ noteOwnPage
+         → TabRegistry.reconcile（只触达已登记 own 页；close_page{pageId}）
       → 站点返 302 to /login/2fa
    → outcome="didnt" + error="NEEDS_MANUAL_2FA"
    → 链止（不 fallback；2FA 是红线）
@@ -409,11 +422,11 @@ $ lasso launch-chrome
 
 ## 14. 版本与发布
 
-- **当前版本**：`1.17.1`（v1.17 五项用户裁决 + doc/17 全量测试轮修复收敛；2026-08-18，npm latest）
+- **当前版本**：`1.17.2`（doc/27 静默性全面审计落地：S-7 自建后台 tab + S-10 close_page 契约与所有权修复、INV-78(d) 精化；2026-08-19）
 - **version 真源**：`package.json` + `src/index.ts:LASSO_SERVER_VERSION` + `src/doctor/doctor.ts:LASSO_VERSION`（INV-63 守：三处必字面量一致）
 - **doctor readiness**：全量 check pass → `ready: true`（检查项随版本增长，以实跑输出为准）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁四链**：`npm run build` / `npm test`（2240）/ `npm run check-invariants`（81）/ `npm run inv-selftest`（20）+ `cargo test`（207）
+- **门禁四链**：`npm run build` / `npm test`（2253）/ `npm run check-invariants`（81）/ `npm run inv-selftest`（20）+ `cargo test`（207）
 
 ## 15. 质量与决策主线（doc/19 → doc/25 → doc/17）
 

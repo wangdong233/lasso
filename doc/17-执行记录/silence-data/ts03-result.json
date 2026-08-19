@@ -1,0 +1,373 @@
+{
+  "case": [
+    "T-SILENCE-03"
+  ],
+  "asn_poll": [
+    {
+      "t": 1787111082626,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111083188,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111083794,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111084342,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111084944,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111085441,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111086021,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111087048,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111087836,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111088403,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111089092,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111089767,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111090640,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111091379,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111092186,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111092764,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111093427,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111094076,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111095378,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111096054,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111096686,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111097218,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111097811,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111098591,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111099179,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111099682,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111100775,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111101334,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111101822,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111102392,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111102846,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111104193,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111104780,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111105247,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111106508,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111107120,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111107635,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111108205,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111108726,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111109617,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111110431,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111111089,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111111709,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111112487,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111113045,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111113537,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111114003,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111114522,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111115023,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111115575,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111116176,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111116729,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111117251,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111117797,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111118265,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111118763,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111119231,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111119691,
+      "fg": 1,
+      "fm": "Code"
+    },
+    {
+      "t": 1787111120141,
+      "fg": 1,
+      "fm": "Code"
+    }
+  ],
+  "ops": [
+    {
+      "id": "navigate",
+      "ms": 13641,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://example.com\\\",\\n    \\\"action\\\": \\\"navigate\\\",\\n   ",
+      "fmB": "Code",
+      "imm": "Code",
+      "late": "Code"
+    },
+    {
+      "id": "extract",
+      "ms": 2788,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://example.com\\\",\\n    \\\"action\\\": \\\"extract\\\",\\n    ",
+      "fmB": "Code",
+      "imm": "Code",
+      "late": "Code"
+    },
+    {
+      "id": "evaluate",
+      "ms": 2954,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://example.com\\\",\\n    \\\"action\\\": \\\"evaluate\\\",\\n   ",
+      "fmB": "Code",
+      "imm": "Code",
+      "late": "Code"
+    }
+  ],
+  "baseline_frontmost": "Code",
+  "baseline_fg_asn": 1,
+  "baseline_tree": {
+    "roots": [],
+    "procs": 0,
+    "rssKb": 0,
+    "list": []
+  },
+  "ts07_headless": [
+    {
+      "pid": 83881,
+      "mute_audio": true,
+      "headless_new": true,
+      "cmd_head": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --allow-pre-commit-input --di"
+    },
+    {
+      "pid": 83893,
+      "mute_audio": false,
+      "headless_new": true,
+      "cmd_head": "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Vers"
+    }
+  ],
+  "ts07_chromium_procs_found": 6,
+  "peak": {
+    "procs": 9,
+    "rssKb": 798368
+  },
+  "after_close": {
+    "fm": "Code",
+    "tree": {
+      "roots": [],
+      "procs": 0,
+      "rssKb": 0,
+      "list": []
+    },
+    "fg_asn": 1
+  },
+  "asn_poll_max_fg": 1,
+  "asn_poll_fm_all_baseline": true,
+  "asn_poll_samples": 59,
+  "stderr_leak_to_terminal": false,
+  "stderr_lines": 22
+}

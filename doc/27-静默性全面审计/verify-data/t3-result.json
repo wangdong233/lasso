@@ -1,0 +1,67 @@
+{
+  "started": "2026-08-19T02:17:55.348Z",
+  "baseline": {
+    "frontmost": "Windows App",
+    "asnRaw": "3",
+    "ledger": "[]"
+  },
+  "launch": {
+    "ms": 5052,
+    "stdout": "{\"ts\":1787105879636,\"evt\":\"chrome_ledger_recorded\",\"port\":9225,\"pid\":36481,\"status\":\"ready\"}\n{\"ts\":1787105881135,\"evt\":\"chrome_hide_fuse_ok\",\"pid\":36481}\n{\n  \"ok\": true,\n  \"binaryPath\": \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\",\n  \"pid\": 36481,\n  \"port\": 9225,\n  \"profileDir\": \"/Users/wangdong/.cache/lasso/chrome-profile-default\"\n}"
+  },
+  "at3s": {
+    "frontmost": "Windows App",
+    "pid": 36481,
+    "windows": 0,
+    "browserVer": "Chrome/150.0.7871.182",
+    "targets": 0,
+    "ledgerRec": {
+      "port": 9225,
+      "pid": 36481,
+      "launchMode": "hidden",
+      "idleMs": 60000
+    },
+    "flags": {
+      "noStartupWindow": true,
+      "muteAudio": true,
+      "noFirstRun": true,
+      "noDefaultBrowserCheck": true,
+      "antiThrottleTrio": true,
+      "remoteDebuggingPort": "9225",
+      "userDataDir": "/Users/wangdong/.cache/lasso/chrome-profile-default"
+    },
+    "cmdHead": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9225 --no-first-run --no-default-browser-check --user-data-dir=/Users/wangdong/.cache/lasso/chrome-profile-default --disable-backgrounding-occluded-windows --disable-backgroun",
+    "asnEntries": [
+      {
+        "name": "Google Chrome",
+        "asn": "0x0-0",
+        "type": "Foreground",
+        "pid": 2420
+      },
+      {
+        "name": "Google Chrome",
+        "asn": "0x0-0",
+        "type": "BackgroundOnly",
+        "pid": 6141
+      },
+      {
+        "name": "Google Chrome",
+        "asn": "0x0-0",
+        "type": "Foreground",
+        "pid": 36481
+      }
+    ]
+  },
+  "at8s": {
+    "frontmost": "Windows App",
+    "windows": 0
+  },
+  "stop": {
+    "ms": 4372,
+    "stdout": "{\n  \"stopped\": [\n    {\n      \"port\": 9225,\n      \"pid\": 36481,\n      \"action\": \"killed\"\n    }\n  ]\n}",
+    "pidAlive": false,
+    "portReleased": false,
+    "ledgerAfter": "[]",
+    "frontmostFinal": "Windows App"
+  }
+}

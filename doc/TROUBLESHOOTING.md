@@ -287,6 +287,12 @@ rm -rf ~/.cache/lasso
 
 ## 8. 浏览器静默 / 后台节流（v1.10）
 
+### 8.0 静默性结论速查（v1.17.2 真机审计）
+
+六维打扰面（焦点/窗口/Dock/音频/通知/资源）逐格实测的完整矩阵和证据在 [`doc/27-静默性全面审计/`](./27-静默性全面审计/)（audit.md 白盒 + verify.md 真机）。速记：纯查询五路径（search 三源 / fetch_url / fetch_feed / content_blocks 二跳）完全静默；`browse_headless` 不注册 Dock/cmd-tab、恒静音，只有存活期 ~400MB 底噪；`launch-chrome` hidden 档唯一残留是 Dock 图标；连你自己开的 Chrome 操作面零抢焦（v1.17.2 起 lasso 在后台 tab 干活，你的 tab 不被改写）；`desktop` 设计上占用键鼠。用户向矩阵表在 [README · 隐私与安全](../../README.md#隐私与安全)。
+
+**连你自己 Chrome 时发现「我的第一个 tab 被 navigate 走了」**：v1.17.1 及之前的已知缺陷（S-7，tab 内容劫持），v1.17.2 已修复——lasso 现在自建后台 tab 干活、会话结束自动关。若仍复现，说明该次连接处于降级态（列表解析失败/建塔失败时维持旧行为不阻断），跑 `lasso doctor` 看 CDP 可达性，并反馈日志里的 `logged_in_own_page_*` 事件。
+
 ### 8.1 让「你自己开的 Chrome」获得反节流能力（browse_logged_in 复用 9222 时）
 
 Lasso 自己 `launch-chrome` 起的 Chrome **恒带**反节流三件套 + 静音（后台 tab 的 rAF 不被钳到 1 帧/秒、定时器不合并、永不发声）。但**你自己手动启动**、只加 `--remote-debugging-port=9222` 的 Chrome 拿不到这些 flag——`browse_logged_in` 连接（`--browser-url`）是零注入的：谁的 Chrome 听谁的，Lasso 不改写你的进程参数（也不该）。

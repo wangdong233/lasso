@@ -1,0 +1,259 @@
+{
+  "meta": {
+    "started": "2026-08-19T02:11:53.069Z",
+    "env_note": "engine=auto 默认；机器 key 来自 ~/.claude.json",
+    "serverPid": 31001
+  },
+  "ops": [
+    {
+      "label": "search",
+      "ms": 2076,
+      "err": null,
+      "result_brief": {
+        "outcome": "worked",
+        "served_by": "search.machine_mcp",
+        "keys": [
+          "outcome",
+          "data",
+          "served_by",
+          "fallback_used",
+          "retrieval_method",
+          "actions_and_results",
+          "quality"
+        ],
+        "n": 10
+      },
+      "before": {
+        "t": "2026-08-19T02:11:58.294Z",
+        "label": "search#before",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "after": {
+        "t": "2026-08-19T02:12:04.135Z",
+        "label": "search#after",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "serverCpuPeak": {
+        "maxPcpu": 55.6,
+        "maxRssKb": 115072,
+        "samples": 17
+      }
+    },
+    {
+      "label": "fetch_url",
+      "ms": 392,
+      "err": null,
+      "result_brief": {
+        "outcome": "worked",
+        "served_by": "fetch_url",
+        "keys": [
+          "outcome",
+          "data",
+          "served_by",
+          "fallback_used",
+          "retrieval_method"
+        ],
+        "n": null
+      },
+      "before": {
+        "t": "2026-08-19T02:12:09.720Z",
+        "label": "fetch_url#before",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "after": {
+        "t": "2026-08-19T02:12:13.746Z",
+        "label": "fetch_url#after",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "serverCpuPeak": {
+        "maxPcpu": 10.7,
+        "maxRssKb": 94924,
+        "samples": 3
+      }
+    },
+    {
+      "label": "fetch_feed",
+      "ms": 1846,
+      "err": null,
+      "result_brief": {
+        "outcome": "worked",
+        "served_by": "fetch_feed",
+        "keys": [
+          "outcome",
+          "data",
+          "served_by",
+          "fallback_used",
+          "retrieval_method"
+        ],
+        "n": null
+      },
+      "before": {
+        "t": "2026-08-19T02:12:19.328Z",
+        "label": "fetch_feed#before",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "after": {
+        "t": "2026-08-19T02:12:24.535Z",
+        "label": "fetch_feed#after",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "serverCpuPeak": {
+        "maxPcpu": 4.3,
+        "maxRssKb": 94836,
+        "samples": 15
+      }
+    },
+    {
+      "label": "search_local",
+      "ms": 184,
+      "err": null,
+      "result_brief": {
+        "outcome": "worked",
+        "served_by": "search_local",
+        "keys": [
+          "outcome",
+          "data",
+          "served_by",
+          "fallback_used",
+          "retrieval_method"
+        ],
+        "n": 5
+      },
+      "before": {
+        "t": "2026-08-19T02:12:28.769Z",
+        "label": "search_local#before",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "after": {
+        "t": "2026-08-19T02:12:31.987Z",
+        "label": "search_local#after",
+        "frontmost": "Windows App",
+        "userChromeWindows": 0,
+        "asn": {
+          "raw": 3,
+          "fg": 1,
+          "cdm": 4
+        },
+        "lassoTree": {
+          "procs": 0,
+          "rssKb": 0
+        }
+      },
+      "serverCpuPeak": {
+        "maxPcpu": 9.7,
+        "maxRssKb": 95496,
+        "samples": 1
+      }
+    }
+  ],
+  "notes": [],
+  "baseline": {
+    "t": "2026-08-19T02:11:55.037Z",
+    "label": "baseline",
+    "frontmost": "Windows App",
+    "userChromeWindows": 0,
+    "asn": {
+      "raw": 3,
+      "fg": 1,
+      "cdm": 4
+    },
+    "lassoTree": {
+      "procs": 0,
+      "rssKb": 0
+    }
+  },
+  "final": {
+    "t": "2026-08-19T02:12:39.504Z",
+    "label": "final(after server close)",
+    "frontmost": "Windows App",
+    "userChromeWindows": 0,
+    "asn": {
+      "raw": 3,
+      "fg": 1,
+      "cdm": 4
+    },
+    "lassoTree": {
+      "procs": 0,
+      "rssKb": 0
+    }
+  },
+  "residual": {
+    "chromiumTreeLasso": {
+      "procs": 0,
+      "rssKb": 0,
+      "cpuPct": 0,
+      "pidList": []
+    },
+    "serverAlive": false
+  }
+}

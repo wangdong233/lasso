@@ -1,0 +1,105 @@
+{
+  "started": "2026-08-19T02:33:38.093Z",
+  "steps": [
+    {
+      "label": "take_snapshot(example.com)",
+      "ms": 331,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 2,
+        "after": 2
+      },
+      "pagesBefore": [
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://example.com/"
+      ],
+      "isError": false,
+      "resHead": "## Latest page snapshot\nuid=1_0 RootWebArea \"Example Domain\" url=\"https://example.com/\"\n  uid=1_1 heading \"Example Domai"
+    },
+    {
+      "label": "click(uid)",
+      "ms": 2887,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 2,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://www.iana.org/help/example-domains"
+      ],
+      "isError": false,
+      "resHead": "Successfully clicked on the element\nPage navigated to https://www.iana.org/help/example-domains."
+    },
+    {
+      "label": "navigate_page(DDG)",
+      "ms": 3561,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://www.iana.org/help/example-domains"
+      ],
+      "pagesAfter": [
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "isError": false,
+      "resHead": "Successfully navigated to https://duckduckgo.com/?q=hello.\n## Pages\n1: hello at DuckDuckGo (https://duckduckgo.com/?q=he"
+    },
+    {
+      "label": "take_snapshot(DDG)",
+      "ms": 183,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "isError": false,
+      "resHead": "## Latest page snapshot\nuid=2_0 RootWebArea \"hello at DuckDuckGo\" url=\"https://duckduckgo.com/?q=hello&ia=web\"\n  uid=2_1"
+    }
+  ],
+  "link": {
+    "line": "  uid=1_3 link \"Learn more\" url=\"https://iana.org/domains/example\"",
+    "uid": "1_3",
+    "textLen": 361
+  },
+  "textbox": {
+    "line": null,
+    "uid": null,
+    "textLen": 22451
+  },
+  "restored": "Windows App",
+  "cleanup": {
+    "pidAlive": false,
+    "ledger": "[]",
+    "frontmost": "Windows App"
+  }
+}

@@ -228,8 +228,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.17，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.17.2，点开看每版改了什么）</summary>
 
+- **v1.17.2**：静默性全面审计落地（真机六维实测：焦点/窗口/Dock/音频/通知/资源）——① 修复「连你自己开的可见 Chrome」时 lasso 会**改写你第一个 tab 内容**的缺陷：现在 lasso 在你的 Chrome 里自建一个后台 tab 干活（不抢焦点、不激活），会话结束自动关掉，你的 tab 一律不动；② 修复 tab 管理的契约错配（`close_page` 参数形态），且关 tab 现在只可能落在 lasso 自己开的 tab 上（登记制，类型层面保证）；③ 隐私文档新增**静默性矩阵**（每条通道×每维打扰的实测结论，见「隐私与安全」）。
 - **v1.17**：五项升级——① 智谱直连 key 退役（`ZHIPU_API_KEY` 不再消费；智谱能力由机器 web-search-prime MCP 复用唯一承载，搜索默认零配置）② `search` 新增 `content_blocks` 第二跳（搜完并发抓 top N 正文、查询相关裁剪 ~6k 字符，失败条目如实标注，零付费依赖）③ 新工具 `search_local`（Chrome 浏览历史 + Spotlight 本地私有搜索，隐私红线：只返标题/链接/时间，禁全文导出）④ 高风险操作支持回合内 elicitation 确认（老客户端零影响）⑤ `browse extract` 新增 `include_refs` 交互句柄（`[r1]` 式附录 + 按句柄点击/填写，页面变了诚实失效）。搜索结果统一带 `quality` 质量轴标注（api / scrape / stale）。
 
 - **v1.16**：新增 `fetch_feed` 工具（RSS / Atom / JSON Feed → 结构化条目；追版本号、退役时间线、官方公告这类「要新」的问题直接问源，不再等搜索索引）+ 修复搜索缓存新鲜度缺陷（`freshness=day` 的结果此前可能被缓存成最多 7 天的陈货，现在 day 档 24 小时即过期；全源熔断时的录制回放也会按 freshness 窗口拒掉过期 fixture，不再拿陈年录像充数）。
@@ -304,7 +305,7 @@ lasso launch-chrome
 - 启动后自动探活调试端口，Chrome 没起来 / 端口被占会明确报错，不假报成功。
 - 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。
 - 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
-- 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；`browse_logged_in` 连**你自己开的可见 Chrome** 是「低打扰非零打扰」（macOS 平台级限制，个别操作可能抢一次焦点）——要纯静默用 hidden 档或 `browse_headless`；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
+- 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；它起的 Chrome 在 Dock / 任务栏会多一个图标（浏览器有头进程的注册行为，lasso 控制不了），要零图标用 `browse_headless`；`browse_logged_in` 连**你自己开的可见 Chrome** 时会在你的 Chrome 里临时开一个后台 tab 干活（不抢焦点不发声，结束自动关，v1.17.2 起你的 tab 一律不被改写）——但你的 Chrome 本身不静音（lasso 不改写你的浏览器参数），浏览到自动播放页面会真出声；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
 - chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
 
 </details>
@@ -372,6 +373,21 @@ lasso launch-chrome
 - **不解 2FA / CAPTCHA / 验证码**（红线）。这些永远需要你本人在本机浏览器里手动过一次。
 - **不让陌生人随便碰你的内网服务**——访问内网默认被拒，保护你的内部服务不被随意触达；Surge / Clash 等 TUN 代理网络已内置放行，无需额外配置。
 - **搜索结果默认不落盘**，只有你主动开启录制模式才会存一份快照（用于回归测试）。
+
+### 静默性矩阵（v1.17.2 真机实测）
+
+「静默」= 干活时你不被打扰。下表是六维打扰面（抢焦点 / 弹窗口 / Dock 图标 / 出声 / 系统通知 / 资源占用）逐格真机实测的结论（macOS 12 + Chrome 150，2026-08）：
+
+| 你用的能力 | 抢焦点 | 弹窗口 | Dock 图标 | 出声 | 通知 | 资源 |
+|---|---|---|---|---|---|---|
+| `search` / `fetch_url` / `fetch_feed` / `search_local` | 无 | 无 | 无 | 无 | 无 | 极低（纯网络/本地查询，CPU 峰 <3 秒即落） |
+| `browse_headless`（无头浏览） | 无 | 无 | 无 | 无（恒静音） | 无 | 中（存活期约 400MB，闲置 5 分钟自动回收） |
+| `launch-chrome`（默认 hidden 档） | 无 | 无 | **多一个 Chrome 图标**（清不掉，见下方边界） | 无（恒静音） | 无 | 中（server 里约 60 秒不用自动关） |
+| `launch-chrome --mode visible` | **会**（弹出窗口，你主动选的） | 会 | 会 | 无（也恒静音） | 无 | 中 |
+| `browse_logged_in` 连**你自己开的 Chrome** | 无（逐操作实测） | 无 | 无新增 | **你的 Chrome 不静音**（lasso 不改写你的浏览器） | 无 | 低 |
+| `desktop` 控桌面 | **设计上占用键鼠** | — | — | — | 首次配置授权弹窗 | 极低 |
+
+连你自己 Chrome 的三条边界（v1.17.2 起）：① lasso 在你的 Chrome 里自建**后台 tab** 干活，不抢焦点、不激活窗口，会话结束自动关——你的 tab 一律不被改写（旧版会改写第一个 tab 的内容，已修复）；② 你的 Chrome 不静音——lasso 浏览到自动播放页面会真出声（要静音自己启动 Chrome 时加 `--mute-audio`）；③ lasso 操作期间那个后台 tab 会「自认为有焦点」（浏览器调试协议的仿真，不影响你正在用的前台应用）。
 
 ---
 

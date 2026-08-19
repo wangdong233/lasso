@@ -1,0 +1,40 @@
+{
+  "case": [
+    "T-SILENCE-04",
+    "T-SILENCE-07(hidden)"
+  ],
+  "port": 9235,
+  "fm_before": "Code",
+  "fg_asn_before": 1,
+  "launch_ms": 4771,
+  "launch_exit": 0,
+  "launch_json": {
+    "ok": true,
+    "binaryPath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "pid": 84902,
+    "port": 9235,
+    "profileDir": "/Users/wangdong/.cache/lasso/chrome-profile-default"
+  },
+  "pid": 84902,
+  "fm_after_launch": "Code",
+  "fg_asn_after": 2,
+  "windows_of_pid": "0",
+  "ts04_flags": {
+    "no_startup_window": true,
+    "mute_audio": true,
+    "no_first_run": true,
+    "no_default_browser_check": true,
+    "remote_debugging_port": true
+  },
+  "cmdline_head": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9235 --no-first-run --no-default-browser-check --user-data-dir=/Users/wangdong/.cache/lasso/chr",
+  "page_targets": 0,
+  "all_target_types": [],
+  "ledger_during": "[\n  {\n    \"port\": 9235,\n    \"pid\": 84902,\n    \"profileDir\": \"/Users/wangdong/.cache/lasso/chrome-profile-default\",\n    \"launchedAt\": 1787111155408,\n    \"status\": \"ready\",\n    \"launchMode\": \"hidden\",\n    \"idleMs\": 60000\n  }\n]",
+  "stop_exit": 0,
+  "stop_stdout": "{\n  \"stopped\": [\n    {\n      \"port\": 9235,\n      \"pid\": 84902,\n      \"action\": \"killed\"\n    }\n  ]\n}",
+  "pid_alive_after_stop": false,
+  "port_freed": true,
+  "ledger_after": "[]",
+  "fg_asn_final": 1,
+  "fm_final": "Code"
+}

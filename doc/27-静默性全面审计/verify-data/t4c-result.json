@@ -1,0 +1,282 @@
+{
+  "started": "2026-08-19T02:25:58.692Z",
+  "steps": [
+    {
+      "label": "navigate_page(example.com)",
+      "ms": 557,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.org/",
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://example.com/"
+      ]
+    },
+    {
+      "label": "take_snapshot",
+      "ms": 19,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://example.com/"
+      ]
+    },
+    {
+      "label": "click(link)",
+      "ms": 3,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://example.com/"
+      ]
+    },
+    {
+      "label": "navigate_page(DDG)",
+      "ms": 5414,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://example.com/"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "take_snapshot(DDG)",
+      "ms": 164,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "close_page{url}(错配形态)",
+      "ms": 4,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "close_page{pageIdx}(正确形态)",
+      "ms": 3,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "POS:cdp.createTarget(default)",
+      "ms": 49,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Google Chrome",
+        "late": "Google Chrome"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "about:blank?posA",
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "NEG:cdp.createTarget{bg:true}",
+      "ms": 35,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "about:blank?posA",
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "about:blank?negA",
+        "about:blank?posA",
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    },
+    {
+      "label": "POS:select_page{bringToFront}",
+      "ms": 2,
+      "frontmost": {
+        "before": "Finder",
+        "immediate": "Finder",
+        "late": "Finder"
+      },
+      "windows": {
+        "before": 1,
+        "after": 1
+      },
+      "pagesBefore": [
+        "about:blank?negA",
+        "about:blank?posA",
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ],
+      "pagesAfter": [
+        "about:blank?negA",
+        "about:blank?posA",
+        "https://example.com/",
+        "https://duckduckgo.com/?q=hello&ia=web"
+      ]
+    }
+  ],
+  "chrome": {
+    "pid": 40306,
+    "atLaunch": {
+      "t": "2026-08-19T02:26:06.531Z",
+      "label": "visible-launch",
+      "frontmost": "Google Chrome",
+      "windows": 1,
+      "pages": [
+        "chrome://newtab/"
+      ]
+    }
+  },
+  "tabsReady": {
+    "t": "2026-08-19T02:26:11.137Z",
+    "label": "tabs-ready",
+    "frontmost": "Google Chrome",
+    "windows": 1,
+    "pages": [
+      "https://example.org/",
+      "https://example.com/"
+    ]
+  },
+  "s9": {
+    "pre": {
+      "tabA": false,
+      "tabB": false
+    },
+    "frontBeforeConnect": "Finder",
+    "post2s": {
+      "frontmost": "Finder",
+      "tabA": false,
+      "tabB": false
+    },
+    "manualEmulation": {
+      "cdpResult": {},
+      "tabB_hasFocus": true,
+      "frontmost": "Finder"
+    },
+    "afterDisconnect": {
+      "tabA": false,
+      "tabAny": {
+        "err": "no_target:example.org"
+      },
+      "frontmost": "Finder"
+    }
+  },
+  "uidFind": {
+    "snapshotLen": 361,
+    "linkUid": "1",
+    "sample": "## Latest page snapshot\nuid=1_0 RootWebArea \"Example Domain\" url=\"https://example.com/\"\n  uid=1_1 heading \"Example Domain\" level=\"1\"\n  uid=1_2 StaticText \"This domain is for use in documentation examples without needing permission. Avoid use in operations.\"\n  uid=1_3 link \"Learn more\" url=\"https://i",
+    "inputUid": null
+  },
+  "restored": "Windows App",
+  "cleanup": {
+    "stopOut": "{\n  \"stopped\": [\n    {\n      \"port\": 9233,\n      \"pid\": 40306,\n      \"action\": \"killed\"\n    }\n  ]\n}",
+    "pidAlive": false,
+    "ledger": "[]",
+    "frontmost": "Windows App"
+  }
+}

@@ -1,0 +1,567 @@
+ 1) "loginwindow" ASN:0x0-0x4004: 
+    bundleID="com.apple.loginwindow"
+    bundle path="/System/Library/CoreServices/loginwindow.app"
+    executable path="/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow"
+    pid = 194 type="UIElement" flavor=3 Version="2062.6" fileType="APPL" creator="lgnw" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:12 ( 15 hours, 51 minutes, 23.8892 seconds ago )
+
+ 2) "ViewBridgeAuxiliary" ASN:0x0-0x7007: 
+    bundleID="com.apple.ViewBridgeAuxiliary"
+    bundle path="/System/Library/PrivateFrameworks/ViewBridge.framework/Versions/A/XPCServices/ViewBridgeAuxiliary.xpc"
+    executable path="/System/Library/PrivateFrameworks/ViewBridge.framework/Versions/A/XPCServices/ViewBridgeAuxiliary.xpc/Contents/MacOS/ViewBridgeAuxiliary"
+    pid = 341 !signalled type="BackgroundOnly" flavor=2 Version=[ NULL ]  fileType="XPC!" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:13 ( 15 hours, 51 minutes, 23.4719 seconds ago )
+
+ 3) "SystemUIServer" ASN:0x0-0xc00c: 
+    bundleID="com.apple.systemuiserver"
+    bundle path="/System/Library/CoreServices/SystemUIServer.app"
+    executable path="/System/Library/CoreServices/SystemUIServer.app/Contents/MacOS/SystemUIServer"
+    pid = 416 type="UIElement" flavor=3 Version="518" fileType="APPL" creator="syui" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:23 ( 15 hours, 51 minutes, 13.1027 seconds ago )
+
+ 4) "程序坞" ASN:0x0-0xd00d: 
+    bundleID="com.apple.dock"
+    bundle path="/System/Library/CoreServices/Dock.app"
+    executable path="/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock"
+    pid = 414 type="UIElement" flavor=4 Version="2152.20.4" fileType="APPL" creator="dock" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:23 ( 15 hours, 51 minutes, 13.089 seconds ago )
+
+ 5) "talagent" ASN:0x0-0xe00e: 
+    bundleID="com.apple.talagent"
+    bundle path="/System/Library/CoreServices/talagent"
+    executable path="/System/Library/CoreServices/talagent"
+    pid = 413 type="UIElement" flavor=2 Version=[ NULL ]  fileType="????" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:23 ( 15 hours, 51 minutes, 12.9933 seconds ago )
+
+ 6) "控制中心" ASN:0x0-0xf00f: 
+    bundleID="com.apple.controlcenter"
+    bundle path="/System/Library/CoreServices/ControlCenter.app"
+    executable path="/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter"
+    pid = 415 type="UIElement" flavor=3 Version="244.40.16.2" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:23 ( 15 hours, 51 minutes, 12.8709 seconds ago )
+
+ 7) "ViewBridgeAuxiliary" ASN:0x0-0x10010: 
+    bundleID="com.apple.ViewBridgeAuxiliary"
+    bundle path="/System/Library/PrivateFrameworks/ViewBridge.framework/Versions/A/XPCServices/ViewBridgeAuxiliary.xpc"
+    executable path="/System/Library/PrivateFrameworks/ViewBridge.framework/Versions/A/XPCServices/ViewBridgeAuxiliary.xpc/Contents/MacOS/ViewBridgeAuxiliary"
+    pid = 436 !signalled type="BackgroundOnly" flavor=2 Version=[ NULL ]  fileType="XPC!" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:24 ( 15 hours, 51 minutes, 12.6713 seconds ago )
+
+ 8) "QuickLookUIService (PID 417)" ASN:0x0-0x11011: 
+    bundleID="com.apple.quicklook.QuickLookUIService"
+    bundle path="/System/Library/Frameworks/QuickLookUI.framework/Versions/A/XPCServices/QuickLookUIService.xpc"
+    executable path="/System/Library/Frameworks/QuickLookUI.framework/Versions/A/XPCServices/QuickLookUIService.xpc/Contents/MacOS/QuickLookUIService"
+    pid = 431 type="BackgroundOnly" flavor=3 Version="1" fileType="XPC!" Arch=x86_64 sandboxed 
+
+ 9) "通知中心" ASN:0x0-0x12012: 
+    bundleID="com.apple.notificationcenterui"
+    bundle path="/System/Library/CoreServices/NotificationCenter.app"
+    executable path="/System/Library/CoreServices/NotificationCenter.app/Contents/MacOS/NotificationCenter"
+    pid = 456 type="UIElement" flavor=3 Version="1188.40.16" fileType="APPL" Arch=x86_64 sandboxed 
+
+10) "AppSSOAgent" ASN:0x0-0x13013: 
+    bundleID="com.apple.AppSSOAgent"
+    bundle path="/System/Library/PrivateFrameworks/AppSSO.framework/Support/AppSSOAgent.app"
+    executable path="/System/Library/PrivateFrameworks/AppSSO.framework/Support/AppSSOAgent.app/Contents/MacOS/AppSSOAgent"
+    pid = 457 type="UIElement" flavor=3 Version="1" fileType="APPL" Arch=x86_64 sandboxed 
+
+11) "程序坞附加项" ASN:0x0-0x14014: 
+    bundleID="com.apple.dock.extra"
+    bundle path="/System/Library/CoreServices/Dock.app/Contents/XPCServices/com.apple.dock.extra.xpc"
+    executable path="/System/Library/CoreServices/Dock.app/Contents/XPCServices/com.apple.dock.extra.xpc/Contents/MacOS/com.apple.dock.extra"
+    pid = 461 type="UIElement" flavor=3 Version="2152.20.4" fileType="XPC!" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:24 ( 15 hours, 51 minutes, 11.802 seconds ago )
+
+12) "访达" ASN:0x0-0x15015: 
+    bundleID="com.apple.finder"
+    bundle path="/System/Library/CoreServices/Finder.app"
+    executable path="/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder"
+    pid = 417 type="Foreground" flavor=3 Version="1440.5.1" fileType="FNDR" creator="MACS" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:25 ( 15 hours, 51 minutes, 11.4734 seconds ago )
+
+13) "全能解压 FinderExtension" ASN:0x0-0x16016: 
+    bundleID="com.trendmicro.DrUnzip.FinderExtension"
+    bundle path="/Applications/UnzipOne.app/Contents/PlugIns/FinderExtension.appex"
+    executable path="/Applications/UnzipOne.app/Contents/PlugIns/FinderExtension.appex/Contents/MacOS/FinderExtension"
+    pid = 478 type="UIElement" flavor=3 Version="10734" fileType="XPC!" Arch=x86_64 sandboxed 
+
+14) "微信" ASN:0x0-0x18018: (hidden) 
+    bundleID="com.tencent.xinWeChat"
+    bundle path="/Applications/WeChat.app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChat"
+    pid = 486 type="Foreground" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:26 ( 15 hours, 51 minutes, 10.5667 seconds ago )
+
+15) "HyperDock" ASN:0x0-0x19019: 
+    bundleID="de.bahoom.HyperDock-Helper"
+    bundle path="/Applications/HyperDock.app/Contents/Library/LoginItems/HyperDock Helper.app"
+    executable path="/Applications/HyperDock.app/Contents/Library/LoginItems/HyperDock Helper.app/Contents/MacOS/HyperDock Helper"
+    pid = 489 type="UIElement" flavor=3 Version="1.7" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:26 ( 15 hours, 51 minutes, 10.5106 seconds ago )
+    checkin time = 2026/08/18 18:25:32 ( 15 hours, 51 minutes, 4.68405 seconds ago )
+    launch to checkin time: 5.82661 seconds
+
+16) "聚焦" ASN:0x0-0x1a01a: 
+    bundleID="com.apple.Spotlight"
+    bundle path="/System/Library/CoreServices/Spotlight.app"
+    executable path="/System/Library/CoreServices/Spotlight.app/Contents/MacOS/Spotlight"
+    pid = 488 type="UIElement" flavor=3 Version="2183.25" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:26 ( 15 hours, 51 minutes, 10.4483 seconds ago )
+
+17) "TextInputMenuAgent" ASN:0x0-0x1b01b: 
+    bundleID="com.apple.TextInputMenuAgent"
+    bundle path="/System/Library/CoreServices/TextInputMenuAgent.app"
+    executable path="/System/Library/CoreServices/TextInputMenuAgent.app/Contents/MacOS/TextInputMenuAgent"
+    pid = 529 type="UIElement" flavor=3 Version="290" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:26 ( 15 hours, 51 minutes, 9.81358 seconds ago )
+
+18) "AirPlayUIAgent" ASN:0x0-0x1c01c: 
+    bundleID="com.apple.AirPlayUIAgent"
+    bundle path="/System/Library/CoreServices/AirPlayUIAgent.app"
+    executable path="/System/Library/CoreServices/AirPlayUIAgent.app/Contents/MacOS/AirPlayUIAgent"
+    pid = 521 type="UIElement" flavor=3 Version="620.8.2" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+
+19) "imklaunchagent" ASN:0x0-0x1d01d: 
+    bundleID=[ NULL ] 
+    bundle path="/System/Library/Frameworks/InputMethodKit.framework/Versions/A/Resources/imklaunchagent"
+    executable path="/System/Library/Frameworks/InputMethodKit.framework/Versions/A/Resources/imklaunchagent"
+    pid = 508 !signalled type="BackgroundOnly" flavor=2 Version=[ NULL ]  fileType="????" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:26 ( 15 hours, 51 minutes, 9.78083 seconds ago )
+
+20) "Siri" ASN:0x0-0x1e01e: 
+    bundleID="com.apple.Siri"
+    bundle path="/System/Library/CoreServices/Siri.app"
+    executable path="/System/Library/CoreServices/Siri.app/Contents/MacOS/Siri"
+    pid = 510 type="UIElement" flavor=3 Version="3105.3.1" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+
+21) "TextInputSwitcher" ASN:0x0-0x1f01f: 
+    bundleID="com.apple.TextInputSwitcher"
+    bundle path="/System/Library/CoreServices/TextInputSwitcher.app"
+    executable path="/System/Library/CoreServices/TextInputSwitcher.app/Contents/MacOS/TextInputSwitcher"
+    pid = 538 type="UIElement" flavor=3 Version="290" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:27 ( 15 hours, 51 minutes, 9.42545 seconds ago )
+
+22) "搜狗输入法" ASN:0x0-0x20020: 
+    bundleID="com.sogou.inputmethod.sogou"
+    bundle path="/Library/Input Methods/SogouInput.app"
+    executable path="/Library/Input Methods/SogouInput.app/Contents/MacOS/SogouInput"
+    pid = 582 type="BackgroundOnly" flavor=3 Version="10639" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="imklaunchagent" ASN:0x1-0x1fc: 
+    launch time =  2026/08/18 18:25:27 ( 15 hours, 51 minutes, 9.03052 seconds ago )
+    checkin time = 2026/08/18 18:25:35 ( 15 hours, 51 minutes, 1.51762 seconds ago )
+    launch to checkin time: 7.51291 seconds
+
+23) "Wi-Fi" ASN:0x0-0x21021: 
+    bundleID="com.apple.wifi.WiFiAgent"
+    bundle path="/System/Library/CoreServices/WiFiAgent.app"
+    executable path="/System/Library/CoreServices/WiFiAgent.app/Contents/MacOS/WiFiAgent"
+    pid = 544 type="UIElement" flavor=3 Version="1728" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:27 ( 15 hours, 51 minutes, 8.99962 seconds ago )
+
+24) "CoreServicesUIAgent" ASN:0x0-0x22022: 
+    bundleID="com.apple.coreservices.uiagent"
+    bundle path="/System/Library/CoreServices/CoreServicesUIAgent.app"
+    executable path="/System/Library/CoreServices/CoreServicesUIAgent.app/Contents/MacOS/CoreServicesUIAgent"
+    pid = 545 type="UIElement" flavor=3 Version="369" fileType="????" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:27 ( 15 hours, 51 minutes, 8.85387 seconds ago )
+
+25) "Bob" ASN:0x0-0x25025: 
+    bundleID="com.hezongyidev.Bob"
+    bundle path="/Applications/Bob.app"
+    executable path="/Applications/Bob.app/Contents/MacOS/Bob"
+    pid = 587 type="UIElement" flavor=3 Version="255" fileType="APPL" Arch=x86_64 sandboxed 
+    parentASN="CoreServicesUIAgent" ASN:0x1-0x221: 
+    launch time =  2026/08/18 18:25:28 ( 15 hours, 51 minutes, 8.44387 seconds ago )
+
+26) "CoreLocationAgent" ASN:0x0-0x26026: 
+    bundleID="com.apple.CoreLocationAgent"
+    bundle path="/System/Library/CoreServices/CoreLocationAgent.app"
+    executable path="/System/Library/CoreServices/CoreLocationAgent.app/Contents/MacOS/CoreLocationAgent"
+    pid = 577 type="UIElement" flavor=3 Version="2667.4.3.1" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:30 ( 15 hours, 51 minutes, 6.42087 seconds ago )
+
+27) "通用控制" ASN:0x0-0x27027: 
+    bundleID="com.apple.universalcontrol"
+    bundle path="/System/Library/CoreServices/UniversalControl.app"
+    executable path="/System/Library/CoreServices/UniversalControl.app/Contents/MacOS/UniversalControl"
+    pid = 579 !signalled type="UIElement" flavor=2 Version="93.16" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:31 ( 15 hours, 51 minutes, 5.72509 seconds ago )
+
+28) "Docker" ASN:0x0-0x28028: 
+    bundleID="com.docker.docker"
+    bundle path="/Applications/Docker.app"
+    executable path="/Applications/Docker.app/Contents/MacOS/Docker"
+    pid = 584 type="UIElement" flavor=3 Version="76265" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:31 ( 15 hours, 51 minutes, 4.76059 seconds ago )
+    checkin time = 2026/08/18 18:25:32 ( 15 hours, 51 minutes, 4.20992 seconds ago )
+    launch to checkin time: 0.550681 seconds
+
+29) "com.apple.PressAndHold" ASN:0x0-0x29029: 
+    bundleID="com.apple.PressAndHold"
+    bundle path="/System/Library/Input Methods/PressAndHold.app/Contents/PlugIns/PAH_Extension.appex"
+    executable path="/System/Library/Input Methods/PressAndHold.app/Contents/PlugIns/PAH_Extension.appex/Contents/MacOS/PAH_Extension"
+    pid = 581 type="BackgroundOnly" flavor=3 Version="59" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+
+30) "iTerm2" ASN:0x0-0x2a02a: (hidden) 
+    bundleID="com.googlecode.iterm2"
+    bundle path="/Applications/iTerm.app"
+    executable path="/Applications/iTerm.app/Contents/MacOS/iTerm2"
+    pid = 586 type="Foreground" flavor=3 Version="3.6.11" fileType="APPL" creator="ITRM" Arch=x86_64 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:32 ( 15 hours, 51 minutes, 4.32319 seconds ago )
+    checkin time = 2026/08/18 18:25:33 ( 15 hours, 51 minutes, 3.24208 seconds ago )
+    launch to checkin time: 1.08113 seconds
+
+31) "ClashX Pro" ASN:0x0-0x2b02b: 
+    bundleID="com.west2online.ClashXPro"
+    bundle path="/Applications/ClashX Pro.app"
+    executable path="/Applications/ClashX Pro.app/Contents/MacOS/ClashX Pro"
+    pid = 588 type="UIElement" flavor=3 Version="1.118.1.1" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:32 ( 15 hours, 51 minutes, 4.23405 seconds ago )
+    checkin time = 2026/08/18 18:25:32 ( 15 hours, 51 minutes, 3.96362 seconds ago )
+    launch to checkin time: 0.270462 seconds
+
+32) "Snipaste" ASN:0x0-0x2c02c: 
+    bundleID="com.Snipaste"
+    bundle path="/Applications/Snipaste.app"
+    executable path="/Applications/Snipaste.app/Contents/MacOS/Snipaste"
+    pid = 590 type="UIElement" flavor=3 Version="2.7.2" fileType="APPL" creator="liule" Arch=x86_64 
+    parentASN="loginwindow" ASN:0x1-0xc2: 
+    launch time =  2026/08/18 18:25:32 ( 15 hours, 51 minutes, 4.16202 seconds ago )
+    checkin time = 2026/08/18 18:25:33 ( 15 hours, 51 minutes, 3.12607 seconds ago )
+    launch to checkin time: 1.03598 seconds
+
+33) "UIKitSystem" ASN:0x0-0x2d02d: 
+    bundleID="com.apple.UIKitSystemApp"
+    bundle path="/System/Library/CoreServices/UIKitSystem.app"
+    executable path="/System/Library/CoreServices/UIKitSystem.app/Contents/MacOS/UIKitSystem"
+    pid = 655 type="BackgroundOnly" flavor=2 Version="320" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:36 ( 15 hours, 51 minutes, 0.482301 seconds ago )
+
+34) "Docker Desktop" ASN:0x0-0x2f02f: 
+    bundleID="com.electron.dockerdesktop"
+    bundle path="/Applications/Docker.app/Contents/MacOS/Docker Desktop.app"
+    executable path="/Applications/Docker.app/Contents/MacOS/Docker Desktop.app/Contents/MacOS/Docker Desktop"
+    pid = 643 type="UIElement" flavor=3 Version="4.6.1.20" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="Docker" ASN:0x0-0x28028:  (inferred)
+    checkin time = 2026/08/18 18:25:36 ( 15 hours, 51 minutes, 0.280795 seconds ago )
+
+35) "CCXProcess" ASN:0x0-0x30030: 
+    bundleID="com.adobe.CCXProcess"
+    bundle path="/Applications/Utilities/Adobe Creative Cloud Experience/CCXProcess/CCXProcess.app"
+    executable path="/Applications/Utilities/Adobe Creative Cloud Experience/CCXProcess/CCXProcess.app/Contents/MacOS/CCXProcess"
+    pid = 674 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  fileType="APPL" Arch=!!none 
+    parentASN=ASN:0x1-0x1f6: 
+    launch time =  2026/08/18 18:25:31 ( 15 hours, 51 minutes, 5.08994 seconds ago )
+
+36) "AdobeIPCBroker" ASN:0x0-0x32032: 
+    bundleID="com.adobe.AdobeIPCBroker"
+    bundle path="/Library/Application Support/Adobe/Adobe Desktop Common/IPCBox/AdobeIPCBroker.app"
+    executable path="/Library/Application Support/Adobe/Adobe Desktop Common/IPCBox/AdobeIPCBroker.app/Contents/MacOS/AdobeIPCBroker"
+    pid = 891 type="UIElement" flavor=3 Version="6.7.0.69" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:38 ( 15 hours, 50 minutes, 57.7518 seconds ago )
+
+37) "Keychain Circle Notification" ASN:0x0-0x33033: 
+    bundleID="com.apple.security.Keychain-Circle-Notification"
+    bundle path="/System/Library/CoreServices/Keychain Circle Notification.app"
+    executable path="/System/Library/CoreServices/Keychain Circle Notification.app/Contents/MacOS/Keychain Circle Notification"
+    pid = 570 type="UIElement" flavor=3 Version="60158.148.2.705.2" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:41 ( 15 hours, 50 minutes, 55.6455 seconds ago )
+
+38) "SoftwareUpdateNotificationManager" ASN:0x0-0x34034: 
+    bundleID="com.apple.SoftwareUpdateNotificationManager"
+    bundle path="/System/Library/PrivateFrameworks/SoftwareUpdate.framework/Versions/A/Resources/SoftwareUpdateNotificationManager.app"
+    executable path="/System/Library/PrivateFrameworks/SoftwareUpdate.framework/Versions/A/Resources/SoftwareUpdateNotificationManager.app/Contents/MacOS/SoftwareUpdateNotificationManager"
+    pid = 1018 type="UIElement" flavor=3 Version="1" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:42 ( 15 hours, 50 minutes, 54.0091 seconds ago )
+
+39) "softwareupdated" ASN:0x0-0x35035: 
+    bundleID=[ NULL ] 
+    bundle path="/System/Library/CoreServices/Software Update.app/Contents/Resources/softwareupdated"
+    executable path="/System/Library/CoreServices/Software Update.app/Contents/Resources/softwareupdated"
+    pid = 294 !cgsConnection !signalled type="BackgroundOnly" flavor=3 Version=[ NULL ]  Arch=x86_64 sandboxed 
+
+40) "AweSun_Desktop" ASN:0x0-0x37037: 
+    bundleID="com.oray.sunlogin.macclient.agent"
+    bundle path="/Applications/AweSun.app/Contents/Helpers/AweSun_Desktop.app"
+    executable path="/Applications/AweSun.app/Contents/Helpers/AweSun_Desktop.app/Contents/MacOS/AweSun_Desktop"
+    pid = 513 type="UIElement" flavor=3 Version="3" fileType="????" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:49 ( 15 hours, 50 minutes, 47.5231 seconds ago )
+
+41) "SogouServices" ASN:0x0-0x38038: 
+    bundleID=[ NULL ] 
+    bundle path="/Library/Input Methods/SogouInput.app/Contents/SogouServices"
+    executable path="/Library/Input Methods/SogouInput.app/Contents/SogouServices"
+    pid = 505 !signalled type="BackgroundOnly" flavor=2 Version=[ NULL ]  fileType="????" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:25:49 ( 15 hours, 50 minutes, 47.4467 seconds ago )
+
+42) "Code" ASN:0x0-0x3a03a: 
+    bundleID="com.microsoft.VSCode"
+    bundle path="/Applications/Visual Studio Code.app"
+    executable path="/Applications/Visual Studio Code.app/Contents/MacOS/Code"
+    pid = 1143 type="Foreground" flavor=3 Version="1.132.1" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="程序坞" ASN:0x1-0x19e: 
+    launch time =  2026/08/18 18:25:51 ( 15 hours, 50 minutes, 45.4945 seconds ago )
+    checkin time = 2026/08/18 18:25:52 ( 15 hours, 50 minutes, 44.6574 seconds ago )
+    launch to checkin time: 0.837066 seconds
+
+43) "微信" ASN:0x0-0x3b03b: 
+    bundleID="com.tencent.flue.WeChatAppEx"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/MacOS/WeChatAppEx"
+    pid = 1142 type="UIElement" flavor=3 Version="269136" fileType="APPL" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x18018:  (inferred)
+
+44) "wxplayer" ASN:0x0-0x3c03c: 
+    bundleID=[ NULL ] 
+    bundle path="/Applications/WeChat.app/Contents/Frameworks/wxplayer"
+    executable path="/Applications/WeChat.app/Contents/Frameworks/wxplayer"
+    pid = 2189 type="BackgroundOnly" flavor=3 Version=[ NULL ]  Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x18018:  (inferred)
+
+45) "WeChatAppEx Helper (Renderer)" ASN:0x0-0x3d03d: 
+    bundleID="com.tencent.flue.helper.renderer"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/MacOS/WeChatAppEx Helper (Renderer)"
+    pid = 2194 type="UIElement" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x3b03b:  (inferred)
+
+46) "WeChatAppEx Helper (Renderer)" ASN:0x0-0x3e03e: 
+    bundleID="com.tencent.flue.helper.renderer"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/MacOS/WeChatAppEx Helper (Renderer)"
+    pid = 2193 type="UIElement" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x3b03b:  (inferred)
+
+47) "WeChatAppEx Helper (Renderer)" ASN:0x0-0x3f03f: 
+    bundleID="com.tencent.flue.helper.renderer"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/MacOS/WeChatAppEx Helper (Renderer)"
+    pid = 2195 type="UIElement" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x3b03b:  (inferred)
+
+48) "Adobe Desktop Service" ASN:0x0-0x42042: 
+    bundleID="com.adobe.acc.AdobeDesktopService"
+    bundle path="/Library/Application Support/Adobe/Adobe Desktop Common/ADS/Adobe Desktop Service.app"
+    executable path="/Library/Application Support/Adobe/Adobe Desktop Common/ADS/Adobe Desktop Service.app/Contents/MacOS/Adobe Desktop Service"
+    pid = 2332 type="BackgroundOnly" flavor=3 Version="5.5.0" fileType="APPL" creator="????" Arch=x86_64 
+    checkin time = 2026/08/18 18:26:17 ( 15 hours, 50 minutes, 19.7375 seconds ago )
+
+49) "Creative Cloud Helper" ASN:0x0-0x43043: 
+    bundleID="com.adobe.ccd.helper"
+    bundle path="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app"
+    executable path="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app/Contents/MacOS/Creative Cloud Helper"
+    pid = 2338 type="BackgroundOnly" flavor=3 Version="5.5.0" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="Adobe Desktop Service" ASN:0x0-0x42042:  (inferred)
+    checkin time = 2026/08/18 18:26:18 ( 15 hours, 50 minutes, 18.5175 seconds ago )
+
+50) "openclaw-gateway" ASN:0x0-0x44044: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 506 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    checkin time = 2026/08/18 18:26:19 ( 15 hours, 50 minutes, 17.6176 seconds ago )
+
+51) "Google Chrome" ASN:0x0-0x46046: 
+    bundleID="com.google.Chrome"
+    bundle path="/Applications/Google Chrome.app"
+    executable path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    pid = 2420 type="Foreground" flavor=3 Version="7871.182" fileType="APPL" creator="rimZ" Arch=x86_64 
+    parentASN="程序坞" ASN:0x1-0x19e: 
+    launch time =  2026/08/18 18:26:26 ( 15 hours, 50 minutes, 9.80595 seconds ago )
+    checkin time = 2026/08/18 18:26:27 ( 15 hours, 50 minutes, 8.99978 seconds ago )
+    launch to checkin time: 0.806193 seconds
+
+52) "SiriNCService" ASN:0x0-0x47047: 
+    bundleID="com.apple.SiriNCService"
+    bundle path="/System/Library/CoreServices/Siri.app/Contents/XPCServices/SiriNCService.xpc"
+    executable path="/System/Library/CoreServices/Siri.app/Contents/XPCServices/SiriNCService.xpc/Contents/MacOS/SiriNCService"
+    pid = 2421 type="BackgroundOnly" flavor=3 Version="3105.3.1" fileType="XPC!" creator="????" Arch=x86_64 sandboxed 
+
+53) "Creative Cloud Helper" ASN:0x0-0x4b04b: 
+    bundleID="com.adobe.ccd.helper"
+    bundle path="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app"
+    executable path="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app/Contents/MacOS/Creative Cloud Helper"
+    pid = 2874 type="BackgroundOnly" flavor=3 Version="5.5.0" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="Adobe Desktop Service" ASN:0x0-0x42042:  (inferred)
+    checkin time = 2026/08/18 18:27:11 ( 15 hours, 49 minutes, 25.2354 seconds ago )
+
+54) "Core Sync" ASN:0x0-0x4c04c: 
+    bundleID="com.adobe.accmac"
+    bundle path="/Applications/Utilities/Adobe Sync/CoreSync/Core Sync.app"
+    executable path="/Applications/Utilities/Adobe Sync/CoreSync/Core Sync.app/Contents/MacOS/Core Sync"
+    pid = 2883 type="UIElement" flavor=3 Version="4.16.0.22" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN=ASN:0x1-0xb42: 
+    launch time =  2026/08/18 18:27:12 ( 15 hours, 49 minutes, 24.1105 seconds ago )
+    checkin time = 2026/08/18 18:27:12 ( 15 hours, 49 minutes, 23.7834 seconds ago )
+    launch to checkin time: 0.327082 seconds
+
+55) "npm exec @z_ai/mcp-server" ASN:0x0-0x4d04d: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 2937 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:28:31 ( 15 hours, 48 minutes, 5.06655 seconds ago )
+
+56) "npm exec media-gen-mcp-server" ASN:0x0-0x4e04e: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 3017 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:28:35 ( 15 hours, 48 minutes, 1.30806 seconds ago )
+
+57) "npm exec chrome-devtools-mcp@latest --headless --isolated --allow-unrestricted-paths" ASN:0x0-0x4f04f: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 3084 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:28:36 ( 15 hours, 47 minutes, 59.9997 seconds ago )
+
+58) "npm exec @playwright/mcp@latest" ASN:0x0-0x51051: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 3104 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:28:41 ( 15 hours, 47 minutes, 55.5609 seconds ago )
+
+59) "chrome-devtools-mcp" ASN:0x0-0x52052: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 3200 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="npm exec chrome-devtools-mcp@latest --headless --isolated --allow-unrestricted-paths" ASN:0x0-0x4f04f:  (inferred)
+    checkin time = 2026/08/18 18:28:47 ( 15 hours, 47 minutes, 49.1097 seconds ago )
+
+60) "npm exec @z_ai/mcp-server" ASN:0x0-0x64064: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5181 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:38:37 ( 15 hours, 37 minutes, 59.3554 seconds ago )
+
+61) "npm exec media-gen-mcp-server" ASN:0x0-0x65065: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5187 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:38:38 ( 15 hours, 37 minutes, 58.4846 seconds ago )
+
+62) "npm exec chrome-devtools-mcp@latest --headless --isolated --allow-unrestricted-paths" ASN:0x0-0x66066: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5517 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:38:44 ( 15 hours, 37 minutes, 51.9075 seconds ago )
+
+63) "npm exec shadcn@latest mcp" ASN:0x0-0x67067: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5518 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:38:45 ( 15 hours, 37 minutes, 50.8669 seconds ago )
+
+64) "npm exec @playwright/mcp@latest" ASN:0x0-0x68068: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5652 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 2026/08/18 18:38:50 ( 15 hours, 37 minutes,  45.89 seconds ago )
+
+65) "chrome-devtools-mcp" ASN:0x0-0x69069: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 5711 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="npm exec chrome-devtools-mcp@latest --headless --isolated --allow-unrestricted-paths" ASN:0x0-0x66066:  (inferred)
+    checkin time = 2026/08/18 18:38:57 ( 15 hours, 37 minutes, 39.4298 seconds ago )
+
+66) "Google Chrome" ASN:0x0-0x6c06c: 
+    bundleID="com.google.Chrome"
+    bundle path="/Applications/Google Chrome.app"
+    executable path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    pid = 6141 type="BackgroundOnly" flavor=2 Version="7871.182" fileType="APPL" creator="rimZ" Arch=x86_64 
+    parentASN="chrome-devtools-mcp" ASN:0x0-0x52052:  (inferred)
+    checkin time = 2026/08/18 18:40:13 ( 15 hours, 36 minutes, 22.8715 seconds ago )
+
+67) "WeChatAppEx Helper (Renderer)" ASN:0x0-0x74074: 
+    bundleID="com.tencent.flue.helper.renderer"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/MacOS/WeChatAppEx Helper (Renderer)"
+    pid = 6760 type="UIElement" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x3b03b:  (inferred)
+
+68) "Amphetamine" ASN:0x0-0x62b62b: 
+    bundleID="com.if.Amphetamine"
+    bundle path="/Applications/Amphetamine.app"
+    executable path="/Applications/Amphetamine.app/Contents/MacOS/Amphetamine"
+    pid = 62965 type="UIElement" flavor=3 Version="9416" fileType="APPL" Arch=x86_64 sandboxed 
+    parentASN="程序坞" ASN:0x1-0x19e: 
+    launch time =  2026/08/18 19:27:15 ( 14 hours, 49 minutes, 21.3718 seconds ago )
+
+69) "WeChatAppEx Helper (Renderer)" ASN:0x0-0xd51d51: 
+    bundleID="com.tencent.flue.helper.renderer"
+    bundle path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app"
+    executable path="/Applications/WeChat.app/Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/MacOS/WeChatAppEx Helper (Renderer)"
+    pid = 35508 type="UIElement" flavor=3 Version="269136" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="微信" ASN:0x0-0x3b03b:  (inferred)
+
+70) "Google Chrome Helper" ASN:0x0-0xe33e33: 
+    bundleID="com.google.Chrome.helper"
+    bundle path="/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/150.0.7871.182/Helpers/Google Chrome Helper.app"
+    executable path="/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/150.0.7871.182/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper"
+    pid = 70891 type="UIElement" flavor=3 Version="7871.182" fileType="APPL" creator="????" Arch=x86_64 
+    parentASN="Google Chrome" ASN:0x0-0x46046:  (inferred)
+    checkin time = 2026/08/18 23:39:22 ( 10 hours, 37 minutes, 14.6616 seconds ago )
+
+71) "Windows App" ASN:0x0-0xe7fe7f: (in front) 
+    bundleID="com.microsoft.rdc.macos"
+    bundle path="/Applications/Windows App.app"
+    executable path="/Applications/Windows App.app/Contents/MacOS/Windows App"
+    pid = 21312 type="Foreground" flavor=3 Version="2667" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+    parentASN="程序坞" ASN:0x1-0x19e: 
+    launch time =  2026/08/19 09:59:03 ( 17 minutes, 33.749 seconds ago )
+
+72) "printtool" ASN:0x0-0xe80e80: 
+    bundleID="com.apple.print.daemon.printtool"
+    bundle path="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/PrintCore.framework/Versions/A/printtool"
+    executable path="/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/PrintCore.framework/Versions/A/printtool"
+    pid = 21444 type="BackgroundOnly" flavor=3 Version="544.1" fileType="APPL" creator="????" Arch=x86_64 sandboxed 
+
+73) "系统事件" ASN:0x0-0xe88e88: 
+    bundleID="com.apple.systemevents"
+    bundle path="/System/Library/CoreServices/System Events.app"
+    executable path="/System/Library/CoreServices/System Events.app/Contents/MacOS/System Events"
+    pid = 25803 !signalled type="UIElement" flavor=3 Version="1.3.6" fileType="APPL" creator="sevs" Arch=x86_64 
+    parentASN=ASN:0x1-0x64ca: 
+    launch time =  2026/08/19 10:06:04 ( 10 minutes, 32.3397 seconds ago )
+    checkin time = 2026/08/19 10:06:04 ( 10 minutes, 32.2355 seconds ago )
+    launch to checkin time: 0.104247 seconds
+
+74) "FolderActionsDispatcher" ASN:0x0-0xe8ae8a: 
+    bundleID="com.apple.FolderActionsDispatcher"
+    bundle path="/System/Library/CoreServices/FolderActionsDispatcher.app"
+    executable path="/System/Library/CoreServices/FolderActionsDispatcher.app/Contents/MacOS/FolderActionsDispatcher"
+    pid = 25804 type="BackgroundOnly" flavor=3 Version="1" fileType="APPL" creator="fadi" Arch=x86_64 
+    checkin time = 2026/08/19 10:06:05 ( 10 minutes, 31.7961 seconds ago )
+
+75) "npm exec chrome-devtools-mcp@1.7.0 --headless --isolated --no-usage-statistics --chromeArg=--disable-blink-features=AutomationControlled --chromeArg=--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 --chromeArg=--accept-lang=en-US,en;q=0.9 --viewport=1680x1050" ASN:0x0-0xeccecc: 
+    bundleID=[ NULL ] 
+    bundle path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    executable path="/Users/wangdong/.nvm/versions/node/v24.12.0/bin/node"
+    pid = 35706 !cgsConnection !signalled type="BackgroundOnly" flavor=[ NULL ]  Version=[ NULL ]  Arch=x86_64 
+    parentASN="Code" ASN:0x0-0x3a03a:  (inferred)
+    checkin time = 6 seconds ago, 2026/08/19 10:16:31 ( 5.71749 seconds ago )
+

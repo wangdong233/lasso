@@ -1,0 +1,195 @@
+{
+  "started": "2026-08-19T02:19:45.240Z",
+  "steps": [
+    {
+      "label": "navigate",
+      "ms": 10470,
+      "outcome": "worked",
+      "served_by": "browse_logged_in",
+      "before": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nkeimhogjdpnpccoofpli"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      },
+      "after": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nmmhkkegccagdldgiimed"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      }
+    },
+    {
+      "label": "extract",
+      "ms": 32,
+      "outcome": "worked",
+      "served_by": "browse_logged_in",
+      "before": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nmmhkkegccagdldgiimed"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      },
+      "after": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nmmhkkegccagdldgiimed"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      }
+    },
+    {
+      "label": "evaluate",
+      "ms": 229,
+      "outcome": "worked",
+      "served_by": "browse_logged_in",
+      "before": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nmmhkkegccagdldgiimed"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      },
+      "after": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "background_page",
+            "url": "chrome-extension://nmmhkkegccagdldgiimed"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      }
+    },
+    {
+      "label": "screenshot",
+      "ms": 637,
+      "outcome": "worked",
+      "served_by": "browse_logged_in",
+      "before": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      },
+      "after": {
+        "frontmost": "Windows App",
+        "windows": 0,
+        "targets": [
+          {
+            "type": "page",
+            "url": "https://example.com/"
+          },
+          {
+            "type": "service_worker",
+            "url": "chrome-extension://fignfifoniblkonapihmk"
+          }
+        ]
+      }
+    }
+  ],
+  "chrome": {
+    "pid": 37325,
+    "launchMode": "hidden",
+    "out": "{\"ts\":1787105987523,\"evt\":\"chrome_ledger_recorded\",\"port\":9223,\"pid\":37325,\"status\":\"ready\"}\n{\"ts\":1787105988719,\"evt\":\"chrome_hide_fuse_ok\",\"pid\":37325}\n{\n  \"ok\": true,\n  \"binaryPath\": \"/Applications"
+  },
+  "pre": {
+    "t": "2026-08-19T02:19:51.751Z",
+    "label": "pre",
+    "frontmost": "Windows App",
+    "windows": 0,
+    "targets": [
+      {
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpli"
+      },
+      {
+        "type": "service_worker",
+        "url": "chrome-extension://fignfifoniblkonapihmk"
+      }
+    ]
+  },
+  "afterServerClose": {
+    "t": "2026-08-19T02:20:28.966Z",
+    "label": "after-server-close",
+    "frontmost": "Windows App",
+    "windows": null,
+    "targets": []
+  },
+  "cleanup": {
+    "stopOut": "{\n  \"stopped\": []\n}",
+    "frontmost": "Windows App",
+    "pidAlive": false,
+    "ledger": "[]"
+  }
+}

@@ -1,0 +1,339 @@
+{
+  "case": [
+    "T-SILENCE-06"
+  ],
+  "port": 9234,
+  "fm_trace": [
+    {
+      "t": 1787111563971,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111564350,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111564714,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111565099,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111565463,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111565856,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111566279,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111566669,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111567190,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111567788,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111568153,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111568522,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111568907,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111569322,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111569736,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111570186,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111570930,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111571465,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111571910,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111572275,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111572631,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111572998,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111573370,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111573730,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111574163,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111574640,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111574978,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111575326,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111575691,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111576220,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111576765,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111577277,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111577667,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111578072,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111578461,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111578827,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111579204,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111579622,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111580058,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111580484,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111580869,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111581332,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111581705,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111582083,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111582447,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111582823,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111583189,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111583555,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111584214,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111584586,
+      "pid": 2420,
+      "isMine": false
+    },
+    {
+      "t": 1787111584958,
+      "pid": 2420,
+      "isMine": false
+    }
+  ],
+  "baseline_pid": 2420,
+  "substitute_pid": 90582,
+  "user_tabs_before": [
+    "https://example.org/?u=1",
+    "https://example.org/?u=2",
+    "https://example.org/?u=3",
+    "https://example.org/?u=4",
+    "https://example.org/?u=5",
+    "https://example.org/?u=6",
+    "https://example.org/?u=7",
+    "https://example.org/?u=8",
+    "https://example.org/?u=9",
+    "https://example.org/?u=10",
+    "https://example.org/?u=11",
+    "https://example.org/?u=12"
+  ],
+  "user_tab_count_before": 12,
+  "navi": [
+    {
+      "url": "https://example.com/?silence=06",
+      "ok": true,
+      "ms": 9376
+    },
+    {
+      "url": "https://example.com/?silence=06b",
+      "ok": true,
+      "ms": 2385
+    }
+  ],
+  "user_tabs_after_navi": [
+    "https://example.org/?u=1",
+    "https://example.org/?u=2",
+    "https://example.org/?u=3",
+    "https://example.org/?u=4",
+    "https://example.org/?u=5",
+    "https://example.org/?u=6",
+    "https://example.org/?u=7",
+    "https://example.org/?u=8",
+    "https://example.org/?u=9",
+    "https://example.org/?u=10",
+    "https://example.org/?u=11",
+    "https://example.org/?u=12"
+  ],
+  "user_tab_count_after": 12,
+  "F2_user_tabs_all_survive": true,
+  "own_tabs_after": [
+    "https://example.com/?silence=06b"
+  ],
+  "total_tabs_after": 13,
+  "tabs_after_restore_urls": [
+    "https://example.org/?u=12",
+    "https://example.org/?u=11",
+    "https://example.org/?u=10",
+    "https://example.org/?u=9",
+    "https://example.org/?u=8",
+    "https://example.org/?u=7",
+    "https://example.org/?u=6",
+    "https://example.org/?u=5",
+    "https://example.org/?u=4",
+    "https://example.org/?u=3",
+    "https://example.org/?u=2",
+    "https://example.org/?u=1"
+  ],
+  "restore_user_tab_count": 12,
+  "restore_own_tabs_gone": true,
+  "focus_analysis": {
+    "baseline_pid": 2420,
+    "samples": 51,
+    "foreign_pids": [],
+    "any_test_pid_frontmost": false
+  },
+  "log_own_page_selected_count": 1,
+  "log_reconcile_events": [
+    "{\"level\":\"info\",\"ts\":\"2026-08-19T03:53:00.878Z\",\"evt\":\"tab_restore_result\",\"ok\":true,\"closed\":1,\"cdp_port\":9234}"
+  ],
+  "cleanup_port_freed": true
+}

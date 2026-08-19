@@ -35,7 +35,7 @@ import type { ElicitationPort } from "../interact/ElicitationPort.js";
 import type { IProfileRegistry } from "../logged-in/ProfileRegistry.js";
 import type { CookieStore } from "../logged-in/CookieStore.js";
 import { CdpClient, type CdpCookie } from "../logged-in/CdpClient.js";
-import { TabRegistry } from "../logged-in/TabRegistry.js";
+import { TabRegistry, parseUpstreamPageEntries, type UpstreamPageEntry } from "../logged-in/TabRegistry.js";
 import { TabSession, type TabRestoreResult } from "../logged-in/TabSession.js";
 // v1.10（parse18 §4.3 机制三）：台账读取（判定本 port 绑定的 Chrome 是否 hidden 档）
 import { readLedgerSync } from "../launcher/chrome-ledger.js";
@@ -100,6 +100,17 @@ export class LoggedInChannel extends BrowseChannel {
    * 先例——未注入 = 零回归）。
    */
   private elicitationPort: ElicitationPort | null = null;
+
+  /**
+   * v1.17.2（doc/27-静默性全面审计 S-7 修复）：lasso 在「用户自开 Chrome」上
+   * 自建并选中的 page id（上游 chrome-devtools-mcp 的单调计数器 id）。
+   *
+   * 上游 (re)spawn 时 id 计数器重置——lastClient 实例变更（ensureRunning 返回
+   * 新 McpClient）即重置本字段，防陈旧 id 与新会话 page 误撞。
+   */
+  private ownPageId: number | null = null;
+  /** v1.17.2：上次 getMcpClient 拿到的 McpClient 实例（identity 判上游 respawn）。 */
+  private lastClient: McpClient | null = null;
 
   constructor(
     private readonly subproc: SubprocessManager,
@@ -185,6 +196,10 @@ export class LoggedInChannel extends BrowseChannel {
     }
     // 首次拿到 client 后探一次 2FA（不阻塞太久；失败不影响 browse，只影响 status）。
     await this._detect2FA(c);
+    // v1.17.2（doc/27 S-7）：连「用户自开 Chrome」→ 把 lasso 操作面挪到自建后台 tab
+    //（必须晚于 takeSnapshotIfAbsent：自建 tab 属快照后新增，会话收尾 TabSession.restore
+    //  会关它 → 用户 tab 栏零残留；失败降级 = 维持 pages[0] 现状，永不阻断 browse）。
+    await this.ensureOwnPageSelected(c);
     // v0.8：tab LRU reconcile（parse9 §3.3 + INV-50）。
     // INV-52 守护：reconcile 内部走 list_pages / close_page，不落盘 cookie；自动路径合规。
     // 失败不算致命（list_pages 偶发空响应；tab 管理是 best-effort）。
@@ -249,6 +264,126 @@ export class LoggedInChannel extends BrowseChannel {
         cdp_port: this.cdpPort,
       });
     }
+  }
+
+  /**
+   * v1.17.2（doc/27-静默性全面审计 S-7 修复）：连「用户自开 Chrome」时把 lasso
+   * 的操作面从 pages[0]（**用户第一个 tab**）挪到 lasso 自建的后台 tab。
+   *
+   * 背景（verify.md §5c 两轮复现）：上游 chrome-devtools-mcp 连接即
+   * `selectPage(pages[0])`——此前 lasso 的 navigate 会把用户第一个 tab 的内容
+   * 换掉（零焦点变化、用户无感，属最重的隐性打扰面 S-7）。
+   *
+   * 修复机制（全部只用已实证零打扰的原语）：
+   *  1. `CdpClient.createBackgroundTarget`（WS `Target.createTarget {background:true}`，
+   *     E7 两次复测零抢焦）自建后台 tab；
+   *  2. 上游 `list_pages` 前后 id-diff 唯一归因出新 tab 的 pageId（上游 id 是进程
+   *     内单调计数器；diff 而非「取最大 id」，防与用户同刻手开 tab 竞态误归因）；
+   *  3. 上游 `select_page {pageId}`（**不带 bringToFront**——上游 pages.js 激活严格
+   *     opt-in，省略 = 纯上下文指针切换，零 OS 焦点 / 零 tab 激活；verify.md §5b
+   *     select_page 实测不抢 OS frontmost）。
+   *
+   * 判定门：只对「非 lasso 台账」Chrome（= 用户自开可见 Chrome）生效——
+   *  - hidden 台账 Chrome：precreateBackgroundTabIfHidden 已让上游绑定 lasso tab；
+   *  - visible 台账 Chrome：用户起可见档就是要看它干活，操作可见 tab 是该档语义。
+   *
+   * 生命周期：自建 tab 晚于 TabSession 快照 → 属快照后新增 → 会话收尾 restore 关它
+   * （用户 tab 栏零残留）。幂等：同上游生命周期内已选中自建页则 no-op；上游
+   * (re)spawn（lastClient 实例变更）重置归因。
+   *
+   * 失败降级（列表不可解析 / 归因不唯一 / CDP 不可达 / select 拒绝）→ warn 放弃，
+   * 维持 pages[0] 现状（S-7 边界如旧，诚实降级不阻断 browse）。永不 throw。
+   */
+  private async ensureOwnPageSelected(c: McpClient): Promise<void> {
+    try {
+      // 0. 上游 (re)spawn 检测：client 实例变更 → 上游 pageId 计数器重置，旧归因作废
+      //    （S-10 联动：own 页登记集合同步清空——陈旧 id 不再可能匹配新会话页）
+      if (c !== this.lastClient) {
+        this.lastClient = c;
+        this.ownPageId = null;
+        this.tabs.resetOwnPages();
+      }
+      // 1. 判定门：lasso 台账 Chrome（hidden 有 precreate；visible 是「看着干」语义）
+      if (readLedgerSync().some((r) => r.port === this.cdpPort)) return;
+      // 2. 幂等：上游当前选中页已是 lasso 自建页 → 完成
+      const before = await this.listUpstreamPages(c);
+      if (before === null) return; // 列表不可解析 → 降级（parseUpstreamPageEntries 同步 warn）
+      const sel = before.find((p) => p.selected);
+      if (sel && sel.pageId === this.ownPageId) return;
+      // 3. 自建后台 tab（E7 零抢焦唯一钥匙；失败返 null 内部已 warn）
+      const cdp = new CdpClient(this.cdpPort);
+      let targetId: string | null = null;
+      try {
+        targetId = await cdp.createBackgroundTarget("about:blank");
+      } finally {
+        await cdp.close();
+      }
+      if (!targetId) return;
+      // 4. id-diff 归因（上游 targetCreated 事件异步，最多两轮、间隔 300ms）
+      let fresh: UpstreamPageEntry | undefined;
+      for (let attempt = 0; attempt < 2 && fresh === undefined; attempt++) {
+        if (attempt > 0) await sleep(300);
+        const after = await this.listUpstreamPages(c);
+        if (after === null) return;
+        const beforeIds = new Set(before.map((p) => p.pageId));
+        const news = after.filter((p) => !beforeIds.has(p.pageId));
+        if (news.length === 1) {
+          fresh = news[0];
+        } else if (news.length > 1) {
+          // 归因不唯一（用户恰同刻手开 tab）→ 放弃，不赌（宁走 S-7 降级不误选用户页）
+          logger.warn({
+            evt: "logged_in_own_page_ambiguous",
+            new_pages: news.length,
+            cdp_port: this.cdpPort,
+          });
+          return;
+        }
+        // news.length === 0 → 上游事件未及 → 重试一轮
+      }
+      if (fresh === undefined) {
+        logger.warn({
+          evt: "logged_in_own_page_not_visible",
+          targetId,
+          cdp_port: this.cdpPort,
+        });
+        return;
+      }
+      // 5. 选中（不带 bringToFront：上游激活严格 opt-in，省略 = 零激活纯指针切换）
+      //    + 登记 own 页（S-10：TabRegistry 淘汰候选的唯一来源——close_page
+      //    只可能落在 lasso 自己开的 tab 上，由登记集合定义保证）
+      await c.callTool("select_page", { pageId: fresh.pageId });
+      this.ownPageId = fresh.pageId;
+      this.tabs.noteOwnPage(fresh.pageId);
+      logger.info({
+        evt: "logged_in_own_page_selected",
+        pageId: fresh.pageId,
+        targetId,
+        cdp_port: this.cdpPort,
+      });
+    } catch (e) {
+      logger.warn({
+        evt: "logged_in_own_page_select_failed",
+        error: String(e),
+        cdp_port: this.cdpPort,
+      });
+    }
+  }
+
+  /**
+   * v1.17.2：读上游 `list_pages` → 解析为 UpstreamPageEntry[]。
+   * 返 null = 列表不可解析（空响应 / 上游格式漂移）——调用方降级。
+   */
+  private async listUpstreamPages(
+    c: McpClient,
+  ): Promise<UpstreamPageEntry[] | null> {
+    const r = (await c.callTool("list_pages", {})) as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const text = (r.content ?? [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("\n");
+    return parseUpstreamPageEntries(text);
   }
 
   /**
@@ -441,6 +576,11 @@ export class LoggedInChannel extends BrowseChannel {
 // ============================================================
 // helpers
 // ============================================================
+/** v1.17.2：有界重试间隔（ensureOwnPageSelected id-diff 第二轮用）。 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * CdpCookie → CdpSetCookieParams（剥 size/session；parse9 §3.1）。
  *

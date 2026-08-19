@@ -3979,7 +3979,8 @@ const assertions = [
   //    (b) config 配置面 + 默认值不回退（CONFIG_TEMPLATE 两新键 + parse 函数回退默认 +
   //        index.ts reaper 接线）
   //    (c) chrome-idle-reaper 零第二 kill 原语（杀必须经 chrome-stop 验证路径）+ 0=禁用门控
-  //    (d) 激活路径禁令（"select_page" / bringToFront / /json/new 零命中）+
+  //    (d) 激活路径禁令（bringToFront / PUT /json/new / new_page 前台开页 零命中；
+  //        select_page 允许唯一形态 = 不带 bringToFront 的纯上下文切换）+
   //        CdpClient background:true 建塔
   //    (e) chrome-hide 永不按进程名裸 hide（PID 定向 unix id；E8 事故红线）+ 非 mac no-op
   //    (f) 台账 schema 前向兼容（launchMode/idleMs 可选字段 + typeof 守卫解析）
@@ -3990,7 +3991,8 @@ const assertions = [
       "（a）hidden 档 flag 集不漂移（no-startup-window/start-minimized/反节流三件套/mute-audio）；" +
       "（b）config 配置面 LASSO_LAUNCH_MODE/LASSO_LAUNCH_IDLE_MS + 默认值不回退 + index.ts reaper 接线；" +
       "（c）chrome-idle-reaper 零第二 kill 原语（杀经 chrome-stop）+ 0=禁用；" +
-      "（d）激活路径禁令（select_page/bringToFront/PUT /json/new 零命中）+ background:true 建塔；" +
+      "（d）激活路径禁令（bringToFront/new_page/PUT /json/new 零命中；select_page 唯一合法形态=不带" +
+      " bringToFront 的纯上下文切换，v1.17.2 S-7 修复实装锚）+ background:true 建塔；" +
       "（e）chrome-hide PID 定向（unix id）永不按名裸 hide + 非 mac no-op；" +
       "（f）台账 schema launchMode/idleMs 前向兼容",
     check: () => {
@@ -4053,6 +4055,16 @@ const assertions = [
       if (!/config\.launchIdleMs > 0/.test(indexCode)) return false; // 0=禁用门控
 
       // ----- (d) 激活路径禁令 + background 建塔 -----
+      // v1.17.2（doc/27-静默性全面审计）：select_page 的激活是**严格 opt-in**
+      //（上游 1.7.0 pages.js：仅 request.params.bringToFront 真值才调
+      //  page.bringToFront()；省略 = 纯上下文指针切换，零激活——verify.md §5b
+      //  真机实测不抢 OS frontmost）。故守卫从「禁 select_page」精化为：
+      //  - bringToFront **token 级零命中**（作用域内任何 select_page 调用都不可能
+      //    传激活开关——要传必先写出被禁 token，机械化闭环）
+      //  - new_page（quoted 工具名）零命中（1.7.0 默认 background:false = 前台开页）
+      //  - PUT /json/new 零命中
+      //  - select_page 调用形必须带 { pageId } 且经 LoggedInChannel.ensureOwnPageSelected
+      //    （S-7 修复的唯一合法调用点；此处 grep 它的护栏日志事件名锚定）
       const activationScope = SRC.filter((s) => {
         const f = s.f.replace(/\\/g, "/");
         return (
@@ -4064,9 +4076,15 @@ const assertions = [
       });
       for (const f of activationScope) {
         const code = stripComments(f.text);
-        if (/"select_page"/.test(code)) return false; // 带引号工具名形态（select_page 激活）
-        if (/bringToFront/.test(code)) return false;
+        if (/bringToFront/.test(code)) return false; // 激活开关 token 级禁令（S-7 修复的安全锚）
+        if (/"new_page"/.test(code)) return false; // 前台开页工具（1.7.0 默认 background:false）
         if (/\/json\/new/.test(code)) return false; // HTTP 开 tab 激活路径
+      }
+      if (!/"select_page"/.test(stripComments(byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? ""))) {
+        return false; // S-7 修复实装锚（ensureOwnPageSelected 的 select_page 调用）
+      }
+      if (!/logged_in_own_page_selected/.test(stripComments(byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? ""))) {
+        return false; // S-7 修复的护栏日志事件（ensureOwnPageSelected 专属）
       }
       if (!/Target\.createTarget/.test(cdpClientCode)) return false;
       const bgBody = cdpClientCode.match(

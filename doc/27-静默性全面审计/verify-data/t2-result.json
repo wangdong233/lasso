@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "started": "2026-08-19T02:14:50.480Z",
+    "serverPid": 34174
+  },
+  "steps": [
+    {
+      "step": "navigate(cold)",
+      "ms": 14187,
+      "outcome": "worked",
+      "served_by": "browse_headless",
+      "retrieval": "chrome_devtools_mcp",
+      "newChromePids": [
+        34329,
+        34341,
+        34342,
+        34343,
+        34352,
+        34353
+      ],
+      "tree": {
+        "procs": 6,
+        "rssKb": 402284,
+        "cpuPct": 1.1,
+        "pidList": [
+          34329,
+          34341,
+          34342,
+          34343,
+          34352,
+          34353
+        ]
+      },
+      "chromeMainCmdFlags": {
+        "headless": true,
+        "muteAudio": true,
+        "remotePipe": true,
+        "tmpProfile": true
+      }
+    },
+    {
+      "step": "extract",
+      "ms": 19,
+      "outcome": "worked",
+      "title": "## Latest page snapshot",
+      "textLen": null,
+      "tree": {
+        "procs": 6,
+        "rssKb": 402456,
+        "cpuPct": 0.2,
+        "pidList": [
+          34329,
+          34341,
+          34342,
+          34343,
+          34352,
+          34353
+        ]
+      }
+    },
+    {
+      "step": "evaluate",
+      "ms": 227,
+      "err": null,
+      "outcome": "worked",
+      "data": {
+        "url": "https://example.com",
+        "action": "evaluate",
+        "state_id": "2a6f22e5-8ccf-4f3c-8641-f8d194e13b3c",
+        "content_path": "/Users/wangdong/.cache/lasso/b77c862f-5319-4791-9406-ee731fbae6b1/browse_headless-2a6f22e5-8ccf-4f3c-8641-f8d194e13b3c.json",
+        "preview": "{\"webdriver\":\"undefined\",\"ua\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 1\"}",
+        "final_url": "https://example.com"
+      }
+    }
+  ],
+  "pollSummary": {
+    "samples": 25,
+    "windowSec": 33.5,
+    "fgChromeMax": 1,
+    "fgAboveBaselineSamples": 0,
+    "chromeAsnTotalMax": 4,
+    "frontmostValues": [
+      "Windows App"
+    ],
+    "cdmMax": 6
+  },
+  "baseline": {
+    "t": "2026-08-19T02:14:52.552Z",
+    "frontmost": "Windows App",
+    "chromePids": [
+      2420,
+      2427,
+      2429,
+      2432,
+      2456,
+      2567,
+      2568,
+      2916,
+      2918,
+      2919,
+      2923,
+      4507,
+      4874,
+      6141,
+      6147,
+      6149,
+      6152,
+      6153,
+      13695,
+      15076,
+      23031,
+      23138,
+      30395,
+      30692,
+      70891,
+      72503,
+      78197,
+      81224,
+      88238,
+      90535
+    ],
+    "asn": [
+      {
+        "name": "Google Chrome",
+        "asn": "0x0-0",
+        "type": "Foreground",
+        "pid": 2420
+      },
+      {
+        "name": "Google Chrome",
+        "asn": "0x0-0",
+        "type": "BackgroundOnly",
+        "pid": 6141
+      }
+    ]
+  },
+  "exit": {
+    "serverCloseMs": 6463,
+    "chromeSurvivedAfterClose": [],
+    "serverAlive": false,
+    "preExistingChromeUntouched": true
+  },
+  "finalFrontmost": "Windows App"
+}

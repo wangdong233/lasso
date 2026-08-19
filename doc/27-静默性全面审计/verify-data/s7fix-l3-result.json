@@ -1,0 +1,54 @@
+Now using node v24.12.0 (npm v11.6.2)
+{
+  "baseline_frontmost": "Windows App",
+  "chrome_pid": 56249,
+  "tabs_before": [
+    {
+      "id": "19254235",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "11143D1E",
+      "url": "https://example.org/"
+    }
+  ],
+  "user_tab_a_url_before": "https://example.org/",
+  "cdm_pid": 56264,
+  "upstream_before": [
+    {
+      "pageId": 1,
+      "selected": true,
+      "raw": "Example Domain (https://example.org/) [selected]"
+    },
+    {
+      "pageId": 2,
+      "selected": false,
+      "raw": "Example Domain (https://example.com/)"
+    }
+  ],
+  "upstream_selected_at_connect": 1,
+  "id_diff_attempts": 1,
+  "id_diff_news": [
+    3
+  ],
+  "after_list_raw_first3": [
+    "## Pages",
+    "1: Example Domain (https://example.org/) [selected]",
+    "2: Example Domain (https://example.com/)",
+    "3: about:blank"
+  ],
+  "fm_before_select": "Windows App",
+  "fm_after_select": "Windows App",
+  "select_result_isError": null,
+  "user_tab_a_url_after": "https://example.org/",
+  "user_tab_b_url_after": "https://example.com/",
+  "own_tab_url_after": "https://example.com/?s7fix=l3",
+  "nav_isError": null,
+  "fm_after_nav": "Windows App",
+  "upstream_selected_after": 3,
+  "chrome_windows": "0",
+  "chrome_mute_flag": true,
+  "port_freed": true,
+  "residual_pids": "",
+  "fm_final": "Windows App"
+}

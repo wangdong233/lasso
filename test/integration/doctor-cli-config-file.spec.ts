@@ -178,11 +178,11 @@ describeOrSkip("doctor CLI × config 文件机制（v1.3 Phase B 端到端）", 
     expect(bingCheck.detail).toContain("BING_API_KEYS");
   });
 
-  it("lasso_version 反映 1.17.1（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
+  it("lasso_version 反映 1.17.2（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
     const configPath = path.join(tempDir, "config.json");
     await fs.writeFile(configPath, "{}");
     const { stdout } = runDoctorCliViaDist(configPath);
     const report = JSON.parse(stdout);
-    expect(report.lasso_version).toBe("1.17.1");
+    expect(report.lasso_version).toBe("1.17.2");
   });
 });

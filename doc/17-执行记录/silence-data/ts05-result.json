@@ -1,0 +1,73 @@
+{
+  "case": [
+    "T-SILENCE-05"
+  ],
+  "port": 9233,
+  "fm_baseline": "Code",
+  "substitute_pid": 86708,
+  "tabs_before": [
+    {
+      "id": "A2070DC2",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "2C98583E",
+      "url": "https://example.org/"
+    }
+  ],
+  "pages0_url_before": "https://example.com/",
+  "user_tab_a_url_before": "https://example.org/",
+  "user_tab_b_url_before": "https://example.com/",
+  "fm_after_setup": "Code",
+  "nav": {
+    "ok": true,
+    "ms": 14383,
+    "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://example.com/?silence=05\\\",\\n    \\\"action\\\": \\\"navigate\\\",\\n    \\\"state_id\\\": \\\"a16851ca-ae"
+  },
+  "fm_immediate_after_nav": "Google Chrome",
+  "fm_1s_after_nav": "Google Chrome",
+  "tabs_after_nav": [
+    {
+      "id": "C6B13397",
+      "url": "https://example.com/?silence=05"
+    },
+    {
+      "id": "A2070DC2",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "2C98583E",
+      "url": "https://example.org/"
+    }
+  ],
+  "pages0_url_after": "https://example.com/?silence=05",
+  "user_tab_a_url_after": "https://example.org/",
+  "user_tab_b_url_after": "https://example.com/",
+  "own_tab_url_after": "https://example.com/?silence=05",
+  "tab_count_before_after": [
+    2,
+    3
+  ],
+  "F1_CORE_pages0_unchanged": false,
+  "F1_user_tabs_unchanged": true,
+  "log_has_own_page_selected": true,
+  "log_own_page_lines": [
+    "{\"level\":\"info\",\"ts\":\"2026-08-19T03:48:11.508Z\",\"evt\":\"logged_in_own_page_selected\",\"pageId\":3,\"targetId\":\"C6B13397D18AA362C01BBA04C240569C\",\"cdp_port\":9233}"
+  ],
+  "tabs_after_restore": [
+    {
+      "id": "A2070DC2",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "2C98583E",
+      "url": "https://example.org/"
+    }
+  ],
+  "restore_user_tabs_survive": 2,
+  "restore_own_tab_gone": true,
+  "fm_final": "Google Chrome",
+  "fg_asn_final": 2,
+  "cleanup_port_freed": true,
+  "cleanup_residual": ""
+}

@@ -1,0 +1,30 @@
+{
+  "started": "2026-08-19T02:35:41.136Z",
+  "snapshot": {
+    "isError": false,
+    "resHead": "## Latest page snapshot\nuid=1_0 RootWebArea \"hello at DuckDuckGo\" url=\"https://duckduckgo.com/?q=hel",
+    "len": 22581,
+    "immediateFm": "Finder",
+    "windows": 1
+  },
+  "comboboxUid": "1_4",
+  "comboboxLine": "    uid=1_4 combobox \"私密搜索\" expandable haspopup=\"listbox\" value=\"hello\"",
+  "fill": {
+    "isError": false,
+    "resHead": "Successfully filled out the element",
+    "immediateFm": "Finder",
+    "windows": 1
+  },
+  "evaluate_value": {
+    "isError": false,
+    "resHead": "Script ran on page and returned:\n```json\n{\"val\":\"\",\"focused\":true}\n```",
+    "immediateFm": "Finder",
+    "windows": 1
+  },
+  "restored": "Windows App",
+  "cleanup": {
+    "pidAlive": false,
+    "ledger": "[]",
+    "frontmost": "Windows App"
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "case": [
+    "T-SILENCE-01",
+    "T-SILENCE-02"
+  ],
+  "ops": [
+    {
+      "id": "T-SILENCE-01",
+      "tool": "search",
+      "ms": 2247,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"query\\\": \\\"lasso mcp silence test\\\",\\n    \\\"results\\\": [\\n      {\\n        \\\"title\\\": \\\"Lasso Launches Open",
+      "before": {
+        "t": "2026-08-19T03:43:28.774Z",
+        "label": "T-SILENCE-01:before",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "immediate": {
+        "t": "2026-08-19T03:43:31.829Z",
+        "label": "T-SILENCE-01:after-imm",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "late": {
+        "t": "2026-08-19T03:43:33.654Z",
+        "label": "T-SILENCE-01:after-1s",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      }
+    },
+    {
+      "id": "T-SILENCE-02a",
+      "tool": "fetch_url",
+      "ms": 617,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://example.com\\\",\\n    \\\"final_url\\\": \\\"https://example.com\\\",\\n    \\\"status\\\": 200,\\n    \\\"c",
+      "before": {
+        "t": "2026-08-19T03:43:36.473Z",
+        "label": "T-SILENCE-02a:before",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "immediate": {
+        "t": "2026-08-19T03:43:37.951Z",
+        "label": "T-SILENCE-02a:after-imm",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "late": {
+        "t": "2026-08-19T03:43:39.834Z",
+        "label": "T-SILENCE-02a:after-1s",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      }
+    },
+    {
+      "id": "T-SILENCE-02b",
+      "tool": "fetch_feed",
+      "ms": 1535,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"url\\\": \\\"https://github.com/anthropics/claude-code/releases.atom\\\",\\n    \\\"final_url\\\": \\\"https://github.co",
+      "before": {
+        "t": "2026-08-19T03:43:42.648Z",
+        "label": "T-SILENCE-02b:before",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "immediate": {
+        "t": "2026-08-19T03:43:45.176Z",
+        "label": "T-SILENCE-02b:after-imm",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "late": {
+        "t": "2026-08-19T03:43:47.141Z",
+        "label": "T-SILENCE-02b:after-1s",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      }
+    },
+    {
+      "id": "T-SILENCE-02c",
+      "tool": "search_local",
+      "ms": 1111,
+      "ok": true,
+      "preview": "\"{\\n  \\\"outcome\\\": \\\"worked\\\",\\n  \\\"data\\\": {\\n    \\\"source\\\": \\\"files\\\",\\n    \\\"count\\\": 5,\\n    \\\"results\\\": [\\n      {\\n        \\\"path\\\": \\\"/Users/wangdong/D",
+      "before": {
+        "t": "2026-08-19T03:43:50.159Z",
+        "label": "T-SILENCE-02c:before",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "immediate": {
+        "t": "2026-08-19T03:43:52.199Z",
+        "label": "T-SILENCE-02c:after-imm",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      },
+      "late": {
+        "t": "2026-08-19T03:43:54.145Z",
+        "label": "T-SILENCE-02c:after-1s",
+        "frontmost": "Code",
+        "fgChromeAsn": 1,
+        "lassoTree": 0,
+        "userChromeWindows": "0"
+      }
+    }
+  ],
+  "baseline": {
+    "t": "2026-08-19T03:43:24.633Z",
+    "label": "baseline",
+    "frontmost": "Code",
+    "fgChromeAsn": 1,
+    "lassoTree": 0,
+    "userChromeWindows": "0"
+  },
+  "after_close": {
+    "t": "2026-08-19T03:43:56.531Z",
+    "label": "after_close",
+    "frontmost": "Code",
+    "fgChromeAsn": 1,
+    "lassoTree": 0,
+    "userChromeWindows": "0"
+  },
+  "residual_lasso_tree": {
+    "count": 0,
+    "pids": []
+  },
+  "residual_new_pids": [],
+  "stderr_has_notification_or_osascript": false,
+  "stderr_lines": 15
+}

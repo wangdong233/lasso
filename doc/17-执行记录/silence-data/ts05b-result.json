@@ -1,0 +1,257 @@
+{
+  "case": [
+    "T-SILENCE-05b"
+  ],
+  "port": 9233,
+  "fm_trace": [
+    {
+      "t": 1787111496346,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111496699,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111498113,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111499725,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111501441,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111502850,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111504399,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111505797,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111507352,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111508541,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111509669,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111510810,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111511932,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111513261,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111514372,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111515416,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111516457,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    },
+    {
+      "t": 1787111517493,
+      "pid": 2420,
+      "isSubstitute": false,
+      "isMine": false
+    }
+  ],
+  "user_chrome_win_trace": [
+    {
+      "t": 1787111496699,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111498113,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111499725,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111501443,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111502850,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111504399,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111505797,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111507352,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111508541,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111509669,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111510810,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111511932,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111513261,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111514372,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111515416,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111516458,
+      "wins": 3,
+      "subWins": 0
+    },
+    {
+      "t": 1787111517493,
+      "wins": 3,
+      "subWins": 0
+    }
+  ],
+  "baseline": {
+    "pid": 2420,
+    "at": "2026-08-19T03:51:32.817Z",
+    "name": "Google Chrome"
+  },
+  "substitute_pid": 89768,
+  "tabs_before": [
+    {
+      "id": "4B00877F",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "52799173",
+      "url": "https://example.org/"
+    }
+  ],
+  "user_tabs_before": {
+    "a": "https://example.org/",
+    "b": "https://example.com/"
+  },
+  "fm_after_setup": 2420,
+  "nav": {
+    "ok": true,
+    "ms": 7889
+  },
+  "user_tabs_after": {
+    "a": "https://example.org/",
+    "b": "https://example.com/"
+  },
+  "own_tab_url_after": "https://example.com/?silence=05b",
+  "tab_counts": [
+    2,
+    3
+  ],
+  "F1_user_tabs_unchanged": true,
+  "F1_nav_on_own_tab": true,
+  "tabs_after_restore": [
+    {
+      "id": "4B00877F",
+      "url": "https://example.com/"
+    },
+    {
+      "id": "52799173",
+      "url": "https://example.org/"
+    }
+  ],
+  "restore_own_tab_gone": true,
+  "focus_analysis": {
+    "baseline_pid": 2420,
+    "samples": 18,
+    "distinct_foreign_pids": [],
+    "any_test_pid_became_frontmost": false
+  },
+  "cleanup_port_freed": true
+}

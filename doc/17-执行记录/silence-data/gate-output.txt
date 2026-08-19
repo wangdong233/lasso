@@ -1,0 +1,13 @@
+=== 静默性验收门禁（silence-acceptance）2026-08-19 ===
+--- npm run build ---
+tsc + chmod + fixtures cp: OK (exit 0)
+
+--- npm run check-invariants ---
+All 81 invariants passed.
+
+--- npm test ---
+Test Files  135 passed (135)
+Tests  2253 passed | 1 skipped (2254)
+Duration  64.93s
+
+基线核对：2253 tests（不减）+ 81 INV（不减）✓
