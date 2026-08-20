@@ -143,6 +143,8 @@
 > （调度器活在 server 进程里）；CLI 单独 `launch-chrome` 后没起过 Claude 会话的
 > 场景仍走手动。另：v1.18 修复了 server 退出强杀 visible 登录窗口的缺陷——这个
 > 窗口的存活不再依赖 Claude 会话活着，只有显式 `chrome-stop` 或你自己关它。
+>
+> **台账缺条目时的出口**（v1.18.3）：`chrome-hide` 报「找不到台账目标」时（Chrome 由旧版 lasso 启动、台账被清），可按进程号直达——`lasso chrome-hide --pid <pid>`（`chrome-show --pid <pid>` 同）。归属以进程 cmdline 的 `--user-data-dir` 为准：只认 `~/.cache/lasso/` 下 lasso 自己的 profile，你手动开的日常 Chrome 一律拒绝。
 
 **之后（一行命令，静默档直接继承登录态）**：
 
@@ -150,7 +152,7 @@
 lasso launch-chrome
 ```
 
-跑一次即可。命令会自动探测 macOS / Linux / Windows 上的 Chrome 路径并启动，之后对 Claude 说「打开我已登录的 Jira」就会自动连上。想再看窗口随时 `lasso chrome-show`（可逆：只隐藏/恢复窗口，进程、登录态、CDP 全保留；hide/show 同 chrome-stop 一样只动台账在案、验证过 pid 归属的 Chrome，永不碰你手动开的浏览器）。
+跑一次即可。命令会自动探测 macOS / Linux / Windows 上的 Chrome 路径并启动，之后对 Claude 说「打开我已登录的 Jira」就会自动连上。想再看窗口随时 `lasso chrome-show`（可逆：只隐藏/恢复窗口，进程、登录态、CDP 全保留；hide/show 同 chrome-stop 一样只动台账在案、验证过 pid 归属的 Chrome，永不碰你手动开的浏览器）。hide 是**粘滞**的（v1.18.3）：server 运行期间窗口无论被什么来源掀出（上游页面自己弹的、系统焦点切换），约 1.5 秒内自动压回后台，`chrome-show` 明示解除；粘滞状态跨重启保留，下次 server 启动继续接管。
 
 > v1.8 行为变化：① 默认注入 Lasso 独立的 `--user-data-dir`（`~/.cache/lasso/chrome-profile-default`）——Chrome 136+ 不允许对默认 profile 开调试端口，老办法会秒退；首次用上面的 visible 三步在这个 profile 里登录一次，之后该 profile 的登录态一直复用（v1.10 起默认 hidden 档零窗口，登录必须走 visible 档）。也可 `lasso launch-chrome --profile <目录>` 指定已有 profile。② 启动后探活 CDP `/json/version`（3 秒窗口）：Chrome 没起来 / 端口被占会明确报错（`chrome_exited` / `port_in_use` / `cdp_not_ready`），不再「返回 ok 但其实连不上」。
 

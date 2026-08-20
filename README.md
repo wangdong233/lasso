@@ -215,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.17.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.18.3**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -228,8 +228,11 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.18.0，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.18.3，点开看每版改了什么）</summary>
 
+- **v1.18.3**：Chrome 后台静默三连——① **`chrome-hide` 转后台的窗口被任何来源掀出（含上游页面自己弹的），约 1.5 秒内自动压回后台**（server 运行期间一直守着，粘滞状态跨重启保留）；想看窗口用 `chrome-show`（明示解除，不再压回）；② `chrome-hide` / `chrome-show` 新增 `--pid N`：台账缺条目时（Chrome 由旧版启动、台账被清）按进程号直达——只认 lasso 自己的 profile，你手动开的日常 Chrome 一律拒绝；③ Chrome 正忙时不再拖慢并行的其它操作。
+- **v1.18.2**：长任务被自己限流的错配修复——批量任务默认直接放行（单用户本地场景没有「滥用者」，配额自控改为可选配置）；瞬态 DNS 故障不再被误判成策略拦截、不再误开长熔断；链预算超限如实报可重试；大任务溢写落盘不再挤掉近期页面。
+- **v1.18.1**：批量实战五修——页面内求值失败不再被静默吞掉（如实报错）；「没有选中的 tab」状态自动自愈不再卡死；可见档冷启动探活最长等 12 秒（启动慢的机器不再误报失败）；机器缺 PDF 上游工具时前置如实报「没做」，不再白跑一遍导航。
 - **v1.18.0**：静默守则落地（把「能静默就静默；需要你时才弹、用完自动收回后台」明文为运行守则，见「隐私与安全」）——① 🔴 修复 **server 退出会杀掉你的登录窗口**：Claude 会话结束 / CC 重启时，visible 登录 Chrome 此前被无差别强杀（真机三次复现实锤），现在与「用户拥有的窗口永不自动关」同款豁免；② 新增可选的**登录完成自动收窗**：`"LASSO_AUTO_HIDE_AFTER_LOGIN": true`（默认关）后不用记 `chrome-hide`——观察到登录页消失 + 等 10 秒 + 确认没人正在用，自动把窗口收进后台（拿不准就不收，`chrome-show` 随时可逆）；③ 守则句写入文档（README / KEY-GUIDE / ARCHITECTURE），新增架构不变量 INV-82 守住以上红线。
 - **v1.17.2**：静默性全面审计落地（真机六维实测：焦点/窗口/Dock/音频/通知/资源）——① 修复「连你自己开的可见 Chrome」时 lasso 会**改写你第一个 tab 内容**的缺陷：现在 lasso 在你的 Chrome 里自建一个后台 tab 干活（不抢焦点、不激活），会话结束自动关掉，你的 tab 一律不动；② 修复 tab 管理的契约错配（`close_page` 参数形态），且关 tab 现在只可能落在 lasso 自己开的 tab 上（登记制，类型层面保证）；③ 隐私文档新增**静默性矩阵**（每条通道×每维打扰的实测结论，见「隐私与安全」）。
 - **v1.17**：五项升级——① 智谱直连 key 退役（`ZHIPU_API_KEY` 不再消费；智谱能力由机器 web-search-prime MCP 复用唯一承载，搜索默认零配置）② `search` 新增 `content_blocks` 第二跳（搜完并发抓 top N 正文、查询相关裁剪 ~6k 字符，失败条目如实标注，零付费依赖）③ 新工具 `search_local`（Chrome 浏览历史 + Spotlight 本地私有搜索，隐私红线：只返标题/链接/时间，禁全文导出）④ 高风险操作支持回合内 elicitation 确认（老客户端零影响）⑤ `browse extract` 新增 `include_refs` 交互句柄（`[r1]` 式附录 + 按句柄点击/填写，页面变了诚实失效）。搜索结果统一带 `quality` 质量轴标注（api / scrape / stale）。
@@ -297,6 +300,8 @@ lasso chrome-hide                    # 3. 登录完转回后台静默（登录�
 
 嫌第 3 步也要记？在 `~/.lasso/config.json` 配 `"LASSO_AUTO_HIDE_AFTER_LOGIN": true`（v1.18，默认关）：Claude 会话在跑的时候，它会自己观察到登录页消失、再等 10 秒确认你登录完，**自动把窗口收进后台**（拿不准就不收，只会漏收不会误收；想再看随时 `chrome-show`）。这个登录窗口现在也不会被 Claude 会话重启杀掉（v1.18 修复——之前 server 一退出窗口就没了）。
 
+第 3 步报「找不到台账目标」时（Chrome 由旧版 lasso 启动、台账被清）：`lasso chrome-hide --pid <进程号>` 按进程号直达（`lasso chrome-show --pid <进程号>` 同）——只认 lasso 自己 profile 的 Chrome，你手动开的日常 Chrome 一律拒绝。
+
 之后**一行命令**就行——默认零窗口静默档直接继承上次的登录态：
 
 ```bash
@@ -321,7 +326,8 @@ lasso launch-chrome
 - 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
 - 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；它起的 Chrome 在 Dock / 任务栏会多一个图标（浏览器有头进程的注册行为，lasso 控制不了），要零图标用 `browse_headless`；`browse_logged_in` 连**你自己开的可见 Chrome** 时会在你的 Chrome 里临时开一个后台 tab 干活（不抢焦点不发声，结束自动关，v1.17.2 起你的 tab 一律不被改写）——但你的 Chrome 本身不静音（lasso 不改写你的浏览器参数），浏览到自动播放页面会真出声；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
 - chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
-- `chrome-hide` / `chrome-show` 同样只动台账在案的 Chrome（按 pid 定向，永不碰你手动开的浏览器）；hide 只隐藏窗口，进程/登录态/CDP 全保留。
+- `chrome-hide` / `chrome-show` 同样只动台账在案的 Chrome（按 pid 定向，永不碰你手动开的浏览器）；hide 只隐藏窗口，进程/登录态/CDP 全保留。台账缺条目时按 `--pid N` 直达（见上文；归属不满足会明确拒绝）。
+- hide 是**粘滞**的（v1.18.3）：server 运行期间，已 hide 的窗口无论被什么来源掀出（上游页面自己弹的、系统焦点切换），约 1.5 秒内自动压回后台；想看窗口用 `chrome-show`（明示解除，不再压回）。粘滞状态跨重启保留，下次 server 启动继续接管。
 
 </details>
 

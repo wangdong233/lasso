@@ -206,7 +206,7 @@ Va à l'Internet Archive (Wayback Machine) pour retrouver la dernière copie arc
 
 ## Installer
 
-**Version actuelle v1.17.0** (journal des versions dans le bloc replié en fin de section).
+**Version actuelle v1.18.3** (journal des versions dans le bloc replié en fin de section).
 
 Prérequis : Node.js ≥ 20 + Claude Code (ou tout client compatible MCP).
 

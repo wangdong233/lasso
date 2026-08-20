@@ -32,7 +32,11 @@ import {
 import { stopLaunchedChromes } from "./chrome-stop.js";
 // C2（v1.18，doc/28-静默守则审计 D-2）：登录完成自动转后台的 hide 原语
 // （PID 定向，永不按进程名——E8 事故红线；非 kill，登录态无损可逆）
-import { hideChromeByPid } from "./chrome-hide.js";
+// P31（v1.18.3 同类横扫 S3）：默认走 **异步** hideChromeByPidAsync（execFile）——
+// 本 reaper 是 server 常驻 15s timer，tick 内 spawnSync osascript（2s 上限）会
+// 同步阻塞事件循环，与 P27 已修的 watchdog 同机制同阻塞面（Chrome 忙时 AX 枚举
+// 可 >2s；autoHide 触发窗恰是 agent 最可能并发请求的时刻）。
+import { hideChromeByPidAsync, type ChromeHideResult } from "./chrome-hide.js";
 
 // ============================================================
 // 类型
@@ -55,8 +59,12 @@ export interface ChromeIdleReaperOptions {
   autoHideDelayMs?: number;
   /** 测试注入：读台账 Chrome 的 tab URL 列表（默认 CDP /json；失败=降级不 hide）。 */
   tabUrlsFn?: (port: number) => Promise<string[]>;
-  /** 测试注入：hide 原语（默认 chrome-hide.ts hideChromeByPid）。 */
-  hideFn?: (pid: number | undefined) => { ok: boolean; reason?: string };
+  /**
+   * 测试注入：hide 原语（默认 chrome-hide.ts hideChromeByPidAsync——P31 起异步：
+   * server 常驻 timer tick 内禁 spawnSync 长阻塞；返回 Promise 或裸结果均可，
+   * 调用点统一 await——既有同步注入的测试形态不破）。
+   */
+  hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
   /** 测试注入：读台账（默认 readLedgerSync）。 */
   readLedgerFn?: () => LaunchedChromeRecord[];
   /** 测试注入：时钟（默认 Date.now）。 */
@@ -122,7 +130,7 @@ async function defaultTabUrlsFn(port: number): Promise<string[]> {
  *
  * C2（v1.18，doc/28 D-2）：autoHideAfterLogin（opt-in 默认 off）时，visible 记录
  * 在「登录墙观测到→消失→延迟窗过→agent 无近期活动」四重护栏全过后续走
- * hideChromeByPid（PID 定向 hide，非 kill）转后台静默；台账 launchMode 不变
+ * hideChromeByPidAsync（P31 起异步；PID 定向 hide，非 kill）转后台静默；台账 launchMode 不变
  * （kill 豁免语义不动）。visible 记录永不进 stopFn（N4 红线）。
  *
  * @returns ChromeIdleReaper（timer unref 不阻退出）；defaultIdleMs ≤ 0 且
@@ -147,7 +155,7 @@ export function startChromeIdleReaper(
     (async (o: { port: number }) =>
       stopLaunchedChromes({ port: o.port, logFn }));
   const tabUrlsFn = opts.tabUrlsFn ?? defaultTabUrlsFn;
-  const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPid(pid));
+  const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
 
   /** port → 最后活动时间（touch 写 / tick 读；单写多读）。 */
   const touchMap = new Map<number, number>();
@@ -254,7 +262,9 @@ export function startChromeIdleReaper(
     if (now - since < autoHideDelayMs) return; // 护栏②
     const lastUse = Math.max(rec.launchedAt, touchMap.get(rec.port) ?? 0);
     if (now - lastUse < autoHideDelayMs) return; // 护栏③
-    const r = hideFn(rec.pid);
+    // P31：await 异步原语（默认 execFile 形态）——tick 内零事件循环阻塞；
+    // 同步注入（测试形态）经 await 直接穿透，行为不变
+    const r = await hideFn(rec.pid);
     if (r.ok) {
       autoHideDone.set(rec.port, true);
       logFn({

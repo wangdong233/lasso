@@ -206,7 +206,7 @@ Geht zum Internet Archive (Wayback Machine), um die zuletzt archivierte Kopie di
 
 ## Installation
 
-**Aktuelle Version v1.17.0** (Changelog im eingeklappten Block am Ende dieses Abschnitts).
+**Aktuelle Version v1.18.3** (Changelog im eingeklappten Block am Ende dieses Abschnitts).
 
 Voraussetzungen: Node.js ≥ 20 + Claude Code (oder jeder MCP-fähige Client).
 

@@ -206,7 +206,7 @@ Recorre à Internet Archive (Wayback Machine) para encontrar a última cópia ar
 
 ## Instalação
 
-**Versão atual v1.17.0** (changelog no bloco recolhido no fim desta seção).
+**Versão atual v1.18.3** (changelog no bloco recolhido no fim desta seção).
 
 Pré-requisitos: Node.js ≥ 20 + Claude Code (ou qualquer cliente compatível com MCP).
 

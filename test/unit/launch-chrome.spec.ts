@@ -22,7 +22,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as path from "node:path";
 import * as os from "node:os";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import {
   launchChrome,
   parseLaunchChromeArgs,
@@ -720,6 +720,80 @@ describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () 
     });
     await new Promise((r) => setTimeout(r, 20));
     expect(hideCalls).toEqual([]);
+  });
+});
+
+/**
+ * P31（v1.18.3 同类横扫 S4）：隐藏保险丝异步化。
+ *
+ * 背景：launchChrome 经 MCP chrome-launch 工具进 server 进程，fuse 此前默认
+ * hideChromeByPid（spawnSync osascript 2s 上限）在请求路径上同步阻塞事件循环
+ * （与 P27 已修的 watchdog 同机制同阻塞面）。P31 起默认 hideChromeByPidAsync
+ * （execFile）且 **await 在 launchChrome 返回前完成**——fire-and-forget 会被
+ * CLI 路径的 process.exit 击败（F1 v1.10 事故形态在异步版重演），await 形态
+ * 保 F1 修复。
+ */
+describe("P31 · 隐藏保险丝异步化（server 请求路径零阻塞 + F1 保持）", () => {
+  const existing = () => new Set([MACOS_CHROME_CANDIDATES[0].path]);
+
+  it("P31-1. 异步 hideFn（Promise）被 await：launchChrome 返回时 fuse 已完成（无需额外等待）", async () => {
+    const mockSpawn = makeMockSpawn(24681);
+    const logs: Array<Record<string, unknown>> = [];
+    const r = await launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: (pid) =>
+        new Promise((resolve) => {
+          // 异步原语形态：下一宏任务才 resolve（execFile 回调的近似）
+          setTimeout(() => resolve({ ok: true }), 5);
+        }),
+      logFn: (p) => logs.push(p),
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    expect(r.ok).toBe(true);
+    // await 在返回前完成：零额外等待即已落 fuse 日志（F1 异步版）
+    expect(logs.some((p) => p.evt === "chrome_hide_fuse_ok")).toBe(true);
+  });
+
+  it("P31-2. 微任务序：hide Promise resolve 之前 fuse 日志不落（真 await，非 fire-and-forget）", async () => {
+    const mockSpawn = makeMockSpawn(24682);
+    const logs: Array<Record<string, unknown>> = [];
+    let releaseHide: (() => void) | null = null;
+    const launchP = launchChrome({
+      platform: "mac",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: () =>
+        new Promise((resolve) => {
+          releaseHide = () => resolve({ ok: true });
+        }),
+      logFn: (p) => logs.push(p),
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    // spawn + 探活 + 台账已过（FAST_PROBE 毫秒级），fuse 挂起在未 resolve 的 hide 上
+    await new Promise((r) => setTimeout(r, 15));
+    expect(logs.some((p) => p.evt === "chrome_hide_fuse_ok")).toBe(false);
+    expect(logs.some((p) => p.evt === "chrome_hide_fuse_denied")).toBe(false);
+    releaseHide!(); // osascript 完成
+    const r = await launchP;
+    expect(r.ok).toBe(true);
+    expect(logs.some((p) => p.evt === "chrome_hide_fuse_ok")).toBe(true);
+  });
+
+  it("P31-3. 白盒：默认 hideFn = hideChromeByPidAsync + 两成功路径 await scheduleHideFuse + 零同步原语回流", () => {
+    const src = readFileSync("src/launcher/launch-chrome.ts", "utf8");
+    expect(src).toMatch(
+      /const hideFn = opts\.hideFn \?\? \(\(pid: number \| undefined\) => hideChromeByPidAsync\(pid\)\)/,
+    );
+    expect(src).toMatch(/await scheduleHideFuse\(primary\.pid\)/); // primary 成功路径
+    expect(src).toMatch(/await scheduleHideFuse\(second\.pid\)/); // 离屏 fallback 成功路径
+    // 同步原语（\b 排除 Async 后缀）不得回流本文件——server 请求路径 spawnSync 阻塞面拆除
+    expect(src).not.toMatch(/hideChromeByPid\b(?!Async)/);
   });
 });
 

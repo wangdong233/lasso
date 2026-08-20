@@ -14,6 +14,7 @@
  * 零真机、零真实 CDP、零真实 osascript。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   startChromeIdleReaper,
   CHROME_IDLE_REAPER_INTERVAL_MS,
@@ -337,5 +338,66 @@ describe("C2 · config 配置面（LASSO_AUTO_HIDE_AFTER_LOGIN*）", () => {
     const { CONFIG_TEMPLATE } = await import("../../src/config/config.js");
     expect(CONFIG_TEMPLATE.LASSO_AUTO_HIDE_AFTER_LOGIN).toBe(false);
     expect(CONFIG_TEMPLATE.LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS).toBe(10000);
+  });
+});
+
+/**
+ * P31（v1.18.3 同类横扫 S3）：reaper autoHide 的 hide 原语异步化。
+ *
+ * 背景：reaper 是 server 常驻 15s timer，此前默认 hideChromeByPid（spawnSync
+ * osascript 2s 上限）跑在 tick 内——Chrome 忙时 System Events AX 枚举可 >2s
+ * （P27 真机实证），同步形态阻塞 server 事件循环；autoHide 触发窗（登录完成
+ * +10s）恰是 agent 最可能并发 MCP 请求的时刻。P31 起默认 hideChromeByPidAsync
+ * （execFile）+ 调用点 await——与 P27 已修的 watchdog 同机制同修法。
+ */
+describe("P31 · reaper hide 原语异步化（server tick 零阻塞）", () => {
+  it("P31-1. 异步 hideFn 被 await：hide Promise resolve 前不落成功日志（非 await 形态会立即误判失败）", async () => {
+    let now = 1_000_000;
+    let wall = true; // true=墙在 / false=墙已消失
+    const hideCalls: number[] = [];
+    const logs: Array<Record<string, unknown>> = [];
+    const hideGates: Array<() => void> = [];
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      autoHideAfterLogin: true,
+      autoHideDelayMs: 10_000,
+      readLedgerFn: () => [makeRec()],
+      nowFn: () => now,
+      tabUrlsFn: async () => (wall ? ["https://github.com/login"] : ["https://github.com/dashboard"]),
+      hideFn: (pid) =>
+        new Promise((resolve) => {
+          hideCalls.push(pid ?? -1);
+          hideGates.push(() => resolve({ ok: true }));
+        }),
+      stopFn: async () => {},
+      logFn: (p) => logs.push(p),
+    });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // tick1 见墙
+    wall = false;
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // tick2 墙消失起表
+    now += 11_000; // 过延迟窗（护栏②③均过：launchedAt=0，无 touch）
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // tick3 → hide 挂起（Promise 未 resolve）
+    expect(hideCalls).toEqual([111]); // hide 已发起
+    // 真待：成功日志未落（considerAutoHide 在 await hideFn 上）——若实现漏了
+    // await，r.ok 取自 Promise 对象（undefined）会立即落 chrome_auto_hide_failed
+    expect(logs.some((p) => p.evt === "chrome_auto_hidden_after_login")).toBe(false);
+    expect(logs.some((p) => p.evt === "chrome_auto_hide_failed")).toBe(false);
+    for (const g of hideGates) g(); // osascript 完成（异步原语回调形态）
+    await vi.advanceTimersByTimeAsync(1); // 冲微任务队列
+    expect(logs.some((p) => p.evt === "chrome_auto_hidden_after_login")).toBe(true);
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS * 2); // 不重复 hide
+    expect(hideCalls).toEqual([111]);
+    reaper!.stop();
+  });
+
+  it("P31-2. 白盒：默认 hide 原语 = hideChromeByPidAsync（execFile 异步）+ 调用点 await + 零 spawnSync 回流", () => {
+    const src = readFileSync("src/launcher/chrome-idle-reaper.ts", "utf8");
+    expect(src).toMatch(
+      /const hideFn = opts\.hideFn \?\? \(\(pid: number \| undefined\) => hideChromeByPidAsync\(pid\)\)/,
+    );
+    expect(src).toMatch(/const r = await hideFn\(rec\.pid\)/); // tick 内 await 异步原语
+    // P27/P31 同机制阻塞面：server 常驻 timer 的 tick 内禁 spawnSync 调用
+    //（\b 词形会误伤「禁 spawnSync 长阻塞」类红线注释，故锚定调用形 spawnSync(）
+    expect(src).not.toMatch(/spawnSync\(/);
   });
 });

@@ -45,7 +45,10 @@ import {
 } from "./chrome-paths.js";
 import { recordLaunch, type LedgerLogFn } from "./chrome-ledger.js";
 // v1.10（parse18 §3.3 机制二）：macOS 隐藏保险丝（PID 定向；非 mac no-op）
-import { hideChromeByPid } from "./chrome-hide.js";
+// P31（v1.18.3 同类横扫 S4）：默认走异步 hideChromeByPidAsync（execFile）——
+// 本函数经 MCP chrome-launch 工具进 server 进程，spawnSync osascript（2s 上限）
+// 在请求路径上同步阻塞事件循环（与 P27 已修的 watchdog 同机制同阻塞面）。
+import { hideChromeByPidAsync, type ChromeHideResult } from "./chrome-hide.js";
 
 // ============================================================
 // 类型
@@ -101,8 +104,9 @@ export interface LaunchChromeOptions {
   launchMode?: "hidden" | "visible";
   /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
   idleMs?: number;
-  /** 测试注入：mock 隐藏保险丝（生产走 chrome-hide.ts hideChromeByPid）。 */
-  hideFn?: (pid: number | undefined) => { ok: boolean; reason?: string };
+  /** 测试注入：mock 隐藏保险丝（生产走 chrome-hide.ts hideChromeByPidAsync——
+   *  P31 起异步；返回 Promise 或裸结果均可，调用点统一 await）。 */
+  hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
   /** 保险丝延迟（默认 1.5s；测试传 1ms 提速）。 */
   fuseDelayMs?: number;
   /**
@@ -349,7 +353,7 @@ export async function launchChrome(
   const mode = mode0; // P8：解析上移至函数头（探活窗口分档需先知 mode）
   const plat = opts.platform ?? process.platform;
   const log = opts.logFn ?? defaultLaunchLog;
-  const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPid(pid));
+  const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
   const args: string[] = [
     `--remote-debugging-port=${port}`,
     `--no-first-run`,
@@ -417,12 +421,16 @@ export async function launchChrome(
   // macOS 隐藏保险丝（parse18 §3.3）：hidden 档 spawn 成功后补一次 PID 定向
   // hide（chrome-hide 内部非 mac no-op / TCC 缺失降级不 fail）。
   // F1（v1.10.0 收尾修复，真机验证 03 发现）：原 1.5s 延迟 timer 在 CLI 路径被
-  // process.exit 击败（fuse 永不触发）——hideFn 是 spawnSync 同步调用，改为
-  // **立即执行**（osascript 对刚 spawn 的 pid 即有效）；fuseDelayMs 保留参数
-  // 兼容但不再延迟。
-  const scheduleHideFuse = (pid: number | undefined): void => {
+  // process.exit 击败（fuse 永不触发）——改为立即执行（osascript 对刚 spawn 的
+  // pid 即有效）；fuseDelayMs 保留参数兼容但不再延迟。
+  // P31（v1.18.3 同类横扫 S4）：hideFn 默认 execFile 异步（MCP chrome-launch
+  // 请求路径零事件循环阻塞）后，**await 在 launchChrome 返回前完成**——CLI 路径
+  // runLaunchChromeCli 返回后随即 process.exit，fire-and-forget 会重演 F1
+  // 「保险丝被 exit 击败」；await 形态下 fuse 完成（或 4s 超时上限）先于返回，
+  // F1 修复在异步形态下保持。
+  const scheduleHideFuse = async (pid: number | undefined): Promise<void> => {
     if (mode !== "hidden") return;
-    const r = hideFn(pid);
+    const r = await hideFn(pid);
     log({
       evt: r.ok ? "chrome_hide_fuse_ok" : "chrome_hide_fuse_denied",
       pid,
@@ -465,7 +473,7 @@ export async function launchChrome(
         idleMs: opts.idleMs,
       });
     }
-    scheduleHideFuse(primary.pid);
+    await scheduleHideFuse(primary.pid);
     return okResult(primary.pid);
   }
 
@@ -494,7 +502,7 @@ export async function launchChrome(
           idleMs: opts.idleMs,
         });
       }
-      scheduleHideFuse(second.pid);
+      await scheduleHideFuse(second.pid);
       return okResult(second.pid);
     }
     if (second.outcome === "spawn_error") {

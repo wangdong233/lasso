@@ -168,6 +168,9 @@ import {
 } from "./launcher/chrome-stop.js";
 // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper（15s 周期；kill 100% 经 chrome-stop）
 import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-idle-reaper.js";
+// P27（v1.18.3）：desiredHidden 粘滞复隐看门狗（chrome-hide 记账 → 每 1.5s 压回任意
+// 激活源掀出的窗口；闪现上限从引擎「章尾守卫」的秒级压到 tick 级）
+import { startDesiredHideWatchdog, type DesiredHideWatchdog } from "./launcher/desired-hide-watchdog.js";
 import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -222,7 +225,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.18.2";
+const LASSO_SERVER_VERSION = "1.18.3";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -492,6 +495,21 @@ async function runMcpServer(): Promise<void> {
       evt: "chrome_idle_reaper_disabled",
       idle_ms: 0,
       note: "LASSO_LAUNCH_IDLE_MS=0 — launched Chrome stays resident until chrome-stop / server exit",
+    });
+  }
+
+  // P27（v1.18.3）：desiredHidden 粘滞看门狗——与 idle reaper 并列的独立调度器
+  //（数据域正交：ledger vs desired-hidden；reaper 管「何时关」，本看门狗管「隐藏态
+  // 保持」）。darwin 恒启动（粘滞账可能在 server 启动后才写入；空账 tick 只读一个
+  // 小 JSON）；非 darwin 返 null。
+  const desiredHideWatchdog: DesiredHideWatchdog | null = startDesiredHideWatchdog({
+    logFn: (p) => logger.info(p),
+  });
+  if (desiredHideWatchdog) {
+    logger.info({
+      evt: "desired_hide_watchdog_started",
+      interval_ms: 1500,
+      note: "chrome-hide 粘滞账存在时每 tick 复隐（任意激活源掀出 → ≤1.5s 压回；chrome-show 清账解除）",
     });
   }
 
@@ -1301,6 +1319,8 @@ async function runMcpServer(): Promise<void> {
     // v1.10（parse18 §2.6）：停 chrome-idle-reaper timer（best-effort；幂等；
     // Chrome 收尾由下方既有 stopLaunchedChromes({all:true}) 覆盖）
     chromeReaper?.stop();
+    // P27（v1.18.3）：停粘滞复隐看门狗（best-effort；幂等）
+    desiredHideWatchdog?.stop();
     // v0.7：停 ResourceMonitor timer（避免 timer 残留；INV-7 衍生 lifecycle 纯净性）
     resourceMonitor.stop();
     // v1.8 Phase B（D5）：停机路径 best-effort 释放 Steel session

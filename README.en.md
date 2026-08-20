@@ -206,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.17.0** (changelog in the collapsed block at the end of this section).
+**Current version v1.18.3** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -219,7 +219,13 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.17 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.18.3 — click to see what each version changed)</summary>
+
+- **v1.18.3**: background-silence triple — ① **a window folded into the background by `chrome-hide` gets pressed back within ~1.5 s no matter what un-hides it** (upstream pages popping themselves included; guarded the whole time the server runs, and the sticky state survives restarts); use `chrome-show` when you want to look at it (explicit release, no more pressing back); ② `chrome-hide` / `chrome-show` gain `--pid N`: when the ledger has no entry (Chrome launched by an older Lasso, ledger cleared) you can target by process id — only Lasso's own profiles are accepted, your manually-opened daily Chrome is always refused; ③ a busy Chrome no longer slows down parallel operations.
+- **v1.18.2**: fixed the mismatch where long batch tasks throttled themselves — batch tasks now run through by default (a single-user local setup has no "abuser" to guard against; quota self-throttling became an opt-in config); transient DNS failures are no longer misclassified as policy blocks and no longer trigger long circuit breaks; chain-budget overruns now honestly report as retryable; large-task spill files no longer evict recent pages.
+- **v1.18.1**: five fixes from real batch runs — in-page evaluation failures are no longer silently swallowed (honestly reported); the "no tab selected" state self-heals instead of getting stuck; visible-tier cold-start probing now waits up to 12 s (slow-starting machines no longer fail spuriously); a missing PDF upstream tool is honestly reported up front as "didn't" instead of wasting a navigation first.
+- **v1.18.0**: the silence charter landed ("stay silent whenever possible; pop up only when you're needed, and fold back into the background when done" — now written down as the operating charter, see "Privacy & Security") — ① 🔴 fixed **server exit killing your login window**: on Claude session end / CC restart, a visible login Chrome used to be force-killed indiscriminately (reproduced three times on a real machine); it now gets the same exemption as "user-owned windows are never auto-closed"; ② new opt-in **auto-fold after login**: with `"LASSO_AUTO_HIDE_AFTER_LOGIN": true` (off by default) you no longer need to remember `chrome-hide` — once the login page is observed gone + a 10 s wait + confirmation nobody is using it, the window is folded into the background automatically (when in doubt it does nothing; `chrome-show` is always reversible); ③ the charter sentence went into the docs (README / KEY-GUIDE / ARCHITECTURE) with a new architecture invariant guarding these red lines.
+- **v1.17.2**: the silence audit landed (real-machine six-dimension checks: focus/window/Dock/audio/notifications/resources) — ① fixed a flaw where connecting to **your own visible Chrome** could let Lasso **rewrite your first tab's content**: Lasso now works in a background tab it opens itself in your Chrome (no focus steal, no activation), auto-closed when the session ends — your tabs are never touched; ② fixed the tab-management contract mismatch (`close_page` argument shape), and closing a tab can now only ever land on a tab Lasso itself opened; ③ the privacy docs gained a **silence matrix** (per-channel × per-dimension disturbance findings, see "Privacy & Security").
 
 - **v1.17**: five upgrades — ① Zhipu direct key retired (`ZHIPU_API_KEY` is no longer consumed; Zhipu capability is carried solely by machine web-search-prime MCP reuse, search is zero-config by default) ② `search` gains the `content_blocks` second hop (after the blue links, concurrently fetch top-N bodies trimmed query-relevantly to ~6k chars, failures honestly annotated, zero paid dependencies) ③ new tool `search_local` (Chrome history + Spotlight local private search; title/URL/time only, no full-text export) ④ in-turn elicitation confirmation for high-risk actions (older clients unaffected) ⑤ `browse extract` gains `include_refs` interactive handles (`[r1]`-style appendix + click/fill by handle, honest staleness on page change). Search results now carry a uniform `quality` axis (api / scrape / stale).
 
@@ -299,6 +305,8 @@ The first time, log in to your accounts in that window (handle 2FA yourself) —
 - The headless browser auto-recycles after 5 minutes idle (`LASSO_HEADLESS_IDLE_MS` to tune or disable).
 - Honest boundary: running `lasso launch-chrome` standalone (outside the server) has no idle auto-close — the exit is `chrome-stop`; `browse_logged_in` connecting to **your own visible Chrome** is "low-disturbance, not zero-disturbance" (a macOS platform-level limitation — occasional operations may steal focus once) — for pure silence use the hidden tier or `browse_headless`; `desktop` simulates a real human's keyboard and mouse, so it occupies the physical keyboard/mouse by design — there is no silent form.
 - chrome-stop only closes the Chromes Lasso itself launched, with verified ownership — it never touches your manually-opened browsers.
+- `chrome-hide` / `chrome-show` likewise only touch ledger-registered Chromes (pid-targeted, never your manually-opened browsers); hide only hides the window — process / login state / CDP all stay. If the ledger has no entry, target by process id with `--pid N` (see above; anything that isn't Lasso's own profile is refused).
+- Hide is **sticky** (v1.18.3): while the server is running, a hidden window un-hidden by any source (an upstream page popping itself, a system focus switch) is pressed back into the background within ~1.5 s; use `chrome-show` when you want to look at it (explicit release, no more pressing back). The sticky state survives restarts — the next server start takes over again.
 
 </details>
 

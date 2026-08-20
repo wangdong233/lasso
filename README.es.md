@@ -206,7 +206,7 @@ Acude al Internet Archive (Wayback Machine) para encontrar la última copia arch
 
 ## Instalar
 
-**Versión actual v1.17.0** (changelog en el bloque plegado al final de esta sección).
+**Versión actual v1.18.3** (changelog en el bloque plegado al final de esta sección).
 
 Requisitos previos: Node.js ≥ 20 + Claude Code (o cualquier cliente compatible con MCP).
 
