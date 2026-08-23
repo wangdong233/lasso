@@ -26,7 +26,17 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
 import type { DoctorCheck } from "../doctor/doctor.js";
+// BUG-rust-helper-relative-path §4.2：helper 路径单一真源（spawn 规格 / doctor 探测 /
+// 错误提示三处共用同一 resolver——doctor「看得到」与 spawn「起得来」不再脱节）
+// A1（对抗复审轮 1）：cargo build 修法按布局条件化——npm 安装包不含 rust-helper/
+// 源码，仅 env 覆盖可行，不再给不可执行的修法
+import {
+  LASSO_RUST_HELPER_ENV,
+  hasRustHelperSource,
+  resolveRustHelperPath,
+} from "../subprocess/rust-helper-path.js";
 
 const execFileP = promisify(execFile);
 
@@ -53,11 +63,14 @@ export interface RustBridgeLike {
   }>;
 }
 
-/** Helper binary 默认查找路径（与 parse4 §3.1.7 sign.sh 输出一致）。 */
-const DEFAULT_HELPER_PATHS = [
-  "./rust-helper/target/release/lasso-rust-helper",
-  "../rust-helper/target/release/lasso-rust-helper",
-];
+/**
+ * Helper binary 探测路径（BUG-rust-helper-relative-path §4.2 单一真源）。
+ * 与 spawn 规格（index.ts registerRustSpec）共用 resolveRustHelperPath()——
+ * env LASSO_RUST_HELPER_PATH 覆盖 > import.meta.url 绝对默认（与宿主 cwd 解耦）。
+ * 此前这里是 `./` + `../` 双相对路径列表，与 spawn 单路径脱节，导致 doctor 在部分
+ * cwd「看得到」binary 而 spawn 却 ENOENT 的误导性诊断。
+ */
+const DEFAULT_HELPER_PATH = () => resolveRustHelperPath().path;
 
 /** System Settings URL schemes（parse4 §3.4 M0.5a 第 6 条）。 */
 const TCC_URL_ACCESSIBILITY =
@@ -130,10 +143,10 @@ export async function runRustDoctorChecks(
 async function checkRustHelperSigned(
   helperPath: string | undefined,
 ): Promise<DoctorCheck> {
-  const path = helperPath ?? DEFAULT_HELPER_PATHS[0];
+  const probePath = helperPath ?? DEFAULT_HELPER_PATH();
   let stdout: string;
   try {
-    const r = await execFileP("codesign", ["-dvvv", path], {
+    const r = await execFileP("codesign", ["-dvvv", probePath], {
       timeout: 5_000,
     }).catch((e: unknown) => {
       // binary 不存在或 codesign 失败 → warn（M0.5a 允许未构建）
@@ -146,7 +159,10 @@ async function checkRustHelperSigned(
       name: "rust_helper_signed",
       status: "warn",
       detail: `codesign 探测失败：${String(e)}`,
-      next_step: `cd rust-helper && cargo build --release && ./build/sign.sh`,
+      // A1：npm 布局（源码不在包内）→ cargo/sign.sh 修法不可行，仅 env 覆盖
+      next_step: hasRustHelperSource()
+        ? `cd rust-helper && cargo build --release && ./build/sign.sh`
+        : `env ${LASSO_RUST_HELPER_ENV} 指向源码 checkout 内构建+签名的 helper（npm 包不含 rust-helper 源码）`,
     };
   }
 
@@ -166,16 +182,32 @@ async function checkRustHelperSigned(
     return {
       name: "rust_helper_signed",
       status: "fail",
-      detail: `binary 已签但非 Developer ID（ad-hoc 或遗留）：${path}`,
+      detail: `binary 已签但非 Developer ID（ad-hoc 或遗留）：${probePath}`,
       next_step: `LASSO_DEV_ID='Developer ID Application: Your Name (TEAMID)' ./rust-helper/build/sign.sh`,
     };
   }
-  // codesign 返回但无任何关键字 = binary 不存在或损坏
+  // codesign 返回但无任何关键字。BUG-rust-helper-relative-path §4.2：
+  // 诚实区分「binary 不存在」与「存在但 codesign 无签名输出」——此前一律
+  // "可能未构建" 在 binary 实存时误导排查方向；detail 附实际探测的绝对路径。
+  if (!existsSync(probePath)) {
+    return {
+      name: "rust_helper_signed",
+      status: "warn",
+      detail: `binary 不存在：${probePath}（探测路径与 spawn 同源：resolveRustHelperPath()）`,
+      // A1：npm 布局（源码不在包内）→ cargo build 不可行，仅 env 覆盖
+      next_step: hasRustHelperSource()
+        ? `cd rust-helper && cargo build --release（或 env ${LASSO_RUST_HELPER_ENV}=<绝对路径> 覆盖）`
+        : `仅可用 env ${LASSO_RUST_HELPER_ENV}=<已构建 helper 的绝对路径> 覆盖（npm 包不含 rust-helper 源码，无法 cargo build）`,
+    };
+  }
   return {
     name: "rust_helper_signed",
     status: "warn",
-    detail: `binary 可能未构建：${path}`,
-    next_step: `cd rust-helper && cargo build --release`,
+    detail: `binary 存在但无签名输出：${probePath}`,
+    // A1：npm 布局（源码不在包内）→ sign.sh 不在包内，构建+签名须回源码 checkout
+    next_step: hasRustHelperSource()
+      ? `cd rust-helper && cargo build --release && ./build/sign.sh（ad-hoc 兜底签名也行）`
+      : `env ${LASSO_RUST_HELPER_ENV} 指向源码 checkout 内构建+签名的 helper（npm 包不含 rust-helper 源码）`,
   };
 }
 

@@ -26,6 +26,13 @@ import { Agent } from "undici";
 import { spawn, type ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
 import { killTreeSync } from "../util/kill-tree.js";
+// BUG-rust-helper-relative-path §4.3：缺 binary 的 fail-fast 错误文案单一真源
+// A1（对抗复审轮 1）：spawn 可行性门 + 不可 spawn 自诊断也走同一真源
+import {
+  rustHelperMissingHint,
+  rustHelperNotSpawnableHint,
+  rustSpawnGate,
+} from "./rust-helper-path.js";
 
 // ============================================================
 // 版本锁（parse1 §3.5 + §7.1 风险 L1）
@@ -278,6 +285,15 @@ export class SubprocessManager {
    */
   registerRustSpec(name: string, spec: RustSpawnSpec): void {
     this.rustSpecs.set(name, spec);
+  }
+
+  /**
+   * BUG-rust-helper-relative-path §4.2/§4.3：取 rust spec 的 command 绝对路径。
+   * RustBridge onError（ENOENT 自诊断）用——错误信息与 spawn 实际路径同源，
+   * 不在 bridge 侧二次猜路径。
+   */
+  getRustSpecCommand(name: string): string | undefined {
+    return this.rustSpecs.get(name)?.command;
   }
 
   /** 测试 / 显式重置用：移除一个 Rust 规格 + kill 它的进程。 */
@@ -610,10 +626,49 @@ export class SubprocessManager {
    *  - 用 child_process.spawn（不需 SDK transport）
    *  - stdio: ['pipe', 'pipe', 'pipe']（stdin/stdout 走协议，stderr 走诊断）
    *  - 不做 initialize 握手（JSON-lines 无握手）
+   *
+   * BUG-rust-helper-relative-path §4.3（fail-fast 语义区分）：
+   *  - 「环境缺文件 / 不可 spawn」（binary 不存在 / 目录 / 丢 exec 位）是**确定性**
+   *    失败——重试 5 次必同样失败还白烧 ~30s backoff。spawn 前先过 rustSpawnGate
+   *    探测（存在 + isFile + X_OK 三态一次判齐），不可用即抛带自诊断文案（解析
+   *    路径 + 对应修法 + env 覆盖提示）的错误，**不进 backoff**。
+   *  - 「瞬态崩溃」（如 spawn 竞态）才值得退避重试。
+   *
+   * A1（对抗复审轮 1）：旧 existsSync 门只判存在不判可 spawn——目录 / 丢 exec
+   * 位的文件漏过此门，spawn EACCES 打到 RustBridge.onError 兜底分支，归因裸
+   * `rust_helper_crashed:EACCES`（无路径/无修法）。改用 rustSpawnGate 后此态
+   * 同样 spawn 前 fail-fast + 自诊断（门语义单一真源在 rust-helper-path.ts）。
    */
   private async _spawnRustWithBackoff(name: string): Promise<ChildProcess> {
     const spec = this.rustSpecs.get(name);
     if (!spec) throw new Error(`Unknown rust subprocess spec: ${name}`);
+
+    // 确定性不可 spawn → fail fast（不烧 5×backoff；归因前缀与 W1-DEF-9 契约一致，
+    // 既有的 /rust_helper_crashed:subproc_spawn_failed/ 断言零回归）
+    const gate = rustSpawnGate(spec.command);
+    if (gate !== "ok") {
+      const hint =
+        gate === "missing"
+          ? rustHelperMissingHint(spec.command)
+          : rustHelperNotSpawnableHint(
+              spec.command,
+              gate === "not_file" ? "路径是目录" : "存在但缺执行权限",
+            );
+      const err = new Error(
+        `rust_helper_crashed:subproc_spawn_failed — ${hint}`,
+      );
+      logger.error({
+        evt: "rust_proc_spawn_failed",
+        name,
+        attempt: 0,
+        fail_fast: true,
+        gate,
+        command: spec.command,
+        cwd: process.cwd(),
+        error: String(err),
+      });
+      throw err;
+    }
 
     let attempt = 0;
     while (true) {
@@ -671,14 +726,26 @@ export class SubprocessManager {
         return proc;
       } catch (e) {
         attempt++;
-        if (attempt >= 5) {
+        // ENOENT = 确定性缺文件（BUG §4.3）：不进 backoff，直接抛自诊断错误
+        const isENOENT =
+          (e as NodeJS.ErrnoException | null)?.code === "ENOENT" ||
+          /ENOENT/i.test(e instanceof Error ? e.message : String(e));
+        if (attempt >= 5 || isENOENT) {
+          const err = isENOENT
+            ? new Error(
+                `rust_helper_crashed:subproc_spawn_failed — ${rustHelperMissingHint(spec.command)}`,
+              )
+            : e;
           logger.error({
             evt: "rust_proc_spawn_failed",
             name,
             attempt,
-            error: String(e),
+            fail_fast: isENOENT,
+            command: spec.command,
+            cwd: process.cwd(),
+            error: String(err),
           });
-          throw e;
+          throw err;
         }
         const backoff = Math.min(30_000, 1000 * 2 ** attempt);
         logger.warn({

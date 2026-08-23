@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 20(LTS)与 22(current)；与 media-gen-mcp CI 同矩阵约定
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # 门禁三件套与本地同序：build 出 dist → 全量测试 → 架构不变量
+      # （dist 是测试的依赖面之一；rust-helper/macOS 专属路径在测试内均为
+      #   platform 注入或 non-darwin no-op 分支，Linux 上应全绿——若有平台
+      #   假设残留，红了就是抓到了，修掉即可）
+      - run: npm run build
+      - run: npm test
+      - run: npm run check-invariants

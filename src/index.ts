@@ -42,6 +42,8 @@ import { newRunId } from "./util/run-id.js";
 import { setStateStoreContext } from "./util/state-store.js";
 import { SubprocessManager } from "./subprocess/SubprocessManager.js";
 import { RustBridge } from "./subprocess/RustBridge.js";
+// BUG-rust-helper-relative-path §4.2：helper 路径单一真源（spawn / doctor / 错误提示共用）
+import { resolveRustHelperPath } from "./subprocess/rust-helper-path.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
 // v1.15 Phase A（Bing 死层清除）：BingChannel 第三源已删（Bing Search APIs
 // 2025-08-11 全量退役；INV-54 墓碑守卫禁回潮，见 providers.ts 墓碑说明）。
@@ -182,12 +184,9 @@ const fsReadFile = fsPromises.readFile;
 // ============================================================
 // v0.3.5 常量（parse4 §3.5 装配）
 // ============================================================
-/**
- * Rust helper binary 默认路径（parse4 §3.1.7 + desktop-doctor-checks.ts 默认）。
- * 优先取 env LASSO_RUST_HELPER_PATH；fallback 到 codesign 输出标准路径。
- */
-const DEFAULT_RUST_HELPER_PATH =
-  "./rust-helper/target/release/lasso-rust-helper";
+// BUG-rust-helper-relative-path §4.1/§4.2：rust helper 路径的真源已抽到
+// subprocess/rust-helper-path.ts（env LASSO_RUST_HELPER_PATH 覆盖 >
+// import.meta.url 绝对默认，与宿主 cwd 解耦）。index.ts 不再自带相对路径常量。
 
 // ============================================================
 // v0.4 M0.4c 常量（parse5 §3.2 + §3.4 cloud 浏览器条件装配）
@@ -225,7 +224,7 @@ const DEFAULT_RUST_HELPER_PATH =
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.18.3";
+const LASSO_SERVER_VERSION = "1.18.4";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -587,8 +586,10 @@ async function runMcpServer(): Promise<void> {
   // INV-7：RustBridge 持协议帧解析；SubprocessManager 仍纯 lifecycle（既有 MCP 路径不动）。
   // INV-23/29：breakers 加 4 档 desktop.*；永不挂 browse_*。
   // INV-60（v1.0）：AxBackendFactory 是 backend 路由单一真源；AxProvider 不直构 backend。
-  const rustHelperPath =
-    process.env.LASSO_RUST_HELPER_PATH ?? DEFAULT_RUST_HELPER_PATH;
+  // BUG-rust-helper-relative-path §4.2：路径解析走单一真源 resolveRustHelperPath()
+  // （env 覆盖 > 绝对默认）。spawn 规格（此处）与 doctor 探测（desktop-doctor-checks）
+  // 共用同一 resolver——诊断与故障源不再脱节。
+  const rustHelperPath = resolveRustHelperPath().path;
   subproc.registerRustSpec("rust-helper", {
     command: rustHelperPath,
     args: [],

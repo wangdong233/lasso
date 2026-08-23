@@ -1,15 +1,20 @@
 #!/bin/bash
-# lasso-rust-helper build + Developer ID sign（parse4 §3.1.7 + §4.5）。
+# lasso-rust-helper build + sign（parse4 §3.1.7 + §4.5；BUG-rust-helper-relative-path §4.4）。
 #
 # 用法：
-#   ./build/sign.sh                              # cargo build only（DEV_ID 未设 → 跳过签名）
-#   LASSO_DEV_ID="Developer ID Application: ..." ./build/sign.sh
+#   ./build/sign.sh                              # cargo build + ad-hoc 兜底签名（DEV_ID 未设）
+#   LASSO_DEV_ID="Developer ID Application: ..." ./build/sign.sh   # Developer ID 正式签名
 #
 # 关键事实（README §TCC 持久化原理 详）：
 #   - 未签名的 binary 每次 rebuild 后 cdhash 变 → TCC.db 失效 → 重弹授权框
 #   - Developer ID 签名后 cdhash 稳定 → TCC 授权持久（仍需首次手动授权）
 #   - Hardened Runtime（--options runtime）是 notarization 的前置；本脚本带上无害
 #   - 用户须自行申请 Apple Developer 账号（$99/年）
+#
+# BUG §4.4（2026-08-23）：DEV_ID 未设时不再裸跳过——默认 ad-hoc（codesign -s -）
+# 兜底签名。ad-hoc 让 binary 有稳定 code identity（同字节重签 cdhash 不变），
+# 但 **rebuild 后字节变 → cdhash 变 → TCC 重授权**；Developer ID 才是长期方案。
+# 无 codesign 命令的环境（Linux CI）自动降级跳过，不炸构建。
 
 set -euo pipefail
 set -x
@@ -23,9 +28,17 @@ HELPER="target/release/lasso-rust-helper"
 
 if [[ -z "${LASSO_DEV_ID:-}" ]]; then
     echo ""
-    echo "⚠️  LASSO_DEV_ID 未设置 — 跳过 codesign 步骤。"
-    echo "    未签名的 binary 每次 rebuild 后 TCC.db 会失效（重弹 Accessibility 授权框）。"
-    echo "    设置 LASSO_DEV_ID='Developer ID Application: Your Name (TEAMID)' 后重跑本脚本。"
+    echo "⚠️  LASSO_DEV_ID 未设置 — 退到 ad-hoc 兜底签名（codesign --force --sign -）。"
+    if command -v codesign >/dev/null 2>&1; then
+        codesign --force --sign - "$HELPER"
+        echo "    ad-hoc 已签：$(pwd)/$HELPER"
+    else
+        echo "    环境无 codesign — 跳过签名（不炸构建）。"
+    fi
+    echo ""
+    echo "    注意：ad-hoc 签名在每次 rebuild 后 TCC.db 仍会失效（重弹 Accessibility 授权框）——"
+    echo "    cdhash 随 binary 字节变化；长期方案是 Developer ID："
+    echo "    LASSO_DEV_ID='Developer ID Application: Your Name (TEAMID)' ./build/sign.sh"
     echo ""
     echo "    Helper 路径：$(pwd)/$HELPER"
     exit 0

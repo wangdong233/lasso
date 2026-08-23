@@ -40,6 +40,12 @@ import { randomUUID } from "node:crypto";
 import type { SubprocessManager } from "./SubprocessManager.js";
 import type { ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
+// BUG-rust-helper-relative-path §4.3：ENOENT 自诊断文案单一真源（与 SubprocessManager 共用）
+// A1（对抗复审轮 1）：不可 spawn 自诊断也走同一真源（onError 兜底分支用）
+import {
+  rustHelperMissingHint,
+  rustHelperNotSpawnableHint,
+} from "./rust-helper-path.js";
 
 // ============================================================
 // 公共类型（与 rust-helper/src/protocol.rs::Response 镜像）
@@ -65,6 +71,15 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** ping 等快速调用建议用 3s（parse4 §3.5.3）。 */
 export const PING_TIMEOUT_MS = 3_000;
+
+/**
+ * A1（对抗复审轮 1）：spawn 阶段确定性错误码——这些 errno 意味着 helper 路径
+ * 本身不可执行（EACCES=缺执行位/目录、EISDIR=路径是目录、EPERM=不可操作），
+ * SubprocessManager 的 rustSpawnGate 通常已在 spawn 前拦下；此处兜底覆盖
+ * 「门后竞态」（exec 位在门与 spawn 之间被夺走）等漏网态，附路径自诊断
+ * 而非裸 `rust_helper_crashed:<code>`。
+ */
+const SPAWN_ERROR_CODES = new Set(["EACCES", "EPERM", "EISDIR"]);
 
 // ============================================================
 // RustBridge
@@ -235,16 +250,33 @@ export class RustBridge {
    *
    * 归因（与 shutdown 侧承诺一致）：
    *  - ENOENT → "rust_helper_crashed:subproc_spawn_failed"
+   *      BUG-rust-helper-relative-path §4.3：附 spec 实际 command（经
+   *      subproc.getRustSpecCommand 取注册真源，不在 bridge 侧二次猜）+
+   *      LASSO_RUST_HELPER_PATH 覆盖提示——环境缺文件一眼自诊断。
+   *  - EACCES/EPERM/EISDIR → "rust_helper_crashed:<code> — <不可 spawn 自诊断>"
+   *      A1（对抗复审轮 1）兜底：spawn 类错误码同样附 command + 修法——
+   *      rustSpawnGate 拦不下的门后竞态不再裸归因。
    *  - 其他 error → "rust_helper_crashed:<message>"
    *
    * 同 onExit：清 pending、proc=null、buffer 清空、wired=false（下次重 spawn 重接线）。
    */
   private onError = (e: Error & { code?: string }): void => {
     const code = e.code ?? e.message;
-    const attribution =
-      code === "ENOENT"
-        ? "rust_helper_crashed:subproc_spawn_failed"
-        : `rust_helper_crashed:${code}`;
+    let attribution: string;
+    if (code === "ENOENT") {
+      const cmd =
+        this.subproc.getRustSpecCommand?.(this.specName) ?? "unknown-path";
+      attribution =
+        "rust_helper_crashed:subproc_spawn_failed — " +
+        rustHelperMissingHint(cmd);
+    } else if (SPAWN_ERROR_CODES.has(code)) {
+      const cmd =
+        this.subproc.getRustSpecCommand?.(this.specName) ?? "unknown-path";
+      attribution =
+        `rust_helper_crashed:${code} — ` + rustHelperNotSpawnableHint(cmd, code);
+    } else {
+      attribution = `rust_helper_crashed:${code}`;
+    }
     logger.warn({
       evt: "rust_helper_error",
       spec: this.specName,
