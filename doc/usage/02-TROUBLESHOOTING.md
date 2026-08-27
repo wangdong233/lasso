@@ -366,17 +366,32 @@ lasso chrome-show          # 取消隐藏 + 清粘滞账
 
 `launch-chrome --mode visible` 首次登录后 `chrome-hide` 回到后台静默（`chrome-show` 再现身）。v1.18.3 起 hide 原语异步化 + `--pid` 直达。
 
-### 9.2 粘滞复隐看门狗（P27，v1.18.3）
+### 9.2 粘滞复隐看门狗（P27 v1.18.3 → bug02 全生命周期 v1.18.5）
 
-Chrome 窗口「自己弹出来」的场景（上游 CDP 激活 / 页面 JS / Chrome 内部唤起）：常驻 server 每 1.5s tick 读 desired-hidden 粘滞账，发现可见即压回（单 osascript「可见才压回」，不盲发）。**闪现上限 = 一个 tick（1.5s）**。观测点：日志事件 `desired_hidden_reasserted`。CLI chrome-hide 单跑**没有**看门狗（进程退出即止——粘滞账是跨进程契约，只有长命 server 消费）。
+Chrome 窗口「自己弹出来」的场景（上游 CDP 激活 / 页面 JS / Chrome 内部唤起）：常驻 server 每 1.5s tick 读 desired-hidden 粘滞账，发现可见即压回（单 osascript「可见才压回」，不盲发）。**闪现上限 = 一个 tick（1.5s）**。观测点：日志事件 `desired_hidden_reasserted`。
 
-### 9.3 Chrome 60-75 秒后神秘死亡（idle reaper + 外部消费者盲区）
+v1.18.5（doc/bugs/02 隐藏洞）起执守与 server 解耦：
+
+- **hidden 档出生即写粘滞账**——`launch-chrome --mode hidden` 的隐藏保险丝成功后立即记 desired-hidden（此前粘滞账唯一写入方是 `chrome-hide` CLI，launch 起的 Chrome 被掀出无人压回——「有时隐藏不住」的主根因）；
+- **独立执守进程**——`chrome-hide` 成功 / launch hidden 记账后自动拉起 detached 单例 `hide-enforcer`（pidfile + ps cmdline 三重活判定；server 不在也执守；粘滞账连续 2 tick 为空自退，不留常驻 node；手动 `lasso hide-enforcer` 幂等）；
+- `chrome-show` 仍是明示解除（清账后看门狗/执守都不再压回）。
+
+### 9.3 Chrome 60-75 秒后神秘死亡（idle reaper + 外部消费者盲区；v1.18.5 已闭环）
 
 **症状**：`launch-chrome` 拉起的 Chrome 在无 lasso browse 活动时约 60-75s 后 CDP 断连、台账变空。
 
 **根因**：by-design 的 idle reaper（hidden 档「用完即关」，默认 `LASSO_LAUNCH_IDLE_MS=60s`）。**若 Chrome 由非 lasso browse 通道消费（外部 CDP 直连，如其他 MCP/自动化脚本），reaper 看不到活动信号，照样收割**——这是已知盲区（R-INT-07 活案例，全案见 [`BUG-chrome-idle-reaper-second-consumer.md`](../bugs/02-chrome-idle-reaper-second-consumer.md)）。
 
-**修法**：外部消费场景拉起时禁用收割：
+**v1.18.5 起的闭环**（doc/bugs/02 §6 四条建议全落地）：
+
+1. **CLI 显式拉起默认 `--idle-ms 0`**——手敲 `lasso launch-chrome` 起的 Chrome 不再被后台 server 的 reaper 60s 静默收割（显式配置 `LASSO_LAUNCH_IDLE_MS`（env / config.json）与 argv `--idle-ms` 仍最高优先）；「用完即关」语义保留给显式配置层。
+2. **外部活动信号一等通道**——约定文件 `~/.cache/lasso/chrome-touch-<port>` 的 mtime 即「该 port 最近一次外部使用」，reaper 每 tick 顺带 stat，三源取 max（touchMap / touch 文件 / launchedAt）。外部消费者一行续命：
+
+```bash
+touch ~/.cache/lasso/chrome-touch-9223   # 外部 CDP 消费者干活前后 touch 一下即可
+```
+
+旧缓解（仍然有效，用于 record 级精确控制）：
 
 ```bash
 lasso launch-chrome --port 9223 --idle-ms 0   # record 级：仅这条 Chrome 永不收割（推荐）

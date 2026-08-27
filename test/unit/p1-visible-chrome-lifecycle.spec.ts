@@ -16,15 +16,22 @@ import * as path from "node:path";
 // 台账隔离（review-03 F-1 修复）：P3 的 launchChrome 注入测试会经 recordLaunch
 // 写磁盘台账——此前无 LASSO_LAUNCHED_CHROMES_PATH 覆盖，全量套跑一次就往真实
 // ~/.cache/lasso/launched-chromes.json 落一条陈旧 entry（实测 pid 42 污染）。
+// bug02（v1.18.5）同款横扫：ok 路径还会自 touch chrome-touch-<port>（真实
+// ~/.cache/lasso/chrome-touch-9222 污染——曾反噬 chrome-autohide spec 的无注入
+// reaper，flaky）+ hidden fuse 写 desired-hidden 粘滞账——三 env 一并隔离。
 let __tmpDir: string;
 
 beforeEach(async () => {
   __tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "lasso-p1-lifecycle-"));
   process.env.LASSO_LAUNCHED_CHROMES_PATH = path.join(__tmpDir, "launched-chromes.json");
+  process.env.LASSO_DESIRED_HIDDEN_PATH = path.join(__tmpDir, "desired-hidden.json");
+  process.env.LASSO_CHROME_TOUCH_DIR = __tmpDir;
 });
 
 afterEach(async () => {
   delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+  delete process.env.LASSO_DESIRED_HIDDEN_PATH;
+  delete process.env.LASSO_CHROME_TOUCH_DIR;
   await fs.promises.rm(__tmpDir, { recursive: true, force: true });
 });
 

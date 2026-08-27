@@ -15,8 +15,9 @@
  * 闪现上限：intervalMs（默认 1.5s）。任何激活源（上游 CDP / 页面 JS / Chrome 内部）
  * 掀出的窗口至多存活一个 tick——引擎侧章尾守卫降级为第三道 belt。
  *
- * 只活在 server 进程（index.ts 装配）；CLI chrome-hide/show 不启动（进程退出即无
- * 看门狗——粘滞账是跨进程契约，长命 server 消费）。
+ * 宿主形态两种（bug02 v1.18.5 起）：① server 进程（index.ts 装配，永不自退）；
+ * ② 独立执守进程 hide-enforcer（desired-hide-enforcer.ts spawn 的 detached
+ * node ——server 不在时兜执守；粘滞账连续 N tick 为空自退，不留常驻进程）。
  *
  * INV-64 合规：只 import node:* 内置 + 同目录模块。
  */
@@ -50,6 +51,14 @@ export interface DesiredHideWatchdogOptions {
   reassertFn?: (pid: number) => Promise<{ ok: boolean; wasVisible?: boolean; reason?: string }>;
   /** 测试注入：平台（非 darwin 整体 no-op）。 */
   platform?: string;
+  /**
+   * bug02 隐藏全生命周期（v1.18.5）：连续 N 个 tick 粘滞账为空 → 自动 stop +
+   * onIdleExit 回调（独立执守进程 hide-enforcer 的自退出口——账空即无执守对象，
+   * 不留常驻 node 进程）。缺省 undefined = 永不自退（server 进程内既有形态）。
+   */
+  exitWhenIdleTicks?: number;
+  /** exitWhenIdleTicks 触发时回调（执守进程在此 process.exit；server 不配）。 */
+  onIdleExit?: () => void;
   /** 结构化日志注入（index.ts 用 logger 包）。 */
   logFn?: LedgerLogFn;
 }
@@ -83,6 +92,8 @@ export function startDesiredHideWatchdog(
 
   let stopped = false;
   let ticking = false; // 上一 tick 的异步 osascript 未完时不叠 tick（守并发+防堆积）
+  // bug02（v1.18.5）：exitWhenIdleTicks 空转计数（有任何记录即清零）
+  let emptyTicks = 0;
   const timer = setInterval(() => {
     if (stopped || ticking) return;
     ticking = true;
@@ -98,7 +109,20 @@ export function startDesiredHideWatchdog(
 
   async function tick(): Promise<void> {
     const records = readStateFn();
-    if (records.length === 0) return;
+    if (records.length === 0) {
+      // bug02（v1.18.5）：独立执守进程自退——连续 N tick 空账 = 无执守对象
+      if (opts.exitWhenIdleTicks !== undefined) {
+        emptyTicks++;
+        if (emptyTicks >= opts.exitWhenIdleTicks) {
+          stopped = true;
+          clearInterval(timer);
+          logFn({ evt: "desired_hide_watchdog_idle_exit", empty_ticks: emptyTicks });
+          opts.onIdleExit?.();
+        }
+      }
+      return;
+    }
+    emptyTicks = 0;
     const keep: DesiredHiddenRecord[] = [];
     for (const rec of records) {
       if (!aliveFn(rec.pid)) {

@@ -215,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.18.5**（更新日志见本节末尾折叠块）。
+**当前版本 v1.18.6**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -228,8 +228,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.18.3，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>
 
+- **v1.18.6**：外部消费与隐藏执守闭环——① 命令行拉起的 Chrome 默认**不再 60s 被后台静默回收**（外部 CDP 直连工具之前稳定 60-75s 被误杀，如自动化工作流）；外部消费者还可用 `touch ~/.cache/lasso/chrome-touch-<端口>` 一行续命；② 「隐藏的 Chrome 有时藏不住」根治——hidden 档出生即写粘滞账 + 独立执守进程兜底（server 不在也 ≤2s 压回，账空自退不留常驻进程）。
 - **v1.18.5**：发布包清理——**v1.18.1 ~ v1.18.4 的 npm 包误含应用域文件**（某课程抓取工程的中间产物，与 lasso 本体功能无关，已弃用），这些版本请勿安装；本版起发布面收敛为 lasso 本体，体积从 ~28MB 降回正常。
 - **v1.18.4**：desktop 通道修复——① 此前 server 不是从仓库根目录启动时（比如由 Claude Code 等宿主在任意目录拉起），desktop 工具会全部报错 `rust_helper_crashed`：现在 helper 路径按安装位置自动解析，**任意目录启动都可用**；② desktop 起不来时的报错从「裸错误码」变成一眼自诊断（附实际路径、当前目录、修复办法；缺文件/指到目录/缺执行权限/文件损坏各说各话，秒级失败不空等）；③ 二进制构建时自动 ad-hoc 签名（无签名环境的机器跳过不报错）；④ 新增 GitHub CI（每次推送自动跑全量测试）。
 - **v1.18.3**：Chrome 后台静默三连——① **`chrome-hide` 转后台的窗口被任何来源掀出（含上游页面自己弹的），约 1.5 秒内自动压回后台**（server 运行期间一直守着，粘滞状态跨重启保留）；想看窗口用 `chrome-show`（明示解除，不再压回）；② `chrome-hide` / `chrome-show` 新增 `--pid N`：台账缺条目时（Chrome 由旧版启动、台账被清）按进程号直达——只认 lasso 自己的 profile，你手动开的日常 Chrome 一律拒绝；③ Chrome 正忙时不再拖慢并行的其它操作。
@@ -313,7 +314,7 @@ lasso launch-chrome
 以后对 Claude 说「打开我已登录的 Jira」就行。想再看窗口随时 `lasso chrome-show`（可逆，登录态不动）。
 
 - 默认**零窗口静默**干活、不抢焦点、永远静音；想看着它干加 `--mode visible`
-- 用完**约 60 秒自动关**，不用记着收尾；手动关随时 `lasso chrome-stop`
+- 命令行拉起的 Chrome **默认不再自动关**（v1.18.5——手敲命令要的 Chrome 不被后台 60s 静默回收）；想要「用完即关」在 config 配 `LASSO_LAUNCH_IDLE_MS`，手动关随时 `lasso chrome-stop`
 - 它在你 Chrome 里开的 tab，任务后说 `admin {action:"tab_restore", reason:"完成"}` 恢复原列表（server 退出也会自动做）
 
 > 🔴 **红线**：2FA / 验证码 / CAPTCHA——Lasso 不替你解，你在窗口里手动过一次。
@@ -323,13 +324,14 @@ lasso launch-chrome
 
 - v1.8 起默认用 Lasso 独立 profile（Chrome 136+ 禁止对默认 profile 开调试端口，老办法会秒退）；复用已有 profile 用 `lasso launch-chrome --profile <目录>`。
 - 启动后自动探活调试端口，Chrome 没起来 / 端口被占会明确报错，不假报成功。
-- 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。
+- 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。v1.18.5 起**命令行显式拉起默认 `--idle-ms 0`**（不进 reaper 管辖；显式配置 env / config.json 仍最高优先）。
+- **外部 CDP 消费者续命**（v1.18.5）：其他工具（chrome-devtools-mcp、自动化脚本等）直连这条 Chrome 的调试端口时，一行 `touch ~/.cache/lasso/chrome-touch-<端口>` 即视为「刚用过」，lasso 的 idle 回收不会误杀它；不需要常驻（hidden 档冷启动实测 1.5s 内 CDP 可用），一整段会话要用就拉起时配 `--idle-ms 1800000`（半小时到点自动收）。
 - 登录后自动收窗：`LASSO_AUTO_HIDE_AFTER_LOGIN`（默认 false；开启后只在「见过登录页 → 登录页消失 → 等 10 秒 → Claude 没在用」四关全过时才收，收错方向保守——拿不准就不收）。等待时长 `LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`（默认 10000）。只在 server 会话运行期间生效（CLI 单独 `launch-chrome` 没有调度器，仍走手动 `chrome-hide`）。
 - 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
 - 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；它起的 Chrome 在 Dock / 任务栏会多一个图标（浏览器有头进程的注册行为，lasso 控制不了），要零图标用 `browse_headless`；`browse_logged_in` 连**你自己开的可见 Chrome** 时会在你的 Chrome 里临时开一个后台 tab 干活（不抢焦点不发声，结束自动关，v1.17.2 起你的 tab 一律不被改写）——但你的 Chrome 本身不静音（lasso 不改写你的浏览器参数），浏览到自动播放页面会真出声；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
 - chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
 - `chrome-hide` / `chrome-show` 同样只动台账在案的 Chrome（按 pid 定向，永不碰你手动开的浏览器）；hide 只隐藏窗口，进程/登录态/CDP 全保留。台账缺条目时按 `--pid N` 直达（见上文；归属不满足会明确拒绝）。
-- hide 是**粘滞**的（v1.18.3）：server 运行期间，已 hide 的窗口无论被什么来源掀出（上游页面自己弹的、系统焦点切换），约 1.5 秒内自动压回后台；想看窗口用 `chrome-show`（明示解除，不再压回）。粘滞状态跨重启保留，下次 server 启动继续接管。
+- hide 是**粘滞**的（v1.18.3，v1.18.5 补全生命周期）：已 hide 的窗口无论被什么来源掀出（上游页面自己弹的、外部工具开的 tab、系统焦点切换），约 1.5 秒内自动压回后台；想看窗口用 `chrome-show`（明示解除，不再压回）。粘滞状态跨重启保留；v1.18.5 起 hidden 档**出生即受保护**（拉起落账即写粘滞），且由独立执守进程兜底——**即使 Claude 会话/server 不在，隐藏的 Chrome 被掀出也会被压回**（执守是账空自退的短命进程，不留常驻开销）。
 
 </details>
 
@@ -407,7 +409,7 @@ lasso launch-chrome
 |---|---|---|---|---|---|---|
 | `search` / `fetch_url` / `fetch_feed` / `search_local` | 无 | 无 | 无 | 无 | 无 | 极低（纯网络/本地查询，CPU 峰 <3 秒即落） |
 | `browse_headless`（无头浏览） | 无 | 无 | 无 | 无（恒静音） | 无 | 中（存活期约 400MB，闲置 5 分钟自动回收） |
-| `launch-chrome`（默认 hidden 档） | 无 | 无 | **多一个 Chrome 图标**（清不掉，见下方边界） | 无（恒静音） | 无 | 中（server 里约 60 秒不用自动关） |
+| `launch-chrome`（默认 hidden 档） | 无 | 无 | **多一个 Chrome 图标**（清不掉，见下方边界） | 无（恒静音） | 无 | 中（v1.18.5 起 CLI 拉起默认不自动关；配 `LASSO_LAUNCH_IDLE_MS` 才有 ~60 秒自动关） |
 | `launch-chrome --mode visible` | **会**（弹出窗口，你主动选的） | 会 | 会 | 无（也恒静音） | 无 | 中 |
 | `browse_logged_in` 连**你自己开的 Chrome** | 无（逐操作实测） | 无 | 无新增 | **你的 Chrome 不静音**（lasso 不改写你的浏览器） | 无 | 低 |
 | `desktop` 控桌面 | **设计上占用键鼠** | — | — | — | 首次配置授权弹窗 | 极低 |

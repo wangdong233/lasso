@@ -49,6 +49,11 @@ import { recordLaunch, type LedgerLogFn } from "./chrome-ledger.js";
 // 本函数经 MCP chrome-launch 工具进 server 进程，spawnSync osascript（2s 上限）
 // 在请求路径上同步阻塞事件循环（与 P27 已修的 watchdog 同机制同阻塞面）。
 import { hideChromeByPidAsync, type ChromeHideResult } from "./chrome-hide.js";
+// bug02 隐藏全生命周期（v1.18.5，doc/bugs/02 隐藏洞）：hidden 档出生写粘滞账 +
+// 独立执守进程；外部 touch 活动信号（reaper 侧消费，此处成功路径自 touch）。
+import { addDesiredHidden } from "./desired-hide-state.js";
+import { ensureHideEnforcerRunning } from "./desired-hide-enforcer.js";
+import { touchChromePort } from "./chrome-touch.js";
 
 // ============================================================
 // 类型
@@ -109,6 +114,13 @@ export interface LaunchChromeOptions {
   hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
   /** 保险丝延迟（默认 1.5s；测试传 1ms 提速）。 */
   fuseDelayMs?: number;
+  /**
+   * bug02（v1.18.5）测试注入：隐藏全生命周期的执守启动（默认
+   * ensureHideEnforcerRunning——真实 spawn detached 进程；测试注入 no-op 防真起）。
+   * 粘滞账写盘走真实 addDesiredHidden（spec 侧 env LASSO_DESIRED_HIDDEN_PATH 隔离，
+   * 与台账 LASSO_LAUNCHED_CHROMES_PATH 同款范式）。
+   */
+  ensureEnforcerFn?: () => Promise<unknown>;
   /**
    * P3（v1.17.3，得到实战）：TCP 层占用探测注入。预检 /json/version 非 ok/抛错
    * 但端口 TCP 可连时，说明端口被**非 CDP 进程**占住（实测：用户日常 Chrome 的
@@ -354,6 +366,7 @@ export async function launchChrome(
   const plat = opts.platform ?? process.platform;
   const log = opts.logFn ?? defaultLaunchLog;
   const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
+  const ensureEnforcerFn = opts.ensureEnforcerFn ?? (async () => { await ensureHideEnforcerRunning({ logFn: (p) => log(p) }); });
   const args: string[] = [
     `--remote-debugging-port=${port}`,
     `--no-first-run`,
@@ -436,6 +449,20 @@ export async function launchChrome(
       pid,
       ...(r.reason ? { reason: r.reason } : {}),
     });
+    // bug02 隐藏全生命周期（v1.18.5，doc/bugs/02 隐藏洞真机实锤）：hidden 档此前
+    // 「出生即无粘滞保护」——粘滞账全库唯一写入方是 chrome-hide CLI，launch 从不
+    // 写；外部 CDP 消费者掀出后（Target.createTarget 无 background / bringToFront /
+    // 页面 focus）server 全活也无人复隐。fuse hide 成功即写粘滞账 + 确保独立执守
+    // 进程（与 chrome-hide CLI 同语义：hide 成功 → desiredHidden 记账；chrome-show
+    // 清账解除；hide 失败（非 mac / TCC 缺失）不记——与既有 CLI 降级形态一致）。
+    if (r.ok && pid !== undefined) {
+      await addDesiredHidden(
+        { pid, port, profileDir, hiddenAt: Date.now() },
+        (p) => log({ ...p, scope: "launch_hidden_birth" }),
+      );
+      await ensureEnforcerFn();
+      log({ evt: "launch_hidden_sticky_recorded", pid, port });
+    }
   };
 
   const okResult = (pid: number | undefined): LaunchChromeResult => ({
@@ -472,6 +499,8 @@ export async function launchChrome(
         launchMode: mode,
         idleMs: opts.idleMs,
       });
+      // bug02（v1.18.5）：launch 事件本身是一次活动信号（自 touch 确立约定文件）
+      await touchChromePort(port, log);
     }
     await scheduleHideFuse(primary.pid);
     return okResult(primary.pid);
@@ -501,6 +530,7 @@ export async function launchChrome(
           launchMode: mode,
           idleMs: opts.idleMs,
         });
+        await touchChromePort(port, log);
       }
       await scheduleHideFuse(second.pid);
       return okResult(second.pid);
@@ -544,6 +574,7 @@ export async function launchChrome(
       launchMode: mode,
       idleMs: opts.idleMs,
     });
+    await touchChromePort(port, log);
   }
   return {
     ok: false,

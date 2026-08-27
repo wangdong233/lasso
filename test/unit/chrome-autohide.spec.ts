@@ -56,6 +56,9 @@ function makeAutoHideReaper(
     autoHideDelayMs: opts.delayMs ?? 10_000,
     readLedgerFn: () => ledger,
     nowFn: () => now,
+    // bug02（v1.18.5）hermetic：无外部 touch 信号——不读真实 ~/.cache/lasso/
+    // chrome-touch-*（P3 spec 曾真实落 chrome-touch-9222 反噬本 spec，flaky 实锤）
+    touchStatFn: () => undefined,
     tabUrlsFn: async () => {
       const v = urlsByTick[Math.min(tickNo, urlsByTick.length - 1)];
       tickNo++;

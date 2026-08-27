@@ -165,6 +165,8 @@ lasso launch-chrome
 > v1.10 默认静默 + 用完即关：① `launch-chrome` 默认 **hidden 档**——零窗口启动、不抢键盘/窗口焦点、恒静音（macOS 用 `--no-startup-window`，Windows 追加 `--start-minimized`）；唯一可感知残留是 Dock / 任务栏多一个 Chrome 图标（有头 Chrome 进程向系统注册前台应用，lasso 控制不了；要零图标用 `browse_headless`——无头实例经真机实测不注册 Dock/cmd-tab 条目）。想要可见窗口（v1.9 行为）用 `lasso launch-chrome --mode visible`，或在 `~/.lasso/config.json` 配 `"LASSO_LAUNCH_MODE": "visible"`。② **用完即关**：server 运行期间，这个 Chrome 最后一次被使用后约 60 秒内自动关闭（60s idle 判定 + 15s 检查周期，上界 ~75s），不用等 `chrome-stop`。阈值用 `LASSO_LAUNCH_IDLE_MS` 调：要回退 5 分钟配 `300000`；要更激进配 `1000`（代价是间隔稍长的连续操作会触发 ~11 秒重冷启动）；配 `0` 完全禁用（常驻到 `chrome-stop`）。单次 launch 想单独放行用 `lasso launch-chrome --idle-ms 3600000`。③ 诚实边界：`launch-chrome` 单独 CLI 起的 Chrome 没有 idle 回收（回收器只活在 server 进程），关闭出口仍是 `chrome-stop`；`desktop` 通道是模拟真人键鼠，**设计上就会占用你的物理键鼠**，不存在静默形态。
 >
 > v1.17.2 静默边界精修（真机六维实测，doc/governance/08-静默性全面审计）：`browse_logged_in` 连**你自己开的可见 Chrome**——操作面（navigate / click / fill / evaluate / screenshot / snapshot / wait / list / 关页）逐操作真机实测**零抢焦点、零新窗口**；lasso 在你的 Chrome 里自建一个**后台 tab** 干活（不激活、不抢焦点，会话结束自动关），**你的 tab 一律不被改写**（v1.17.1 及之前会把第一个 tab 的内容导走，已修复）。残余边界只有两条：你的 Chrome 本身不静音（lasso 不改写你的浏览器参数，浏览到自动播放页面会真出声——要静音自己启动时加 `--mute-audio`）；操作期间那个后台 tab 会「自认为有焦点」（浏览器调试协议的仿真，不影响你前台应用）。
+>
+> v1.18.5 外部消费闭环（doc/bugs/02）：① **CLI 显式拉起默认 `--idle-ms 0`**——手敲 `lasso launch-chrome` 起的 Chrome 不再被后台 server 的 idle reaper 60s 静默收割（此前外部 CDP 直连工具如 chrome-devtools-mcp 会被误杀）；显式配置 `LASSO_LAUNCH_IDLE_MS`（env / config.json）与 argv `--idle-ms` 仍最高优先，配了就有上述 v1.10 的「用完即关」。② **外部活动信号**：`touch ~/.cache/lasso/chrome-touch-<端口>` 的 mtime 即「刚用过」，reaper 三源取 max——外部消费者一行续命，无需 `--idle-ms 0` 也能共存于「用完即关」阈值下。③ 不需要常驻 Chrome（hidden 档冷启动实测 ~1.5s 内 CDP 可用）；一整段会话要用就 `--idle-ms 1800000`（半小时到点自动收）。
 
 ---
 

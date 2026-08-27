@@ -163,6 +163,10 @@ import { CookieStore } from "./logged-in/CookieStore.js";
 // INV-64 守：launcher/*.ts 不引新 npm dep（仅 node:* 内置）；index.ts 仅 import 子命令入口
 import { runLaunchChromeCli, tcpConnectable } from "./launcher/launch-chrome.js";
 import { runChromeHideShowCli } from "./launcher/chrome-hideshow-cli.js";
+// bug02：hide-enforcer 独立执守进程 CLI 主体（hide 成功/hidden 出生自动拉起）
+// 注：此处不带版本号字面量——inv-selftest INV-63 样本对 index.ts 首个 "x.y.z"
+// 字面量做单次 replace 注入，注释先于 LASSO_SERVER_VERSION 会让注入打到注释上（假绿）。
+import { runHideEnforcerCli } from "./launcher/desired-hide-enforcer.js";
 import {
   runChromeStopCli,
   stopLaunchedChromes,
@@ -224,7 +228,7 @@ const fsReadFile = fsPromises.readFile;
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.18.5";
+const LASSO_SERVER_VERSION = "1.18.6";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -1420,8 +1424,15 @@ const CLI_USAGE = [
   "                                               [--mode hidden|visible] [--idle-ms N]",
   "                                               Launch a debug-enabled Chrome for logged_in channel",
   "                                               (default hidden: zero window, no focus steal;",
+  "                                               CLI launches default to --idle-ms 0 = no auto-",
+  "                                               reap; external CDP consumers stay alive; keep a",
+  "                                               Chrome alive from outside: `touch ~/.cache/lasso/",
+  "                                               chrome-touch-<port>`)",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
   "                                               on-disk ledger (pid ownership verified via cmdline)",
+  "  lasso-mcp hide-enforcer                     Desired-hide enforcer daemon (auto-spawned by",
+  "                                               chrome-hide / launch-chrome hidden; empty ledger",
+  "                                               self-exits; manual run is idempotent)",
   "  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression",
   "  lasso-mcp --version | -v                     Print version",
   "  lasso-mcp --help | -h                        Print this usage",
@@ -1487,11 +1498,21 @@ async function main(): Promise<void> {
   // 跨平台 Chrome launcher 子命令。runLaunchChromeCli 默认读 process.argv.slice(3)。
   // v1.10（parse18 §2.6）：先 loadConfig 把 config.json 文件层默认（launchMode/
   // launchIdleMs）传给 CLI——~/.lasso/config.json 对 CLI 也生效；argv flag 最高优先。
+  // bug02 修复 2（v1.18.5，doc/bugs/02 §6 建议 2 语义级）：CLI **显式**拉起默认
+  // idleMs=0——用户/工作流手敲命令要的 Chrome 不被后台 server reaper 60s 静默收割
+  // （误杀外部 CDP 消费者的根因）；显式配置（env / config.json LASSO_LAUNCH_IDLE_MS）
+  // 与 argv --idle-ms 仍最高优先。lasso 无 server 自动拉起路径（LoggedInChannel 只
+  // 读台账预建 tab 不 spawn），故「用完即关」语义的入口收敛到显式配置层。
   if (process.argv[2] === "launch-chrome") {
     const cliCfg = loadConfig({ runId: "launch-chrome-cli" });
+    const rawIdle = mergedEnv().LASSO_LAUNCH_IDLE_MS;
+    const idleDefault =
+      rawIdle !== undefined && String(rawIdle).trim() !== ""
+        ? cliCfg.launchIdleMs
+        : 0;
     await runLaunchChromeCli(process.argv.slice(3), {
       launchMode: cliCfg.launchMode,
-      idleMs: cliCfg.launchIdleMs,
+      idleMs: idleDefault,
       // P3（v1.17.3）：CLI 装配层注入真实 TCP 探测（核心缺省关闭保测试语义）
       tcpProbeFn: tcpConnectable,
     });
@@ -1508,6 +1529,13 @@ async function main(): Promise<void> {
   // 红线沿用：只操作台账在案 + cmdline 归属验证通过的 pid（复用 chrome-stop 的目标选择）。
   if (process.argv[2] === "chrome-hide" || process.argv[2] === "chrome-show") {
     await runChromeHideShowCli(process.argv[2] === "chrome-show");
+    return;
+  }
+  // bug02 隐藏全生命周期（v1.18.5）：`lasso hide-enforcer` —— 独立执守进程主体
+  //（desired-hide-watchdog 的 detached 宿主；粘滞账连续 2 tick 为空自退。通常由
+  // chrome-hide / launch-chrome hidden 自动拉起，用户无需手跑；手跑幂等）。
+  if (process.argv[2] === "hide-enforcer") {
+    await runHideEnforcerCli();
     return;
   }
   // v1.0 Phase C（parse11 §3.2 + §7.2）：`lasso replay-baseline [--strict]`

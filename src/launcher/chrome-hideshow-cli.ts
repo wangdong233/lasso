@@ -16,11 +16,15 @@
  * 的地面真源出口——**cmdline `--user-data-dir` 必须落在 ~/.cache/lasso/ 产品命名
  * space 内**（比台账更强的结构保证：cmdline 是内核地面真源，台账可陈旧）。
  * 不满足（用户日常 Chrome / pid 复用 / 无标记）→ 拒绝（pid_not_lasso_profile）。
+ *
+ * bug02 隐藏全生命周期（v1.18.5）：hide 成功写粘滞账后 ensureHideEnforcerRunning()
+ * ——拉起独立执守进程兜「server 不在时无人压回」（见 desired-hide-enforcer.ts）。
  */
 import { hideChromeByPid, showChromeByPid } from "./chrome-hide.js";
 import { readLedgerSync } from "./chrome-ledger.js";
 import { verifyOwnership } from "./chrome-stop.js";
 import { addDesiredHidden, removeDesiredHidden } from "./desired-hide-state.js";
+import { ensureHideEnforcerRunning } from "./desired-hide-enforcer.js";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 import * as path from "node:path";
@@ -84,8 +88,15 @@ function defaultPs(pid: number): string {
 /**
  * CLI runner（index.ts 子命令路由调用）。
  * @param show true=chrome-show（恢复可见）；false=chrome-hide（转后台）
+ * @param deps 测试注入（ensureEnforcer 注入后 chrome-hide spec 不真 spawn 执守进程）
  */
-export async function runChromeHideShowCli(show: boolean): Promise<void> {
+export async function runChromeHideShowCli(
+  show: boolean,
+  deps: { ensureEnforcer?: () => Promise<unknown> } = {},
+): Promise<void> {
+  // bug02（v1.18.5）：hide 成功记账后确保独立执守进程在世（server 不在时兜压回）
+  const ensureEnforcer =
+    deps.ensureEnforcer ?? (async () => { await ensureHideEnforcerRunning(); });
   const argv = process.argv.slice(3);
   const portArgIdx = argv.indexOf("--port");
   const port =
@@ -119,6 +130,7 @@ export async function runChromeHideShowCli(show: boolean): Promise<void> {
             profileDir: t.profileDir,
             hiddenAt: Date.now(),
           });
+          await ensureEnforcer();
         }
       }
     }
@@ -147,6 +159,7 @@ export async function runChromeHideShowCli(show: boolean): Promise<void> {
       results.push({ port: rec.port, pid: rec.pid, ok: r.ok, reason: r.reason });
       // P27（v1.18.3）粘滞账：hide 成功 → desiredHidden 记账（server 看门狗每 1.5s
       // 复隐兜「任意激活源掀出」）；show 成功 → 清账（用户明示要看，看门狗不再压回）。
+      // bug02（v1.18.5）：hide 记账后另起独立执守进程（server 不在时也有人压回）。
       if (r.ok) {
         if (show) {
           await removeDesiredHidden(rec.pid);
@@ -157,6 +170,7 @@ export async function runChromeHideShowCli(show: boolean): Promise<void> {
             profileDir: rec.profileDir,
             hiddenAt: Date.now(),
           });
+          await ensureEnforcer();
         }
       }
     }

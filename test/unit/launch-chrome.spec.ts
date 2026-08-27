@@ -111,6 +111,9 @@ function makeMockFetch(
 const FAST_PROBE = {
   probeIntervalMs: 1,
   defaultProfileDir: "/tmp/lasso-chrome-profile-default-test",
+  // bug02（v1.18.5）：隐藏全生命周期测试注入——fuse 成功后不真 spawn 独立执守进程
+  //（粘滞账写盘走 env LASSO_DESIRED_HIDDEN_PATH 隔离，见 beforeAll）
+  ensureEnforcerFn: async () => {},
 } as const;
 
 /** makeMockFetch 的 spread 包装（只透出 fetchFn，不带 urls 数组）。 */
@@ -122,15 +125,27 @@ function makeMockFetchSafe(): { fetchFn: (url: string) => Promise<{ ok: boolean 
 // ============================================================
 // v1.9 台账隔离：launchChrome spawn 成功/慢启动会写 launched-chromes.json 台账。
 // 本 spec 的 mock spawn 返伪 pid —— 必须把台账指到 tmp（不污染 ~/.cache/lasso/）。
+// bug02（v1.18.5）：hidden 档出生写 desired-hidden 粘滞账 + chrome-touch 信号文件
+// ——同款 env 隔离（LASSO_DESIRED_HIDDEN_PATH / LASSO_CHROME_TOUCH_DIR）。
 // ============================================================
 let ledgerTmpDir: string;
+let desiredTmpDir: string;
+let touchTmpDir: string;
 beforeAll(() => {
   ledgerTmpDir = mkdtempSync(path.join(os.tmpdir(), "lasso-launch-chrome-ledger-"));
   process.env.LASSO_LAUNCHED_CHROMES_PATH = path.join(ledgerTmpDir, "launched-chromes.json");
+  desiredTmpDir = mkdtempSync(path.join(os.tmpdir(), "lasso-launch-chrome-desired-"));
+  process.env.LASSO_DESIRED_HIDDEN_PATH = path.join(desiredTmpDir, "desired-hidden.json");
+  touchTmpDir = mkdtempSync(path.join(os.tmpdir(), "lasso-launch-chrome-touch-"));
+  process.env.LASSO_CHROME_TOUCH_DIR = touchTmpDir;
 });
 afterAll(() => {
   rmSync(ledgerTmpDir, { recursive: true, force: true });
   delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+  rmSync(desiredTmpDir, { recursive: true, force: true });
+  delete process.env.LASSO_DESIRED_HIDDEN_PATH;
+  rmSync(touchTmpDir, { recursive: true, force: true });
+  delete process.env.LASSO_CHROME_TOUCH_DIR;
 });
 
 // ============================================================
@@ -794,6 +809,136 @@ describe("P31 · 隐藏保险丝异步化（server 请求路径零阻塞 + F1 �
     expect(src).toMatch(/await scheduleHideFuse\(second\.pid\)/); // 离屏 fallback 成功路径
     // 同步原语（\b 排除 Async 后缀）不得回流本文件——server 请求路径 spawnSync 阻塞面拆除
     expect(src).not.toMatch(/hideChromeByPid\b(?!Async)/);
+  });
+});
+
+// ============================================================
+// bug02 隐藏全生命周期 + 外部 touch 信号（v1.18.5，doc/bugs/02）
+// ============================================================
+describe("bug02 · hidden 档出生写粘滞账 + 自 touch + 执守启动（v1.18.5）", () => {
+  const existing = () => new Set([MACOS_CHROME_CANDIDATES[0].path]);
+
+  it("B1. hidden + fuse ok → desired-hidden 落账（pid/port/profileDir）+ ensureEnforcerFn 被调", async () => {
+    const mockSpawn = makeMockSpawn(31531);
+    const enforcerCalls: number[] = [];
+    await launchChrome({
+      platform: "mac",
+      port: 9661,
+      profileDir: "/tmp/lasso-b02-profile",
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: () => ({ ok: true }),
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+      // 注意顺序：ensureEnforcerFn 必须在 ...FAST_PROBE 之后（FAST_PROBE 内含
+      // no-op ensureEnforcerFn，先写会被覆盖——B1 初版即栽在此）
+      ensureEnforcerFn: async () => {
+        enforcerCalls.push(1);
+      },
+    });
+    const { readDesiredHiddenSync } = await import("../../src/launcher/desired-hide-state.js");
+    const rec = readDesiredHiddenSync().find((r) => r.pid === 31531);
+    expect(rec).toBeDefined();
+    expect(rec!.port).toBe(9661);
+    expect(rec!.profileDir).toBe("/tmp/lasso-b02-profile");
+    expect(typeof rec!.hiddenAt).toBe("number");
+    expect(enforcerCalls).toHaveLength(1); // 记账后确保独立执守（server 不在时兜压回）
+  });
+
+  it("B2. visible 档 ok → 不落粘滞账 + 不启动执守（用户可见窗口不是执守对象）", async () => {
+    const mockSpawn = makeMockSpawn(31532);
+    const enforcerCalls: number[] = [];
+    await launchChrome({
+      platform: "mac",
+      port: 9662,
+      launchMode: "visible",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: () => ({ ok: true }),
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+      // 同 B1：置于 ...FAST_PROBE 之后防覆盖
+      ensureEnforcerFn: async () => {
+        enforcerCalls.push(1);
+      },
+    });
+    const { readDesiredHiddenSync } = await import("../../src/launcher/desired-hide-state.js");
+    expect(readDesiredHiddenSync().find((r) => r.pid === 31532)).toBeUndefined();
+    expect(enforcerCalls).toHaveLength(0);
+  });
+
+  it("B3. hidden + fuse denied（TCC 缺失 / 非 mac）→ 不落粘滞账（与 chrome-hide CLI 降级形态一致）", async () => {
+    const mockSpawn = makeMockSpawn(31533);
+    await launchChrome({
+      platform: "mac",
+      port: 9663,
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: () => ({ ok: false, reason: "osascript_exit_1743" }),
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const { readDesiredHiddenSync } = await import("../../src/launcher/desired-hide-state.js");
+    expect(readDesiredHiddenSync().find((r) => r.pid === 31533)).toBeUndefined();
+  });
+
+  it("B4. fallback（离屏档）ok → 同样落粘滞账（两条 ok 路径无漏网）", async () => {
+    // 第一次 spawn 即退 → fallback 第二次 alive + 探活通过
+    const mockSpawn = makeMockSpawn(31534, "immediate-exit");
+    const fetch = makeMockFetch({ preCheckOk: false, probeOk: false });
+    const origFn = fetch.fetchFn;
+    const fetchFn = async (url: string): Promise<{ ok: boolean }> => {
+      if (mockSpawn.calls.length >= 2) return { ok: true };
+      return origFn(url);
+    };
+    // fallback pid 用第二次 spawn 的 pid（makeMockSpawn 恒返同 pid，直接断言它）
+    await launchChrome({
+      platform: "mac",
+      port: 9664,
+      launchMode: "hidden",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      hideFn: () => ({ ok: true }),
+      ...FAST_PROBE,
+      fetchFn,
+    });
+    expect(mockSpawn.calls.length).toBe(2);
+    const { readDesiredHiddenSync } = await import("../../src/launcher/desired-hide-state.js");
+    expect(readDesiredHiddenSync().find((r) => r.pid === 31534)).toBeDefined();
+  });
+
+  it("B5. ok 路径自 touch：chrome-touch-<port> 文件在 env 隔离目录内诞生（bug02 外部信号约定确立）", async () => {
+    const mockSpawn = makeMockSpawn(31535);
+    await launchChrome({
+      platform: "mac",
+      port: 9665,
+      launchMode: "visible",
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const { chromeTouchMtimeSync } = await import("../../src/launcher/chrome-touch.js");
+    expect(chromeTouchMtimeSync(9665)).toBeGreaterThan(0);
+    expect(chromeTouchMtimeSync(9666)).toBeUndefined(); // 其他 port 无信号
+  });
+
+  it("B6. 白盒：scheduleHideFuse 含 addDesiredHidden + ensureEnforcerFn（出生保护不漂移）", () => {
+    const src = readFileSync("src/launcher/launch-chrome.ts", "utf8");
+    expect(src).toMatch(/await addDesiredHidden\(/);
+    expect(src).toMatch(/if \(r\.ok && pid !== undefined\)/);
+    expect(src).toMatch(/await ensureEnforcerFn\(\)/);
+    // 自 touch 与台账同点（三处 recordLaunch 后）
+    expect(src.match(/await touchChromePort\(port, log\);/g)?.length).toBe(3);
+  });
+
+  it("B7. 白盒：index.ts CLI 显式拉起默认 idleMs=0（无显式配置时不进 reaper 管辖）", () => {
+    const src = readFileSync("src/index.ts", "utf8");
+    // mergedEnv 读原始 key：显式配置（env/config.json）存在才透传 cliCfg.launchIdleMs
+    expect(src).toMatch(/const rawIdle = mergedEnv\(\)\.LASSO_LAUNCH_IDLE_MS;/);
+    expect(src).toMatch(/\? cliCfg\.launchIdleMs\n\s*: 0;/);
   });
 });
 

@@ -51,6 +51,9 @@ function makeReaper(
     defaultIdleMs: opts.defaultIdleMs ?? 60_000,
     readLedgerFn: () => ledger,
     nowFn: () => now,
+    // bug02（v1.18.5）：默认注入「无外部信号」——既有用例不读真实
+    // ~/.cache/lasso/chrome-touch-*（hermetic；外部信号专测见 it 10-12）
+    touchStatFn: () => undefined,
     stopFn: async (o) => {
       stopCalls.push({ port: o.port });
     },
@@ -196,5 +199,50 @@ describe("chrome-idle-reaper —— 台账 Chrome idle 用完即关（parse18 §
     expect(code).not.toContain("process.kill");
     // kill 出口必须经 chrome-stop（import 契约）
     expect(code).toContain("stopLaunchedChromes");
+  });
+
+  // ----- bug02 闭环（v1.18.5，doc/bugs/02）：外部 touch 文件活动信号 -----
+
+  it("10. bug02：外部 touch mtime（30s 前）晚于 launchedAt（75s 前）→ 三源取 max 不杀", async () => {
+    const stopCalls: Array<{ port: number }> = [];
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => [makeRec({ launchedAt: 0 })],
+      nowFn: () => 75_000,
+      touchStatFn: () => 45_000, // 外部消费者 30s 前 touch 过
+      stopFn: async (o) => {
+        stopCalls.push({ port: o.port });
+      },
+    });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(stopCalls).toEqual([]); // lastUse=45s → 距今 30s < 60s
+    reaper?.stop();
+  });
+
+  it("11. bug02：外部 touch 信号陈旧（65s 前无再 touch）→ 照杀（信号不是免死金牌）", async () => {
+    const stopCalls: Array<{ port: number }> = [];
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => [makeRec({ launchedAt: 0 })],
+      nowFn: () => 75_000,
+      touchStatFn: () => 10_000, // 65s 前的陈旧信号（> 60s idle 窗）
+      stopFn: async (o) => {
+        stopCalls.push({ port: o.port });
+      },
+    });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
+    expect(stopCalls).toEqual([{ port: 9222 }]); // max(0, 0, 10s)=10s → 距今 65s > 60s
+    reaper?.stop();
+  });
+
+  it("12. bug02：touchStatFn 缺省接线 chrome-touch（外部信号单一真源；undefined=无信号）", () => {
+    const src = readFileSync(
+      fileURLToPath(new URL("../../src/launcher/chrome-idle-reaper.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(src).toContain('from "./chrome-touch.js"');
+    expect(src).toMatch(/touchStatFn = opts\.touchStatFn \?\? \(\(port: number\) => chromeTouchMtimeSync\(port\)\)/);
+    // 三源取 max：外部信号只会延后收割、永不提前
+    expect(src).toMatch(/Math\.max\(\s*rec\.launchedAt,\s*touchMap\.get\(rec\.port\) \?\? 0,\s*touchStatFn\(rec\.port\) \?\? 0,/);
   });
 });

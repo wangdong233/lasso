@@ -206,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.18.5** (changelog in the collapsed block at the end of this section).
+**Current version v1.18.6** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -219,9 +219,10 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.18.5 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.18.6 — click to see what each version changed)</summary>
 
-- **v1.18.5**: release-package cleanup — **the npm packages of v1.18.1 ~ v1.18.4 accidentally shipped application-domain files** (intermediate artifacts of a course-scraping project, unrelated to Lasso itself; those versions are deprecated). Do not install them. From this version on the published package contains only Lasso proper; size drops from ~28 MB back to normal.
+- **v1.18.6**: external-consumer & hide-enforcement closure — ① a CLI-launched Chrome **is no longer silently reaped after 60 s** (external CDP-direct tools previously died reliably at 60–75 s, e.g. automation workflows); external consumers can also stay alive with one line, `touch ~/.cache/lasso/chrome-touch-<port>`; ② "the hidden Chrome sometimes won't stay hidden" fixed for good — the hidden tier writes the sticky ledger at birth + a standalone enforcer process presses back within ~2 s even with no server alive (self-exits on an empty ledger, leaving nothing resident).
+- **v1.18.5**: release-package cleanup — ① **the npm packages of v1.18.1 ~ v1.18.4 accidentally shipped application-domain files** (intermediate artifacts of a course-scraping project, unrelated to Lasso itself; those versions are deprecated). Do not install them. From this version on the published package contains only Lasso proper; size drops from ~28 MB back to normal.
 - **v1.18.4**: desktop-channel fix — ① previously, when the server was not started from the repo root (e.g. launched by a host such as Claude Code from any directory), all desktop tools failed with `rust_helper_crashed`; the helper path is now resolved from the install location, **works from any directory**; ② startup failures now fail fast with a self-diagnosing message (actual path, cwd, and fix suggestions; missing file / points-to-directory / no-exec-bit / corrupt-binary each get their own wording, failing in seconds instead of hanging); ③ binaries are ad-hoc signed during build (skipped silently on machines without codesign); ④ GitHub CI added (full test suite on every push).
 - **v1.18.3**: background-silence triple — ① **a window folded into the background by `chrome-hide` gets pressed back within ~1.5 s no matter what un-hides it** (upstream pages popping themselves included; guarded the whole time the server runs, and the sticky state survives restarts); use `chrome-show` when you want to look at it (explicit release, no more pressing back); ② `chrome-hide` / `chrome-show` gain `--pid N`: when the ledger has no entry (Chrome launched by an older Lasso, ledger cleared) you can target by process id — only Lasso's own profiles are accepted, your manually-opened daily Chrome is always refused; ③ a busy Chrome no longer slows down parallel operations.
 - **v1.18.2**: fixed the mismatch where long batch tasks throttled themselves — batch tasks now run through by default (a single-user local setup has no "abuser" to guard against; quota self-throttling became an opt-in config); transient DNS failures are no longer misclassified as policy blocks and no longer trigger long circuit breaks; chain-budget overruns now honestly report as retryable; large-task spill files no longer evict recent pages.
@@ -293,7 +294,7 @@ lasso launch-chrome
 The first time, log in to your accounts in that window (handle 2FA yourself) — **the login state is reused from then on**. Afterwards, just say "open my logged-in Jira" to Claude.
 
 - Works **silently with zero window** by default — never steals focus, always muted; add `--mode visible` to watch it work
-- **Auto-closes ~60 s after its last use** — nothing to remember to clean up; `lasso chrome-stop` closes it manually at any time
+- CLI-launched Chrome **no longer auto-closes by default** (v1.18.5 — a Chrome you explicitly asked for is never silently reaped by a background timer after 60 s); for "close when done" configure `LASSO_LAUNCH_IDLE_MS`; `lasso chrome-stop` closes it manually at any time
 - Tabs it opens in your Chrome are restored to the original list when you say `admin {action:"tab_restore", reason:"done"}` after a task (the same happens automatically on server exit)
 
 > 🔴 **Red line**: 2FA / verification codes / CAPTCHA — Lasso doesn't solve these for you; pass them manually once in the window.
@@ -303,12 +304,13 @@ The first time, log in to your accounts in that window (handle 2FA yourself) —
 
 - Since v1.8, a dedicated Lasso profile is used by default (Chrome 136+ forbids opening a debug port on the default profile — the old way would exit instantly); to reuse an existing profile, use `lasso launch-chrome --profile <dir>`.
 - After launch, the debug port is probed automatically; if Chrome didn't come up or the port is taken, it fails loudly instead of faking success.
-- Auto-close threshold: `LASSO_LAUNCH_IDLE_MS` (default 60000; `300000` reverts to 5 minutes; `0` disables). To let a single long task through: `--idle-ms 3600000`.
+- Auto-close threshold: `LASSO_LAUNCH_IDLE_MS` (default 60000; `300000` reverts to 5 minutes; `0` disables). To let a single long task through: `--idle-ms 3600000`. Since v1.18.5 an **explicit CLI launch defaults to `--idle-ms 0`** (outside the reaper's jurisdiction; explicit config via env / config.json still wins).
+- **Keep-alive for external CDP consumers** (v1.18.5): when other tools (chrome-devtools-mcp, automation scripts, …) connect straight to this Chrome's debug port, a single `touch ~/.cache/lasso/chrome-touch-<port>` counts as "just used" — Lasso's idle reaper will not kill it. No resident Chrome is needed (hidden-tier cold start reaches a usable CDP in ~1.5 s measured); for a whole working session, launch with `--idle-ms 1800000` (auto-collects at the half-hour mark).
 - The headless browser auto-recycles after 5 minutes idle (`LASSO_HEADLESS_IDLE_MS` to tune or disable).
 - Honest boundary: running `lasso launch-chrome` standalone (outside the server) has no idle auto-close — the exit is `chrome-stop`; `browse_logged_in` connecting to **your own visible Chrome** is "low-disturbance, not zero-disturbance" (a macOS platform-level limitation — occasional operations may steal focus once) — for pure silence use the hidden tier or `browse_headless`; `desktop` simulates a real human's keyboard and mouse, so it occupies the physical keyboard/mouse by design — there is no silent form.
 - chrome-stop only closes the Chromes Lasso itself launched, with verified ownership — it never touches your manually-opened browsers.
 - `chrome-hide` / `chrome-show` likewise only touch ledger-registered Chromes (pid-targeted, never your manually-opened browsers); hide only hides the window — process / login state / CDP all stay. If the ledger has no entry, target by process id with `--pid N` (see above; anything that isn't Lasso's own profile is refused).
-- Hide is **sticky** (v1.18.3): while the server is running, a hidden window un-hidden by any source (an upstream page popping itself, a system focus switch) is pressed back into the background within ~1.5 s; use `chrome-show` when you want to look at it (explicit release, no more pressing back). The sticky state survives restarts — the next server start takes over again.
+- Hide is **sticky** (v1.18.3; full lifecycle in v1.18.5): a hidden window un-hidden by any source (an upstream page popping itself, a tab opened by an external tool, a system focus switch) is pressed back into the background within ~1.5 s; use `chrome-show` when you want to look at it (explicit release, no more pressing back). The sticky state survives restarts; since v1.18.5 the hidden tier is **protected from birth** (the launch itself writes the sticky ledger), and a standalone enforcer process backs it — **even when the Claude session / server is gone, an un-hidden Chrome gets pressed back** (the enforcer is a short-lived process that self-exits on an empty ledger — no resident overhead).
 
 </details>
 

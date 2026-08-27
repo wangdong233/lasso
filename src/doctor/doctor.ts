@@ -157,7 +157,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.18.5";
+export const LASSO_VERSION = "1.18.6";
 
 // ============================================================
 // 类型
@@ -970,7 +970,7 @@ async function checkCdp9222(port: number): Promise<DoctorCheck> {
         name: "cdp_9222_logged_in",
         status: "fail",
         detail: `CDP /json/version returned HTTP ${versionResp.status}`,
-        next_step: `重启 Chrome with --remote-debugging-port=${port}`,
+        next_step: `重启 Chrome with --remote-debugging-port=${port}（lasso launch-chrome；若约 60-75s 后死 = idle reaper，外部消费场景加 --idle-ms 0 或 touch ~/.cache/lasso/chrome-touch-${port}）`,
       };
     }
     const tabsResp = await fetch(`http://127.0.0.1:${port}/json`, {

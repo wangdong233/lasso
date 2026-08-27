@@ -19,10 +19,16 @@
  * touchMap 是「reaper 读 / LoggedInChannel 经回调写」单写多读形态（R-INT-07 自查：
  * reaper 不写 touchMap，只读；与 SubprocessManager.lastUsedAt 同范式）。
  *
+ * bug02 闭环（v1.18.5，doc/bugs/02 §6 建议 3）：活动源泛化——tick 顺带 stat
+ * `~/.cache/lasso/chrome-touch-<port>` 的 mtime（外部 CDP 消费者一行 `touch` 即
+ * 续命，第二消费者有一等信号通道而不是绕过收割）。lastUse = max(launchedAt,
+ * touchMap, touch 文件 mtime)——三源取 max，外部信号只会延后收割、永不提前。
+ *
  * 只活在 server 进程（index.ts 装配）——CLI 单独 launch-chrome 无 reaper，chrome-stop
  * 仍是显式出口（诚实边界 parse18 §5.1）。
  *
- * INV-64 合规：只 import node:* 内置 + 同目录 chrome-ledger.js / chrome-stop.js。
+ * INV-64 合规：只 import node:* 内置 + 同目录 chrome-ledger.js / chrome-stop.js /
+ * chrome-touch.js / chrome-hide.js。
  */
 import {
   readLedgerSync,
@@ -37,6 +43,8 @@ import { stopLaunchedChromes } from "./chrome-stop.js";
 // 同步阻塞事件循环，与 P27 已修的 watchdog 同机制同阻塞面（Chrome 忙时 AX 枚举
 // 可 >2s；autoHide 触发窗恰是 agent 最可能并发请求的时刻）。
 import { hideChromeByPidAsync, type ChromeHideResult } from "./chrome-hide.js";
+// bug02 闭环（v1.18.5）：外部 CDP 消费者 touch 文件活动信号（mtime 单调真源）
+import { chromeTouchMtimeSync } from "./chrome-touch.js";
 
 // ============================================================
 // 类型
@@ -67,6 +75,11 @@ export interface ChromeIdleReaperOptions {
   hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
   /** 测试注入：读台账（默认 readLedgerSync）。 */
   readLedgerFn?: () => LaunchedChromeRecord[];
+  /**
+   * bug02 测试注入：外部 touch 文件 mtime（默认 chromeTouchMtimeSync）。
+   * 返回 undefined = 无外部信号（文件不存在 / stat 失败）。
+   */
+  touchStatFn?: (port: number) => number | undefined;
   /** 测试注入：时钟（默认 Date.now）。 */
   nowFn?: () => number;
   /** 测试注入：回收出口（默认 stopLaunchedChromes({port})）。 */
@@ -156,6 +169,7 @@ export function startChromeIdleReaper(
       stopLaunchedChromes({ port: o.port, logFn }));
   const tabUrlsFn = opts.tabUrlsFn ?? defaultTabUrlsFn;
   const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
+  const touchStatFn = opts.touchStatFn ?? ((port: number) => chromeTouchMtimeSync(port));
 
   /** port → 最后活动时间（touch 写 / tick 读；单写多读）。 */
   const touchMap = new Map<number, number>();
@@ -192,7 +206,13 @@ export function startChromeIdleReaper(
       }
       const idleMs = rec.idleMs ?? defaultIdleMs;
       if (idleMs <= 0) continue; // record 级禁用（parse18 §2.5 per-launch 覆盖）
-      const lastUse = Math.max(rec.launchedAt, touchMap.get(rec.port) ?? 0);
+      // bug02（v1.18.5）：三源取 max——touchMap（lasso browse）/ 外部 touch 文件
+      // mtime（第二消费者信号）/ launchedAt（兜底）。外部信号只会延后收割、永不提前。
+      const lastUse = Math.max(
+        rec.launchedAt,
+        touchMap.get(rec.port) ?? 0,
+        touchStatFn(rec.port) ?? 0,
+      );
       if (now - lastUse <= idleMs) continue;
       try {
         await stopFn({ port: rec.port });
