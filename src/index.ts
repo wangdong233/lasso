@@ -224,7 +224,7 @@ const fsReadFile = fsPromises.readFile;
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.18.4";
+const LASSO_SERVER_VERSION = "1.18.5";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
