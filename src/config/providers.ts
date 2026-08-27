@@ -16,7 +16,7 @@
 import type { ProviderConfig } from "../types.js";
 
 /**
- * Zhipu web-search-prime 直连 —— **已删除**（v1.17 A3，doc/25 裁决③：保留
+ * Zhipu web-search-prime 直连 —— **已删除**（v1.17 A3，doc/governance/06 裁决③：保留
  * machine_mcp 智谱 MCP 复用，删除 Lasso 自有 key 的 zhipu 直连 API channel）。
  *
  * 清除范围（INV-80 墓碑守卫，防回潮）：
@@ -77,7 +77,7 @@ const BROWSE_LOGGED_IN: ProviderConfig = {
 /**
  * Brave Search —— 结构化 REST API 第二源（parse2 §3.1.2 / §4.1）。
  *
- * 运营事实（2026-08-17 官网 pricing 页 + 控制台口径核实，见 doc/KEY-GUIDE.md「最后核实」列）：
+ * 运营事实（2026-08-17 官网 pricing 页 + 控制台口径核实，见 doc/usage/01-KEY-GUIDE.md「最后核实」列）：
  *  - 2026-02 起免费档取消，改为计量计费（metered）：$5/千次查询。
  *  - 各付费计划附 $5/月赠送额度 ≈ 1000 次/月；注册需绑信用卡 + attribution 要求。
  *  - 因此 free_tier_level="L4"（付费）：L2 保留给无条件免费层；
@@ -285,7 +285,7 @@ export { BROWSERBASE, STAGEHAND };
  *
  * Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告，
  * learn.microsoft.com/lifecycle/announcements/bing-search-apis-retiring；
- * 2026-08-17 核实）。doc/21-搜索方案重审 verdict R-5 曾裁决「占位保留」，
+ * 2026-08-17 核实）。doc/governance/02-搜索方案重审 verdict R-5 曾裁决「占位保留」，
  * v1.15 Phase A 推翻该裁决：占位 provider + BingChannel 装配是死代码，
  * 清除成本 < 维护成本（配置面/描述/INV/测试五处缠绕）。
  *
@@ -360,7 +360,7 @@ export { MACHINE_MCP };
 // v1.6 Phase A 新增（parse14 §3.3 —— Steel 自托管 cloud 浏览器 provider）
 // ============================================================
 /**
- * Steel —— 自托管 Browserbase（parse14 §1.1 + doc/16 §0 #3）。
+ * Steel —— 自托管 Browserbase（parse14 §1.1 + doc/archive/research/16 §0 #3）。
  *
  * Steel（Apache-2.0，steel-dev/steel-browser）自托管 cloud 浏览器服务，与 Lasso
  * BrowserbaseChannel 范式 1:1 同构，但自托管 = 零 per-session 费 + cookie 不出本地
@@ -370,7 +370,7 @@ export { MACHINE_MCP };
  *  - type="self_hosted"（自托管 Docker；非 api_key 型）
  *  - keys=[]（无 API key；自托管默认无 auth）
  *  - endpoint_url=null（运行时从 STEEL_ENDPOINT 读 http://localhost:3000）
- *  - policy_risk="safe"（自托管无收购/商用风险；doc/16 §5 建议 2）
+ *  - policy_risk="safe"（自托管无收购/商用风险；doc/archive/research/16 §5 建议 2）
  *  - licence="apache2"（Steel Apache-2.0 兼容 Lasso MIT；parse14 §8.3）
  *  - commercial_safe=true（用户自己跑 Docker，无 ToS 风险）
  *  - tags=["browse","cloud","self_hosted"]（cloud 前缀触发 PolicyGate INV-25 守）
@@ -393,7 +393,7 @@ const STEEL: ProviderConfig = {
   quota_model: "request",
   fallback_order: 12, // 在 stagehand(11) 之后（cloud 链尾）
   free_tier_level: "L1", // self_hosted 等价零成本
-  policy_risk: "safe", // 自托管无收购/商用风险（doc/16 §5 建议 2）
+  policy_risk: "safe", // 自托管无收购/商用风险（doc/archive/research/16 §5 建议 2）
   licence: "apache2", // Steel Apache-2.0（LICENSE 确认）
   commercial_safe: true, // 用户自己跑 Docker，无 ToS 风险
   tags: ["browse", "cloud", "self_hosted"],

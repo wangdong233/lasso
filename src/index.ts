@@ -27,7 +27,7 @@
  * 架构不变量（INV-1..30）由 src/invariants/check-invariants.mjs 守；
  * ToolAnnotations 完整（INV-5）由 tools/*.ts 注册时携带。
  *
- * 权威：../doc/08-media-interact-功能架构.md
+ * 权威：../doc/architecture/01-功能架构.md
  * 实施：../doc/archive/parse/parse1.md (v0.1) + parse2.md (v0.2) + parse3.md (v0.3) +
  *       parse4.md (v0.3.5) + parse5.md (v0.4)（2026-08-27 仓迁：parse/ 已归档至 doc/archive/parse/）
  */
@@ -47,7 +47,7 @@ import { resolveRustHelperPath } from "./subprocess/rust-helper-path.js";
 import { BraveChannel } from "./channels/BraveChannel.js";
 // v1.15 Phase A（Bing 死层清除）：BingChannel 第三源已删（Bing Search APIs
 // 2025-08-11 全量退役；INV-54 墓碑守卫禁回潮，见 providers.ts 墓碑说明）。
-// v1.17 A3（doc/25 裁决③）：zhipu 直连 SearchChannel 已删（INV-80 墓碑守卫；
+// v1.17 A3（doc/governance/06 裁决③）：zhipu 直连 SearchChannel 已删（INV-80 墓碑守卫；
 // 智谱能力由 MachineMcpSearchChannel 机器 MCP 复用承载）。
 // v1.4 Phase A（parse-v1.4 §Phase A）：MachineMcpSearchChannel 机器 MCP 复用
 // 守 INV-72：本通道仅在 detectMachineSearchMcp() 命中时实例化；否则不注册保零回归
@@ -106,7 +106,7 @@ import { registerNetworkTool } from "./tools/network.js";
 // INV-56 守：必经 ssrfGuard + doFetchUrl（与 fetch_url 同函数同 config）
 // INV-58 守：本 tool 是独立 tool，不在 search 主路径里自动调
 import { registerWaybackTool } from "./tools/wayback.js";
-// doc/24 颠覆性调研 verdict D-GO-2（2026-08-18）：fetch_feed 无状态 RSS/Atom 原语
+// doc/governance/05 颠覆性调研 verdict D-GO-2（2026-08-18）：fetch_feed 无状态 RSS/Atom 原语
 // （freshness 推模型——发布即推送，零索引滞后）。INV-56 家族守：必经 ssrfGuard +
 // doFetchUrl；独立 tool 不进 search 降级链（与 wayback_lookup 同范式）
 import { registerFetchFeedTool } from "./tools/fetch-feed.js";
@@ -114,7 +114,7 @@ import { registerFetchFeedTool } from "./tools/fetch-feed.js";
 // browse/StepEngine 超 48KiB spill 后 continue_hint 指向的工具经 MCP 不可达，
 // wave1 T-TOOLS-13/T-TOOLS-08 采证 6 处 description 指向 + continue_hint 落空）
 import { registerReadTextTool } from "./tools/read-text.js";
-// doc/25 裁决④（B1 第四通道，2026-08-18）：search_local 本地私有数据搜索
+// doc/governance/06 裁决④（B1 第四通道，2026-08-18）：search_local 本地私有数据搜索
 // （Chrome History 多 profile 只读 + mdfind；Notes deferred v2）——纯本地工具
 // 直连范式（照 read_text/doctor-tool 先例，不建 BaseChannel；INV-81 隐私红线）
 import { registerSearchLocalTool } from "./search-local/register-search-local-tool.js";
@@ -330,7 +330,7 @@ async function runConfigCli(args: string[]): Promise<void> {
       if (created) {
         process.stdout.write(
           `Created config template at:\n  ${p}\n\n` +
-            `Edit it to fill in your keys (see doc/KEY-GUIDE.md).\n` +
+            `Edit it to fill in your keys (see doc/usage/01-KEY-GUIDE.md).\n` +
             `Env variables still override this file (backward compatible).\n`,
         );
       } else {
@@ -420,7 +420,7 @@ async function runMcpServer(): Promise<void> {
   const cookieStoreFactory = (profileName: string): CookieStore =>
     new CookieStore(config.cacheDir, profileName);
 
-  // v1.17 A3（doc/25 裁决③）：zhipu 直连 SearchChannel 装配段已删（INV-80 墓碑守卫；
+  // v1.17 A3（doc/governance/06 裁决③）：zhipu 直连 SearchChannel 装配段已删（INV-80 墓碑守卫；
   // 智谱能力现行载体 = machine_mcp 机器 MCP 复用，见下方装配段）。
 
   // ----- v1.4 Phase A：机器 MCP 复用（parse-v1.4 §Phase A）-----
@@ -471,7 +471,7 @@ async function runMcpServer(): Promise<void> {
   // chrome-stop（探活→ps 归属验证→SIGTERM→树杀→删账；零新 kill 路径）。
   // 0 = 禁用（chrome_idle_reaper_disabled；台账 Chrome 常驻到 chrome-stop / 停机）。
   let chromeReaper: ChromeIdleReaper | null = null;
-  // C2（v1.18，doc/28 D-2）：autoHideAfterLogin 开启时 reaper 也要跑（visible 记录
+  // C2（v1.18，doc/governance/09 D-2）：autoHideAfterLogin 开启时 reaper 也要跑（visible 记录
   // 的「登录完成→自动 hide」由 reaper tick 驱动，与 idle 收割同一调度器——不建
   // 第二套 timer）。idle 关闭 + autoHide 关闭才整体禁用。
   if (config.launchIdleMs > 0 || config.autoHideAfterLogin) {
@@ -775,7 +775,7 @@ async function runMcpServer(): Promise<void> {
 
   // ----- v1.15 Phase B（parse22 §3）：serp_http 裸 HTTP 快探层装配 -----
   // browse_headless（冷启动 ~11s + Chromium 树）之前的 ~1s 级探针。
-  // 白盒依据（doc/21 + v1.14 实测）：裸 curl 打 search.brave.com 返 200+22 条，
+  // 白盒依据（doc/governance/02 + v1.14 实测）：裸 curl 打 search.brave.com 返 200+22 条，
   // 真 Chrome 反吃验证码——API 全挂时先裸 HTTP 探一次，探不到再升真浏览器。
   // fetch 经 SubprocessManager.httpAgents 池（per-origin 懒建；单一真源不 new Agent）；
   // SSRF 纵深与 browse/fetch_url 共用同一 ssrfConfig；serpHealth 复用改版检测链。
@@ -863,7 +863,7 @@ async function runMcpServer(): Promise<void> {
   registerNetworkTool(server, headless, ssrfConfig);
   // v1.8 Phase D（D1）：read_text 注册（@oN 续页；readOnly + 非 openWorld，INV-5）
   registerReadTextTool(server);
-  // doc/25 裁决④（B1 第四通道）：search_local 本地私有搜索注册
+  // doc/governance/06 裁决④（B1 第四通道）：search_local 本地私有搜索注册
   // （Chrome History + mdfind 两源先行；Notes deferred_v2 诚实 didnt）
   // 纯本地只读、零网络（INV-81(d)）；四处联动第 2 处（INV-81(f)）
   registerSearchLocalTool(server);
@@ -871,7 +871,7 @@ async function runMcpServer(): Promise<void> {
   // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
   // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
   registerWaybackTool(server, subproc, ssrfConfig);
-  // doc/24 verdict D-GO-2（2026-08-18）：fetch_feed 独立 tool（RSS/Atom/JSON Feed 原语）
+  // doc/governance/05 verdict D-GO-2（2026-08-18）：fetch_feed 独立 tool（RSS/Atom/JSON Feed 原语）
   // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56 家族）
   registerFetchFeedTool(server, subproc, ssrfConfig);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
@@ -985,13 +985,13 @@ async function runMcpServer(): Promise<void> {
     // v0.9 Phase B（parse10 §3.3）：wayback_lookup 归到 "wayback" channel（独立 caller-tier）。
     // bag.disable("wayback") 仅停 wayback_lookup tool；不影响 search 主路径（INV-58 守）。
     wayback_lookup: "wayback",
-    // doc/24 verdict D-GO-2：fetch_feed 归到独立虚拟 channel（与 read_text 同范式——
+    // doc/governance/05 verdict D-GO-2：fetch_feed 归到独立虚拟 channel（与 read_text 同范式——
     // 无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
     fetch_feed: "fetch_feed",
     // v1.8 Phase D（D1）：read_text 归到独立虚拟 channel（与 fetch/screenshot/pdf/network
     // 同范式——无子进程、无 bag entry，仅 ToolManager caller-tier 隔离用）
     read_text: "read_text",
-    // doc/25 裁决④（B1 第四通道）：search_local 归到独立虚拟 channel
+    // doc/governance/06 裁决④（B1 第四通道）：search_local 归到独立虚拟 channel
     // （与 read_text 同范式——纯本地工具，无子进程、无 bag entry，
     // 仅 ToolManager caller-tier 隔离用；四处联动第 3 处，INV-81(f)）
     search_local: "search_local",
@@ -1135,7 +1135,7 @@ async function runMcpServer(): Promise<void> {
     longBreakers.set(
       name,
       new LongCircuitBreaker(
-        10, // threshold：1h 内 10 次**持续故障类**失败 → open（doc/29 F2a 喂入分类后
+        10, // threshold：1h 内 10 次**持续故障类**失败 → open（doc/governance/10 F2a 喂入分类后
         //                              DNS/timeout 等环境瞬态不再计数——TUN 断网不再触发 60min disable）
         3_600_000, // windowMs：1h 滑动窗
         3_600_000, // resetMs：open 持续 60min
@@ -1148,7 +1148,7 @@ async function runMcpServer(): Promise<void> {
           });
         },
         name,
-        // v1.18.2（doc/29 F2c 恢复闭环）：breaker 恢复（half-open probe 成功）→
+        // v1.18.2（doc/governance/10 F2c 恢复闭环）：breaker 恢复（half-open probe 成功）→
         // 联动 bag.enable——但仅恢复长熔断**自己**造成的 disable（reason 守卫），
         // 不越权恢复 admin 手工 capability_disable 的通道（保守边界不变）。
         async (n) => {
@@ -1392,7 +1392,7 @@ async function runMcpServer(): Promise<void> {
   process.on("exit", () => {
     // v1.9（parse17 §3.6 机制二）：exit 钩子同步收尾台账 Chrome（零 await 纪律，
     // W1-DEF-6 先例——同步版跳过 SIGTERM 优雅步，ps 验证归属后 killTreeSync 直杀）。
-    // D-5（v1.18，doc/28-静默守则审计 verify §6 三次复现实锤）：exit 钩子同样
+    // D-5（v1.18，doc/governance/09-静默守则审计 verify §6 三次复现实锤）：exit 钩子同样
     // modes:["hidden"]——P1（v1.17.3）只修了优雅 shutdown 路径，本兜底路径曾把
     // 用户 visible 登录窗口整树 SIGKILL（stdin EOF 即触发）。visible 档关闭出口
     // 只有显式 chrome-stop；台账条目保留（进程还活着，不能清账孤儿化）。

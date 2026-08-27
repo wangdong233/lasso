@@ -270,9 +270,9 @@ describe("BudgetTracker — chain 生命周期综合", () => {
 });
 
 // ============================================================
-// v1.18.2（doc/29 F3+Y1）：budget_ms 入参钳制
+// v1.18.2（doc/governance/10 F3+Y1）：budget_ms 入参钳制
 // ============================================================
-describe("clampChainBudgetMs — budget_ms 入参钳制（doc/29 Y1）", () => {
+describe("clampChainBudgetMs — budget_ms 入参钳制（doc/governance/10 Y1）", () => {
   it("undefined / 非法值 → DEFAULT_CHAIN_BUDGET_MS（120s）", () => {
     expect(clampChainBudgetMs(undefined)).toBe(120_000);
     expect(clampChainBudgetMs(Number.NaN)).toBe(120_000);

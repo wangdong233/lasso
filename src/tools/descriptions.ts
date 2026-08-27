@@ -208,7 +208,7 @@ export const BROWSE_LOGGED_IN_DESCRIPTION = [
   "",
   "IF CHROME IS NOT RUNNING you get outcome=unknown + error like",
   "\"Could not connect to Chrome ... /json/version: fetch failed\". Fix runbook",
-  "(doc/28 audit D-1):",
+  "(doc/governance/09 audit D-1):",
   "  lasso launch-chrome                  # hidden mode, zero-window silent",
   "  lasso launch-chrome --mode visible   # FIRST-TIME login only: window",
   "                                       # appears, user logs in (2FA incl.),",
@@ -787,7 +787,7 @@ export const ADMIN_DESCRIPTION = [
 ].join("\n");
 
 // ============================================================
-// FETCH_FEED（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）
+// FETCH_FEED（doc/governance/05 颠覆性调研 verdict D-GO-2，2026-08-18）
 // ============================================================
 /**
  * fetch_feed tool 描述（zero-base §3-I3 / scan-edge §4：freshness 推模型原语）。
@@ -836,7 +836,7 @@ export const FETCH_FEED_DESCRIPTION = [
 ].join("\n");
 
 // ============================================================
-// search_local（doc/25 裁决④ B1 第四通道 + parse24 §5，2026-08-18）
+// search_local（doc/governance/06 裁决④ B1 第四通道 + parse24 §5，2026-08-18）
 // ============================================================
 /**
  * search_local 工具描述。

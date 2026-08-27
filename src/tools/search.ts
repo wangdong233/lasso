@@ -4,7 +4,7 @@
  * v0.1：单一 fallback 链 search.zhipu → browse_headless（cross_modal=true）。
  * v0.2：加 engine enum / free_only / attributed / 多源扇出 / SearchCache。
  * v0.9 Phase B（parse10 §3 + §1 决策 4）：加 engine="fallback_chain" 显式 opt-in。
- * v1.17 A3（doc/25 裁决③）：zhipu 直连 API channel 删除——engine enum 去 "zhipu" 值；
+ * v1.17 A3（doc/governance/06 裁决③）：zhipu 直连 API channel 删除——engine enum 去 "zhipu" 值；
  * auto 路径源集合动态化 [machine_mcp?, brave?]；free_only 过滤后 API 源全空且
  * machine_mcp 已注入 → 降级 machine_mcp 单源（L1 ≤ 任何档位）。
  *
@@ -121,7 +121,7 @@ export const searchSchema = {
    */
   freshness: z.enum(["day", "week", "month", "year"]).optional(),
   /**
-   * v1.17 Phase C 新增（A2′ 自研第二跳，doc/25 裁决② + parse24 §3）：
+   * v1.17 Phase C 新增（A2′ 自研第二跳，doc/governance/06 裁决② + parse24 §3）：
    * 拿到搜索结果后对 top N 条并发裸 HTTP 抓正文（raw HTTP，不起浏览器），
    * defuddle 抽取 + 查询相关裁剪（~6k 字符/条），零付费依赖。
    * optional 无 default —— 不传 = 关 = 现行行为 byte-identical（与
@@ -841,7 +841,7 @@ export async function runFallbackChainEngine(
   if (fbResult.outcome !== "worked" && recordingStore) {
     try {
       const replayResult = await recordingStore.replay("fallback_chain", query);
-      // ZB-3b（doc/24 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
+      // ZB-3b（doc/governance/05 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
       // replay 键只有 (engine, query)，不含 freshness —— 不设门则 freshness=day 的查询
       // 在全源熔断时会拿到数月前录的 fixture 标 worked（freshness 倒挂：链尾是最陈源）。
       // 门规则：fixture 年龄 > freshness 窗口 → 视为 replay_miss（返原 fbResult，诚实 didnt/unknown）。

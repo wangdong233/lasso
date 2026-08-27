@@ -36,7 +36,7 @@ const DEFAULT_MAX_ENTRIES = 1000; // LRU 上限
 const GC_EVICT_RATIO = 0.1; // 超 MAX 时删最旧 10%
 
 /**
- * ZB-3（doc/24 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合。
+ * ZB-3（doc/governance/05 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合。
  *
  * 修复前：TTL_MS 是常量 7 天，freshness 只入 cache key 不入 TTL —— freshness=day
  * 的查询在第 6 天命中缓存时，返回的是 6 天前筛的「过去一天」结果且无陈旧标记

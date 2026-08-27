@@ -3,7 +3,7 @@
  *
  * 用户需求：零配置优先——如果机器已配过 web-search-prime MCP（CC 全局 ~/.claude.json），
  * Lasso 直接复用它的 Authorization Bearer key 先搜（v1.17 A3 起是智谱搜索能力的
- * 唯一载体——zhipu 直连 API channel 已删，doc/25 裁决③）；额度不足/失败 → fallback
+ * 唯一载体——zhipu 直连 API channel 已删，doc/governance/06 裁决③）；额度不足/失败 → fallback
  * 链自动降级到 brave → serp_http → browse_headless。
  * （v1.15 Phase A：bing 档已死层清除——Bing Search APIs 2025-08-11 全量退役。）
  *

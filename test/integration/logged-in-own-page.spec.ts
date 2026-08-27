@@ -1,5 +1,5 @@
 /**
- * logged-in-own-page 集成测（v1.17.3 doc/27-静默性全面审计 S-7 修复）
+ * logged-in-own-page 集成测（v1.17.3 doc/governance/08-静默性全面审计 S-7 修复）
  *
  * 端到端验证 LoggedInChannel.ensureOwnPageSelected 装配链（连「用户自开 Chrome」
  * 时把 lasso 操作面从 pages[0] 挪到自建后台 tab）：

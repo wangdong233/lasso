@@ -1,5 +1,5 @@
 /**
- * fetch_feed tool 注册（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）。
+ * fetch_feed tool 注册（doc/governance/05 颠覆性调研 verdict D-GO-2，2026-08-18）。
  *
  * **为什么存在（zero-base §3-I3 / scan-edge §4）**：
  *  - SERP 索引滞后小时~天级；RSS/Atom 是**推模型**——发布即推送，零索引滞后，
@@ -329,7 +329,7 @@ export async function doFetchFeed(
   // ---------- 1. SSRF 守门（INV-56 家族） ----------
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
 if (!ssrfResult.allowed) {
-    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
     // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
     const d = ssrfDenial(ssrfResult.reason);
     return {

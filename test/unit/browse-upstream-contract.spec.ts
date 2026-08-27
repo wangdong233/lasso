@@ -479,7 +479,7 @@ describe("W1-DEF-5 — navigate 校验（404 / DNS 错误页不再是假 worked�
     expect(r.error).toContain("http_404");
   });
 
-  it("Chrome DNS 错误页（This site can't be reached + ERR_NAME_NOT_RESOLVED）→ unknown + dns_or_nav_error（doc/29 Y2：不再是假 worked，也不再误判语义否定）", async () => {
+  it("Chrome DNS 错误页（This site can't be reached + ERR_NAME_NOT_RESOLVED）→ unknown + dns_or_nav_error（doc/governance/10 Y2：不再是假 worked，也不再误判语义否定）", async () => {
     const { client } = makeUpstreamClient({
       snapshotText:
         "This site can’t be reached\n\nwww.nonexistent-example.com’s server IP address could not be found.\nDNS_PROBE_FINISHED_NXDOMAIN",
@@ -490,7 +490,7 @@ describe("W1-DEF-5 — navigate 校验（404 / DNS 错误页不再是假 worked�
     expect(r.error).toContain("dns_or_nav_error");
   });
 
-  it("上游 navigate 直接抛 ERR_NAME_NOT_RESOLVED → unknown + dns_or_nav_error（doc/29 Y2：DNS 瞬态可重试/可 fallback）", async () => {
+  it("上游 navigate 直接抛 ERR_NAME_NOT_RESOLVED → unknown + dns_or_nav_error（doc/governance/10 Y2：DNS 瞬态可重试/可 fallback）", async () => {
     const { client } = makeUpstreamClient({
       navigate: (() => {
         throw new Error("net::ERR_NAME_NOT_RESOLVED at https://no-such-host.invalid/");

@@ -110,7 +110,7 @@ Your first output — just say to Claude:
 - **Scrape logged-in pages** (Jira / private GitHub / company intranet) → run `lasso launch-chrome` once
 - **Control the macOS desktop** → run `lasso doctor` once to be guided through authorization
 
-How to obtain each key, what free tiers exist — see the [**Key Configuration Guide**](./doc/KEY-GUIDE.md).
+How to obtain each key, what free tiers exist — see the [**Key Configuration Guide**](./doc/usage/01-KEY-GUIDE.md).
 
 ---
 
@@ -198,7 +198,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 **Completely off by default.** Only activates when you explicitly turn it on AND have configured a cloud browser (self-hosted Steel or hosted browserbase/stagehand). Light anti-bot is already handled by `browse_headless`'s built-in anti-detection — **only Cloudflare-grade heavy protection needs the cloud browser**.
 
-- **Steel self-hosted (recommended · free)**: run an open-source cloud browser in local Docker — zero per-session cost, cookies never leave your machine. One command to set up, see [Key Guide · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **Steel self-hosted (recommended · free)**: run an open-source cloud browser in local Docker — zero per-session cost, cookies never leave your machine. One command to set up, see [Key Guide · Steel](./doc/usage/01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
 - **browserbase (hosted · paid)**: pay-as-you-go after trial; the fallback when you don't want to run Docker yourself.
 - **stagehand (hosted · paid)**: ⚠️ a programmatic experimental channel — configuring its key only assembles an internal channel, **there is no MCP tool entry** (the REST contract is unverified; `lasso doctor` #39 `stagehand_rest_contract_probe` tests exactly this).
 
@@ -237,7 +237,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 - **v1.11**: desktop goes from "can watch" to "can click" (click/type/scroll really implemented + coordinate mouse + `skeleton` pruning); driver layer upgraded to chrome-devtools-mcp 1.7.0 (launch-level stealth, telemetry off by default); search gained the `freshness` time filter; zero-key English fallback switched to DuckDuckGo; new `LASSO_PROXY` egress proxy.
 - **v1.10**: browsers silent by default + closed when done (`launch-chrome` zero-window launch, ~60 s auto-close, `--mode visible` to revert).
 - **v1.9**: browser lifecycle wind-down (headless auto-recycled after 5 minutes idle, `lasso chrome-stop`, `tab_restore` restores the original tab list).
-- **v1.8**: fixed the 24 defects exposed by the full field test (upstream contract adaptation, screenshots actually landing on disk, `read_text` pagination, etc.) — full list in the "v1.8 fix record" of [doc/17-功能测试清单.md](doc/17-功能测试清单.md).
+- **v1.8**: fixed the 24 defects exposed by the full field test (upstream contract adaptation, screenshots actually landing on disk, `read_text` pagination, etc.) — full list in the "v1.8 fix record" of [doc/testing/01-功能测试清单.md](doc/testing/01-功能测试清单.md).
 
 </details>
 
@@ -280,7 +280,7 @@ Takes effect on save. Brave is a paid plan that includes a \$5/month credit ≈ 
 
 > Fallback order: machine MCP reuse → Brave (if a key is set) → live search in the headless browser as the last resort (v1.14: dual-engine English fallback — a DDG failure/empty result automatically retries once via Brave live search; v1.15 adds a **bare-HTTP quick probe** (~1s, fetches the results page with no browser at all — in real-machine tests some engines are less suspicious of browserless clients) before the slow headless path). If the one ahead fails, it auto-switches to the next. (The Bing source was removed outright after the upstream retired it on 2025-08-11, and the Zhipu direct tier was deleted in v1.17; leftover `BING_API_KEYS` / `ZHIPU_API_KEY` are silently ignored and `lasso doctor` will suggest removing them.)
 
-How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
+How to apply for keys, how big the free tiers are → [Key Configuration Guide · Search](./doc/usage/01-KEY-GUIDE.md#a-搜索). Common commands: `lasso --version` / `lasso --help` (since v1.8, unknown commands print usage and exit non-zero instead of silently hanging).
 
 ### 2. Scrape Logged-in Pages (✅ Free · one command, no key)
 
@@ -310,7 +310,7 @@ The first time, log in to your accounts in that window (handle 2FA yourself) —
 
 </details>
 
-**Details** → [Key Configuration Guide · Logged-in Browsing](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
+**Details** → [Key Configuration Guide · Logged-in Browsing](./doc/usage/01-KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
 ### 3. Drive the Desktop (✅ Free · authorize once, no key)
 
@@ -320,7 +320,7 @@ The first time, log in to your accounts in that window (handle 2FA yourself) —
 
 > Honest boundary: macOS is verified in real environments; Windows / Linux pass compile-time and contract-level self-checks, while full real-machine manual testing is still in progress — no faking "fully verified".
 
-**Details** → [Key Configuration Guide · Desktop Control](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
+**Details** → [Key Configuration Guide · Desktop Control](./doc/usage/01-KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
 ### 4. Cloud Browser (off by default · only needed for heavy anti-bot)
 
@@ -337,7 +337,7 @@ Light anti-bot is already handled by `browse_headless`'s built-in anti-detection
 - **browserbase hosted (paid)**: swap in `"BROWSERBASE_API_KEY": "your_key"` — the fallback when you don't want to run Docker
 - ⚠️ stagehand: a programmatic experimental channel with no MCP tool entry — don't count on it for scraping pages
 
-**How to apply for keys, full Steel setup steps** → [Key Configuration Guide · Cloud Browser](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
+**How to apply for keys, full Steel setup steps** → [Key Configuration Guide · Cloud Browser](./doc/usage/01-KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁).
 
 <details>
 <summary><b>Advanced tuning (optional — ordinary users can skip)</b></summary>
@@ -355,7 +355,7 @@ You can **completely ignore** the below for daily use. These are only for specia
 - Set an egress proxy for browsers (`LASSO_PROXY`, e.g. `http://127.0.0.1:7890`; **affects the headless browser and the Steel cloud browser only — your logged-in Chrome's egress always stays as-is** — v1.11)
 - Set the Steel self-hosted cloud browser endpoint (`STEEL_ENDPOINT`, e.g. `http://localhost:3000`; needs `LASSO_ALLOW_CLOUD_BROWSER=true` too in order to activate)
 
-Full variable list and defaults: [Key Configuration Guide · Advanced Tuning](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Surge / Clash TUN proxy networks (fake-ip, `198.18.0.0/15`) and `127.0.0.1` (used by the local Chrome CDP debug port) are already allowed out of the box** — no extra configuration needed. That's by design, not a missing setting.
+Full variable list and defaults: [Key Configuration Guide · Advanced Tuning](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配). **Surge / Clash TUN proxy networks (fake-ip, `198.18.0.0/15`) and `127.0.0.1` (used by the local Chrome CDP debug port) are already allowed out of the box** — no extra configuration needed. That's by design, not a missing setting.
 
 > **Backward compatible**: if you previously installed with `claude mcp add -e KEY=VAL`, those env variables **still work** and **override** the config file. The config file is just an additional, friendlier path — it does not replace env.
 
@@ -390,7 +390,7 @@ Your data is yours.
 | Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
 | Want to verify the anti-detection effect | Run `lasso doctor --stealth-check` — it drives the creepjs detection page and compares against a baseline (optional, doesn't affect daily use) |
 
-Full FAQ and debugging tips in [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+Full FAQ and debugging tips in [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 ---
 
@@ -420,7 +420,7 @@ If Lasso helps you, buy the author a coffee ☕
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
+<img src="doc/assets/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/assets/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
 
 </div>
 
@@ -430,15 +430,15 @@ Or ⭐ [Star this repo](../../stargazers), [open an Issue](../../issues), or [se
 
 ## More Docs
 
-- Deep architecture? See [Feature Architecture](doc/08-media-interact-功能架构.md)
-- Version roadmap? See [Implementation Roadmap](doc/09-media-interact-实施排期.md)
-- Key setup? See [Key Configuration Guide](doc/KEY-GUIDE.md)
+- Deep architecture? See [Feature Architecture](doc/architecture/01-功能架构.md)
+- Version roadmap? See [Implementation Roadmap](doc/architecture/02-实施排期.md)
+- Key setup? See [Key Configuration Guide](doc/usage/01-KEY-GUIDE.md)
 
 ## License
 
 **MIT** © wangdong233. The desktop helper process and browser-engine dependencies are all MIT / Apache-2.0 — safe for enterprise use.
 
-> Want the internal architecture, design principles, cross-platform boundaries, and dev commands? See [ARCHITECTURE.md](./ARCHITECTURE.md) and [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+> Want the internal architecture, design principles, cross-platform boundaries, and dev commands? See [ARCHITECTURE.md](./ARCHITECTURE.md) and [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

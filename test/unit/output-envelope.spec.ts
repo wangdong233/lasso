@@ -243,9 +243,9 @@ describe("applyOutputEnvelope — 单条 16 MiB 上限", () => {
 });
 
 // ============================================================
-// v1.18.2（doc/29 F4）：store 总量 64 MiB → LRU 淘汰（不再 throw）
+// v1.18.2（doc/governance/10 F4）：store 总量 64 MiB → LRU 淘汰（不再 throw）
 // ============================================================
-describe("applyOutputEnvelope — 64 MiB store 总量：LRU 淘汰（doc/29 F4）", () => {
+describe("applyOutputEnvelope — 64 MiB store 总量：LRU 淘汰（doc/governance/10 F4）", () => {
   it("store 累计超 64 MiB → 淘汰最老 spill 腾位（不 throw；totalBytes 封顶 ~cap+单条）", () => {
     // chunk = 8 MiB（< 16 MiB 单条上限）；8 次 = 64 MiB；第 9 次触发 LRU 淘汰
     const chunk = makeAscii(8 * 1024 * 1024);

@@ -52,7 +52,7 @@ const ROUTING_TABLE: ReadonlyArray<{ pattern: RegExp; kind: ContentKind }> = [
     kind: "text",
   },
   { pattern: /^application\/xml\b/, kind: "text" },
-  // ZB-4 配套（doc/24 verdict D-GO-2，2026-08-18）：feed XML 主流 MIME 也是文本
+  // ZB-4 配套（doc/governance/05 verdict D-GO-2，2026-08-18）：feed XML 主流 MIME 也是文本
   // （此前 application/rss+xml 落到 binary → base64，fetch_feed 无法解析）
   { pattern: /^application\/(rss|atom|feed)\+xml\b/, kind: "text" },
   { pattern: /^application\/(javascript|ecmascript)\b/, kind: "text" },

@@ -626,7 +626,7 @@ function buildVlmPrompt(opts: DesktopOptions): string {
 // ============================================================
 function outcomeOf(resp: RustResponse): Outcome {
   if (resp.ok) return "worked";
-  // v1.18.2（doc/29 Y4）：tcc_denied / tcc_screen_recording_denied → unknown
+  // v1.18.2（doc/governance/10 Y4）：tcc_denied / tcc_screen_recording_denied → unknown
   // （屏幕录制权限是本档（VLM 截屏）缺失，非跨档语义否定——与 ax/appleScript 档
   // 的 TCC 是不同权限；didnt 会短路降级链 + recordSuccess 假健康）。
   if (

@@ -3,7 +3,7 @@
  * UA client hints evasion（parse13 §3.1 路 15 + §4.5）
  *
  * 现代反爬查 navigator.userAgentData.brands 是否与 navigator.userAgent 的 Chrome 版本
- * 一致 —— 头号检测点（doc/16 §1.3 P2）。chrome-devtools-mcp 不暴露 CDP
+ * 一致 —— 头号检测点（doc/archive/research/16 §1.3 P2）。chrome-devtools-mcp 不暴露 CDP
  * Network.setUserAgentOverride / setExtraHTTPHeaders，故 HTTP header 侧 sec-ch-ua 无法
  * 经 JS 注入（网络层）；本脚本只补 JS 侧 navigator.userAgentData（sec-ch-ua 的 JS 投影）。
  *

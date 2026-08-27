@@ -520,7 +520,7 @@ export function registerAdminTool(
             // ---------- v1.8 Phase D（D7）：breaker_reset —— 熔断手工唤醒 ----------
             // mutation（必传 name + reason）。对同名 channel 的短熔断（CircuitBreaker）
             // 与长熔断（LongCircuitBreaker）同时 reset 到 closed。
-            // v1.18.2（doc/29 F2c 恢复闭环）：若该 channel 的 capability 是被
+            // v1.18.2（doc/governance/10 F2c 恢复闭环）：若该 channel 的 capability 是被
             // long_circuit_open disable 的，reset 时联动 bag.enable（admin 显式
             // reset 即「我认为该恢复了」——只恢复熔断造成的 disable，不越权恢复
             // admin 手工 capability_disable 的通道）。
@@ -577,7 +577,7 @@ export function registerAdminTool(
                   ? { capability_restored: true }
                   : {}),
                 note: capabilityRestored
-                  ? "breaker state reset to closed; capability disabled by long_circuit_open was re-enabled (doc/29 F2c)"
+                  ? "breaker state reset to closed; capability disabled by long_circuit_open was re-enabled (doc/governance/10 F2c)"
                   : "breaker state reset to closed; capability (if disabled manually or still needed off) unchanged — run capability_enable to restore it",
               });
             }

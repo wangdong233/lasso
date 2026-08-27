@@ -273,7 +273,7 @@ describe("三 backend 同构契约 —— 错误契约三平台一致", () => {
   // 注：MockRustBridge 的 script 抛错时 error_kind 永远是 "script_error"（mock 细节），
   //   无法注入 tcc_denied 等具体 error_kind。本节用直构 AxBackend mock 绕开。
   //   错误契约（outcomeOf + DIDNT_ERROR_KINDS）三平台共享是 INV-61 的契约层断言。
-  it("三 backend tcc_denied（macOS）/ equivalent → outcome=unknown（doc/29 Y4：本档权限缺失不再短路降级链；三平台一致）", async () => {
+  it("三 backend tcc_denied（macOS）/ equivalent → outcome=unknown（doc/governance/10 Y4：本档权限缺失不再短路降级链；三平台一致）", async () => {
     const opts = { app: "X", max_depth: 8 };
     const [mac, win, linux] = await Promise.all([
       new AxProvider(makeDirectBackend(errResponse("tcc_denied"), "ax")).snapshot(opts),

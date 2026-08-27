@@ -30,7 +30,7 @@ import {
   type LedgerLogFn,
 } from "./chrome-ledger.js";
 import { stopLaunchedChromes } from "./chrome-stop.js";
-// C2（v1.18，doc/28-静默守则审计 D-2）：登录完成自动转后台的 hide 原语
+// C2（v1.18，doc/governance/09-静默守则审计 D-2）：登录完成自动转后台的 hide 原语
 // （PID 定向，永不按进程名——E8 事故红线；非 kill，登录态无损可逆）
 // P31（v1.18.3 同类横扫 S3）：默认走 **异步** hideChromeByPidAsync（execFile）——
 // 本 reaper 是 server 常驻 15s timer，tick 内 spawnSync osascript（2s 上限）会
@@ -49,7 +49,7 @@ export interface ChromeIdleReaperOptions {
   /** 装配时已知的活动端口（= config.cdpPort；启动即 touch 一次给宽限）。 */
   touchPorts?: Set<number>;
   /**
-   * C2（v1.18，doc/28 D-2，用户运行守则「介入后及时恢复」）：
+   * C2（v1.18，doc/governance/09 D-2，用户运行守则「介入后及时恢复」）：
    * 对**台账在案 visible 档** Chrome 做「登录完成 → 自动 hide 转后台静默」。
    * **默认 false（opt-in）**——假阳性会把用户正在看的窗口收走（虽 chrome-show
    * 可逆），交用户裁决。四重防误判护栏见 considerAutoHide。
@@ -128,7 +128,7 @@ async function defaultTabUrlsFn(port: number): Promise<string[]> {
  *  3. now - lastUse > idleMs → await stopFn({port: rec.port})
  *  4. 单条 stop 抛错 → logFn warn 继续（reaper 不因一条记录死）
  *
- * C2（v1.18，doc/28 D-2）：autoHideAfterLogin（opt-in 默认 off）时，visible 记录
+ * C2（v1.18，doc/governance/09 D-2）：autoHideAfterLogin（opt-in 默认 off）时，visible 记录
  * 在「登录墙观测到→消失→延迟窗过→agent 无近期活动」四重护栏全过后续走
  * hideChromeByPidAsync（P31 起异步；PID 定向 hide，非 kill）转后台静默；台账 launchMode 不变
  * （kill 豁免语义不动）。visible 记录永不进 stopFn（N4 红线）。
@@ -185,7 +185,7 @@ export function startChromeIdleReaper(
       // （用户在里面登录/查看），永不 idle 收割——关闭出口只有显式 chrome-stop。
       // hidden 档维持「用完即关」语义。
       if (rec.launchMode === "visible") {
-        // C2（v1.18，doc/28 D-2）：opt-in 时「登录完成 → 自动 hide 转后台静默」
+        // C2（v1.18，doc/governance/09 D-2）：opt-in 时「登录完成 → 自动 hide 转后台静默」
         //（hide 非 kill；N4 红线不受影响——本分支 continue，永不进 kill 路径）
         if (autoHideAfterLogin) await considerAutoHide(rec, now);
         continue;
@@ -215,7 +215,7 @@ export function startChromeIdleReaper(
     }
   }
 
-  // ----- C2（v1.18，doc/28 D-2）：登录完成自动 hide 状态机（进程内态，不落盘） -----
+  // ----- C2（v1.18，doc/governance/09 D-2）：登录完成自动 hide 状态机（进程内态，不落盘） -----
   /** port → 是否见过登录墙（护栏①的前提：从未见墙 → 永不 hide）。 */
   const loginWallSeen = new Set<number>();
   /** port → 墙消失时刻（延迟窗起点；再见墙则重置）。 */

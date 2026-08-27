@@ -26,7 +26,7 @@
  *  │ expect failed               │ didnt   │ didnt   │ failed_postcondition          │
  *  │ step 抛 timeout/429         │ unknown │ unknown │ step_error                    │
  *  │ step 抛 404/403/2FA         │ didnt   │ didnt   │ step_error                    │
- *  │ budget 超限                 │ (未跑)   │ unknown │ budget_exceeded（doc/29 F3）  │
+ *  │ budget 超限                 │ (未跑)   │ unknown │ budget_exceeded（doc/governance/10 F3）  │
  *  │ high-risk gate block        │ (未跑)   │ didnt   │ manual_abort                  │
  *  └────────────────────────────┴─────────┴─────────┴──────────────────────────────┘
  *
@@ -129,7 +129,7 @@ export class StepEngine {
 
       // ----------------------------------------------------------
       // 1. budget 预检（F3.4.8）
-      // v1.18.2（doc/29 F3）：chainOutcome=unknown——自限闹钟响是**自身策略边界**，
+      // v1.18.2（doc/governance/10 F3）：chainOutcome=unknown——自限闹钟响是**自身策略边界**，
       // 不是页面语义否定；didnt 会让 decider 视「channel 健康+答案否」双熔断记
       // recordSuccess（假健康掩蔽诊断），且 CC 被告知不可重试的「没有」。
       // unknown 让 decider 试下一 channel + CC 可拆步/放宽 budget_ms 重试。
@@ -217,7 +217,7 @@ export class StepEngine {
             partial.preSnapshot,
           );
         } catch (e) {
-          // v1.18.2（doc/29 Y3）：runExpect **自身抛错**（CDP 断连/页面销毁/cond 缺字段）
+          // v1.18.2（doc/governance/10 Y3）：runExpect **自身抛错**（CDP 断连/页面销毁/cond 缺字段）
           // 是基础设施异常，不是「后置条件为假」——旧实现保守判 failed → didnt，
           // 把环境错伪装成语义否定（与 budget_exceeded 同病）。INV-13「宁可不假装
           // 成功」论证的是不虚报 worked；这里不虚报 worked、但也不虚报「否」：

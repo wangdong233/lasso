@@ -1,5 +1,5 @@
 /**
- * D-5（v1.18，doc/28-静默守则审计 verify §6）回归测试：
+ * D-5（v1.18，doc/governance/09-静默守则审计 verify §6）回归测试：
  * server exit 钩子（process.on("exit") → stopLaunchedChromesSync）无条件
  * SIGKILL 台账在案 Chrome——P1 v1.17.3 的 visible 豁免只修了优雅 shutdown
  * 路径，exit 钩子把用户 visible 登录窗口照杀（三次独立复现 + 服务端日志

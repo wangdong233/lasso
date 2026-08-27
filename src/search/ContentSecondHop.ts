@@ -1,5 +1,5 @@
 /**
- * ContentSecondHop —— A2′ 自研第二跳（doc/25 裁决② + parse24 §3；v1.17 Phase C）。
+ * ContentSecondHop —— A2′ 自研第二跳（doc/governance/06 裁决② + parse24 §3；v1.17 Phase C）。
  *
  * 定位：search 第一跳（蓝链）之后的**可选内容富化**——拿 top N 结果并发裸 HTTP
  * 抓正文（defuddle 抽取 + 查询相关裁剪），零付费依赖、不起浏览器（裁决②原文

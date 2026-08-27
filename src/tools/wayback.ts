@@ -125,7 +125,7 @@ export async function doWaybackLookup(
   // 防御：archive.org 不应成为「把私网 URL 写进第三方日志」的代理。
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
 if (!ssrfResult.allowed) {
-    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
     // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
     const d = ssrfDenial(ssrfResult.reason);
     return {

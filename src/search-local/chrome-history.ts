@@ -1,8 +1,8 @@
 /**
- * search_local 源 1：Chrome History（B1 第四通道，parse24 §5.2 / doc/25 裁决④）
+ * search_local 源 1：Chrome History（B1 第四通道，parse24 §5.2 / doc/governance/06 裁决④）
  *
  * **为什么存在**：「我上周看过的那篇文章在哪」——CC 此前完全无法回答
- * （doc/24 decision-B §0：整类缺失）。Chrome History 是 SQLite（urls 表），
+ * （doc/governance/05 decision-B §0：整类缺失）。Chrome History 是 SQLite（urls 表），
  * FTS 路径 <10ms / $0 / 零后台进程（decision-B F2）。
  *
  * **隐私红线（INV-81 钉死，零妥协）**：

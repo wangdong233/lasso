@@ -110,7 +110,7 @@ Claude Code を再起動 → `/mcp` → `lasso ✓ Connected` と表示されれ
 - **ログイン済みページのスクレイプ**（Jira / プライベート GitHub / 社内ネット） → `lasso launch-chrome` を一度だけ実行
 - **macOS デスクトップの操作** → `lasso doctor` を一度だけ実行して認可を案内してもらう
 
-各キーの取得方法や無料枠の詳細は [**キー設定ガイド**](./doc/KEY-GUIDE.md) を参照してください。
+各キーの取得方法や無料枠の詳細は [**キー設定ガイド**](./doc/usage/01-KEY-GUIDE.md) を参照してください。
 
 ---
 
@@ -198,7 +198,7 @@ Internet Archive（Wayback Machine）に飛んで、その URL の最後にア�
 
 **デフォルトでは完全にオフ。** あなたが明示的に有効化し、かつクラウドブラウザ（セルフホスト Steel またはホスト型 browserbase / stagehand）を設定した場合にだけ動作します。軽度のアンチボットは `browse_headless` 内蔵のアンチ検出で通ります——**Cloudflare 級の強固な保護にだけクラウドブラウザが必要**です。
 
-- **Steel セルフホスト（推奨 · 無料）**：ローカル Docker でオープンソースのクラウドブラウザを運用——セッション単位の費用ゼロ、cookie はローカルから出ません。一行のコマンドで開通、[キー設定ガイド · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费) を参照。
+- **Steel セルフホスト（推奨 · 無料）**：ローカル Docker でオープンソースのクラウドブラウザを運用——セッション単位の費用ゼロ、cookie はローカルから出ません。一行のコマンドで開通、[キー設定ガイド · Steel](./doc/usage/01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费) を参照。
 - **browserbase（ホスト型 · 有料）**：トライアル後は従量課金。自分で Docker を運用したくない場合の選択肢。
 - **stagehand（ホスト型 · 有料）**：⚠️ プログラマティックな実験チャンネル——キーを設定しても内部チャンネルを組み立てるだけで、**MCP ツールの入口はありません**（REST 契約は未検証；`lasso doctor` #39 `stagehand_rest_contract_probe` がこれを専用チェック）。
 
@@ -230,7 +230,7 @@ Claude Code を再起動 → `/mcp` → `lasso ✓ Connected`。**これ一行�
 - **v1.11**：デスクトップが「見える」から「押せる」に（click / type / scroll の真実装 + 座標マウス + `skeleton` ツリー刈り込み）；ドライバ層を chrome-devtools-mcp 1.7.0 へ更新（起動レベルのアンチ検出、テレメトリはデフォルトでオフ）；検索に `freshness` 時効フィルタを追加；英文クエリのキーなしフォールバックを DuckDuckGo へ変更；`LASSO_PROXY` アウトバウンドプロキシを新規追加。
 - **v1.10**：ブラウザはデフォルトでサイレント + 使い終わったら閉じる（`launch-chrome` はウィンドウゼロ起動、約 60 秒で自動クローズ、`--mode visible` で戻せる）。
 - **v1.9**：ブラウザライフサイクルの後始末（ヘッドレスはアイドル 5 分で自動回収、`lasso chrome-stop`、`tab_restore` が元のタブ一覧を復元）。
-- **v1.8**：全量実測で露見した 24 件の欠陥を修正（上流契約適応、スクリーンショットの実ディスク保存、`read_text` ページ継続など）——完全なリストは [doc/17-功能测试清单.md](doc/17-功能测试清单.md) の「v1.8 修复记录」を参照。
+- **v1.8**：全量実測で露見した 24 件の欠陥を修正（上流契約適応、スクリーンショットの実ディスク保存、`read_text` ページ継続など）——完全なリストは [doc/testing/01-功能测试清单.md](doc/testing/01-功能测试清单.md) の「v1.8 修复记录」を参照。
 
 </details>
 
@@ -276,7 +276,7 @@ lasso config init        # ~/.lasso/config.json を作成
 
 > フォールバック順：マシン MCP 再利用 → Brave（キー設定時）→ ヘッドレスブラウザ実検索フォールバック（v1.14：英語はデュアルエンジン——DDG 失敗・空結果時に Brave 実検索へ自動で 1 回再試行；v1.15 からその前に**裸 HTTP クイックプローブ**（約 1 秒、ブラウザなしで検索結果ページを直接取得——実機計測ではブラウザなしの方がむしろ警戒されにくいエンジンあり）を挟み、取れない時だけヘッドレスの遅い経路へ）。前が落ちたら自動で次へ。（Bing は上流 2025-08-11 の全廃に伴い層ごと削除、Zhipu 直結段も v1.17 で削除。残った `BING_API_KEYS` / `ZHIPU_API_KEY` は黙って無視され、`lasso doctor` が削除を提案します。）
 
-キーの取得方法や無料枠の詳細 → [キー設定ガイド · 検索](./doc/KEY-GUIDE.md#a-搜索)。よく使うコマンド：`lasso --version` / `lasso --help`（v1.8 から未知のコマンドは使い方を表示して非ゼロ終了し、黙って固まらなくなりました）。
+キーの取得方法や無料枠の詳細 → [キー設定ガイド · 検索](./doc/usage/01-KEY-GUIDE.md#a-搜索)。よく使うコマンド：`lasso --version` / `lasso --help`（v1.8 から未知のコマンドは使い方を表示して非ゼロ終了し、黙って固まらなくなりました）。
 
 ### 2. ログイン済みページのスクレイプ（✅ 無料 · コマンド一行、キー不要）
 
@@ -304,7 +304,7 @@ lasso launch-chrome
 
 </details>
 
-**詳細はこちら** → [キー設定ガイド · ログイン済みブラウジング](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
+**詳細はこちら** → [キー設定ガイド · ログイン済みブラウジング](./doc/usage/01-KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
 
 ### 3. デスクトップの操作（✅ 無料 · 認可は一度だけ、キー不要）
 
@@ -314,7 +314,7 @@ lasso launch-chrome
 
 > 正直な境界線：macOS は実機で検証済み。Windows / Linux はコンパイル時と契約レベルのセルフチェックを通過していますが、実機での網羅的手動テストは進行中です。「完全検証済み」とは偽りません。
 
-**詳細はこちら** → [キー設定ガイド · デスクトップ操作](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key)。
+**詳細はこちら** → [キー設定ガイド · デスクトップ操作](./doc/usage/01-KEY-GUIDE.md#c-桌面控制系统授权无-key)。
 
 ### 4. クラウドブラウザ（デフォルトはオフ · 強力なアンチボットにだけ必要）
 
@@ -331,7 +331,7 @@ lasso launch-chrome
 - **browserbase ホスト型（有料）**：`"BROWSERBASE_API_KEY": "your_key"` に差し替え。Docker を運用したくない場合の選択肢
 - ⚠️ stagehand：プログラマティックな実験チャンネルで、MCP ツール入口はありません。ページのスクレイプには当てにしないでください
 
-**キーの申請方法、Steel の完全な開通手順** → [キー設定ガイド · クラウドブラウザ](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**キーの申請方法、Steel の完全な開通手順** → [キー設定ガイド · クラウドブラウザ](./doc/usage/01-KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>高度なチューニング（任意——通常のユーザーは読み飛ばして OK）</b></summary>
@@ -349,7 +349,7 @@ lasso launch-chrome
 - ブラウザにアウトバウンドプロキシを設定（`LASSO_PROXY`、例：`http://127.0.0.1:7890`。**ヘッドレスブラウザと Steel クラウドブラウザにのみ影響——ログイン済み Chrome の出口は常に元のまま**——v1.11）
 - Steel セルフホストクラウドブラウザのエンドポイントを設定（`STEEL_ENDPOINT`、例：`http://localhost:3000`。有効化には `LASSO_ALLOW_CLOUD_BROWSER=true` も必要）
 
-変数の完全なリストとデフォルト値：[キー設定ガイド · 高度なチューニング](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash などの TUN プロキシネットワーク（fake-ip、`198.18.0.0/15`）と `127.0.0.1`（ローカル Chrome の CDP デバッグポート用）は初期状態で許可済み**——追加設定は不要で、設定し忘れではなく設計意図です。
+変数の完全なリストとデフォルト値：[キー設定ガイド · 高度なチューニング](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash などの TUN プロキシネットワーク（fake-ip、`198.18.0.0/15`）と `127.0.0.1`（ローカル Chrome の CDP デバッグポート用）は初期状態で許可済み**——追加設定は不要で、設定し忘れではなく設計意図です。
 
 > **後方互換性**：以前 `claude mcp add -e KEY=VAL` でインストールしていた場合、それらの環境変数は **そのまま動作し**、設定ファイルを **上書き** します。設定ファイルは追加の、よりフレンドリーな経路にすぎません——環境変数を置き換えるものではありません。
 
@@ -384,7 +384,7 @@ lasso launch-chrome
 | 社内ネットへのアクセスがブロックされたと表示される | URL を再確認。TUN プロキシネットワークはデフォルトで許可されていますが、その他の社内ネットには明示的な許可が必要です |
 | アンチ検出の効果を確認したい | `lasso doctor --stealth-check` を実行——creepjs 検出ページを駆動してベースラインと比較します（任意、日常利用には影響なし） |
 
-完全な FAQ とデバッグのヒントは [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md) にあります。
+完全な FAQ とデバッグのヒントは [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md) にあります。
 
 ---
 
@@ -414,7 +414,7 @@ Lasso がお役に立てば、作者にコーヒー一杯をおごってくだ�
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
+<img src="doc/assets/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/assets/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
 
 </div>
 
@@ -424,15 +424,15 @@ WeChat | Alipay
 
 ## その他のドキュメント
 
-- 深掘りのアーキテクチャは？ [機能アーキテクチャ](doc/08-media-interact-功能架构.md) を参照
-- バージョンのロードマップは？ [実施スケジュール](doc/09-media-interact-实施排期.md) を参照
-- キーの取得方法は？ [キー設定ガイド](doc/KEY-GUIDE.md) を参照
+- 深掘りのアーキテクチャは？ [機能アーキテクチャ](doc/architecture/01-功能架构.md) を参照
+- バージョンのロードマップは？ [実施スケジュール](doc/architecture/02-实施排期.md) を参照
+- キーの取得方法は？ [キー設定ガイド](doc/usage/01-KEY-GUIDE.md) を参照
 
 ## ライセンス
 
 **MIT** © wangdong233。デスクトップのヘルバープロセスおよびブラウザエンジンの依存関係はすべて MIT / Apache-2.0 です——企業利用にも安全です。
 
-> 内部アーキテクチャ、設計原則、クロスプラットフォームの境界線、開発コマンドについて知りたい場合は、[ARCHITECTURE.md](./ARCHITECTURE.md) と [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md) を参照してください。
+> 内部アーキテクチャ、設計原則、クロスプラットフォームの境界線、開発コマンドについて知りたい場合は、[ARCHITECTURE.md](./ARCHITECTURE.md) と [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md) を参照してください。
 
 <p align="center">
   <sub><strong>スクリプトを書く</strong>より <strong>口で言う</strong> 方が好きな、すべての人のために作られました。</sub><br>

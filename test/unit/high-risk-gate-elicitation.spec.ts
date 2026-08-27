@@ -2,7 +2,7 @@
  * HighRiskGate × elicitation 集成测（v1.17 Phase E，parse24 §6.1 C1）
  *
  * 裁决红线测试钉死（parse24 §6.1 安全测试 1-4；#5 真机手测清单另档
- * doc/25/c1-真机手测.md）：
+ * doc/governance/06-五项裁决实施/c1-真机手测.md）：
  *  1. clientCapabilities 未声明 elicitation（undefined / {} / 有 elicitation 无
  *     form 子键）→ assessStep 与现行（未注入 port）**deep-equal 完全一致**
  *  2. 能力未声明时 elicitInput 零调用（连请求都不发）

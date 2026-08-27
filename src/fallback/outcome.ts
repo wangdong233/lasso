@@ -100,7 +100,7 @@ export function outcomeAfterCheck(
  *      · needs_manual_2fa
  *  - 其他 unknown + error → true（transient：timeout / 429 / 5xx / DNS / ECONNREFUSED / network）
  *
- * v1.18.2（doc/29 Y2）：nxdomain / enotfound 移出排除集——DNS 错在代理/TUN
+ * v1.18.2（doc/governance/10 Y2）：nxdomain / enotfound 移出排除集——DNS 错在代理/TUN
  * 环境高频瞬态（fake-ip 拦截、断网恢复期），且下一 channel（真实 Chrome 走
  * 系统栈/DoH，解析路径不同）可能成功；DNS 失败 ≠ 页面语义否定。
  */
@@ -121,12 +121,12 @@ export function isFallbackWorthy(outcome: Outcome, error?: string): boolean {
 }
 
 // ============================================================
-// v1.18.2（doc/29 F2）：长熔断喂入分类 —— 持续故障类 vs 环境瞬态类
+// v1.18.2（doc/governance/10 F2）：长熔断喂入分类 —— 持续故障类 vs 环境瞬态类
 // ============================================================
 /**
  * 判定一条失败 error 是否「持续故障类」（sustained）——只有这类才喂 LongCircuitBreaker。
  *
- * 设计反转背景（doc/29 F2）：长熔断文件头自述的部署想象是「月配额耗尽类持续故障」，
+ * 设计反转背景（doc/governance/10 F2）：长熔断文件头自述的部署想象是「月配额耗尽类持续故障」，
  * 但 recordFailure 从不看成因，实际捕获的是用户自己的断网（TUN 断 10 分钟 = 10 次
  * unknown within 1h → 60min disable + 杀子进程 + 手工恢复）。错配子型②。
  *

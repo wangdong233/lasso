@@ -28,7 +28,7 @@
  *    bing provider 永不注册进 providers map（存量用户 config 不炸；doctor #11c
  *    bing_keys_retired 检测到非空键 → warn 建议删除）。INV-54 墓碑守卫防回潮。
  *
- * v1.17 A3（doc/25 裁决③：zhipu 直连 API channel 删除，machine_mcp 保留）：
+ * v1.17 A3（doc/governance/06 裁决③：zhipu 直连 API channel 删除，machine_mcp 保留）：
  *  - ZHIPU_API_KEY / ZHIPU_ENDPOINT env / config 文件键**容忍读但不消费**（静默忽略）：
  *    zhipu provider 永不注册进 providers map、不注入任何 provider keys
  *    （存量用户 config 不炸；doctor zhipu_keys_retired 检测到非空键 → warn 建议删除）。
@@ -42,7 +42,7 @@ import type { FreeTierLevel, ProviderConfig } from "../types.js";
 import { BUILTIN_PROVIDERS } from "./providers.js";
 import { ProviderRegistry } from "./provider-registry.js";
 import { logger } from "../util/logger.js";
-// C2（v1.18，doc/28 D-2）：延迟窗默认值单一真源在 reaper（消费方语义所有者）
+// C2（v1.18，doc/governance/09 D-2）：延迟窗默认值单一真源在 reaper（消费方语义所有者）
 import { AUTO_HIDE_AFTER_LOGIN_DELAY_MS } from "../launcher/chrome-idle-reaper.js";
 
 export interface LassoConfig {
@@ -86,7 +86,7 @@ export interface LassoConfig {
    */
   launchMode: "hidden" | "visible";
   /**
-   * C2（v1.18，doc/28-静默守则审计 D-2）：台账 visible 档 Chrome「登录完成 →
+   * C2（v1.18，doc/governance/09-静默守则审计 D-2）：台账 visible 档 Chrome「登录完成 →
    * 自动 hide 转后台静默」（chrome-idle-reaper 四重护栏：见墙→墙消失→延迟窗→
    * agent 无近期活动；失败降级不 hide）。env LASSO_AUTO_HIDE_AFTER_LOGIN
    * （默认 false，**opt-in**——假阳性会把用户正在看的窗口收走，交用户裁决）。
@@ -289,7 +289,7 @@ export function loadConfigFileEnv(
  */
 export const CONFIG_TEMPLATE: Record<string, unknown> = {
   _comment:
-    "Lasso config file. Flat JSON: keys match env variable names (see doc/KEY-GUIDE.md). Fill only the keys you need. Booleans use true/false; CSV keys like BRAVE_API_KEYS are comma-separated strings. Env variables override this file (backward compatible).",
+    "Lasso config file. Flat JSON: keys match env variable names (see doc/usage/01-KEY-GUIDE.md). Fill only the keys you need. Booleans use true/false; CSV keys like BRAVE_API_KEYS are comma-separated strings. Env variables override this file (backward compatible).",
   // v1.17 A3：ZHIPU_API_KEY / ZHIPU_ENDPOINT 已退役（tolerated-but-ignored；
   // 静默忽略 + doctor zhipu_keys_retired 提示删除；照 BING_API_KEYS 先例保留键位）
   ZHIPU_API_KEY: "",
@@ -311,7 +311,7 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
   LASSO_LAUNCH_MODE: "hidden",
   LASSO_LAUNCH_IDLE_MS: 60000,
-  // C2（v1.18，doc/28 D-2）：登录完成自动转后台静默（opt-in；默认 false）
+  // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,
   // v1.11（round1 T10）：浏览器出口代理（browse_headless + Steel 生效；
@@ -426,7 +426,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   // v1.10（parse18 机制一/二）：台账 Chrome 用完即关阈值 + 启动档（0 = 禁用 reaper）
   const launchIdleMs = parseLaunchIdleMs(env.LASSO_LAUNCH_IDLE_MS);
   const launchMode = parseLaunchMode(env.LASSO_LAUNCH_MODE);
-  // C2（v1.18，doc/28 D-2）：登录完成自动转后台（opt-in 默认 off）+ 延迟窗
+  // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台（opt-in 默认 off）+ 延迟窗
   const autoHideAfterLogin = parseAutoHideAfterLogin(env.LASSO_AUTO_HIDE_AFTER_LOGIN);
   const autoHideAfterLoginDelayMs = parseAutoHideDelayMs(
     env.LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS,

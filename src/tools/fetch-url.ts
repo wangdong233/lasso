@@ -98,7 +98,7 @@ export async function doFetchUrl(
   // ---------- 1. SSRF 守门（INV-31；与 browse_headless 同函数同 config） ----------
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
 if (!ssrfResult.allowed) {
-    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
     // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
     const d = ssrfDenial(ssrfResult.reason);
     return {
@@ -293,7 +293,7 @@ if (!ssrfResult.allowed) {
 
   // envelope（48KiB / 2000 行自动落盘 .txt + 16KiB preview + @oN ref）
   // INV-34 同源：所有独立 tool 输出必经 applyOutputEnvelope 或 writeState
-  // v1.18.2（doc/29 F4）：envelope 失败（单条 >16MiB 数据异常；store 耗尽已被
+  // v1.18.2（doc/governance/10 F4）：envelope 失败（单条 >16MiB 数据异常；store 耗尽已被
   // LRU 淘汰根治）→ 降级 preview-only 不抛（旧实现裸抛崩 tool + 喂熔断）。
   let envelope: ReturnType<typeof applyOutputEnvelope>;
   try {
@@ -336,14 +336,14 @@ if (!ssrfResult.allowed) {
 
 /**
  * fetch 错误 → tri-state outcome（parse6 §3.1.3 outcomeFromFetchError）。
- *  - ENOTFOUND / NXDOMAIN / ECONNREFUSED → unknown（v1.18.2 doc/29 Y2：
+ *  - ENOTFOUND / NXDOMAIN / ECONNREFUSED → unknown（v1.18.2 doc/governance/10 Y2：
  *    代理/TUN 环境 DNS 与连接错高频瞬态——fake-ip 拦截、断网恢复期、代理未起；
  *    可重试语义诚实，didnt 会把「此刻环境不通」伪装成「内容明确不存在」）
  *  - abort / timeout      → unknown（caller-tier 可重试）
  *  - 其他（网络挂 / 连接重置 / TLS） → unknown
  */
 function outcomeFromFetchError(_e: unknown): "didnt" | "unknown" {
-  // v1.18.2（doc/29 Y2）：全部 fetch 异常均为环境瞬态 → unknown（可重试）。
+  // v1.18.2（doc/governance/10 Y2）：全部 fetch 异常均为环境瞬态 → unknown（可重试）。
   // 保留函数形状（tri-state 注释契约 + 上游 isFallbackWorthy 排除集不变）。
   return "unknown";
 }

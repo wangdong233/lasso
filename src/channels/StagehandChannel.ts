@@ -5,7 +5,7 @@
  *  - 仅 expose observe(verify|extract)，**不 act**（agent loop 越界；parse5 §3.2.1 边界）
  *  - 走 stagehand REST API：POST /verify { prompt } → bool；POST /extract { prompt, schema } → JSON
  *
- * ⚠️ R-ECO-6（doc/16 §5 建议 3 + parse15 §3.4；v1.12 round2 T2-2 档案更新）：
+ * ⚠️ R-ECO-6（doc/archive/research/16 §5 建议 3 + parse15 §3.4；v1.12 round2 T2-2 档案更新）：
  *    上游托管 REST API **已上线**（2026-08 stagehand-ruby 官方 Stainless 生成 SDK
  *    实证：sessions.start/navigate/act/extract/observe/execute/end + SSE）——但形状
  *    是 **session 生命周期 API**、**无 /verify 路由**、gem v0 自述「APIs may change

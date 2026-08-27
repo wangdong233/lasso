@@ -6,7 +6,7 @@
  *  - open 持续：resetMs=60min（vs 短 60s）
  *  - 副作用：open 时经 onOpen 回调联动 CapabilityBag.disable（短熔断不联动）
  *
- * v1.18.2（doc/29 F2）设计反转——喂入分类 + 恢复闭环：
+ * v1.18.2（doc/governance/10 F2）设计反转——喂入分类 + 恢复闭环：
  *  - **喂入分类**：recordFailure(error) 只计「持续故障类」（429/quota/凭据失效/
  *    upstream_unsupported，见 outcome.ts isSustainedFailureError）；环境瞬态
  *    （DNS/timeout/连接错/裸 unknown）不计数——那类毛刺归 60s 短熔断管（自愈快）。
@@ -56,7 +56,7 @@ export class LongCircuitBreaker {
     /** channel / provider 名（onOpen 回调透传 + 日志用）。 */
     private readonly name = "unknown",
     /**
-     * v1.18.2（doc/29 F2c）：open/half-open → closed 恢复转换时回调
+     * v1.18.2（doc/governance/10 F2c）：open/half-open → closed 恢复转换时回调
      * （装配层注入条件 bag.enable——仅恢复 long_circuit_open 自己造成的 disable）。
      * fire-and-forget（recordSuccess 在热路径不 await）；抛错吞掉只 log。
      */
@@ -84,7 +84,7 @@ export class LongCircuitBreaker {
   /**
    * 成功：清零失败时间戳 + 回 closed（half-open probe 成功也走这里）。
    *
-   * v1.18.2（doc/29 F2c）：open/half-open → closed 的**恢复转换**触发 onClose
+   * v1.18.2（doc/governance/10 F2c）：open/half-open → closed 的**恢复转换**触发 onClose
    * （装配层条件 bag.enable——修「probe 成功但 bag 永久 disabled」恢复断链）。
    * 已 closed 时的常规成功不触发（无状态转换）。
    */
@@ -103,7 +103,7 @@ export class LongCircuitBreaker {
    *  - closed    → 滑动窗内 ≥ threshold → open + onOpen
    *  - open      → 幂等（不重复 onOpen；保留 openedAt）
    *
-   * v1.18.2（doc/29 F2a）喂入分类：error 非「持续故障类」（isSustainedFailureError
+   * v1.18.2（doc/governance/10 F2a）喂入分类：error 非「持续故障类」（isSustainedFailureError
    * = false，即 DNS/timeout/连接错/裸 unknown 等环境瞬态）→ **不计数不转 open**
    * （half-open 态也保持 half-open，留给下次 probe）。环境瞬态归 60s 短熔断管。
    * error 省略 → 按持续计（兼容既有 no-arg 调用方与单测）。
@@ -113,7 +113,7 @@ export class LongCircuitBreaker {
   async recordFailure(error?: string | null): Promise<void> {
     // isSustainedFailureError(undefined)===true（无信号按持续计，兼容 no-arg 调用方）
     if (!isSustainedFailureError(error)) {
-      return; // 环境瞬态：不喂长熔断（doc/29 F2a——网络抖动不得升级成 60min disable）
+      return; // 环境瞬态：不喂长熔断（doc/governance/10 F2a——网络抖动不得升级成 60min disable）
     }
     const now = Date.now();
     this.failureTimestamps.push(now);
@@ -145,7 +145,7 @@ export class LongCircuitBreaker {
    *
    * 设计：admin 显式 reset 后状态回 closed；bag 联动由 admin.ts 的 breaker_reset
    * action 自己做（条件 enable：仅恢复 reason==="long_circuit_open" 的 disable，
-   * v1.18.2 doc/29 F2c）——breaker 类不持有 bag 句柄（守 INV-42 分层）。
+   * v1.18.2 doc/governance/10 F2c）——breaker 类不持有 bag 句柄（守 INV-42 分层）。
    */
   reset(): void {
     this.state = "closed";
@@ -200,7 +200,7 @@ export class LongCircuitBreaker {
   }
 
   /**
-   * v1.18.2（doc/29 F2c）：onClose 回调包装（fire-and-forget；抛错吞掉）。
+   * v1.18.2（doc/governance/10 F2c）：onClose 回调包装（fire-and-forget；抛错吞掉）。
    * 与 _safeOnOpen 同保守策略：恢复转换已生效，bag.enable 失败只留装配层日志。
    */
   private _safeOnClose(): void {

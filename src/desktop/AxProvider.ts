@@ -20,10 +20,10 @@
  *  - retrieval_method 仍标 "ax_snapshot" / "ax_find" / "ax_act"（语义层标识，
  *    指「AX 抽象层的方法」，三平台共享；不是 Rust method 名真值）
  *
- * 错误契约（parse4 §3.1.2 error_kind 表；v1.18.2 doc/29 Y4 修订）：
+ * 错误契约（parse4 §3.1.2 error_kind 表；v1.18.2 doc/governance/10 Y4 修订）：
  *  - rust helper 返 ok=false + error_kind="tcc_denied"     → outcome=unknown（AX Accessibility
  *    权限被拒是**本档**缺权限，非跨档语义否定——链继续试 appleScript（Automation
- *    TCC 是另一份权限；didnt 会短路整条降级链，doc/29 Y4）
+ *    TCC 是另一份权限；didnt 会短路整条降级链，doc/governance/10 Y4）
  *  - rust helper 返 ok=false + error_kind="app_not_found"   → outcome=didnt（明确"否"：app 没开——对全部档成立）
  *  - rust helper 返 ok=false + error_kind="invalid_params"  → outcome=didnt（明确"否"：参数错）
  *  - rust helper 返 ok=false + error_kind="not_implemented" → outcome=unknown（Phase B 占位）
@@ -55,7 +55,7 @@ import type {
  * 明确"否"的 error_kind（语义否定，应短路 outcome=didnt 而非触发 fallback）。
  * 其他 error_kind 一律视为 unknown（允许 fallback）。
  *
- * v1.18.2（doc/29 Y4）：tcc_denied / tcc_screen_recording_denied 移出本集 → unknown。
+ * v1.18.2（doc/governance/10 Y4）：tcc_denied / tcc_screen_recording_denied 移出本集 → unknown。
  * AX 的 Accessibility TCC 与 AppleScript 的 Automation TCC 是两份**不同权限**：
  * ax 被拒 ≠ appleScript 被拒，didnt 会让 FallbackDecider 立即短路（还 recordSuccess
  * 假健康），永不试下一档。unknown 让链继续（didnt 留给跨档确定性否定：
@@ -162,7 +162,7 @@ export class AxProvider {
       };
     }
     const { root: outlineRoot } = axTreeToOutline(root);
-    // v1.2（doc/14 §4.2d）：interactiveOnly opt-in 后处理剪枝（INV-70：默认不过滤 byte-identical v1.1）
+    // v1.2（doc/archive/research/14 §4.2d）：interactiveOnly opt-in 后处理剪枝（INV-70：默认不过滤 byte-identical v1.1）
     const finalRoot = opts.interactive_only ? pruneToInteractive(outlineRoot) : outlineRoot;
     const snapshot: OutlineSnapshot = {
       stateId: newStateId(),

@@ -1,6 +1,6 @@
 # Lasso 架构
 
-> 本文是 Lasso **v1.17.2** 的架构概览（user-first；深度架构基线见 [`doc/08`](./doc/08-media-interact-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/09`](./doc/09-media-interact-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。
+> 本文是 Lasso **v1.17.2** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。
 
 ## 1. 项目定位
 
@@ -11,9 +11,9 @@ Lasso 是 Claude Code 的**全交互**对外抓手 MCP（浏览器 + 桌面 + �
 
 **工具面（17 个 MCP 工具，`tools/list` 实跑核）**：`search / browse_headless / browse_logged_in / desktop / fetch_url / screenshot / pdf / network / read_text / search_local / wayback_lookup / fetch_feed / doctor / interact_roots / interact_observe / interact_act / admin`（另有 `browserbase` / `steel` 两个云通道工具按环境条件解锁，不在默认清单；对应 channel 名 `browse_cloud_browserbase` / `browse_cloud_steel`）。
 
-四条交互通道：`search` / `browse_headless` / `browse_logged_in` / `desktop`，加 **`search_local` 本地私有搜索**（doc/24 裁决 B1「第四通道」：Chrome 历史 / Spotlight 文件，纯本地只读）与条件解锁的 `browse_cloud_steel` 云通道。所有通道共享同一套 fallback 范式 / 状态模型 / 工具风格（R-CI-02 红线：禁第二套做法）；`search_local` 是唯一例外——纯本地只读查询无网络面、无 fallback 语义，走「工具直连」范式（照 `read_text` / `doctor-tool` 先例，不建 Channel 子类，防空壳对称 R-ABS-01）。
+四条交互通道：`search` / `browse_headless` / `browse_logged_in` / `desktop`，加 **`search_local` 本地私有搜索**（doc/governance/05 裁决 B1「第四通道」：Chrome 历史 / Spotlight 文件，纯本地只读）与条件解锁的 `browse_cloud_steel` 云通道。所有通道共享同一套 fallback 范式 / 状态模型 / 工具风格（R-CI-02 红线：禁第二套做法）；`search_local` 是唯一例外——纯本地只读查询无网络面、无 fallback 语义，走「工具直连」范式（照 `read_text` / `doctor-tool` 先例，不建 Channel 子类，防空壳对称 R-ABS-01）。
 
-### 部署模型声明（守卫设计判据，v1.18.2 doc/29 确立）
+### 部署模型声明（守卫设计判据，v1.18.2 doc/governance/10 确立）
 
 Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户在自己的机器上经 Claude Code 拉起一个 Lasso server 进程，没有多租户、没有远程调用方、没有对抗性租户争抢资源。由此确立守卫设计判据——**任何限额 / 熔断 / 拦截类守卫，其威胁模型必须存在于这个部署形态**：
 
@@ -22,7 +22,7 @@ Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户�
 - **环境瞬态不得升级惩罚**：长熔断（60min disable）只喂「持续故障类」（配额耗尽 / 凭据失效），DNS / 超时类毛刺归 60s 短熔断自愈——v1.18.2 F2。
 - **豁免区**：SSRF 本体（私网 / 协议 / userinfo / deny 段）、2FA 红线（HighRiskGate + ElicitationPort fail-closed）、云通道付费双重解锁、防注入白名单——这些的威胁模型在单用户本地形态下**依然成立**（恶意网页 / 误触付费 / 注入攻击），保留原强度，不在放开之列。
 
-> 判据的完整审计（47 处命中逐个裁决：4 修复 + 5 黄 + 19 保留）见 [`doc/29-错配机制审计/`](./doc/29-错配机制审计/)。
+> 判据的完整审计（47 处命中逐个裁决：4 修复 + 5 黄 + 19 保留）见 [`doc/governance/10-错配机制审计/`](./doc/governance/10-错配机制审计/)。
 
 ## 2. 整体分层
 
@@ -151,7 +151,7 @@ outcome = worked | didnt | unknown
 - **stdin-EOF 收尾**（v1.12）：CC 异常退出 → 父进程死 → stdin EOF → 复用幂等 shutdown；受管子进程不再孤儿到 zombie reaper 1h 阈值（上游 SDK #2002 的进程侧缓解）
 - **停机链全路径有界**（v1.13）：Steel 会话释放双层 3s 上界（停机链 race 3s + fetch `AbortSignal.timeout(3s)`）——自托管 Steel 停摆/endpoint 悬挂（实测可挂 ~301s）不再拖死退出
 - **`LASSO_PROXY` 出口代理**（v1.11）：headless 经 `--proxy-server`、Steel 经 session `proxyUrl`；**`browse_logged_in` 永不读取**（用户真实 Chrome 出口原样，铁律）；doctor `proxy_config` 回显
-- **用户运行守则生命周期**（v1.18，doc/28-静默守则审计）：① **D-5 修复**——exit 钩子收尾与优雅停机同裁决 `modes:["hidden"]`（`stopLaunchedChromesSync` 增加 modes 过滤）：visible 登录窗口的存活期不再 = 当前 server 会话存活期（此前 stdin EOF 即被整树 SIGKILL，三次复现实锤）；② **C2 opt-in 自动恢复**——`LASSO_AUTO_HIDE_AFTER_LOGIN=1` 时 chrome-idle-reaper 对台账 visible Chrome 做「登录墙消失 + 延迟窗（默认 10s，`LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`）+ agent 安静」三检后 PID 定向 hide 转后台静默（默认 off；hide 非 kill，`chrome-show` 可逆；失效方向安全——判据不满足就降级回手动）。INV-82 守六组断言
+- **用户运行守则生命周期**（v1.18，doc/governance/09-静默守则审计）：① **D-5 修复**——exit 钩子收尾与优雅停机同裁决 `modes:["hidden"]`（`stopLaunchedChromesSync` 增加 modes 过滤）：visible 登录窗口的存活期不再 = 当前 server 会话存活期（此前 stdin EOF 即被整树 SIGKILL，三次复现实锤）；② **C2 opt-in 自动恢复**——`LASSO_AUTO_HIDE_AFTER_LOGIN=1` 时 chrome-idle-reaper 对台账 visible Chrome 做「登录墙消失 + 延迟窗（默认 10s，`LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`）+ agent 安静」三检后 PID 定向 hide 转后台静默（默认 off；hide 非 kill，`chrome-show` 可逆；失效方向安全——判据不满足就降级回手动）。INV-82 守六组断言
 
 ## 4. desktop：四档新实现（v1.11 → v1.13，从「能看」到「能点」）
 
@@ -207,7 +207,7 @@ AxBackend interface（三平台同构 OutlineNode 契约）
 8. **不变量脚本化**（CI 守门）：**81 条 INV** 静态 grep + 形状测，防 refactor 回退；另有 `inv-selftest` 20 样本「注入违规 → 必红」复证（见 §10）
 9. **平台差异隔离在 backend 内部**：AxBackend 三平台同构 OutlineNode 契约；TS 层零平台字面量
 10. **质量轴静态映射**（v1.17 A1）：`quality`（api/scrape/stale）按 `served_by` 静态映射，零启发式——宁缺毋假（查不到就不标）
-11. **用户运行守则**（v1.18，doc/28-静默守则审计确立为设计宪法）：「能后台静默执行就尽量后台静默执行；不能完全静默则用户介入后**及时恢复**静默执行」。三条可判定子句——S1 能静默则静默（存在零打扰路径时不选非静默实现）/ S2 介入最小化（只在不可避免处介入，信号明确及时，范本 = C1 elicitation 同轮继续）/ S3 及时恢复（自动化三档：L2 系统自动 > L1 CC 可调 > L0 人工；kill 永远不是恢复手段——hide 才是）
+11. **用户运行守则**（v1.18，doc/governance/09-静默守则审计确立为设计宪法）：「能后台静默执行就尽量后台静默执行；不能完全静默则用户介入后**及时恢复**静默执行」。三条可判定子句——S1 能静默则静默（存在零打扰路径时不选非静默实现）/ S2 介入最小化（只在不可避免处介入，信号明确及时，范本 = C1 elicitation 同轮继续）/ S3 及时恢复（自动化三档：L2 系统自动 > L1 CC 可调 > L0 人工；kill 永远不是恢复手段——hide 才是）
 
 ## 6. 边界（08 §7）
 
@@ -222,13 +222,13 @@ Lasso 明确**不做**以下事情：
 - **托管型云浏览器默认关**：cloud 通道必经 `LASSO_ALLOW_CLOUD_BROWSER=true` manual-switch + 端点/key 双重解锁（INV-25/74 守）。其中 **Steel 是自托管**（Apache-2.0 开源、本地 Docker、零 per-session 费、cookie 不出本地，v1.6）——与托管型（browserbase / stagehand，付费）区分；stagehand 是程序化实验通道（无 MCP 工具入口，doctor #39 探测 REST 契约）
 - **macOS 先行**：Win/Linux backend 编译可证（cfg-gate + `cargo check --target`），真机执行待社区反馈（不伪造）
 
-### 6.1 简单架构清单对齐（doc/17 §6 终判）
+### 6.1 简单架构清单对齐（doc/testing/01 §6 终判）
 
-对照「简单架构清单」38 条（架构思想录 02/03 体系）逐行判定，ft-round1 全量测试轮终判（2026-08-18，R1 独立裁决官）：**✅27 / ⚠️11（全部有处置：修 1 + watch 6 + 接受理由 4）/ ❌0 / ⏸1**。三条 🔴 硬不变量全过：R-FF-01（import 图 467 边实跑零非法边）/ R-FF-02（值级 0 环）/ R-DEP-03（别名清除后 AST 扫 0 命中）。阈值均为起点值未校准。逐条格内裁决见 `doc/17-功能测试清单.md` §6。
+对照「简单架构清单」38 条（架构思想录 02/03 体系）逐行判定，ft-round1 全量测试轮终判（2026-08-18，R1 独立裁决官）：**✅27 / ⚠️11（全部有处置：修 1 + watch 6 + 接受理由 4）/ ❌0 / ⏸1**。三条 🔴 硬不变量全过：R-FF-01（import 图 467 边实跑零非法边）/ R-FF-02（值级 0 环）/ R-DEP-03（别名清除后 AST 扫 0 命中）。阈值均为起点值未校准。逐条格内裁决见 `doc/testing/01-功能测试清单.md` §6。
 
 ## 7. 搜索域终态（v1.14 → v1.17.1）
 
-v1.13 后搜索域经历四次结构性修订（doc/21 重审 → doc/22 死层清除 → doc/24 颠覆性调研 → doc/25 五项裁决），终态如下。
+v1.13 后搜索域经历四次结构性修订（doc/governance/02 重审 → doc/governance/03 死层清除 → doc/governance/05 颠覆性调研 → doc/governance/06 五项裁决），终态如下。
 
 ### 7.1 终态链与扇出（v1.17 A3 后）
 
@@ -239,7 +239,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 ```
 
 - **machine_mcp**（v1.4）：零配置复用本机 `~/.claude.json` 已配的 search MCP（只读不写、永不 log Authorization，INV-72）——v1.17 A3 后是智谱能力的**唯一载体**（直连档已删）
-- **brave**：结构化 API 源。运营事实（doc/21 实核）：Brave 免费档 2026-02 取消，现口径 $5/月赠送额度（≈1000 次/月量级）；Bing API 已于 2025-08-11 退役——**BingChannel 已代码级删除**（v1.15 Phase A，INV-54 墓碑，存量配置静默忽略）
+- **brave**：结构化 API 源。运营事实（doc/governance/02 实核）：Brave 免费档 2026-02 取消，现口径 $5/月赠送额度（≈1000 次/月量级）；Bing API 已于 2025-08-11 退役——**BingChannel 已代码级删除**（v1.15 Phase A，INV-54 墓碑，存量配置静默忽略）
 - **serp_http**（v1.15）：brave 之前的 ~1s 裸 HTTP 快探（见 §7.2）
 - **browse_headless 实搜兜底**：query 语言分流（CJK→百度，非 CJK→DDG 纯 HTML 端点，零 Key；v1.14 起 DDG 被挡时级联 Brave SERP HTML）
 - **recording replay**：全源熔断时的最后兜底（过去录过的同 query fixture；v1.16 起加新鲜度门，见 §7.7）
@@ -250,7 +250,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 ### 7.2 serp_http 快探层（v1.15 Phase B）
 
-`src/serp/http-serp.ts`：browse_headless 之前的裸 HTTP SERP 探针（注入时 fallbacks 从 `[browse_headless]` 变 `[serp_http, browse_headless]`）。复用 browse_headless 的**同一 selector 集**（`selectors.ts` 三引擎：BAIDU / DDG / BRAVE_SERP）+ bot 探测，不起浏览器。真机对照（doc/22）：serp_http 1.9s / 20 条 vs 浏览器 5.3s / 0 条。真机坑有维护记录（brave 字体 CSS 垃圾结果、百度软挡终态 URL 校验），见 `doc/SELECTOR-MAINTENANCE.md`。
+`src/serp/http-serp.ts`：browse_headless 之前的裸 HTTP SERP 探针（注入时 fallbacks 从 `[browse_headless]` 变 `[serp_http, browse_headless]`）。复用 browse_headless 的**同一 selector 集**（`selectors.ts` 三引擎：BAIDU / DDG / BRAVE_SERP）+ bot 探测，不起浏览器。真机对照（doc/governance/03）：serp_http 1.9s / 20 条 vs 浏览器 5.3s / 0 条。真机坑有维护记录（brave 字体 CSS 垃圾结果、百度软挡终态 URL 校验），见 `doc/usage/03-SELECTOR-MAINTENANCE.md`。
 
 ### 7.3 content_blocks 第二跳（v1.17 A2′ 自研）
 
@@ -263,7 +263,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 ### 7.4 search_local 第四通道（v1.17 B1）
 
-`src/search-local/`（doc/24 裁决 B1 + doc/25 裁决④）：**本地私有搜索**——「我上周看过的那篇文章在哪」「我机器上哪些文件提到 X」。三源分阶段：
+`src/search-local/`（doc/governance/05 裁决 B1 + doc/governance/06 裁决④）：**本地私有搜索**——「我上周看过的那篇文章在哪」「我机器上哪些文件提到 X」。三源分阶段：
 
 - `history`（默认）：Chrome History 多 profile 只读 SQLite 查询（`chrome-history.ts`；`profile` 参数可选）
 - `files`：`mdfind` / Spotlight（`mdfind.ts`）
@@ -282,13 +282,13 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 ### 7.7 doctor 与运营事实探测
 
-`doctor --deep`（v1.14，显式 opt-in，默认零网络副作用）：#11b `brave_deep_probe` 对 Brave API 发一次最小真实请求，四分类——**200** key+计划均健康 / **401** key 无效 / **403**（或响应体含 plan 语义）计划层级失效 / **429** 限流（key 本身有效）——把「用户注册撞付费墙才发现」变成「doctor --deep 一跑就知道」。搜索供应商的运营事实漂移由 KEY-GUIDE 90 天重核制度对账（doc/21 建制）。
+`doctor --deep`（v1.14，显式 opt-in，默认零网络副作用）：#11b `brave_deep_probe` 对 Brave API 发一次最小真实请求，四分类——**200** key+计划均健康 / **401** key 无效 / **403**（或响应体含 plan 语义）计划层级失效 / **429** 限流（key 本身有效）——把「用户注册撞付费墙才发现」变成「doctor --deep 一跑就知道」。搜索供应商的运营事实漂移由 KEY-GUIDE 90 天重核制度对账（doc/governance/02 建制）。
 
 ## 8. 交互升级：elicitation 与 refs（v1.17 C1/C2）
 
 ### 8.1 elicitation 高风险回合内确认（C1）
 
-`src/interact/ElicitationPort.ts`：HighRiskGate 命中高风险 pattern 时，向 CC 用户弹结构化确认（continue/skip/abort 三选一），替代「直接 blocked 中断」。安全模型（doc/25 裁决⑤）：
+`src/interact/ElicitationPort.ts`：HighRiskGate 命中高风险 pattern 时，向 CC 用户弹结构化确认（continue/skip/abort 三选一），替代「直接 blocked 中断」。安全模型（doc/governance/06 裁决⑤）：
 
 - 三值决议：`accept`（本次放行）/ `decline`（维持 blocked）/ `unavailable`（能力未声明或任何异常——**fail-closed**，落回现行 didnt 路径 byte-identical）
 - **能力预检前置**：客户端未声明 `elicitation.form` 能力 → 连请求都不发，100% 降级 didnt（测试钉死；升级客户端即得）；单次确认 wall-clock 上限 120s
@@ -303,7 +303,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 - **SSRF**（INV-31，fetch_url / wayback / fetch_feed / serp_http / content_blocks 同函数同 config）：默认拒私网 IP；fake-ip（198.18.0.0/15）内置放行；`redirect:"manual"` 防 302→169.254 绕过。**v1.17.1 加固**：IPv6 字面量 URL 剥括号后再 DNS lookup——此前 `[::1]` 带括号串在 TUN fake-ip 环境被当域名解析成 fake-ip，IPv6 loopback/ULA/IPv4-mapped 全部绕过（ft-round1 🔴FT-DEF-3，`src/ssrf/ssrf-guard.ts`）
 - **HighRiskGate**：同 v1.17.1 修复裸 `JSON.parse` 解析围栏响应（异常 → gate_error 保守放行，C1 红线端到端失效）——改经 upstream-response 适配器 + INV-76(m) 防复发（ft-round1 🔴FT-DEF-1′）
-- **静默性（v1.17.2，doc/27-静默性全面审计）**：六维打扰面（①OS 焦点 ②窗口 ③Dock/cmd-tab ④音频 ⑤通知 ⑥资源）逐通道白盒 + 真机审计后修复两个缺陷、固化全部边界——
+- **静默性（v1.17.2，doc/governance/08-静默性全面审计）**：六维打扰面（①OS 焦点 ②窗口 ③Dock/cmd-tab ④音频 ⑤通知 ⑥资源）逐通道白盒 + 真机审计后修复两个缺陷、固化全部边界——
   - **S-7 修复（tab 内容劫持）**：上游 1.7.0 连接即 `selectPage(pages[0])`，v1.17.1 及之前 lasso 的 navigate 会改写用户第一个 tab（两轮真机复现）。现 `LoggedInChannel.ensureOwnPageSelected`（非台账 Chrome 路径）：`CdpClient.createBackgroundTarget`（`Target.createTarget {background:true}`，E7 实证零抢焦）自建后台 tab → 上游 `list_pages` 前后 **id-diff 唯一归因**（上游 id 是进程内单调计数器；不取最大 id，防与用户同刻开 tab 竞态误归因）→ `select_page {pageId}` **不带 bringToFront**（上游激活严格 opt-in，省略 = 纯上下文指针切换，真机实测零 OS 焦点/零 tab 激活）。自建 tab 晚于 TabSession 快照 → 会话收尾 restore 关它（用户 tab 栏零残留）。任何失败（解析/归因/CDP/select 拒绝）warn 降级维持旧行为，永不阻断 browse。
   - **S-10 修复（close_page 契约 + 所有权）**：旧 `close_page {url}` 在 1.7.0 wire 级必被 zod 拒（-32602，实测）；且旧 reconcile 把全部列出 URL 入册（用户 tab 也是候选）。现 `TabRegistry` 按 `{pageId}` 关 + **登记制所有权**（`noteOwnPage` 只由 ensureOwnPageSelected 成功路径登记；用户 tab 无登记路径，close 淘汰在集合定义层面不可能落在用户 tab 上——红线机械化范式）。
   - **诚实边界固化**（不可修，见 KEY-GUIDE/README 矩阵）：desktop 物理键鼠设计占用；launch-chrome hidden 的 Dock 图标（有头 Chrome 注册 Foreground ASN，LSUIElement 不可控；headless 无此问题——真机实证无 Foreground ASN）；visible 档语义即「看着干」；用户 Chrome 不静音（零注入铁律）+ 操作 tab 的 hasFocus 仿真（不抢 OS 焦点）。
@@ -316,12 +316,12 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 |---|---|---|---|
 | 架构不变量 | `check-invariants.mjs`（自写） | INV-1..81 静态 grep + 形状测 | **81 条** |
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **20 样本**（外部契约类全覆盖；未验证 pin 显性化报告） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2253 测试**（135 文件；doc/17 ft-round1 门禁两轮独立复跑在档 + doc/27 静默性审计补测） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2253 测试**（135 文件；doc/testing/01 ft-round1 门禁两轮独立复跑在档 + doc/governance/08 静默性审计补测） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；rust-helper 自 v1.13 起零改） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | CI Linux runner |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ × 三引擎 × 多 query | 12+ fixtures |
 | 故障注入 | vitest | fallback 链 / 限流 / 政策 gate / SERP 改版 | ~20 场景 |
-| 全量功能测试 | doc/17 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
+| 全量功能测试 | doc/testing/01 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
 | 契约锁 | chrome-devtools-mcp@**1.7.0** version pin（`LOCKED_CDP_MCP_VERSION` 单一真源） | 上游小版本升级不破 Lasso；迁移要点见 §2.1 | SubprocessManager.ts |
 
 ## 11. 不变量（82 条）分类
@@ -436,21 +436,21 @@ $ lasso launch-chrome
 
 ## 14. 版本与发布
 
-- **当前版本**：`1.18.0`（doc/28 静默守则审计修复轮：D-5 exit 钩子 visible 生存 + C2 登录后自动 hide opt-in + INV-82 + 守则入文档；2026-08-19）
+- **当前版本**：`1.18.0`（doc/governance/09 静默守则审计修复轮：D-5 exit 钩子 visible 生存 + C2 登录后自动 hide opt-in + INV-82 + 守则入文档；2026-08-19）
 - **version 真源**：`package.json` + `src/index.ts:LASSO_SERVER_VERSION` + `src/doctor/doctor.ts:LASSO_VERSION`（INV-63 守：三处必字面量一致）
 - **doctor readiness**：全量 check pass → `ready: true`（检查项随版本增长，以实跑输出为准）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
 - **门禁四链**：`npm run build` / `npm test`（2292）/ `npm run check-invariants`（82）/ `npm run inv-selftest`（23）+ `cargo test`（207）
 
-## 15. 质量与决策主线（doc/19 → doc/25 → doc/17）
+## 15. 质量与决策主线（doc/governance/01 → doc/governance/06 → doc/testing/01）
 
 2026-08-15 起的三段质量主线，决策记录全部在档（索引见 [`doc/README.md`](./doc/README.md)「决策时间线」）：
 
-1. **五轮最优性审查**（doc/19，v1.10 → v1.13）：四域白盒复审 → 裁决 → 实施 → 独立审查循环，候选 16 → 14 → 7 → 1 → 0 单调收敛（round5 终裁 ROUND-CLEAN）；四维结论选型 / 架构 / 范围 / 实施全最优。
-2. **搜索重审与死层清偿**（doc/21 → doc/22，v1.14 / v1.15）：运营事实对账（Brave 免费档 2026-02 取消、Bing API 2025-08-11 退役）暴露「机制达标、运行时诚实度未达标」→ free_only 路由接线 + DDG→Brave SERP 级联 + `doctor --deep` + KEY-GUIDE 90 天重核制度（v1.14）；Bing 死层代码级清除（INV-54）+ serp_http 快探层（v1.15）。
-3. **方法论检讨与颠覆性调研**（doc/23 / 23a → doc/24，v1.16）：零基视角制度化（「搜索优化失效」根因 = 只在既有方案内比较）；颠覆性扫描按 D-GO / D-DECISION / D-WATCH / D-NOGO 分级裁决 → 落地 D-GO 三项：freshness TTL 耦合 / fetch_feed / README 生态段（v1.16）。
-4. **五项用户裁决**（doc/25，v1.17）：A1 quality 轴 / A3 删 zhipu 直连（INV-80）/ A2′ content_blocks 第二跳 / B1 search_local（INV-81）/ C1 elicitation + C2 include_refs。
-5. **全量功能测试轮**（doc/17，v1.17.1）：四面板 ~170 用例真机执行，抓出并修复 6 缺陷（🔴IPv6 字面量 SSRF 绕过 / 🔴HighRiskGate 裸 JSON.parse / doWait 假成功 / tab_restore no-op / doctor file 键 / SIGHUP），R1 独立裁决 **ALL-CLEAN**；§6 简单架构 38 条终判见 §6.1。
+1. **五轮最优性审查**（doc/governance/01，v1.10 → v1.13）：四域白盒复审 → 裁决 → 实施 → 独立审查循环，候选 16 → 14 → 7 → 1 → 0 单调收敛（round5 终裁 ROUND-CLEAN）；四维结论选型 / 架构 / 范围 / 实施全最优。
+2. **搜索重审与死层清偿**（doc/governance/02 → doc/governance/03，v1.14 / v1.15）：运营事实对账（Brave 免费档 2026-02 取消、Bing API 2025-08-11 退役）暴露「机制达标、运行时诚实度未达标」→ free_only 路由接线 + DDG→Brave SERP 级联 + `doctor --deep` + KEY-GUIDE 90 天重核制度（v1.14）；Bing 死层代码级清除（INV-54）+ serp_http 快探层（v1.15）。
+3. **方法论检讨与颠覆性调研**（doc/governance/04（含原 23a 作附录A）→ doc/governance/05，v1.16）：零基视角制度化（「搜索优化失效」根因 = 只在既有方案内比较）；颠覆性扫描按 D-GO / D-DECISION / D-WATCH / D-NOGO 分级裁决 → 落地 D-GO 三项：freshness TTL 耦合 / fetch_feed / README 生态段（v1.16）。
+4. **五项用户裁决**（doc/governance/06，v1.17）：A1 quality 轴 / A3 删 zhipu 直连（INV-80）/ A2′ content_blocks 第二跳 / B1 search_local（INV-81）/ C1 elicitation + C2 include_refs。
+5. **全量功能测试轮**（doc/testing/01，v1.17.1）：四面板 ~170 用例真机执行，抓出并修复 6 缺陷（🔴IPv6 字面量 SSRF 绕过 / 🔴HighRiskGate 裸 JSON.parse / doWait 假成功 / tab_restore no-op / doctor file 键 / SIGHUP），R1 独立裁决 **ALL-CLEAN**；§6 简单架构 38 条终判见 §6.1。
 
 方法学沉淀（供复用）：裁决官不采信文档（关键声称白盒双源亲验）；证据阶梯 L0-L3；mutation 即验收；「先拿事实再加参数」；收敛协议前置；零基视角才可见方案级盲区；决策分级（GO/DECISION/WATCH/NOGO）交用户裁决而非默认全做。
 
@@ -458,14 +458,14 @@ $ lasso launch-chrome
 
 - [README.md](./README.md) — 用户手册（安装 / 配置 / 工具列表 / 隐私 / 故障排查）
 - [doc/README.md](./doc/README.md) — doc/ 目录导读（用户向 / 维护手册 / 决策档案三分法 + 决策时间线 + 新鲜度表）
-- [doc/08 功能架构](./doc/08-media-interact-功能架构.md) — 权威架构基线（F 编号；冻结于 2026-07-21，头部含 v1.17.1 现状对齐横幅 + F 编号 ↔ 现实映射）
-- [doc/09 实施排期](./doc/09-media-interact-实施排期.md) — v0.1 → v1.17.1 能力跃升全路径与决策记录
-- [doc/19 最优性审查轮次](./doc/19-最优性审查轮次/00-总结.md) — 五轮审查全记录（v1.10 → v1.13 质量主线）
-- [doc/17 功能测试清单](./doc/17-功能测试清单.md) — 全量功能测试（ft-round1 ALL-CLEAN + §6 简单架构终判）
-- [doc/TROUBLESHOOTING.md](./doc/TROUBLESHOOTING.md) — FAQ + error_kind 释义
-- [doc/SELECTOR-MAINTENANCE.md](./doc/SELECTOR-MAINTENANCE.md) — selector 债维护手册
-- [doc/26 文档查缺补漏](./doc/26-文档查缺补漏/gap-matrix.md) — 文档盘点矩阵（新鲜度档位 + F 编号映射真源）
+- [doc/architecture/01 功能架构](./doc/architecture/01-功能架构.md) — 权威架构基线（F 编号；冻结于 2026-07-21，头部含 v1.17.1 现状对齐横幅 + F 编号 ↔ 现实映射）
+- [doc/architecture/02 实施排期](./doc/architecture/02-实施排期.md) — v0.1 → v1.17.1 能力跃升全路径与决策记录
+- [doc/governance/01 最优性审查轮次](./doc/governance/01-最优性审查轮次/00-总结.md) — 五轮审查全记录（v1.10 → v1.13 质量主线）
+- [doc/testing/01 功能测试清单](./doc/testing/01-功能测试清单.md) — 全量功能测试（ft-round1 ALL-CLEAN + §6 简单架构终判）
+- [doc/usage/02-TROUBLESHOOTING.md](./doc/usage/02-TROUBLESHOOTING.md) — FAQ + error_kind 释义
+- [doc/usage/03-SELECTOR-MAINTENANCE.md](./doc/usage/03-SELECTOR-MAINTENANCE.md) — selector 债维护手册
+- [doc/governance/07 文档查缺补漏](./doc/governance/07-文档查缺补漏/gap-matrix.md) — 文档盘点矩阵（新鲜度档位 + F 编号映射真源）
 
 ---
 
-本文档是 Lasso v1.17.1 架构概览（user-first；2026-08-18 同步，事实基准 = HEAD `1432bd4` 源码实核 + `tools/list` / `cargo test` / `check-invariants` 实跑）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/08`](./doc/08-media-interact-功能架构.md)；v0.1 → v1.17.1 实施排期（含每 phase 决策记录）见 [`doc/09`](./doc/09-media-interact-实施排期.md)。
+本文档是 Lasso v1.17.1 架构概览（user-first；2026-08-18 同步，事实基准 = HEAD `1432bd4` 源码实核 + `tools/list` / `cargo test` / `check-invariants` 实跑）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)；v0.1 → v1.17.1 实施排期（含每 phase 决策记录）见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)。

@@ -402,7 +402,7 @@ describe("BrowseChannel.browse — budget 超限", () => {
     const r = await channel.browse("https://example.com/", "chain", {
       steps: [{ action: "navigate" }, { action: "snapshot" }],
     });
-    // v1.18.2（doc/29 F3）：budget_exceeded → unknown（自限=瞬态可重试，非语义否定）
+    // v1.18.2（doc/governance/10 F3）：budget_exceeded → unknown（自限=瞬态可重试，非语义否定）
     expect(r.outcome).toBe("unknown");
     expect(r.data!.stopped_at?.reason).toBe("budget_exceeded");
     expect(r.data!.stopped_at?.step_index).toBe(0);
@@ -467,9 +467,9 @@ describe("BrowseChannel.browse — v0.2 兼容（无 steps 走单 action）", ()
 });
 
 // ============================================================
-// v1.18.2（doc/29 F3+Y1）：budget_ms 显式放宽经 browse options 直达 chain
+// v1.18.2（doc/governance/10 F3+Y1）：budget_ms 显式放宽经 browse options 直达 chain
 // ============================================================
-describe("BrowseChannel.browse — budget_ms 显式放宽（doc/29 Y1）", () => {
+describe("BrowseChannel.browse — budget_ms 显式放宽（doc/governance/10 Y1）", () => {
   it("options.budget_ms=5 → chain 预算 5ms（detail 报 cap=5ms）+ 超限 outcome=unknown", async () => {
     // 让 navigate 真实耗时 ≥6ms（stub 默认 0ms 耗尽不了 5ms 预算——确定性包装）
     const origCall = stubInfo.client.callTool.bind(stubInfo.client);

@@ -1,5 +1,5 @@
 /**
- * OutlineMapper.pruneToInteractive 单测（v1.2 doc/14 §4.2d Lightpanda-inspired）。
+ * OutlineMapper.pruneToInteractive 单测（v1.2 doc/archive/research/14 §4.2d Lightpanda-inspired）。
  *
  * 守 INV-70：interactiveOnly opt-in 后处理，默认不过滤 byte-identical v1.1。
  */
@@ -106,7 +106,7 @@ function collectRoles(n: OutlineNode, out: string[] = []): string[] {
   return out;
 }
 
-describe("pruneToInteractive (v1.2 doc/14 §4.2d)", () => {
+describe("pruneToInteractive (v1.2 doc/archive/research/14 §4.2d)", () => {
   it("isInteractiveRole：button/link/textfield 等为 true；text/group/window 为 false", () => {
     expect(isInteractiveRole("button")).toBe(true);
     expect(isInteractiveRole("link")).toBe(true);

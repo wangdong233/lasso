@@ -1,5 +1,5 @@
 /**
- * search-local.spec.ts（v1.17 Phase D / B1 第四通道，doc/25 裁决④ + parse24 §5）
+ * search-local.spec.ts（v1.17 Phase D / B1 第四通道，doc/governance/06 裁决④ + parse24 §5）
  *
  * 守护面：
  *  1. Chrome History 源：临时 fixture db（真 node:sqlite 造库）→ 多 profile 合并

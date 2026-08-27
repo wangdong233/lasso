@@ -278,7 +278,7 @@ export const waybackAnnotations: ToolAnnotations = {
 };
 
 // ============================================================
-// fetch_feed（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）
+// fetch_feed（doc/governance/05 颠覆性调研 verdict D-GO-2，2026-08-18）
 // ============================================================
 /**
  * fetch_feed tool annotations。
@@ -299,7 +299,7 @@ export const fetchFeedAnnotations: ToolAnnotations = {
 };
 
 // ============================================================
-// search_local（doc/25 裁决④ B1 第四通道，2026-08-18）
+// search_local（doc/governance/06 裁决④ B1 第四通道，2026-08-18）
 // ============================================================
 /**
  * search_local tool annotations。

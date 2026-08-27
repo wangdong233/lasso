@@ -1,5 +1,5 @@
 /**
- * fetch_feed 单元测（doc/24 颠覆性调研 verdict D-GO-2，2026-08-18）。
+ * fetch_feed 单元测（doc/governance/05 颠覆性调研 verdict D-GO-2，2026-08-18）。
  *
  * 覆盖：
  *  - parseFeedBody 纯解析：RSS 2.0 / Atom / JSON Feed / CDATA / 实体 / limit

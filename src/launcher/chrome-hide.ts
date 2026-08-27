@@ -14,7 +14,7 @@
  * INV-64 合规：只 import node:child_process（osascript spawnSync=CLI 短命路径 /
  * execFile=server 进程内异步路径，P27/P31）+ node:process。
  * 非 mac 平台 / 无 pid → no-op（execFn 零调用；Windows 保险丝本版不实现——
- * 两段式 ShowWindowAsync 方案落 doc/TROUBLESHOOTING.md，#W-pending 范式）。
+ * 两段式 ShowWindowAsync 方案落 doc/usage/02-TROUBLESHOOTING.md，#W-pending 范式）。
  */
 import { spawnSync, execFile } from "node:child_process";
 import process from "node:process";

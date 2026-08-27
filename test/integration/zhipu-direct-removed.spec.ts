@@ -1,5 +1,5 @@
 /**
- * v1.17 A3（doc/25 五项裁决裁决③）——zhipu 直连 API channel 死层清除回归锁。
+ * v1.17 A3（doc/governance/06 五项裁决裁决③）——zhipu 直连 API channel 死层清除回归锁。
  *
  * INV-80 墓碑的测试侧镜像（快速失败 + 语义逐项钉死，照 v1.15 Phase A 的
  * Bing 死层清除测试范式但独立成文件——A3 删除面更大，集中守护）：

@@ -270,7 +270,7 @@ export interface DoctorReport {
 export interface DoctorOptions {
   /**
    * v1.17 A3：覆盖 ZHIPU_API_KEY（默认读 process.env；**已退役容忍读**）。
-   * zhipu 直连 API channel 已删除（doc/25 裁决③）；zhipu_keys_retired 是零触网
+   * zhipu 直连 API channel 已删除（doc/governance/06 裁决③）；zhipu_keys_retired 是零触网
    * 静态检查：键非空 → warn 建议删除（主链已不含 zhipu 直连档，无功能影响）。
    */
   zhipuKey?: string;
@@ -866,7 +866,7 @@ function checkNodeVersion(): DoctorCheck {
 }
 
 /**
- * 2. zhipu_keys_retired（v1.17 A3，doc/25 裁决③）：零触网静态退役提示。
+ * 2. zhipu_keys_retired（v1.17 A3，doc/governance/06 裁决③）：零触网静态退役提示。
  *
  * zhipu 直连 API channel 已删除（channels/SearchChannel.ts 死层清除；INV-80 墓碑守卫）
  * ——智谱搜索能力的现行载体是 search.machine_mcp（机器 ~/.claude.json 已配的
@@ -899,9 +899,9 @@ function checkZhipuKeysRetired(
   return {
     name: "zhipu_keys_retired",
     status: "warn",
-    detail: `${which} 已配置，但 zhipu 直连 API channel 已于 v1.17 删除（doc/25 裁决③），该配置永远不被消费`,
+    detail: `${which} 已配置，但 zhipu 直连 API channel 已于 v1.17 删除（doc/governance/06 裁决③），该配置永远不被消费`,
     next_step:
-      "建议删除 ZHIPU_API_KEY / ZHIPU_ENDPOINT 配置；主链已不含 zhipu 直连档（静默忽略、无功能影响）。要 API 档搜索请配置机器 web-search-prime MCP（推荐，零配置复用）或 BRAVE_API_KEYS，见 doc/KEY-GUIDE.md",
+      "建议删除 ZHIPU_API_KEY / ZHIPU_ENDPOINT 配置；主链已不含 zhipu 直连档（静默忽略、无功能影响）。要 API 档搜索请配置机器 web-search-prime MCP（推荐，零配置复用）或 BRAVE_API_KEYS，见 doc/usage/01-KEY-GUIDE.md",
   };
 }
 
@@ -1158,7 +1158,7 @@ function checkBraveKeys(braveKeysCsv: string): DoctorCheck {
       detail:
         "BRAVE_API_KEYS / BRAVE_API_KEY 未配置（search 扇出退化为 machine_mcp 单源；无机器 MCP 时走 serp_http→browse_headless 免费兜底链）",
       next_step:
-        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径 = 机器 web-search-prime MCP 复用 + 实搜兜底，详见 doc/KEY-GUIDE.md",
+        "（可选）export BRAVE_API_KEYS=key1,key2 注册 https://api.search.brave.com/ —— Brave 2026-02 起已无免费档，付费计划含 $5/月赠送额度（≈1000 次，需绑卡）；零 key 免费路径 = 机器 web-search-prime MCP 复用 + 实搜兜底，详见 doc/usage/01-KEY-GUIDE.md",
     };
   }
   return {
@@ -1256,7 +1256,7 @@ async function checkBraveDeepProbe(braveKeysCsv: string): Promise<DoctorCheck> {
         status: "fail",
         detail: `Brave API ${resp.status}${planSemantics ? "（响应体含 plan/subscription 语义）" : ""}：计划层级异常——Brave 2026-02 起无免费档，核查 KEY-GUIDE『最后核实』列 + brave.com/search/api pricing 页${spent}`,
         next_step:
-          "到 API 控制台确认订阅计划是否在有效期 / 是否绑卡 + attribution 齐备；口径以控制台亲历为准（见 doc/KEY-GUIDE.md 维护规则）",
+          "到 API 控制台确认订阅计划是否在有效期 / 是否绑卡 + attribution 齐备；口径以控制台亲历为准（见 doc/usage/01-KEY-GUIDE.md 维护规则）",
       };
     }
     if (resp.status === 429) {
@@ -1306,7 +1306,7 @@ function checkBingKeysRetired(bingKeysCsv: string): DoctorCheck {
     name: "bing_keys_retired",
     status: "warn",
     detail: `${keys.length} 个 BING_API_KEYS 已配置，但 Bing Search APIs 已于 2025-08-11 全量退役（微软 lifecycle 公告），该配置永远不可用`,
-    next_step: "建议删除 BING_API_KEYS 配置；主链已不含 Bing 源（v1.15 起死层移除，该配置被静默忽略、无功能影响；免费第二源选 Brave，见 doc/KEY-GUIDE.md）",
+    next_step: "建议删除 BING_API_KEYS 配置；主链已不含 Bing 源（v1.15 起死层移除，该配置被静默忽略、无功能影响；免费第二源选 Brave，见 doc/usage/01-KEY-GUIDE.md）",
   };
 }
 
@@ -2621,7 +2621,7 @@ async function checkConfigFile(): Promise<DoctorCheck> {
     return {
       name: "config_file",
       status: "pass",
-      detail: `${filePath} 存在；加载 ${keyCount} 个 key（env 覆盖 file；详见 doc/KEY-GUIDE.md）`,
+      detail: `${filePath} 存在；加载 ${keyCount} 个 key（env 覆盖 file；详见 doc/usage/01-KEY-GUIDE.md）`,
     };
   } catch (e) {
     return {
@@ -2662,7 +2662,7 @@ function checkMachineSearchMcp(): DoctorCheck {
         detail:
           "~/.claude.json 未发现 web-search-prime MCP（type=http + url 含 web_search_prime/bigmodel.cn + Authorization）——本机无 API 搜索主力源：仅剩 Brave（需 key）/裸 HTTP 快探/无头实搜兜底（免费）",
         next_step:
-          "（可选，零配置兼容）要 API 档请配置 web-search-prime MCP（推荐——机器装过即自动复用其 key）或 BRAVE_API_KEYS；零配置仍可用免费兜底链搜索（doc/KEY-GUIDE.md）",
+          "（可选，零配置兼容）要 API 档请配置 web-search-prime MCP（推荐——机器装过即自动复用其 key）或 BRAVE_API_KEYS；零配置仍可用免费兜底链搜索（doc/usage/01-KEY-GUIDE.md）",
       };
     }
     // 提取 hostname —— 用 URL 构造器（detector 已校验 url 是 string；构造失败 → 退化为 "(invalid url)" 兜底）
@@ -2982,7 +2982,7 @@ async function checkStealthCreepjsRegression(opts: {
 /**
  * 39. stagehand_rest_contract_probe（v1.7 Phase A parse15 §3.4 + R-ECO-6）。
  *
- * 目的：用运行时证据（L2 真实流量）确认/否定 R-ECO-6（doc/16 L507 StagehandChannel
+ * 目的：用运行时证据（L2 真实流量）确认/否定 R-ECO-6（doc/archive/research/16 L507 StagehandChannel
  * REST 契约 api.stagehand.dev/{verify|extract} 在 stagehand 上游 repo 无源码佐证）。
  *
  * 实装（仿 #21 probeCloudEndpoint / #37 Steel GET /health 范式，纯 fetch 不需浏览器）：
@@ -3026,7 +3026,7 @@ async function checkStagehandRestContract(opts: {
           `（stagehand-ruby Stainless SDK 实证）+ v0 unstable——本通道 /verify|/extract ` +
           `契约仍无佐证）`,
         next_step:
-          "v1.8 决策点：重写对齐 sessions.* 真实契约（verify 原语不存在 = 功能缩水）或删除通道（doc/16 R-ECO-6 已补记准确底账）",
+          "v1.8 决策点：重写对齐 sessions.* 真实契约（verify 原语不存在 = 功能缩水）或删除通道（doc/archive/research/16 R-ECO-6 已补记准确底账）",
       };
     }
     // 2xx → 契约存在（R-ECO-6 反驳）→ pass

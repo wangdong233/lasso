@@ -112,7 +112,7 @@ describe("ssrfGuard — DNS 阶段", () => {
 });
 
 // ============================================================
-// v1.18.2（doc/29 F1）：拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
+// v1.18.2（doc/governance/10 F1）：拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
 // ============================================================
 describe("ssrfDenial / isSsrfEnvTransientReason — F1 reason 二分", () => {
   it("dns_failed:* → 环境瞬态 → unknown + ssrf_dns_unresolved", () => {

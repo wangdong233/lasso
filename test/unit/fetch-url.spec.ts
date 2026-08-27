@@ -7,7 +7,7 @@
  *  3. content-type 分流：html / json / text / binary
  *  4. redirect:"manual" 拒跟随 3xx（防 SSRF 绕过；返 location 给 caller 二次显式调）
  *  5. 4xx → didnt；5xx → unknown；2xx → worked（tri-state）
- *  6. timeout → unknown；ENOTFOUND → unknown（v1.18.2 doc/29 Y2：DNS/连接错环境瞬态，可重试）
+ *  6. timeout → unknown；ENOTFOUND → unknown（v1.18.2 doc/governance/10 Y2：DNS/连接错环境瞬态，可重试）
  *  7. bounded output > 48 KiB 自动落盘 .txt + @oN ref
  *  8. max_bytes 截断（content-length > max_bytes → didnt）
  *  9. INV-32 守护：经 subproc.acquireHttpClient（不裸 fetch / 不 new Agent）
@@ -137,7 +137,7 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  // ---- v1.18.2（doc/29 F1）：DNS 环境瞬态 ≠ 策略拦截 ----
+  // ---- v1.18.2（doc/governance/10 F1）：DNS 环境瞬态 ≠ 策略拦截 ----
   it("F1: DNS 解析失败（dns_failed）→ outcome=unknown + retrieval_method=ssrf_dns_unresolved（可重试，非「政策拦截」终答）", async () => {
     setDns([], "getaddrinfo ENOTFOUND flaky.test");
     const { subproc, fetchMock } = makeMockSubproc(vi.fn());
@@ -618,7 +618,7 @@ describe("fetch_url — tri-state outcome", () => {
 // 错误分类（parse6 §3.1.3 outcomeFromFetchError）
 // ============================================================
 describe("fetch_url — 错误分类", () => {
-  it("ENOTFOUND → unknown（doc/29 Y2：TUN/代理环境 DNS 高频瞬态，可重试——不再是「host 不存在」终答）", async () => {
+  it("ENOTFOUND → unknown（doc/governance/10 Y2：TUN/代理环境 DNS 高频瞬态，可重试——不再是「host 不存在」终答）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND nope.test"));
     const { subproc } = makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
@@ -631,7 +631,7 @@ describe("fetch_url — 错误分类", () => {
     expect(r.error).toContain("ENOTFOUND");
   });
 
-  it("ECONNREFUSED → unknown（doc/29 Y2：代理未起/服务暂不可达是环境瞬态，可重试）", async () => {
+  it("ECONNREFUSED → unknown（doc/governance/10 Y2：代理未起/服务暂不可达是环境瞬态，可重试）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 93.184.216.34:443"));
     const { subproc } = makeMockSubproc(fetchMock);
     const r = await doFetchUrl(

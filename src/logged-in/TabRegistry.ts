@@ -5,7 +5,7 @@
  * 留 tab；100 次后 Chrome 内存爆。本类守 ≤10，超限 LRU 淘汰最老 own tab
  * （close_page）。
  *
- * v1.17.2（doc/27-静默性全面审计 S-10 修复）—— 两个契约修正：
+ * v1.17.2（doc/governance/08-静默性全面审计 S-10 修复）—— 两个契约修正：
  *  1. **close 形态**：上游 chrome-devtools-mcp@1.7.0 的 `close_page` schema 是
  *     `{pageId:number}`——旧代码传 `{url}` 在 wire 级必被 zod 拒（-32602，
  *     verify.md §5e 实证）→ 淘汰从未真正生效。改为从 list_pages 解析 pageId

@@ -110,7 +110,7 @@ Votre première sortie — dites simplement à Claude :
 - **Aspirer des pages connectées** (Jira / GitHub privé / intranet d'entreprise) → lancez `lasso launch-chrome` une fois
 - **Contrôler le bureau macOS** → lancez `lasso doctor` une fois pour être guidé dans l'autorisation
 
-Comment obtenir chaque clé, quels paliers gratuits existent — voir le [**Guide de configuration des clés**](./doc/KEY-GUIDE.md).
+Comment obtenir chaque clé, quels paliers gratuits existent — voir le [**Guide de configuration des clés**](./doc/usage/01-KEY-GUIDE.md).
 
 ---
 
@@ -198,7 +198,7 @@ Va à l'Internet Archive (Wayback Machine) pour retrouver la dernière copie arc
 
 **Complètement désactivé par défaut.** Ne s'active que lorsque vous l'allumez explicitement ET avez configuré un navigateur cloud (Steel auto-hébergé ou browserbase / stagehand hébergé). L'anti-bot léger passe déjà grâce à l'anti-détection intégrée de `browse_headless` — **seule la protection de niveau Cloudflare justifie le navigateur cloud**.
 
-- **Steel auto-hébergé (recommandé · gratuit)** : un navigateur cloud open source dans un Docker local — zéro coût par session, cookies qui ne quittent pas votre machine. Une commande pour l'ouvrir, voir [Guide de configuration des clés · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **Steel auto-hébergé (recommandé · gratuit)** : un navigateur cloud open source dans un Docker local — zéro coût par session, cookies qui ne quittent pas votre machine. Une commande pour l'ouvrir, voir [Guide de configuration des clés · Steel](./doc/usage/01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
 - **browserbase (hébergé · payant)** : à l'usage après l'essai — l'alternative quand vous ne voulez pas gérer Docker vous-même.
 - **stagehand (hébergé · payant)** : ⚠️ canal expérimental programmatique — configurer la clé n'assemble qu'un canal interne, **sans outil MCP exposé** (contrat REST non vérifié ; `lasso doctor` #39 `stagehand_rest_contract_probe` teste précisément cela).
 
@@ -231,7 +231,7 @@ Redémarrez Claude Code → `/mcp` → `lasso ✓ Connected`. **C'est tout, une 
 - **v1.11** : le bureau passe de « voir » à « cliquer » (click / type / scroll réellement implémentés + souris coordonnées + élagage `skeleton`) ; couche pilote mise à niveau chrome-devtools-mcp 1.7.0 (anti-détection au niveau lancement, télémétrie désactivée par défaut) ; filtre temporel `freshness` pour la recherche ; repli sans clé pour les requêtes anglaises passé à DuckDuckGo ; nouveau `LASSO_PROXY`, proxy de sortie.
 - **v1.10** : navigateur silencieux par défaut + fermeture après usage (`launch-chrome` démarre sans fenêtre, fermeture auto ~60 s, `--mode visible` pour revenir en arrière).
 - **v1.9** : fin de vie du navigateur (recyclage automatique du headless après 5 minutes d'inactivité, `lasso chrome-stop`, `tab_restore` restaure la liste d'onglets d'origine).
-- **v1.8** : correction des 24 défauts exposés par le test complet (adaptation au contrat amont, captures réellement écrites sur disque, pagination `read_text`, etc.) — liste complète dans [doc/17-功能测试清单.md](doc/17-功能测试清单.md), section « v1.8 修复记录 ».
+- **v1.8** : correction des 24 défauts exposés par le test complet (adaptation au contrat amont, captures réellement écrites sur disque, pagination `read_text`, etc.) — liste complète dans [doc/testing/01-功能测试清单.md](doc/testing/01-功能测试清单.md), section « v1.8 修复记录 ».
 
 </details>
 
@@ -277,7 +277,7 @@ Enregistrez et c'est actif. **Pour plus de robustesse**, ajoutez aussi Brave (pl
 
 > Ordre de repli : réutilisation du MCP machine → Brave (si une clé est configurée) → recherche réelle en navigateur headless en dernier repli (v1.14 : repli anglais à double moteur — un échec ou vide du DDG relance automatiquement une tentative via la recherche réelle Brave ; v1.15 ajoute avant une **sonde rapide HTTP brut** (~1s, récupère la page de résultats sans aucun navigateur — en tests réels certains moteurs se méfient moins des clients sans navigateur) ; seulement si elle ne trouve rien, le chemin lent du navigateur démarre). Le premier qui échoue cède la place au suivant. (La source Bing a été retirée entièrement après le retrait amont du 2025-08-11, et le palier direct Zhipu a été supprimé en v1.17 ; un `BING_API_KEYS` / `ZHIPU_API_KEY` restant est ignoré silencieusement et `lasso doctor` proposera de le supprimer.)
 
-Comment demander une clé, tailles des paliers gratuits → [Guide de configuration des clés · Recherche](./doc/KEY-GUIDE.md#a-搜索). Commandes utiles : `lasso --version` / `lasso --help` (depuis la v1.8, une commande inconnue affiche l'usage et sort avec un code non nul — fini le blocage silencieux).
+Comment demander une clé, tailles des paliers gratuits → [Guide de configuration des clés · Recherche](./doc/usage/01-KEY-GUIDE.md#a-搜索). Commandes utiles : `lasso --version` / `lasso --help` (depuis la v1.8, une commande inconnue affiche l'usage et sort avec un code non nul — fini le blocage silencieux).
 
 ### 2. Aspirer des pages connectées (✅ Gratuit · une seule commande, pas de clé)
 
@@ -305,7 +305,7 @@ Connectez vos comptes une première fois dans cette fenêtre (2FA à votre charg
 
 </details>
 
-**Voir aussi** → [Guide de configuration des clés · Navigation connectée](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
+**Voir aussi** → [Guide de configuration des clés · Navigation connectée](./doc/usage/01-KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
 ### 3. Piloter le bureau (✅ Gratuit · autoriser une fois, pas de clé)
 
@@ -315,7 +315,7 @@ Connectez vos comptes une première fois dans cette fenêtre (2FA à votre charg
 
 > Frontière honnête : macOS est vérifié sur du vrai matériel ; Windows / Linux passent les auto-tests à la compilation et au niveau contrat, les tests manuels complets sur machine réelle sont en cours — nous ne prétendons pas « entièrement vérifié » à tort.
 
-**Voir aussi** → [Guide de configuration des clés · Contrôle du bureau](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
+**Voir aussi** → [Guide de configuration des clés · Contrôle du bureau](./doc/usage/01-KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
 ### 4. Navigateur cloud (désactivé par défaut · seulement pour l'anti-bot lourd)
 
@@ -332,7 +332,7 @@ L'anti-bot léger passe déjà avec l'anti-détection intégrée de `browse_head
 - **browserbase hébergé (payant)** : remplacez par `"BROWSERBASE_API_KEY": "votre_clé"` — l'alternative sans Docker
 - ⚠️ stagehand : canal expérimental programmatique, sans outil MCP — ne comptez pas dessus pour aspirer des pages
 
-**Comment demander une clé, étapes complètes d'ouverture de Steel** → [Guide de configuration des clés · Navigateur cloud](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**Comment demander une clé, étapes complètes d'ouverture de Steel** → [Guide de configuration des clés · Navigateur cloud](./doc/usage/01-KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>Réglages avancés (facultatif — les utilisateurs ordinaires peuvent ignorer)</b></summary>
@@ -350,7 +350,7 @@ Vous pouvez **complètement ignorer** ce qui suit pour un usage quotidien. Ce ne
 - Configurer un proxy de sortie pour les navigateurs (`LASSO_PROXY`, p. ex. `http://127.0.0.1:7890` ; **n'affecte que les navigateurs headless et le Steel cloud — la sortie du Chrome connecté reste toujours inchangée** — v1.11)
 - Définir l'endpoint du navigateur cloud Steel auto-hébergé (`STEEL_ENDPOINT`, p. ex. `http://localhost:3000` ; nécessite aussi `LASSO_ALLOW_CLOUD_BROWSER=true` pour s'activer)
 
-Liste complète des variables et valeurs par défaut : [Guide de configuration des clés · Réglages avancés](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Les réseaux proxy TUN type Surge / Clash (fake-ip, `198.18.0.0/15`) et `127.0.0.1` (le port de débogage CDP du Chrome local) sont déjà autorisés nativement**, sans configuration supplémentaire — c'est un comportement voulu, pas un oubli de config.
+Liste complète des variables et valeurs par défaut : [Guide de configuration des clés · Réglages avancés](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配). **Les réseaux proxy TUN type Surge / Clash (fake-ip, `198.18.0.0/15`) et `127.0.0.1` (le port de débogage CDP du Chrome local) sont déjà autorisés nativement**, sans configuration supplémentaire — c'est un comportement voulu, pas un oubli de config.
 
 > **Rétro-compatible** : si vous aviez précédemment installé avec `claude mcp add -e KEY=VAL`, ces variables d'env **fonctionnent toujours** et **surchargent** le fichier de config. Le fichier de config n'est qu'un chemin supplémentaire, plus convivial — il ne remplace pas les variables d'env.
 
@@ -385,7 +385,7 @@ Vos données vous appartiennent.
 | Invite indiquant que l'accès au réseau interne a été bloqué | Vérifiez l'URL ; les réseaux proxy TUN sont autorisés par défaut, les autres réseaux internes nécessitent une permission explicite |
 | Envie de vérifier l'anti-détection | Lancez `lasso doctor --stealth-check` — il pilote la page de détection creepjs et compare à la ligne de base (optionnel, sans impact sur l'usage quotidien) |
 
-FAQ complète et astuces de débogage dans [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+FAQ complète et astuces de débogage dans [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 ---
 
@@ -415,7 +415,7 @@ Si Lasso vous aide, offrez un café à l'auteur ☕
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
+<img src="doc/assets/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/assets/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
 
 </div>
 
@@ -425,15 +425,15 @@ Ou ⭐ [Mettre une étoile au dépôt](../../stargazers), [ouvrir une Issue](../
 
 ## Plus de documentation
 
-- Envie de l'architecture en profondeur ? Voir [Architecture fonctionnelle](doc/08-media-interact-功能架构.md)
-- Envie de la feuille de route des versions ? Voir [Planning d'implémentation](doc/09-media-interact-实施排期.md)
-- Envie de l'obtention des clés ? Voir [Guide de configuration des clés](doc/KEY-GUIDE.md)
+- Envie de l'architecture en profondeur ? Voir [Architecture fonctionnelle](doc/architecture/01-功能架构.md)
+- Envie de la feuille de route des versions ? Voir [Planning d'implémentation](doc/architecture/02-实施排期.md)
+- Envie de l'obtention des clés ? Voir [Guide de configuration des clés](doc/usage/01-KEY-GUIDE.md)
 
 ## Licence
 
 **MIT** © wangdong233. Le processus helper de bureau et les dépendances du moteur de navigateur sont toutes MIT / Apache-2.0 — sûr pour un usage en entreprise.
 
-> Vous voulez l'architecture interne, les principes de conception, les frontières multi-plateformes et les commandes de dev ? Voir [ARCHITECTURE.md](./ARCHITECTURE.md) et [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+> Vous voulez l'architecture interne, les principes de conception, les frontières multi-plateformes et les commandes de dev ? Voir [ARCHITECTURE.md](./ARCHITECTURE.md) et [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 <p align="center">
   <sub>Construit pour tous ceux qui préfèrent <strong>le dire</strong> plutôt que <strong>le coder</strong>.</sub><br>

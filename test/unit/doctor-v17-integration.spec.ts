@@ -244,7 +244,7 @@ describe("runDoctor #38 stealth_creepjs_regression —— 默认 + skip 路径",
 //  totalLies 比对代码 `report.totalLies > baselineTotalLies + tolerance`（doctor.ts）
 //  注入 `>`→`>=` mutant → "持平 pass" 用例（totalLies === baseline）会变 fail → killer 命中
 //
-// timeout 45s（doc/29 审查官补）：runDoctor 是 spawn-heavy 用例，全量并发收集时
+// timeout 45s（doc/governance/10 审查官补）：runDoctor 是 spawn-heavy 用例，全量并发收集时
 // 偶发超默认 15s（隔离 3/3 绿 1.4s 级——CPU 争抢非代码回归）；放组级预算保终跑确定性。
 describe("runDoctor #38 —— baseline 比对逻辑（parse15 §5.2 + §6.2 §2.1 项4 mutation）", { timeout: 45_000 }, () => {
   it("baseline pending freeze（frozenAt=null）→ warn-skip（不 fail）", async () => {

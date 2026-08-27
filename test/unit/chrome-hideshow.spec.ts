@@ -1,7 +1,7 @@
 /**
- * 28-静默守则审计 G1（D-4）：chrome-hide/show 双向出口的回归防护。
+ * doc/governance/09-静默守则审计 G1（D-4）：chrome-hide/show 双向出口的回归防护。
  *
- * 背景（doc/28 audit.md D-4）：P4（v1.17.3）「登录弹窗 → 登录后 chrome-hide
+ * 背景（doc/governance/09 audit.md D-4）：P4（v1.17.3）「登录弹窗 → 登录后 chrome-hide
  * 转后台静默」是 browse_logged_in 登录流转的唯一**恢复静默出口**（守则 S3），
  * 但 show 方向（showChromeByPid / chrome-hideshow-cli）此前零测试覆盖——
  * 上游一次重构即可让其静默失效，B 类流转退化为永久非静默。

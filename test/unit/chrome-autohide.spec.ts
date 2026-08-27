@@ -1,5 +1,5 @@
 /**
- * C2（v1.18，doc/28-静默守则审计 D-2）测试：
+ * C2（v1.18，doc/governance/09-静默守则审计 D-2）测试：
  * visible 台账 Chrome「登录完成 → 自动 hide 转后台静默」（opt-in，默认 off）。
  *
  * 守护四重防误判护栏（audit C2 裁决条件 + fix-2 补第三护栏）：

@@ -60,7 +60,7 @@ const browseSchema = {
         .optional(),
       timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
-      // v1.18.2（doc/29 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
+      // v1.18.2（doc/governance/10 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
       // （慢站/长 SPA/多步表单等合法长链显式放宽；预算耗尽终止语义=unknown 可重试）。
       budget_ms: z.number().int().positive().max(600_000).optional(),
       // v1.8 Phase D（D2）：steps 多步链入参。BrowseChannel v0.3 起已实装 steps 分流
@@ -112,7 +112,7 @@ const browseSchema = {
 // 工具
 // ============================================================
 function ssrfBlocked(reason: string) {
-  // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+  // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
   // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
   const d = ssrfDenial(reason);
   const payload: InteractResult<never> = {

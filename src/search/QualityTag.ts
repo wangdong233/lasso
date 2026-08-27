@@ -1,5 +1,5 @@
 /**
- * QualityTag —— A1 质量轴（doc/24 decision-A A1 + doc/25 裁决①；v1.17 Phase B）。
+ * QualityTag —— A1 质量轴（doc/governance/05 decision-A A1 + doc/governance/06 裁决①；v1.17 Phase B）。
  *
  * InteractResult.quality 的**单一真源**：`qualityForServedBy(servedBy)` 按
  * served_by **静态映射**，零启发式（decision-A A1 风险条原文「判定逻辑按

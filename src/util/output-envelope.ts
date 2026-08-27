@@ -44,7 +44,7 @@ const SPILL_ROOT = path.join(os.tmpdir(), "lasso-output");
 // ============================================================
 /**
  * @oN → 落盘元数据。Map 保插入序；readOutputPage 访问时 touch（delete+set 移到尾），
- * 头部即 LRU 最老——v1.18.2（doc/29 F4）兑现「便于 LRU 清理」的承诺：
+ * 头部即 LRU 最老——v1.18.2（doc/governance/10 F4）兑现「便于 LRU 清理」的承诺：
  * 总量超 STORE_CAP_BYTES 时按 LRU 淘汰最老 spill（同步删文件），不再 throw。
  */
 const store = new Map<string, { path: string; bytes: number }>();
@@ -124,7 +124,7 @@ export function applyOutputEnvelope(
 
 /**
  * read_text 工具续页：从落盘文件读 [offset, offset+limit) 字节，返回 { text, eof }。
- * v1.18.2（doc/29 F4）：读即 touch（LRU 访问刷新——正被续页读的 ref 不易被淘汰）。
+ * v1.18.2（doc/governance/10 F4）：读即 touch（LRU 访问刷新——正被续页读的 ref 不易被淘汰）。
  * @throws 若 ref 不在 store（LRU 淘汰或未知）
  */
 export function readOutputPage(
@@ -160,7 +160,7 @@ export function getOutputCounter(): number {
   return outputCounter;
 }
 
-/** v1.18.2（doc/29 F4）：会话内 LRU 淘汰次数（观测：长会话磁盘 churn 可见）。 */
+/** v1.18.2（doc/governance/10 F4）：会话内 LRU 淘汰次数（观测：长会话磁盘 churn 可见）。 */
 export function getEvictedCount(): number {
   return evictedCount;
 }
@@ -169,7 +169,7 @@ export function getEvictedCount(): number {
 // 内部 helper
 // ============================================================
 /**
- * v1.18.2（doc/29 F4）：总量超 cap 时 **LRU 淘汰最老 spill（删 Map 头 + 删文件）**
+ * v1.18.2（doc/governance/10 F4）：总量超 cap 时 **LRU 淘汰最老 spill（删 Map 头 + 删文件）**
  * 直到放得下，而不是 throw。
  *
  * 旧实现（v0.3「暂不淘汰」）：totalBytes 单调递增 → 长命 server 会话累计 ≥64MiB

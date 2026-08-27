@@ -221,7 +221,7 @@ export async function doNetworkTool(
   // ---------- 1. SSRF 守门（与 browse_headless 同函数同 config） ----------
   const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
 if (!ssrfResult.allowed) {
-    // v1.18.2（doc/29 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+    // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
     // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
     const d = ssrfDenial(ssrfResult.reason);
     return {
@@ -310,7 +310,7 @@ if (!ssrfResult.allowed) {
         ".txt", // 资源列表 JSON → 落 .txt（INV-34 + INV-15 衍生）
       );
     } catch (e) {
-      // v1.18.2（doc/29 F4）envelope 失败二分（与 pdf.ts 同范式）：
+      // v1.18.2（doc/governance/10 F4）envelope 失败二分（与 pdf.ts 同范式）：
       //  - 单条 >16MiB（single cap，数据异常）→ didnt（明确否，调方缩 filter）
       //  - store 耗尽（防御分支；LRU 淘汰后数学不可达）→ unknown（会话状态须自愈）
       const msg = String(e);

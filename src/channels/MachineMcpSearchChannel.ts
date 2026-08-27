@@ -3,7 +3,7 @@
  *
  * McpClient.connectHttp + callTool web_search_prime 范式（v1.17 A3 起
  * 是该范式在 Lasso 内的唯一持有者——zhipu 直连 API channel 已删除，
- * doc/25 裁决③：保留 machine_mcp，删除 Lasso 自有 key 的直连档）：
+ * doc/governance/06 裁决③：保留 machine_mcp，删除 Lasso 自有 key 的直连档）：
  *  - endpoint + authorization 来自 ~/.claude.json 探测
  *    （CC 已配过的 web-search-prime MCP key，Lasso 借力不拥有）
  *
@@ -36,7 +36,7 @@ import type {
 } from "../types.js";
 import { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
-// v1.17 A3（doc/25 裁决③）：ZHIPU_RECENCY_MAP 随 zhipu 直连 channel 删除迁入本文件
+// v1.17 A3（doc/governance/06 裁决③）：ZHIPU_RECENCY_MAP 随 zhipu 直连 channel 删除迁入本文件
 // （单一消费者，就近持有）。v1.12（round2 T2-5）实证：web_search_prime 上游参数名
 // search_recency_filter，枚举 oneDay/oneWeek/oneMonth/oneYear。
 /**
@@ -214,7 +214,7 @@ export class MachineMcpSearchChannel extends BaseChannel {
  *   { search_results: [{ title, link, content, media, ... }] }
  * 兼容 { results: [...] } 变体。
  *
- * **v1.17 真机实测（doc/25 verify ②）**：上游现行形态是**双重编码裸数组**——
+ * **v1.17 真机实测（doc/governance/06 verify ②）**：上游现行形态是**双重编码裸数组**——
  * text = JSON.stringify(JSON.stringify([{ title, link, content, refer }, ...]))，
  * 即 JSON.parse 一次得到 string、再 parse 一次才得到数组（2026-08-18 本机
  * open.bigmodel.cn 实抓实证；items 键 = title/link/content/refer）。旧单次

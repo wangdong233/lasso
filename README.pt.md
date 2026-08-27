@@ -110,7 +110,7 @@ Seu primeiro resultado — basta dizer ao Claude:
 - **Extrair páginas com login** (Jira / GitHub privado / intranet da empresa) → execute `lasso launch-chrome` uma vez
 - **Controlar o desktop do macOS** → execute `lasso doctor` uma vez para ser guiado pela autorização
 
-Como obter cada key, quais planos grátis existem — veja o [**Guia de Configuração de Keys**](./doc/KEY-GUIDE.md).
+Como obter cada key, quais planos grátis existem — veja o [**Guia de Configuração de Keys**](./doc/usage/01-KEY-GUIDE.md).
 
 ---
 
@@ -198,7 +198,7 @@ Recorre à Internet Archive (Wayback Machine) para encontrar a última cópia ar
 
 **Completamente desativado por padrão.** Só ativa quando você liga explicitamente E configurou um navegador na nuvem (Steel auto-hospedado ou browserbase / stagehand hospedados). Anti-bot leve já é resolvido pela antidetecção embutida do `browse_headless` — **só proteção pesada de nível Cloudflare precisa do navegador na nuvem**.
 
-- **Steel auto-hospedado (recomendado · grátis)**: rode um navegador na nuvem open source em Docker local — custo zero por sessão, cookies que não saem da sua máquina. Uma linha de comando para ativar, veja o [Guia de Keys · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
+- **Steel auto-hospedado (recomendado · grátis)**: rode um navegador na nuvem open source em Docker local — custo zero por sessão, cookies que não saem da sua máquina. Uma linha de comando para ativar, veja o [Guia de Keys · Steel](./doc/usage/01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费).
 - **browserbase (hospedado · pago)**: paga por uso após o trial; a alternativa quando você não quer rodar Docker você mesmo.
 - **stagehand (hospedado · pago)**: ⚠️ canal experimental programático — configurar a key só monta o canal interno, **sem entrada de ferramenta MCP** (contrato REST não verificado; o `lasso doctor` #39 `stagehand_rest_contract_probe` testa exatamente isso).
 
@@ -231,7 +231,7 @@ Reinicie o Claude Code → `/mcp` → `lasso ✓ Connected`. **É só essa linha
 - **v1.11**: o desktop passa de "enxergar" para "clicar" (click / type / scroll realmente implementados + mouse por coordenadas + poda `skeleton`); camada de driver atualizada para chrome-devtools-mcp 1.7.0 (antidetecção em nível de lançamento, telemetria desligada por padrão); filtro de tempo `freshness` na busca; fallback sem key para queries em inglês trocado para DuckDuckGo; novo `LASSO_PROXY`, proxy de saída.
 - **v1.10**: navegador silencioso por padrão + fecha ao acabar (`launch-chrome` inicia sem janela, fecha automaticamente em ~60 s, `--mode visible` para voltar).
 - **v1.9**: fim de vida do navegador (headless reciclado automaticamente após 5 minutos ocioso, `lasso chrome-stop`, `tab_restore` restaura a lista original de abas).
-- **v1.8**: corrigiu os 24 defeitos expostos pelo teste completo (adaptação ao contrato upstream, screenshots realmente salvos em disco, paginação `read_text` etc.) — lista completa em [doc/17-功能测试清单.md](doc/17-功能测试清单.md), seção "v1.8 修复记录".
+- **v1.8**: corrigiu os 24 defeitos expostos pelo teste completo (adaptação ao contrato upstream, screenshots realmente salvos em disco, paginação `read_text` etc.) — lista completa em [doc/testing/01-功能测试清单.md](doc/testing/01-功能测试清单.md), seção "v1.8 修复记录".
 
 </details>
 
@@ -277,7 +277,7 @@ Salve e já vale. **Quer mais robustez**: adicione também a Brave (plano pago c
 
 > Ordem de fallback: reuso do MCP da máquina → Brave (se houver key configurada) → fallback de busca real no navegador headless (v1.14: fallback inglês de dois motores — falha/vazio do DDG tenta automaticamente mais uma vez com busca real do Brave; v1.15 adiciona antes uma **sonda rápida de HTTP puro** (~1s, busca a página de resultados sem nenhum navegador — em testes reais alguns motores desconfiam menos de clientes sem navegador); só se não achar nada o caminho lento do navegador arranca). O primeiro que falha passa para o próximo. (A fonte Bing foi removida por inteiro após a aposentadoria do upstream em 2025-08-11, e o nível direto da Zhipu foi deletado na v1.17; um `BING_API_KEYS` / `ZHIPU_API_KEY` residual é silenciosamente ignorado e o `lasso doctor` sugere removê-lo.)
 
-Como solicitar keys, cotas dos planos grátis → [Guia de Configuração de Keys · Busca](./doc/KEY-GUIDE.md#a-搜索). Comandos úteis: `lasso --version` / `lasso --help` (desde a v1.8, comando desconhecido imprime o uso e sai com código não zero — não trava mais em silêncio).
+Como solicitar keys, cotas dos planos grátis → [Guia de Configuração de Keys · Busca](./doc/usage/01-KEY-GUIDE.md#a-搜索). Comandos úteis: `lasso --version` / `lasso --help` (desde a v1.8, comando desconhecido imprime o uso e sai com código não zero — não trava mais em silêncio).
 
 ### 2. Extrair Páginas com Login (✅ Grátis · um comando, sem key)
 
@@ -305,7 +305,7 @@ Faça login nas suas contas uma primeira vez nessa janela (2FA por sua conta), *
 
 </details>
 
-**Detalhes** → [Guia de Configuração de Keys · Navegação com Login](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
+**Detalhes** → [Guia de Configuração de Keys · Navegação com Login](./doc/usage/01-KEY-GUIDE.md#b-登录态浏览命令行配置无-key).
 
 ### 3. Controlar o Desktop (✅ Grátis · autorize uma vez, sem key)
 
@@ -315,7 +315,7 @@ Faça login nas suas contas uma primeira vez nessa janela (2FA por sua conta), *
 
 > Fronteira honesta: o macOS é verificado em hardware real; Windows / Linux passam por autoverificações em tempo de compilação e a nível de contrato, mas o teste manual completo em máquina real está em andamento — não fingimos "totalmente verificado".
 
-**Detalhes** → [Guia de Configuração de Keys · Controle do Desktop](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key).
+**Detalhes** → [Guia de Configuração de Keys · Controle do Desktop](./doc/usage/01-KEY-GUIDE.md#c-桌面控制系统授权无-key).
 
 ### 4. Navegador na Nuvem (desativado por padrão · só para anti-bot pesado)
 
@@ -332,7 +332,7 @@ Anti-bot leve já passa com a antidetecção embutida do `browse_headless` — *
 - **browserbase hospedado (pago)**: troque para `"BROWSERBASE_API_KEY": "your_key"` — a alternativa sem Docker
 - ⚠️ stagehand: canal experimental programático, sem entrada de ferramenta MCP — não conte com ele para extrair páginas
 
-**Como solicitar keys, passos completos para ativar o Steel** → [Guia de Configuração de Keys · Navegador na Nuvem](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**Como solicitar keys, passos completos para ativar o Steel** → [Guia de Configuração de Keys · Navegador na Nuvem](./doc/usage/01-KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>Ajuste avançado (opcional — usuários comuns podem pular)</b></summary>
@@ -350,7 +350,7 @@ Você pode **ignorar completamente** o que vem a seguir no uso diário. Estas s�
 - Configurar um proxy de saída para os navegadores (`LASSO_PROXY`, ex.: `http://127.0.0.1:7890`; **só afeta os navegadores headless e o Steel na nuvem — a saída do Chrome logado fica sempre como está** — v1.11)
 - Definir o endpoint do navegador na nuvem Steel auto-hospedado (`STEEL_ENDPOINT`, ex.: `http://localhost:3000`; precisa também de `LASSO_ALLOW_CLOUD_BROWSER=true` para ativar)
 
-Lista completa de variáveis e padrões: [Guia de Configuração de Keys · Ajuste Avançado](./doc/KEY-GUIDE.md#e-高级调优可选全不配). **Redes proxy TUN do Surge / Clash (fake-ip, `198.18.0.0/15`) e `127.0.0.1` (porta de debug CDP do Chrome local) já são permitidas out of the box**, sem config extra — comportamento de design, não config faltando.
+Lista completa de variáveis e padrões: [Guia de Configuração de Keys · Ajuste Avançado](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配). **Redes proxy TUN do Surge / Clash (fake-ip, `198.18.0.0/15`) e `127.0.0.1` (porta de debug CDP do Chrome local) já são permitidas out of the box**, sem config extra — comportamento de design, não config faltando.
 
 > **Compatível com versões anteriores**: se você instalou antes com `claude mcp add -e KEY=VAL`, essas env variables **continuam funcionando** e **sobrescrevem** o arquivo de config. O arquivo de config é só um caminho adicional, mais amigável — não substitui as env vars.
 
@@ -385,7 +385,7 @@ Seus dados são seus.
 | Aviso de que acesso à rede interna foi bloqueado | Confira a URL; redes proxy TUN são permitidas por padrão, outras redes internas precisam de permissão explícita |
 | Quer verificar a antidetecção | Rode `lasso doctor --stealth-check` — ele dirige a página de detecção creepjs e compara com a baseline (opcional, não afeta o uso diário) |
 
-FAQ completo e dicas de debug em [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+FAQ completo e dicas de debug em [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 ---
 
@@ -415,7 +415,7 @@ Se o Lasso te ajuda, pague um café ☕ para o autor
 
 WeChat | Alipay
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
+<img src="doc/assets/support-wechat.jpg" height="200" alt="WeChat sponsor QR"> | <img src="doc/assets/support-alipay.jpg" height="200" alt="Alipay sponsor QR">
 
 </div>
 
@@ -425,15 +425,15 @@ Ou ⭐ [deixe uma Star neste repo](../../stargazers), [abra uma Issue](../../iss
 
 ## Mais Documentos
 
-- Quer a arquitetura profunda? Veja [Arquitetura de Funcionalidades](doc/08-media-interact-功能架构.md)
-- Quer o roteiro de versões? Veja [Cronograma de Implementação](doc/09-media-interact-实施排期.md)
-- Quer a obtenção de keys? Veja [Guia de Configuração de Keys](doc/KEY-GUIDE.md)
+- Quer a arquitetura profunda? Veja [Arquitetura de Funcionalidades](doc/architecture/01-功能架构.md)
+- Quer o roteiro de versões? Veja [Cronograma de Implementação](doc/architecture/02-实施排期.md)
+- Quer a obtenção de keys? Veja [Guia de Configuração de Keys](doc/usage/01-KEY-GUIDE.md)
 
 ## Licença
 
 **MIT** © wangdong233. O processo helper do desktop e as dependências do motor do navegador são todos MIT / Apache-2.0 — seguro para uso empresarial.
 
-> Quer a arquitetura interna, os princípios de design, as fronteiras entre plataformas e os comandos de dev? Veja [ARCHITECTURE.md](./ARCHITECTURE.md) e [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md).
+> Quer a arquitetura interna, os princípios de design, as fronteiras entre plataformas e os comandos de dev? Veja [ARCHITECTURE.md](./ARCHITECTURE.md) e [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
 
 <p align="center">
   <sub>Feito para todos que preferem <strong>falar</strong> em vez de <strong>escrever script</strong>.</sub><br>

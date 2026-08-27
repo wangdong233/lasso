@@ -341,9 +341,9 @@ describe("DesktopChannel.act — INV-22/27 appleScript 注入在链路中短路"
 });
 
 // ============================================================
-// v1.18.2（doc/29 Y4）：tcc_denied → unknown（链继续，不再短路降级链）
+// v1.18.2（doc/governance/10 Y4）：tcc_denied → unknown（链继续，不再短路降级链）
 // ============================================================
-describe("DesktopChannel.act — tcc_denied 不再短路降级链（doc/29 Y4）", () => {
+describe("DesktopChannel.act — tcc_denied 不再短路降级链（doc/governance/10 Y4）", () => {
   it("ax 返 tcc_denied → appleScript 仍被试（AX Accessibility TCC ≠ Automation TCC）", async () => {
     const tccErr = new Error("ax tcc denied");
     (tccErr as { errorKind?: string }).errorKind = "tcc_denied";

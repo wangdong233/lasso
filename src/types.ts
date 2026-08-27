@@ -27,7 +27,7 @@ export type Outcome = "worked" | "didnt" | "unknown";
 // 统一交付信封（InteractResult）
 // ============================================================
 /**
- * A1 质量轴（v1.17 Phase B，doc/24 decision-A A1 + doc/25 裁决①）：
+ * A1 质量轴（v1.17 Phase B，doc/governance/05 decision-A A1 + doc/governance/06 裁决①）：
  *  - "api"    结构化 API 响应（search.machine_mcp / search.brave，含 fanout 聚合）
  *  - "scrape" 页面抓取产物（serp_http:* / browse_headless / browse_logged_in / browse_cloud_*）
  *  - "stale"  录制回放（recording_replay，过去快照）
@@ -65,7 +65,7 @@ export interface InteractResult<T = unknown> {
 // SearchResult（search channel 输出）
 // ============================================================
 /**
- * A2′ 第二跳 per-result 状态（v1.17 Phase C，doc/25 裁决② + parse24 §3.2 步骤 5；
+ * A2′ 第二跳 per-result 状态（v1.17 Phase C，doc/governance/06 裁决② + parse24 §3.2 步骤 5；
  * 单一真源 src/search/ContentSecondHop.ts）：
  *  - "ok"            拿到裁剪后正文（content 必填）
  *  - "fetch_failed"  SSRF 拒 / 网络错 / 超时 / 非 2xx / 3xx 未跟随 / 超预算跳过
@@ -172,10 +172,10 @@ export interface BrowseOptions {
   timeout_ms?: number;
   no_cache?: boolean;
   /**
-   * v1.18.2（doc/29 F3+Y1）：steps chain 总时间预算（ms），默认 120s。
+   * v1.18.2（doc/governance/10 F3+Y1）：steps chain 总时间预算（ms），默认 120s。
    * 慢站/长 SPA/多步表单等合法长链可显式放宽（钳制上限 600s=10min——
    * BudgetTracker.MAX_CHAIN_BUDGET_MS；防误配 1e9 之类的失控值）。
-   * 超预算终止语义是 unknown（自限=瞬态可重试），不是 didnt（doc/29 F3）。
+   * 超预算终止语义是 unknown（自限=瞬态可重试），不是 didnt（doc/governance/10 F3）。
    */
   budget_ms?: number;
   /** v0.5 新增（parse6 §3.3.5）—— pdf action 专用字段（cdp-actions.ts doPdf 读） */
@@ -292,7 +292,7 @@ export interface ProviderConfig {
  *  - L3=远程 URL 免Key（Exa、Jina read_url）
  *  - L4=付费（Perplexity/Serper/Google CSE；Brave 2026-02 免费档取消后改判 L4；
  *    Bing 已于 2025-08-11 退役——2026-08-17 核实，v1.15 Phase A 死层已清除，
- *    见 doc/KEY-GUIDE.md）
+ *    见 doc/usage/01-KEY-GUIDE.md）
  *
  * 10 §2.5 核心洞察：免 Key ≠ 零成本（SearXNG 要自建），需 Key ≠ 付费（Exa 有免费层）。
  */

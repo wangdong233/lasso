@@ -1,5 +1,5 @@
 /**
- * resource-meter.ts（v1.9 parse17 测试纪律基建 —— doc/17 §0.2 第 6 条配套）
+ * resource-meter.ts（v1.9 parse17 测试纪律基建 —— doc/testing/01 §0.2 第 6 条配套）
  *
  * 测量「lasso 特征进程树」的 RSS 总和与 CPU 时间，供功能测试用例的
  * 「每个测试用例执行时测资源占用、完毕验证释放」纪律使用：

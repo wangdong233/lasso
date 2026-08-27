@@ -1,5 +1,5 @@
 /**
- * QualityTag 单元测（v1.17 Phase B / A1 质量轴，doc/24 decision-A A1 + doc/25 裁决①）。
+ * QualityTag 单元测（v1.17 Phase B / A1 质量轴，doc/governance/05 decision-A A1 + doc/governance/06 裁决①）。
  *
  * 守护要点：
  *  1. 静态映射零启发式：served_by → api/scrape/stale 精确表 + serp_http 前缀

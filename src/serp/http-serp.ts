@@ -2,7 +2,7 @@
  * serp_http —— 裸 HTTP SERP 快探层（v1.15 Phase B；parse22 + verify 真机修订）
  *
  * 定位：search fallback 链在 browse_headless（冷启动 ~11s + Chromium 树）**之前**
- * 的 ~1s 级快探。白盒证据（doc/21-搜索方案重审 + v1.14 实测）：裸 curl 打
+ * 的 ~1s 级快探。白盒证据（doc/governance/02-搜索方案重审 + v1.14 实测）：裸 curl 打
  * search.brave.com 返 200 + 22 条结果，而真 Chrome 反吃验证码——无浏览器客户端
  * 对部分 SERP 反而更不容易被判 bot。故 API 层全挂时先用裸 HTTP 探一次，
  * 探不到再升真浏览器。
@@ -281,7 +281,7 @@ async function httpEngineOnce(
     }
     logger.info({ evt: "serp_http_non_200", engine, status });
     if (status === 202) {
-      // DDG anomaly 挑战页实测形态（doc/21：html.duckduckgo.com 202）
+      // DDG anomaly 挑战页实测形态（doc/governance/02：html.duckduckgo.com 202）
       return unknownResult(engine, retrievalMethod, "serp_http_challenge");
     }
     if (status === 429) {

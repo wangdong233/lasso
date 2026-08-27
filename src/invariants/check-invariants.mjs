@@ -18,10 +18,10 @@
  *                     + parse11 §3.3 + §7.2 Phase D v1.0 加 INV-64 launcher 不引新 npm dep（launcher/*.ts 只 node:* 内置）
  *                     + parse11 §3.3 + §3.4 + §7.2 Phase E v1.0 加 INV-65 README/ARCHITECTURE 必引用 08/09（文档完整化）
  *                     + parse12 §2.2 + §6 v1.1 Phase A 加 INV-66..69 MarkdownExtractor mode-aware 三模式 + 引擎约束 + 子组件定位 + citation reimplement）
- *                     + v1.8 wave1 修复清单（doc/17-执行记录/wave1-summary.md §4）加 INV-76 上游契约 + 接线回归守护（W1-DEF-1..10 / D1-D2 / D6-D8 / D11 / F-CLI-01）
- *                     + v1.17 A3（doc/25 五项裁决裁决③）加 INV-80 zhipu 直连死层清除墓碑守卫（machine_mcp 保留为智谱能力唯一载体）
- *                     + v1.17 Phase D（doc/25 五项裁决裁决④ B1 第四通道）加 INV-81 search_local 本地私有搜索隐私红线（只读/无全文导出/limit≤50/零网络/日志 query_len/四处联动/notes_deferred_v2）
- *                     + v1.18（doc/28-静默守则审计 fix-2）加 INV-82 用户运行守则生命周期红线（D-5 exit 钩子 modes 过滤 + C2 登录后自动 hide opt-in 四重护栏）
+ *                     + v1.8 wave1 修复清单（doc/history/01-功能测试执行记录/wave1-summary.md §4）加 INV-76 上游契约 + 接线回归守护（W1-DEF-1..10 / D1-D2 / D6-D8 / D11 / F-CLI-01）
+ *                     + v1.17 A3（doc/governance/06 五项裁决裁决③）加 INV-80 zhipu 直连死层清除墓碑守卫（machine_mcp 保留为智谱能力唯一载体）
+ *                     + v1.17 Phase D（doc/governance/06 五项裁决裁决④ B1 第四通道）加 INV-81 search_local 本地私有搜索隐私红线（只读/无全文导出/limit≤50/零网络/日志 query_len/四处联动/notes_deferred_v2）
+ *                     + v1.18（doc/governance/09-静默守则审计 fix-2）加 INV-82 用户运行守则生命周期红线（D-5 exit 钩子 modes 过滤 + C2 登录后自动 hide opt-in 四重护栏）
  *
  * Phase D 状态：INV-14 收紧到 HighRiskGate 端（HIGH_RISK_PATTERNS 顶级 const）。
  * 至此 v0.3 的 4 条 INV-12..15 全部上线。
@@ -96,7 +96,7 @@
  *  INV-62 录制源禁 logged_in（replay-baseline.ts + RecordingStore 不录 logged_in cookie 场景；INV-51 同源；08 §5.1 cookie=身份）—— v1.0 Phase C
  *  INV-63 version 真源单一化（package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致）—— v1.0 Phase D
  *  INV-64 launcher 不引新 npm dep（launcher/*.ts 只 import node:* 内置；child_process/path/fs/process/url）—— v1.0 Phase D
- *  INV-65 README/ARCHITECTURE 必引用 doc/08 + doc/09（用户手册与架构概览链向深度文档；文档完整化）—— v1.0 Phase E
+ *  INV-65 README/ARCHITECTURE 必引用 doc/architecture/01 + doc/architecture/02（原 doc/08+09；用户手册与架构概览链向深度文档；文档完整化；锚点随 2026-08-27 doc 结构重整更新）—— v1.0 Phase E
  *  INV-66 raw 默认 byte-identical —— extractMarkdown mode="raw" passthrough 返原始 html；BrowseChannel/fetch-url 不静态 import markdown-extractor（守 raw 路径不加载引擎）—— v1.1 Phase A
  *  INV-67 MarkdownExtractor 是内部子组件 —— markdown-extractor.ts 在 browse/ 下不 extends Channel；src/ 无 server.tool("markdown*") —— v1.1 Phase A
  *  INV-68 引擎无第三运行时 —— markdown-extractor.ts 禁 spawn/exec/child_process/python；只 import defuddle/turndown JS 包 —— v1.1 Phase A
@@ -107,9 +107,9 @@
  *  INV-73 stealth 16 路 + header 一致性 + HeadlessChannel 接入 —— STEALTH_INJECTION_SCRIPT 含 12 新路 vendored evasion import（stealth-evasions/ 目录 12 文件均带 MIT 头）；StealthProfile 接口含 secChUa/secFetch* header 集；UA ≥ Chrome 130；HeadlessChannel override beforeNavigate 调 stealth.injectProfile（P0 修 v1.4 零 stealth 注入）—— v1.5 Phase A
  *  INV-74 Steel cloud 通道零回归守护 —— SteelChannel（browse_cloud_steel）必经 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；STEEL ProviderConfig 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归）；SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）—— v1.6 Phase A
  *  INV-75 creepjs 门禁纯 doctor 侧零回归守护（INV-73/74 后）；INV-76 v1.8 wave1 修复回归守护 —— 上游 chrome-devtools-mcp@0.3.0 契约（evaluate_script 函数表达式 / wait_for text string / take_screenshot 自落盘+stat 校验）+ CdpClient Storage 域 + launch-chrome 探活 + 孤儿清理 + rust crash 归因 + screenshot_region 跨语言配对（TS↔rust-helper）+ caller-tier 接线 + read_text 四处联动 + CLI 惯例（--version/--stealth-check/未知参数非零退）—— v1.8
- *  INV-80 zhipu 直连死层清除墓碑（v1.17 A3，doc/25 裁决③）—— channels/SearchChannel.ts 不存在；无 ZhipuSearchChannel import / "search.zhipu" 字面量；DEFAULT_FALLBACK_ORDER 无 zhipu；providers 无 ZHIPU ProviderConfig；config 不消费 ZHIPU_API_KEY（键容忍读）；doctor zhipu_keys_retired；engine enum 无 "zhipu"
- *  INV-81 search_local 本地私有搜索隐私红线（v1.17 Phase D，doc/25 裁决④）—— 源库禁写（唯一写面 mkdtemp 临时目录）；无 content 全文导出字段；limit≤50 硬顶；模块零网络（import 白名单）；日志只记 query_len；四处联动（注册器+index.ts 注册+V5_TOOL_TO_CHANNEL+descriptions）；notes_deferred_v2 诚实 didnt
- *  INV-82 用户运行守则生命周期红线（v1.18，doc/28-静默守则审计）—— exit 钩子 modes:['hidden']（D-5 visible 登录窗口生存）；同步版过滤同款 + 零 await；C2 登录后自动 hide 默认 off（opt-in）；只挂 visible 分支永不进 kill 路径；四重护栏（见墙/延迟窗/agent 安静/失败降级）机械化；hide 走 chrome-hide PID 定向；延迟窗默认单一真源（reaper 导出，config 引用）
+ *  INV-80 zhipu 直连死层清除墓碑（v1.17 A3，doc/governance/06 裁决③）—— channels/SearchChannel.ts 不存在；无 ZhipuSearchChannel import / "search.zhipu" 字面量；DEFAULT_FALLBACK_ORDER 无 zhipu；providers 无 ZHIPU ProviderConfig；config 不消费 ZHIPU_API_KEY（键容忍读）；doctor zhipu_keys_retired；engine enum 无 "zhipu"
+ *  INV-81 search_local 本地私有搜索隐私红线（v1.17 Phase D，doc/governance/06 裁决④）—— 源库禁写（唯一写面 mkdtemp 临时目录）；无 content 全文导出字段；limit≤50 硬顶；模块零网络（import 白名单）；日志只记 query_len；四处联动（注册器+index.ts 注册+V5_TOOL_TO_CHANNEL+descriptions）；notes_deferred_v2 诚实 didnt
+ *  INV-82 用户运行守则生命周期红线（v1.18，doc/governance/09-静默守则审计）—— exit 钩子 modes:['hidden']（D-5 visible 登录窗口生存）；同步版过滤同款 + 零 await；C2 登录后自动 hide 默认 off（opt-in）；只挂 visible 分支永不进 kill 路径；四重护栏（见墙/延迟窗/agent 安静/失败降级）机械化；hide 走 chrome-hide PID 定向；延迟窗默认单一真源（reaper 导出，config 引用）
  *
  * 注：INV-8 与 INV-23 同槽（parse4 §1.4「INV-8 改写为 INV-23」语义保留槽位）。
  *     INV-8 自身已含「fallback 链不跨 surface」语义；INV-23 编号在文档中保留为别名，
@@ -2723,15 +2723,15 @@ const assertions = [
   // v1.0 Phase E（parse11 §3.3 + §3.4 + §7.2 Phase E；文档完整化 + release polish）
   // ============================================================
   {
-    id: "INV-65-docs-reference-08-09",
+    id: "INV-65-docs-reference-architecture-deepdocs",
     desc:
-      "v1.0 Phase E：README.md + ARCHITECTURE.md 必引用 doc/08（功能架构基线）+ doc/09（实施排期）" +
+      "v1.0 Phase E（2026-08-27 doc 结构重整对齐）：README.md + ARCHITECTURE.md 必引用 doc/architecture/01（功能架构基线，原 doc/08）+ doc/architecture/02（实施排期，原 doc/09）" +
       "（parse11 §3.3 + §3.4 + §7.2 Phase E + §6.3 用户手册验收）：" +
       "（a）项目根 README.md 文件存在；" +
       "（b）项目根 ARCHITECTURE.md 文件存在；" +
-      "（c）README.md 文本中必出现 'doc/08' 与 'doc/09' 引用（保 user-first 文档链向深度架构 / 排期文档，不删既有链接）；" +
-      "（d）ARCHITECTURE.md 文本中必出现 'doc/08' 与 'doc/09' 引用（架构概览链向深度基线）。" +
-      "守：用户手册与架构概览不能凭空长成，必链向 doc/08（功能架构基线，F 编号源）+ doc/09（实施排期，v0.1→v1.0 跃升路径）" +
+      "（c）README.md 文本中必出现 'doc/architecture/01' 与 'doc/architecture/02' 引用（保 user-first 文档链向深度架构 / 排期文档，不删既有链接）；" +
+      "（d）ARCHITECTURE.md 文本中必出现 'doc/architecture/01' 与 'doc/architecture/02' 引用（架构概览链向深度基线）。" +
+      "守：用户手册与架构概览不能凭空长成，必链向 doc/architecture/01（功能架构基线，F 编号源）+ doc/architecture/02（实施排期，v0.1→v1.0 跃升路径）" +
       "—— 避免 README/ARCHITECTURE 与既有深度调研文档脱节（用户读完 README 想深入时无路径）。",
     check: () => {
       // ----- (a) README.md 必须存在 -----
@@ -2752,19 +2752,19 @@ const assertions = [
         return false;
       }
 
-      // ----- (c) README.md 必引用 doc/08 + doc/09 -----
-      //   允许多种引用形式：doc/08、08-media-interact、doc/08-media-interact-功能架构.md 等。
-      //   核心是用户能从 README 跳到 doc/08 + doc/09 深度文档。
-      //   匹配相对宽松：含 "doc/08" 或 "08-media-interact" 即视为引用 08；
-      //                 含 "doc/09" 或 "09-media-interact" 即视为引用 09。
-      const readmeHas08 = /doc\/08|08-media-interact/i.test(readmeText);
-      const readmeHas09 = /doc\/09|09-media-interact/i.test(readmeText);
-      if (!readmeHas08 || !readmeHas09) return false;
+      // ----- (c) README.md 必引用 doc/architecture/01 + doc/architecture/02 -----
+      //   允许多种引用形式：doc/architecture/01、01-功能架构、doc/architecture/01-功能架构.md 等。
+      //   核心是用户能从 README 跳到 doc/architecture/01 + doc/architecture/02 深度文档。
+      //   匹配相对宽松：含 "doc/architecture/01" 或 "01-功能架构" 即视为引用 01；
+      //                 含 "doc/architecture/02" 或 "02-实施排期" 即视为引用 02。
+      const readmeHas01 = /doc\/architecture\/01|01-功能架构/i.test(readmeText);
+      const readmeHas02 = /doc\/architecture\/02|02-实施排期/i.test(readmeText);
+      if (!readmeHas01 || !readmeHas02) return false;
 
-      // ----- (d) ARCHITECTURE.md 必引用 doc/08 + doc/09 -----
-      const archHas08 = /doc\/08|08-media-interact/i.test(archText);
-      const archHas09 = /doc\/09|09-media-interact/i.test(archText);
-      if (!archHas08 || !archHas09) return false;
+      // ----- (d) ARCHITECTURE.md 必引用 doc/architecture/01 + doc/architecture/02 -----
+      const archHas01 = /doc\/architecture\/01|01-功能架构/i.test(archText);
+      const archHas02 = /doc\/architecture\/02|02-实施排期/i.test(archText);
+      if (!archHas01 || !archHas02) return false;
 
       return true;
     },
@@ -2940,7 +2940,7 @@ const assertions = [
   {
     id: "INV-70-interactiveonly-optin-passthrough",
     desc:
-      "v1.2（doc/14 §4.2d Lightpanda-inspired）：interactiveOnly 是 opt-in 后处理，默认不过滤 byte-identical v1.1：" +
+      "v1.2（doc/archive/research/14 §4.2d Lightpanda-inspired）：interactiveOnly 是 opt-in 后处理，默认不过滤 byte-identical v1.1：" +
       "（a）OutlineMapper.ts 导出 pruneToInteractive + isInteractiveRole 纯函数；" +
       "（b）axTreeToOutline 体内不含 interactive 过滤（INV-61 三平台共享映射不变，prune 是独立后处理）；" +
       "（c）AxProvider 经 opts.interactive_only 条件调 pruneToInteractive（未传=false 不剪）；" +
@@ -3624,7 +3624,7 @@ const assertions = [
   // ============================================================
   // v1.8 新增（wave1 修复清单 §4 —— INV-76 上游契约 + 接线回归守护）
   // ============================================================
-  // wave1 实测锚点（doc/17-执行记录/wave1-summary.md §3 探测 B）：
+  // wave1 实测锚点（doc/history/01-功能测试执行记录/wave1-summary.md §3 探测 B）：
   //   chrome-devtools-mcp@0.3.0 真实契约 = take_screenshot 无 filePath（返 base64）/
   //   wait_for.text 要 string / evaluate_script 要函数表达式 / 无 pdf 工具。
   //   v1.11（round1 T1）0.3.0 → 1.7.0 迁移复核（tarball build 逐文件白盒）：
@@ -4057,7 +4057,7 @@ const assertions = [
       if (!/config\.launchIdleMs > 0/.test(indexCode)) return false; // 0=禁用门控
 
       // ----- (d) 激活路径禁令 + background 建塔 -----
-      // v1.17.2（doc/27-静默性全面审计）：select_page 的激活是**严格 opt-in**
+      // v1.17.2（doc/governance/08-静默性全面审计）：select_page 的激活是**严格 opt-in**
       //（上游 1.7.0 pages.js：仅 request.params.bringToFront 真值才调
       //  page.bringToFront()；省略 = 纯上下文指针切换，零激活——verify.md §5b
       //  真机实测不抢 OS frontmost）。故守卫从「禁 select_page」精化为：
@@ -4119,7 +4119,7 @@ const assertions = [
     },
   },
   // ============================================================
-  // v1.11（round1 T1/T2，doc/19-最优性审查轮次/round1-verdict.md §2）
+  // v1.11（round1 T1/T2，doc/governance/01-最优性审查轮次/round1-verdict.md §2）
   // INV-79 —— chrome-devtools-mcp 0.3.0→1.7.0 迁移守护 + launch 级 stealth flag
   // ============================================================
   // 守（迁移契约机械化，5 组断言）：
@@ -4203,7 +4203,7 @@ const assertions = [
     },
   },
   // ============================================================
-  // v1.17 A3 新增（doc/25 五项裁决裁决③ —— INV-80 zhipu 直连死层清除墓碑守卫）
+  // v1.17 A3 新增（doc/governance/06 五项裁决裁决③ —— INV-80 zhipu 直连死层清除墓碑守卫）
   // ============================================================
   // 裁决③（2026-08-18）：保留 machine_mcp（智谱 MCP 复用），删除 zhipu 直连 API channel。
   // 守（照 INV-54 Bing 墓碑范式）：
@@ -4219,7 +4219,7 @@ const assertions = [
   {
     id: "INV-80-zhipu-direct-channel-removed",
     desc:
-      "v1.17 A3（doc/25 裁决③）：zhipu 直连 API channel 死层彻底清除且禁回潮（machine_mcp 机器 MCP 复用保留为智谱能力唯一载体）：" +
+      "v1.17 A3（doc/governance/06 裁决③）：zhipu 直连 API channel 死层彻底清除且禁回潮（machine_mcp 机器 MCP 复用保留为智谱能力唯一载体）：" +
       "channels/SearchChannel.ts 不存在；src/ 全树无 ZhipuSearchChannel import、无 \"search.zhipu\" channel 字面量；" +
       "FallbackChain DEFAULT_FALLBACK_ORDER 不含 search.zhipu；providers.ts 无 ZHIPU ProviderConfig；" +
       "config.ts 不消费 ZHIPU_API_KEY（键容忍读但不注册 provider，照 BING_API_KEYS 模式）；" +
@@ -4315,7 +4315,7 @@ const assertions = [
     },
   },
   // ============================================================
-  // v1.17 Phase D（B1 第四通道，doc/25 裁决④ + parse24 §5.5）—— INV-81
+  // v1.17 Phase D（B1 第四通道，doc/governance/06 裁决④ + parse24 §5.5）—— INV-81
   // ============================================================
   // 裁决④（2026-08-18）：本地私有搜索并入 Lasso 做第四通道 search_local。
   // 浏览历史是高敏数据——隐私红线 INV 级钉死（决策文档 B 风险②）：
@@ -4339,7 +4339,7 @@ const assertions = [
   {
     id: "INV-81-search-local-readonly-privacy",
     desc:
-      "v1.17 Phase D（doc/25 裁决④）：search_local 本地私有搜索隐私红线——只读（源库零写 API，唯一写面=mkdtemp 临时目录复制+清理）、" +
+      "v1.17 Phase D（doc/governance/06 裁决④）：search_local 本地私有搜索隐私红线——只读（源库零写 API，唯一写面=mkdtemp 临时目录复制+清理）、" +
       "无全文导出（无 content 数据字段）、limit≤50 硬顶、零网络（import 白名单 node:*/相对/SDK/zod）、" +
       "日志只记 query_len、四处联动装配完整、notes_deferred_v2 诚实 didnt",
     check: () => {
@@ -4437,10 +4437,10 @@ const assertions = [
     },
   },
   // ============================================================
-  // v1.18（doc/28-静默守则审计）INV-82 —— 用户运行守则生命周期红线
+  // v1.18（doc/governance/09-静默守则审计）INV-82 —— 用户运行守则生命周期红线
   // ============================================================
   // 守（D-5 修复 + C2 opt-in 自动 hide，6 组断言）：
-  //  INV-82  v1.18 用户运行守则生命周期红线（doc/28 audit/fix-2/verify）：
+  //  INV-82  v1.18 用户运行守则生命周期红线（doc/governance/09 audit/fix-2/verify）：
   //    (a) exit 钩子 stopLaunchedChromesSync 传 modes:["hidden"]（D-5：P1 v1.17.3
   //        只修了优雅 shutdown，exit 兜底路径曾把用户 visible 登录窗口整树
   //        SIGKILL——verify §6 三次复现实锤）；同步版过滤与 async 版同款
@@ -4457,7 +4457,7 @@ const assertions = [
   {
     id: "INV-82-silence-charter-lifecycle",
     desc:
-      "v1.18：用户运行守则生命周期红线（doc/28 静默守则审计）——" +
+      "v1.18：用户运行守则生命周期红线（doc/governance/09 静默守则审计）——" +
       "（a）exit 钩子 modes:['hidden']（D-5：visible 登录窗口不再被 server 退出杀死）+ " +
       "同步版过滤零 await；（b）登录后自动 hide 默认 off（opt-in 裁决）；（c）auto-hide " +
       "只挂 visible 分支且永不进 kill 路径；（d）四重护栏（见墙→延迟窗→agent 安静→失败降级）" +

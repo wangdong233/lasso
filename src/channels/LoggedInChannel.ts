@@ -102,7 +102,7 @@ export class LoggedInChannel extends BrowseChannel {
   private elicitationPort: ElicitationPort | null = null;
 
   /**
-   * v1.17.2（doc/27-静默性全面审计 S-7 修复）：lasso 在「用户自开 Chrome」上
+   * v1.17.2（doc/governance/08-静默性全面审计 S-7 修复）：lasso 在「用户自开 Chrome」上
    * 自建并选中的 page id（上游 chrome-devtools-mcp 的单调计数器 id）。
    *
    * 上游 (re)spawn 时 id 计数器重置——lastClient 实例变更（ensureRunning 返回
@@ -196,7 +196,7 @@ export class LoggedInChannel extends BrowseChannel {
     }
     // 首次拿到 client 后探一次 2FA（不阻塞太久；失败不影响 browse，只影响 status）。
     await this._detect2FA(c);
-    // v1.17.2（doc/27 S-7）：连「用户自开 Chrome」→ 把 lasso 操作面挪到自建后台 tab
+    // v1.17.2（doc/governance/08 S-7）：连「用户自开 Chrome」→ 把 lasso 操作面挪到自建后台 tab
     //（必须晚于 takeSnapshotIfAbsent：自建 tab 属快照后新增，会话收尾 TabSession.restore
     //  会关它 → 用户 tab 栏零残留；失败降级 = 维持 pages[0] 现状，永不阻断 browse）。
     await this.ensureOwnPageSelected(c);
@@ -267,7 +267,7 @@ export class LoggedInChannel extends BrowseChannel {
   }
 
   /**
-   * v1.17.2（doc/27-静默性全面审计 S-7 修复）：连「用户自开 Chrome」时把 lasso
+   * v1.17.2（doc/governance/08-静默性全面审计 S-7 修复）：连「用户自开 Chrome」时把 lasso
    * 的操作面从 pages[0]（**用户第一个 tab**）挪到 lasso 自建的后台 tab。
    *
    * 背景（verify.md §5c 两轮复现）：上游 chrome-devtools-mcp 连接即

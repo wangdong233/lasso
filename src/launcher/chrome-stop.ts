@@ -195,7 +195,7 @@ export async function stopLaunchedChromes(
 // ============================================================
 // 同步路径（process.on("exit") 钩子；零 await 纪律——W1-DEF-6 先例）
 // ============================================================
-/** 同步版选项（D-5（v1.18，doc/28-静默守则审计 verify §6）：与 async 版同款 modes 过滤 + 可注入）。 */
+/** 同步版选项（D-5（v1.18，doc/governance/09-静默守则审计 verify §6）：与 async 版同款 modes 过滤 + 可注入）。 */
 export interface ChromeStopSyncOptions {
   /**
    * D-5（v1.18）：exit 钩子收尾同样只许碰 hidden——visible 档是用户拥有的窗口，

@@ -202,9 +202,9 @@ describe("admin breaker_reset — D7 熔断手工唤醒", () => {
 });
 
 // ============================================================
-// v1.18.2（doc/29 F2c）：breaker_reset 条件联动 bag.enable（恢复闭环 admin 路径）
+// v1.18.2（doc/governance/10 F2c）：breaker_reset 条件联动 bag.enable（恢复闭环 admin 路径）
 // ============================================================
-describe("admin breaker_reset — F2c 条件恢复 capability（doc/29）", () => {
+describe("admin breaker_reset — F2c 条件恢复 capability（doc/governance/10）", () => {
   it("bag 被 long_circuit_open disable → reset 时联动 enable（capability_restored=true）", async () => {
     const server = makeMockServer();
     const tm = new ToolManager(server);

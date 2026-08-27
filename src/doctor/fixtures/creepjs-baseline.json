@@ -17,5 +17,5 @@
     "totalLiesDelta": 0,
     "_doc": "零容忍退化（parse15 §3.2）：后续 PR 若 totalLies 增加 → #38 fail。creepjsPageSha 变（上游升级）→ #38 warn（提示重 freeze，不是 Lasso 回归）。"
   },
-  "rationale": "v1.7 freeze: Lasso JS defineProperty 范式结构性被 creepjs prototype lie 检测命中（doc/16 建议 6 Camoufox 批评成立）。本基线是回归门禁的退化检测锚点，不是质量达标线。Lasso stealth 定位为过 sannysoft / 基础 bot 检测，不承诺过 CreepJS / Datadome / Kasada（parse15 §1.2 + doc/16 §6.3 L425）。"
+  "rationale": "v1.7 freeze: Lasso JS defineProperty 范式结构性被 creepjs prototype lie 检测命中（doc/archive/research/16 建议 6 Camoufox 批评成立）。本基线是回归门禁的退化检测锚点，不是质量达标线。Lasso stealth 定位为过 sannysoft / 基础 bot 检测，不承诺过 CreepJS / Datadome / Kasada（parse15 §1.2 + doc/archive/research/16 §6.3 L425）。"
 }

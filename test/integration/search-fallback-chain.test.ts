@@ -474,7 +474,7 @@ describe("runFallbackChainEngine —— plan 构造 + 降级链", () => {
   });
 
   // ============================================================
-  // ZB-3b（doc/24 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
+  // ZB-3b（doc/governance/05 verdict D-GO-1，2026-08-18）：freshness 查询的回放新鲜度门。
   // replay 键只有 (engine, query)——不设门则 freshness=day 会拿到陈年 fixture 标 worked。
   // ============================================================
   it("V4b-ZB3：freshness=day + fixture 录于 3 天前 → 拒回放（返原 didnt/unknown，不运陈货）", async () => {

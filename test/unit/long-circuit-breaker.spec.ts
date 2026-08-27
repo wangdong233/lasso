@@ -208,7 +208,7 @@ describe("LongCircuitBreaker — INV-41 类型复用", () => {
 });
 
 // ============================================================
-// v1.18.2（doc/29 F2）：喂入分类 + 恢复闭环 onClose
+// v1.18.2（doc/governance/10 F2）：喂入分类 + 恢复闭环 onClose
 // ============================================================
 describe("LongCircuitBreaker — F2a 喂入分类（环境瞬态不计数）", () => {
   it("TUN 断网风暴：20 次 DNS/timeout 瞬态失败 → 仍 closed（不升级 60min disable）", async () => {

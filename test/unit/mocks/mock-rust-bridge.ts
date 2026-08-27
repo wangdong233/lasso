@@ -64,7 +64,7 @@ export class MockRustBridge {
         id: "mock",
         ok: false,
         error: e instanceof Error ? e.message : String(e),
-        // v1.18.2（doc/29 Y4 测试）：script 可抛携带 errorKind 的 Error 模拟
+        // v1.18.2（doc/governance/10 Y4 测试）：script 可抛携带 errorKind 的 Error 模拟
         // rust helper 的具体 error_kind（tcc_denied 等）；缺省 script_error。
         error_kind:
           (e as { errorKind?: string })?.errorKind ??

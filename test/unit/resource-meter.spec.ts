@@ -31,7 +31,7 @@ function makeSample(overrides: Partial<ResourceSample> = {}): ResourceSample {
   };
 }
 
-describe("resource-meter —— released() 判定（doc/17 §0.2 第 6 条纪律口径）", () => {
+describe("resource-meter —— released() 判定（doc/testing/01 §0.2 第 6 条纪律口径）", () => {
   it("after 进程数 ≤ before 且 RSS 回基线 → true", () => {
     const meter = new ResourceMeter({ sampleFn: () => makeSample() });
     const before = makeSample({ count: 3, rssKb: 200_000 });
@@ -139,7 +139,7 @@ describe("resource-meter —— 特征匹配 + ppid 后代归属（源码级断�
       new URL("../helpers/resource-meter.ts", import.meta.url),
       "utf8",
     );
-    // 三特征（与 doc/17 §0.2 第 6 条 / 任务口径逐字对应）
+    // 三特征（与 doc/testing/01 §0.2 第 6 条 / 任务口径逐字对应）
     expect(src).toContain("--user-data-dir=");
     expect(src).toContain("chrome-devtools-mcp");
     expect(src).toContain("--disable-blink-features");

@@ -167,7 +167,7 @@ const VIOLATION_SAMPLES = [
     },
   },
   {
-    // v1.17 Phase D（doc/25 裁决④ B1）：INV-81 (d) 零网络——
+    // v1.17 Phase D（doc/governance/06 裁决④ B1）：INV-81 (d) 零网络——
     // search-local 模块出现裸 fetch( → 红。
     inv: "INV-81",
     desc: "search-local 模块引入网络调用（fetch 字面量，零网络红线破坏）",
@@ -213,7 +213,7 @@ const VIOLATION_SAMPLES = [
     },
   },
   {
-    // v1.18（doc/28 fix-2）：INV-82 (a)——exit 钩子丢 modes 过滤（D-5 事故形态
+    // v1.18（doc/governance/09 fix-2）：INV-82 (a)——exit 钩子丢 modes 过滤（D-5 事故形态
     // 复刻：P1 只修优雅路径、exit 兜底回潮无条件杀全台账）→ 红。
     inv: "INV-82",
     desc: "exit 钩子 stopLaunchedChromesSync 丢 modes:['hidden']（D-5 回潮）",
@@ -226,7 +226,7 @@ const VIOLATION_SAMPLES = [
     },
   },
   {
-    // v1.18（doc/28 fix-2）：INV-82 (b)——C2 默认翻 on（opt-in 裁决破坏）→ 红。
+    // v1.18（doc/governance/09 fix-2）：INV-82 (b)——C2 默认翻 on（opt-in 裁决破坏）→ 红。
     inv: "INV-82",
     desc: "登录后自动 hide 默认翻 on（opt-in 裁决破坏）",
     file: "config/config.ts",
@@ -238,7 +238,7 @@ const VIOLATION_SAMPLES = [
     },
   },
   {
-    // v1.18（doc/28 fix-2）：INV-82 (d)——护栏①（从未见墙不 hide）拆除 → 红。
+    // v1.18（doc/governance/09 fix-2）：INV-82 (d)——护栏①（从未见墙不 hide）拆除 → 红。
     inv: "INV-82",
     desc: "auto-hide 护栏①拆除（从未见墙也允许 hide）",
     file: "launcher/chrome-idle-reaper.ts",

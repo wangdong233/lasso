@@ -42,7 +42,7 @@ export interface SsrfCheckResult {
 }
 
 // ============================================================
-// v1.18.2（doc/29 F1）：SSRF 拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
+// v1.18.2（doc/governance/10 F1）：SSRF 拒绝 reason 二分 —— 策略确定性 vs 环境瞬态
 // ============================================================
 /**
  * 「环境瞬态」reason：DNS 解析不出来（dns_failed / dns_empty）。

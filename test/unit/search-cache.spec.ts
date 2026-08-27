@@ -218,7 +218,7 @@ describe("SearchCache — 7 天 TTL（mtime）", () => {
 });
 
 // ============================================================
-// ZB-3（doc/24 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合
+// ZB-3（doc/governance/05 verdict D-GO-1，2026-08-18）：TTL × freshness 耦合
 // ============================================================
 describe("SearchCache — ZB-3 TTL×freshness 耦合（day 档 24h，其余 7 天不变）", () => {
   /** 把指定 (query, freshness) 缓存文件的 mtime 拨回到 ageMs 前 */

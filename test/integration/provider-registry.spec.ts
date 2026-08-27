@@ -243,7 +243,7 @@ describe("ProviderRegistry — S-1 运营事实锁（2026-08-17 核实）", () =
   });
 
   it("ZHIPU 死层清除（v1.17 A3）：配 ZHIPU_API_KEY → provider 永不注册（存量 config 不炸但静默忽略）", () => {
-    // zhipu 直连 API channel 已删除（doc/25 裁决③）——loadConfig 容忍读 ZHIPU_API_KEY
+    // zhipu 直连 API channel 已删除（doc/governance/06 裁决③）——loadConfig 容忍读 ZHIPU_API_KEY
     // 但 providers 表不再注册 zhipu（doctor zhipu_keys_retired 提示删除；INV-80 墓碑守卫）
     const cfg = loadConfig({
       runId: "a3-zhipu-dead-layer",

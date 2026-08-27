@@ -1,5 +1,5 @@
 /**
- * search_local 工具注册（B1 第四通道，parse24 §5.1/§5.4 / doc/25 裁决④）
+ * search_local 工具注册（B1 第四通道，parse24 §5.1/§5.4 / doc/governance/06 裁决④）
  *
  * **形态定案（parse24 §5.1）**：工具直连、不建 BaseChannel 子类——本地只读查询
  * 无网络面、无 fallback 语义（tri-state 退化为 worked/didnt，unknown 仅意外异常），

@@ -111,7 +111,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 - **抓登录态页** → 跑一次 `lasso launch-chrome`
 - **控 macOS 桌面** → 跑一次 `lasso doctor` 授权
 
-key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/KEY-GUIDE.md)。
+key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/usage/01-KEY-GUIDE.md)。
 
 ---
 
@@ -207,7 +207,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 默认**完全关闭**。只有你明确要开、并且配了云浏览器（自托管 Steel 或托管型 browserbase/stagehand），才会启用。轻度反爬 `browse_headless` 自带反检测就能过，**只有 Cloudflare 级重度反爬才需要走云浏览器**。
 
-- **Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，零 per-session 费、cookie 不出本地。一行命令开通，见 [Key 配置指南 · Steel](./doc/KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
+- **Steel 自托管（推荐 · 免费）**：本地 Docker 跑一个开源云浏览器，零 per-session 费、cookie 不出本地。一行命令开通，见 [Key 配置指南 · Steel](./doc/usage/01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)。
 - **browserbase（托管型 · 付费）**：试用后按量付费，不想自己跑 Docker 时的备选。
 - **stagehand（托管型 · 付费）**：⚠️ 程序化实验通道——配 key 只装配内部 channel，**没有 MCP 工具入口**（REST 契约未经验证；`lasso doctor` #39 `stagehand_rest_contract_probe` 专测此项）。
 
@@ -247,7 +247,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 - **v1.11**：桌面从「能看」变「能点」（click/type/scroll 真实现 + 坐标鼠标 + `skeleton` 剪枝）；驱动层升 chrome-devtools-mcp 1.7.0（反检测启动级生效、默认关遥测）；搜索新增 `freshness` 时效过滤；英文查询零 Key 兜底换 DuckDuckGo；新增 `LASSO_PROXY` 出口代理。
 - **v1.10**：浏览器默认静默 + 用完即关（`launch-chrome` 零窗口启动、~60 秒自动关，`--mode visible` 可回退）。
 - **v1.9**：浏览器生命周期收尾（无头空闲 5 分钟自动回收、`lasso chrome-stop`、`tab_restore` 恢复原 tab 列表）。
-- **v1.8**：修复全量实测暴露的 24 条缺陷（上游契约适配、截图真实落盘、`read_text` 续页等）——完整清单见 [doc/17-功能测试清单.md](doc/17-功能测试清单.md) 的「v1.8 修复记录」。
+- **v1.8**：修复全量实测暴露的 24 条缺陷（上游契约适配、截图真实落盘、`read_text` 续页等）——完整清单见 [doc/testing/01-功能测试清单.md](doc/testing/01-功能测试清单.md) 的「v1.8 修复记录」。
 
 </details>
 
@@ -288,7 +288,7 @@ lasso config init        # 创建 ~/.lasso/config.json
 
 > 降级顺序：机器 MCP 复用 → Brave（配了 key 时）→ 无头浏览器实搜兜底（v1.14 起英文兜底双引擎：DuckDuckGo 失败/空结果自动再试一次 Brave 实搜；v1.15 起无头浏览器之前先加一层**裸 HTTP 快探**（约 1 秒，无浏览器直接抓搜索结果页——实测部分搜索引擎对「无浏览器」反而更不设防），探不到再启动无头浏览器慢路径）。前一个挂了自动切下一个。（Bing 源已随上游 2025-08-11 退役整层移除、智谱直连档已于 v1.17 删除；历史配置里的 `BING_API_KEYS` / `ZHIPU_API_KEY` 会被静默忽略，`lasso doctor` 会提示删除。）
 
-key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/KEY-GUIDE.md#a-搜索)。常用命令：`lasso --version` / `lasso --help`（v1.8 起未知命令打印用法非零退出，不再静默挂起）。
+key 怎么申请、免费额度多少 → [Key 配置指南 · 搜索](./doc/usage/01-KEY-GUIDE.md#a-搜索)。常用命令：`lasso --version` / `lasso --help`（v1.8 起未知命令打印用法非零退出，不再静默挂起）。
 
 ### 二、抓登录态页面（✅ 免费 · 一行命令，不用 key）
 
@@ -333,7 +333,7 @@ lasso launch-chrome
 
 </details>
 
-**详见** → [Key 配置指南 · 登录态浏览](./doc/KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
+**详见** → [Key 配置指南 · 登录态浏览](./doc/usage/01-KEY-GUIDE.md#b-登录态浏览命令行配置无-key)。
 
 ### 三、控桌面（✅ 免费 · 授权一次，不用 key）
 
@@ -343,7 +343,7 @@ lasso launch-chrome
 
 > 诚实边界：macOS 经真实环境验证；Windows / Linux 编译和契约层过自检，真机完整手测推进中，不伪造「已完整验证」。
 
-**详见** → [Key 配置指南 · 桌面控制](./doc/KEY-GUIDE.md#c-桌面控制系统授权无-key)。
+**详见** → [Key 配置指南 · 桌面控制](./doc/usage/01-KEY-GUIDE.md#c-桌面控制系统授权无-key)。
 
 ### 四、云浏览器（默认关 · 只有重度反爬才需要）
 
@@ -360,7 +360,7 @@ lasso launch-chrome
 - **browserbase 托管（付费）**：换配 `"BROWSERBASE_API_KEY": "你的key"`，不想跑 Docker 的备选
 - ⚠️ stagehand：程序化实验通道，无 MCP 工具入口，别指望它抓页面
 
-**怎么申请 key、Steel 完整开通步骤** → [Key 配置指南 · 云浏览器](./doc/KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
+**怎么申请 key、Steel 完整开通步骤** → [Key 配置指南 · 云浏览器](./doc/usage/01-KEY-GUIDE.md#d-云浏览器反爬默认关双重解锁)。
 
 <details>
 <summary><b>高级调优（可选，普通用户不用展开）</b></summary>
@@ -378,7 +378,7 @@ lasso launch-chrome
 - 给浏览器配出口代理（`LASSO_PROXY`，如 `http://127.0.0.1:7890`；**只影响无头浏览器和 Steel 云浏览器，登录态 Chrome 的出口永远保持原样**——v1.11）
 - 设 Steel 自托管云浏览器端点（`STEEL_ENDPOINT`，如 `http://localhost:3000`；需同时开 `LASSO_ALLOW_CLOUD_BROWSER=true` 才启用）
 
-完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip，`198.18.0.0/15`）与 `127.0.0.1`（本机 Chrome CDP 调试端口用）都已内置放行**，无需额外配置——这是设计行为，不是漏配。
+完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip，`198.18.0.0/15`）与 `127.0.0.1`（本机 Chrome CDP 调试端口用）都已内置放行**，无需额外配置——这是设计行为，不是漏配。
 
 > **向后兼容**：如果你以前用 `claude mcp add -e KEY=VAL` 装过，那些环境变量**仍然生效**，且会**覆盖**配置文件。配置文件只是新增的一条更友好的途径，不废除老办法。
 
@@ -430,7 +430,7 @@ lasso launch-chrome
 | 提示要内网访问被拒 | 确认 URL 没写错；TUN 代理网络已默认放行，其他内网需手动允许 |
 | 想验证反检测效果 | 跑 `lasso doctor --stealth-check`，会驱动 creepjs 检测页对比基线（可选，不影响日常使用） |
 
-完整 FAQ 与调试技巧见 [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md)。
+完整 FAQ 与调试技巧见 [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md)。
 
 ---
 
@@ -460,7 +460,7 @@ lasso launch-chrome
 
 微信 | 支付宝
 :-: | :-:
-<img src="doc/support-wechat.jpg" height="200" alt="微信赞赏"> | <img src="doc/support-alipay.jpg" height="200" alt="支付宝赞赏">
+<img src="doc/assets/support-wechat.jpg" height="200" alt="微信赞赏"> | <img src="doc/assets/support-alipay.jpg" height="200" alt="支付宝赞赏">
 
 </div>
 
@@ -470,15 +470,15 @@ lasso launch-chrome
 
 ## 更多文档
 
-- 想看深度架构？见 [功能架构](doc/08-media-interact-功能架构.md)
-- 想看版本路线？见 [实施排期](doc/09-media-interact-实施排期.md)
-- 想看 key 获取？见 [Key 配置指南](doc/KEY-GUIDE.md)
+- 想看深度架构？见 [功能架构](doc/architecture/01-功能架构.md)
+- 想看版本路线？见 [实施排期](doc/architecture/02-实施排期.md)
+- 想看 key 获取？见 [Key 配置指南](doc/usage/01-KEY-GUIDE.md)
 
 ## License
 
 **MIT** © wangdong233。桌面辅助进程与浏览器引擎依赖均选 MIT / Apache-2.0，企业可商用。
 
-> 想看内部架构、设计原则、跨平台边界、开发命令？见 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [`doc/TROUBLESHOOTING.md`](./doc/TROUBLESHOOTING.md)。
+> 想看内部架构、设计原则、跨平台边界、开发命令？见 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md)。
 
 <p align="center">
   <sub>Built for everyone who'd rather <strong>say it</strong> than <strong>script it</strong>.</sub><br>

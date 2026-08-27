@@ -32,7 +32,7 @@ import type { AxNode, OutlineNode } from "./desktop-types.js";
 const PICTURE_ONLY_MIN_DIM = 100;
 
 /**
- * interactiveOnly 过滤：可交互 role 集合（doc/14 §4.2d Lightpanda-inspired）。
+ * interactiveOnly 过滤：可交互 role 集合（doc/archive/research/14 §4.2d Lightpanda-inspired）。
  * 只含「用户能操作」的元素（点击/输入/选择），排除纯文本/布局/容器。
  * 取自 ax-role-map.ts unified roles 中语义为 interactive 的子集。
  * INV-21：用的是 unified role（非平台 AXRole 字面量）。
@@ -137,7 +137,7 @@ export function isPictureOnly(
 }
 
 // ============================================================
-// interactiveOnly 过滤（doc/14 §4.2d，v1.2）
+// interactiveOnly 过滤（doc/archive/research/14 §4.2d，v1.2）
 // ============================================================
 /**
  * 判断 role 是否「可交互」（用户能操作：点击/输入/选择）。
@@ -157,7 +157,7 @@ function hasInteractiveInSubtree(node: OutlineNode): boolean {
 }
 
 /**
- * 剪枝 OutlineNode 树到「只含可交互元素 + 其祖先」（doc/14 §4.2d）。
+ * 剪枝 OutlineNode 树到「只含可交互元素 + 其祖先」（doc/archive/research/14 §4.2d）。
  *
  * - **root 永远保留**（即使非交互）—— 上游需要树根 handle；root 是 application/window。
  * - 非根节点：保留当且仅当「自身可交互 OR 子树含可交互后代」。

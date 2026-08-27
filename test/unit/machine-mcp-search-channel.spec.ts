@@ -456,7 +456,7 @@ describe("parseMachineMcpContent — 形状兼容", () => {
     expect(r[0].url).toBe("https://x.test");
   });
 
-  // ----- v1.17 真机实测形态（doc/25 verify ②，2026-08-18 open.bigmodel.cn 实抓）-----
+  // ----- v1.17 真机实测形态（doc/governance/06 verify ②，2026-08-18 open.bigmodel.cn 实抓）-----
   // 上游现行 = 双重编码裸数组：text = JSON.stringify(JSON.stringify([{...}]))
   // items 键 title/link/content/refer（无 media）。旧单次解析恒 [] → 真机
   // machine_mcp 永远静默降级 scrape 链——verify 轮修复的回归钉。

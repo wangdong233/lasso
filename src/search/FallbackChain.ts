@@ -24,7 +24,7 @@
  *  - ["search.machine_mcp", "search.brave"]
  *  - v1.15 Phase A：search.bing 档已删（Bing Search APIs 2025-08-11 全量退役，
  *    死层清除；INV-54 墓碑守卫禁回潮）。
- *  - v1.17 A3：search.zhipu 直连档已删（doc/25 裁决③；INV-80 墓碑守卫禁回潮）。
+ *  - v1.17 A3：search.zhipu 直连档已删（doc/governance/06 裁决③；INV-80 墓碑守卫禁回潮）。
  *
  * 不替换 fanout 默认（parse10 §1 决策 4）：
  *  - tools/search.ts 中 engine="auto" 默认行为 = 动态源集合扇出（machine_mcp+brave，
@@ -56,7 +56,7 @@ import type { BudgetTracker } from "../fallback/BudgetTracker.js";
  *  - search.brave       —— 英文/质量层（fallback_order=3）
  *  - （v1.15 Phase A：search.bing 兜底第三源已删——Bing Search APIs 2025-08-11
  *    全量退役，死层清除；INV-54 墓碑守卫。）
- *  - （v1.17 A3：search.zhipu 直连档已删——doc/25 裁决③，死层清除；INV-80 墓碑
+ *  - （v1.17 A3：search.zhipu 直连档已删——doc/governance/06 裁决③，死层清除；INV-80 墓碑
  *    守卫。browse_headless 实搜兜底由 runFallbackChainEngine 末尾追加，不在此常量内。）
  */
 export const DEFAULT_FALLBACK_ORDER: readonly string[] = [

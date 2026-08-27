@@ -1,5 +1,5 @@
 /**
- * T1/T2（v1.11 round1，doc/19-最优性审查轮次/round1-verdict.md §2）：
+ * T1/T2（v1.11 round1，doc/governance/01-最优性审查轮次/round1-verdict.md §2）：
  * chrome-devtools-mcp 0.3.0 → 1.7.0 迁移 + launch 级 UA/viewport 回归守护
  *
  * 上游 1.7.0 契约锚点（tarball build 白盒，与 INV-79 同源）：
