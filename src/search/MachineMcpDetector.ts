@@ -19,7 +19,8 @@
  * 返 null → index.ts 不实例化 MachineMcpSearchChannel → FallbackChain 跳过 → 行为等价 v1.3。
  *
  * 借鉴：config.ts.loadConfigFileEnv（read-only + JSON parse 错返空范式）+
- *       cc-control-all/doc/00-总览.md §机器 MCP 复用调研结论（headers.Authorization 非 env）。
+ *       doc/archive/research/00-总览与落地推荐.md §机器 MCP 复用调研结论（headers.Authorization 非 env）。
+ *       （2026-08-27 仓迁：原 cc-control-all/doc/00-总览.md 已抢救至本路径）
  */
 import * as os from "node:os";
 import * as path from "node:path";

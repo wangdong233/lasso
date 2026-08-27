@@ -1,6 +1,7 @@
 # Lasso 实施排期（09）—— 按能力跃升
 
 > **Lasso**（npm `lasso-mcp`）全交互抓手 MCP 的权威排期（2026-07-21 重写为干净最终版，合并 10/12/13 所有修正，清除附录累积）。F 编号严格对应 [08 §4 子功能总表](08-media-interact-功能架构.md)。
+> **仓迁注（2026-08-27）**：正文提及的 `doc/parse/` 路径已随外层仓退役迁至本目录 `archive/parse/`（正文文字提及不回改，按下述新位置寻档）。
 
 ---
 
@@ -46,6 +47,12 @@
 | **v1.16** ✅ | 颠覆性调研落地（D-GO 三项） | freshness 语义真生效 + feed 推模型直取 | doc/24 verdict（ZB-3/ZB-4/ZB-9） | ✅ 2026-08-18 完成（commit `ef94685`）：2032 TS + 79 INV；新方法论首跑（零基重设计 + 红队豁免 + 成本表 → D-GO 3 / D-DECISION 3 / D-WATCH 8 / D-NOGO 9 分级裁决）：freshness=day 缓存 TTL 24h + replay 新鲜度门（ZB-3）/ **fetch_feed** RSS·Atom·JSON Feed 原语（ZB-4，真机 GitHub releases.atom 5 条/2s）/ README 生态搭配段（ZB-9）；doctor-deep timing flake 根治（5s→15s） |
 | **v1.17** ✅ | 五项用户裁决（doc/25 D-DECISION 清偿） | 搜索结果可判质 / 本地可搜 / 高风险可确认 | doc/25 五项裁决实施 | ✅ 2026-08-18 完成（commit `8112a5e`）：2032→2227 TS、79→81 INV、selftest 20/20、rust-helper 零改、零新 npm 依赖；A1 quality 轴（api/scrape/stale，served_by 静态映射）/ A3 删 zhipu 直连（INV-80 墓碑，machine_mcp 为唯一智谱路径）/ A2′ content_blocks 第二跳（1-5 opt-in，并发 3/单条 5s/256KB/裁剪 ~6k，失败如实 content_status）/ B1 **search_local** 第四通道（Chrome History 复制只读 + mdfind，INV-81 隐私红线）/ C1 elicitation 回合内确认（能力未声明 100% 降级 didnt，39 测钉死）+ C2 include_refs 句柄（附录钉尾） |
 | **v1.17.1** ✅ | doc/17 全量测试轮修复收敛 | 真机 ~170 用例四面板全绿（ALL-CLEAN） | doc/17 功能测试清单 + ft-round1 执行记录 | ✅ 2026-08-18 完成（commit `1432bd4`）：**2240 TS（134 文件）+ 81 INV + selftest 20/20 + 207 Rust**，ft-round1 独立裁决 **ALL-CLEAN**；修复 6 缺陷：🔴IPv6 字面量 SSRF 绕过（ssrf-guard 剥括号）/ 🔴HighRiskGate 裸 JSON.parse 围栏响应（改经 upstream-response + INV-76(m)）/ doWait 假成功 / tab_restore 恒 no-op / doctor 不感知 file 键 / SIGHUP TypeError；§6 简单架构 38 条终判 ✅27/⚠️11/❌0/⏸1 |
+| **v1.17.2** ✅ | 全通道静默性（doc/27 审计落地） | 连用户自己的 Chrome 也零抢焦点 | doc/27-静默性全面审计（audit/fix/verify + 真机证据） | ✅ 2026-08-19 完成（commit `939503b`）：2253 tests + 81 INV；六维打扰面（焦点/窗口/Dock/音频/通知/资源）白盒+真机终版矩阵：查询/裸HTTP/无头/连用户 Chrome 全零打扰——连用户 Chrome 改为**后台自建 tab 干活**（S-7 tab 劫持修复，会话毕自动关，降级态诚实维持旧行为）；INV-78(d) 精化 + doc/17 §2.17 T-SILENCE-01..09 用例组 9/9 pass |
+| **v1.17.3** ✅ | 得到实战三修 | 实战暴露的 show/hide 语义与用法补面 | 得到课程全量抓取 档案/问题集（P1/P3/P4） | ✅ 2026-08-19 完成（commit `72712df`）：2259 tests + 81 INV；P1 chrome-show 恒 no-op（PID 定向 osascript 双向化 + 归属验证红线）/ P3 launch-chrome 可见档使用语义 / P4 新用法入册 |
+| **v1.18.0+v1.18.1** ✅ | 静默守则入宪 + 得到实战五修 | 「lasso 在后台干活，永远不打扰前台」成宪法级守则 | doc/28-静默守则审计（6 件）+ 问题集 13 条终裁 | ✅ 2026-08-20 完成（commit `6878105`）：2308 tests + **82 INV**（+INV-82 静默守则）+ selftest 23；静默守则入宪 README/ARCHITECTURE；C1/C3 决策文档 + C4 NO-GO；问题集 13 条终裁（6 缺陷全修 / 3 预期 / 4 环境） |
+| **v1.18.2** ✅ | 错配机制全面审计（doc/29） | 守卫对准真实威胁模型（错配四修 + 默认放行） | doc/29-错配机制审计（3 件，PASS 裁决） | ✅ 2026-08-20 完成（commit `e5dde99`）：2364 tests + 82 INV + selftest 23；F1 SSRF 拒绝 reason 二分（策略确定性 vs 环境瞬态）/ F2a 熔断喂入故障分类 / F2c 恢复闭环 / F3 steps 链预算 120s（超预算=unknown 自限）/ F4 envelope 失败二分 + Y1 预算字段；威胁模型错配的守卫默认放行修正 |
+| **v1.18.3** ✅ | P27 hide 粘滞复隐看门狗 | Chrome 窗口闪现上限 = 1.5s（一个 tick） | doc/BUG-chrome-idle-reaper（关联）+ P27 | ✅ 2026-08-23 完成（commit `232a232`）：2395 passed + 1 skipped；desired-hide-watchdog（粘滞账跨进程契约，长命 server 消费；永不向非台账 pid 施加 osascript——E8 误伤红线延伸）+ `chrome-hide --pid` 直达 + hide 原语异步化 |
+| **v1.18.4** ✅ | rust-helper 路径根治 | desktop 通道**任目录**可用（不再依赖 cwd） | doc/BUG-rust-helper-relative-path（§7-9 修复纪要） | ✅ 2026-08-23 完成（commit `e4c73aa`）：**2417 passed + 1 skipped + 82 INV**；helper 路径 resolve 为绝对（src/subprocess/rust-helper-path.ts）+ spawn 四态自诊断门 rustSpawnGate（ok/missing/not_file/no_exec）+ ad-hoc 签名链（scripts/ad-hoc-sign-helper.mjs 入 build）+ **GitHub CI 挂载**（.github/workflows/ci.yml，含 Linux cargo check --target 面） |
 
 ---
 
@@ -327,4 +334,4 @@ v0.4 (forest) ──→ v1.0 (Win/Linux desktop via AxBackend)
 
 ## 文档结束
 
-**本文档是 Lasso 权威排期**（2026-07-21 重写，合并 10/12/13 所有修正，清除附录累积；**2026-08-17 增补 v1.8-v1.13 六行**——wave 修复 / 生命周期 / 静默浏览器 / 最优性审查五轮收敛，素材取 lasso 仓 doc/19 与 doc/20；**2026-08-18 增补 v1.14-v1.17.1 五行**——搜索运营事实清偿 / Bing 死层清除与 serp_http / 颠覆性调研落地 / 五项用户裁决 / 全量测试轮收敛，素材取 lasso 仓 doc/21、doc/22、doc/24、doc/25 与 doc/17 执行记录）。F 编号严格对应 [08 §4](08-media-interact-功能架构.md)（F 编号 ↔ v1.17.1 现实映射见 [doc/26 §4](26-文档查缺补漏/gap-matrix.md)）。排期按能力跃升，每阶段可独立交付与验证。
+**本文档是 Lasso 权威排期**（2026-07-21 重写，合并 10/12/13 所有修正，清除附录累积；**2026-08-17 增补 v1.8-v1.13 六行**——wave 修复 / 生命周期 / 静默浏览器 / 最优性审查五轮收敛，素材取 lasso 仓 doc/19 与 doc/20；**2026-08-18 增补 v1.14-v1.17.1 五行**——搜索运营事实清偿 / Bing 死层清除与 serp_http / 颠覆性调研落地 / 五项用户裁决 / 全量测试轮收敛，素材取 lasso 仓 doc/21、doc/22、doc/24、doc/25 与 doc/17 执行记录；**2026-08-27 增补 v1.17.2-v1.18.4 六行**——全通道静默性 / 得到实战三修 / 静默守则入宪+五修 / 错配机制审计 / hide 粘滞看门狗 / rust-helper 路径根治，素材取 lasso 仓 doc/27、doc/28、doc/29 与 BUG×2）。F 编号严格对应 [08 §4](08-media-interact-功能架构.md)（F 编号 ↔ v1.17.1 现实映射见 [doc/26 §4](26-文档查缺补漏/gap-matrix.md)）。排期按能力跃升，每阶段可独立交付与验证。

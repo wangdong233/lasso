@@ -2,7 +2,7 @@
 
 > Lasso 的 SERP selector 是**债**，不是资产。本文档说明 selector 的生命周期 + 改版检测 + 升级流程。
 >
-> 设计原则见 [08 §3.8 F3.8.1-8](../../doc/08-media-interact-功能架构.md)；实施排期见 [09 §2.7 v0.7 SerpHealthMonitor](../../doc/09-media-interact-实施排期.md)。
+> 设计原则见 [08 §3.8 F3.8.1-8](./08-media-interact-功能架构.md)；实施排期见 [09 §2.7 v0.7 SerpHealthMonitor](./09-media-interact-实施排期.md)。
 
 ## 1. 为什么说 selector 是债
 
@@ -255,5 +255,5 @@ admin({ action: "channel_health" })
 - [README.md](../README.md) — 用户手册（故障排查节）
 - [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) — error_kind 释义（含 `recording_replay_miss`）
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — 架构概览（含 fallback 链）
-- [doc/08 功能架构 §3.8](../../doc/08-media-interact-功能架构.md) — SERP 抽取设计（F3.8.1-8）
-- [doc/09 实施排期 §2.7](../../doc/09-media-interact-实施排期.md) — v0.7 SerpHealthMonitor 设计决策
+- [doc/08 功能架构 §3.8](./08-media-interact-功能架构.md) — SERP 抽取设计（F3.8.1-8）
+- [doc/09 实施排期 §2.7](./09-media-interact-实施排期.md) — v0.7 SerpHealthMonitor 设计决策

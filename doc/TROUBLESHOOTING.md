@@ -13,7 +13,7 @@ lasso doctor
 ```json
 {
   "ready": true,
-  "lasso_version": "1.13.0",
+  "lasso_version": "1.18.4",
   "platform_backend_active": "mac",      // darwin→mac / win32→win_uia / linux→linux_atspi
   "recording_baseline_count": 12,         // fixtures/serp-baseline/ 数量；0 = warn（不阻塞 ready）
   "checks": [
@@ -67,7 +67,7 @@ lasso doctor
 2. 手动完成 2FA 登录
 3. 回到 Lasso 重试 `browse_logged_in`（cookie 已在 Chrome 本地，Lasso 复用）
 
-**为什么 Lasso 不解 2FA**：见 [doc/08 §7](../../doc/08-media-interact-功能架构.md) 边界节。自动 2FA 需要存储用户 TOTP secret / 短信转发，这是身份越权，红线。
+**为什么 Lasso 不解 2FA**：见 [doc/08 §7](./08-media-interact-功能架构.md) 边界节。自动 2FA 需要存储用户 TOTP secret / 短信转发，这是身份越权，红线。
 
 ### 2.5 `recording_replay_miss`
 
@@ -162,6 +162,23 @@ lasso doctor
 
 **怎么办**：原生 macOS app 的输入框走无障碍赋值路径，输入中文没有问题；只有降级到键盘合成的场景受此限制。需要在这类框里输中文时，先切到英文输入法 / US 键盘布局，或改由你自己粘贴。目前没有实测失败案例在案（已知边界，持续观测）——遇到了请提 issue，附 app 名与输入法状态。
 
+### 2.16 `rust_helper_spawn_failed` 四态自诊断（v1.18.4）
+
+**症状**：`desktop` 工具调用返 `outcome=didnt` + `error_kind="rust_helper_crashed:subproc_spawn_failed"`，detail 里带 `[gate:<态>]` 前缀。
+
+**根因**：rust-helper binary 无法 spawn。v1.18.4 起 spawn 前有可行性门（`src/subprocess/rust-helper-path.ts` rustSpawnGate）四态自诊断，**看 gate 态即可一眼定位**：
+
+| gate 态 | 含义 | 修法 |
+|---|---|---|
+| `ok` | 可执行、有 exec 位 | spawn 失败另有原因，看 detail 的 errno（EACCES/E2BIG…） |
+| `missing` | 路径不存在（或探测后消失的竞态） | 重装 `npm install -g lasso-mcp`（binary 未随包发布时本仓用户需先 `cargo build --release`）；或 `LASSO_RUST_HELPER` 指向了不存在的路径 |
+| `not_file` | 存在但不是普通文件（目录 / FIFO） | `LASSO_RUST_HELPER` 配错成了目录——改成 binary 全路径 |
+| `no_exec` | 普通文件但缺执行位（`chmod -x` / 解压丢失） | `chmod +x <binary 路径>` |
+
+**历史**：v1.18.3 及之前 helper 路径是 cwd 相对路径——在非 lasso 目录拉起 server 时 desktop 通道全挂（根因与修复全案见 [`BUG-rust-helper-relative-path.md`](./BUG-rust-helper-relative-path.md)，v1.18.4 根治：路径 resolve 为绝对 + 四态门 + ad-hoc 签名链 + CI）。
+
+**签名链**（macOS）：无 Apple Developer 账号时 build 末段自动 ad-hoc 重签（`scripts/ad-hoc-sign-helper.mjs`）——TCC 授权绑定的身份以「当前 ad-hoc 签名」为准；升级后 TCC 失效跑 `lasso doctor` 的 tcc 检查项按 `next_step` 重授权即可。
+
 ## 3. FAQ
 
 ### Q1：`npx lasso-mcp` 启动报 "command not found"
@@ -196,7 +213,7 @@ Lasso 不存 cookie；cookie 留在本机 Chrome。如果 Chrome 的 cookie 过�
 
 ### Q5：`desktop` 在 Windows/Linux 上能跑吗？
 
-**编译可证 + 契约可证，真机执行待社区反馈**。Lasso v1.0 的 Windows UIA + Linux AT-SPI backend 经 `cargo check --target` 验证编译可过，OutlineNode 三平台同构契约层有 CI 单测。但真实 Win/Linux 运行时执行留 [parse11-acceptance.md](../../doc/parse/parse11-acceptance.md) 手测清单（标 pending）。**不伪造「已验证 Windows/Linux」**。
+**编译可证 + 契约可证，真机执行待社区反馈**。Lasso v1.0 的 Windows UIA + Linux AT-SPI backend 经 `cargo check --target` 验证编译可过（v1.18.4 起 GitHub CI 每次推送都跑 Linux `cargo check --target x86_64-unknown-linux-gnu` 面），OutlineNode 三平台同构契约层有 CI 单测。但真实 Win/Linux 运行时执行留 [parse11-acceptance.md](./archive/parse/parse11-acceptance.md) 手测清单（标 pending）。**不伪造「已验证 Windows/Linux」**。
 
 ### Q6：如何录制 search 基线？
 
@@ -282,8 +299,8 @@ rm -rf ~/.cache/lasso
 - [README.md](../README.md) — 用户手册（安装 / 配置 / 工具列表 / 隐私）
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — 架构概览
 - [SELECTOR-MAINTENANCE.md](./SELECTOR-MAINTENANCE.md) — selector 债维护手册
-- [doc/08 功能架构](../../doc/08-media-interact-功能架构.md) — 权威架构基线
-- [doc/09 实施排期](../../doc/09-media-interact-实施排期.md) — v0.1 → v1.0 路径
+- [doc/08 功能架构](./08-media-interact-功能架构.md) — 权威架构基线（冻结）
+- [doc/09 实施排期](./09-media-interact-实施排期.md) — v0.1 → v1.18.4 全周期决策记录
 
 ## 8. 浏览器静默 / 后台节流（v1.10）
 
@@ -336,3 +353,32 @@ public class Win32 {
 ```
 
 macOS 不需要以上任何处置：lasso 用 PID 定向的 System Events hide 作保险丝（需要辅助功能授权；无授权自动降级为 warn，不影响功能，`doctor` 可查）。
+
+## 9. chrome-hide / 粘滞看门狗 / idle reaper（v1.18.x）
+
+### 9.1 `chrome-hide` 直达命令与 `--pid`
+
+```bash
+lasso chrome-hide          # 隐藏台账内全部 lasso 拉起的 Chrome（按台账 pid 定向，永不误伤非台账窗口）
+lasso chrome-hide --pid 12345   # 按 pid 直达隐藏（须已在台账；E8 误伤红线——非台账 pid 会被拒）
+lasso chrome-show          # 取消隐藏 + 清粘滞账
+```
+
+`launch-chrome --mode visible` 首次登录后 `chrome-hide` 回到后台静默（`chrome-show` 再现身）。v1.18.3 起 hide 原语异步化 + `--pid` 直达。
+
+### 9.2 粘滞复隐看门狗（P27，v1.18.3）
+
+Chrome 窗口「自己弹出来」的场景（上游 CDP 激活 / 页面 JS / Chrome 内部唤起）：常驻 server 每 1.5s tick 读 desired-hidden 粘滞账，发现可见即压回（单 osascript「可见才压回」，不盲发）。**闪现上限 = 一个 tick（1.5s）**。观测点：日志事件 `desired_hidden_reasserted`。CLI chrome-hide 单跑**没有**看门狗（进程退出即止——粘滞账是跨进程契约，只有长命 server 消费）。
+
+### 9.3 Chrome 60-75 秒后神秘死亡（idle reaper + 外部消费者盲区）
+
+**症状**：`launch-chrome` 拉起的 Chrome 在无 lasso browse 活动时约 60-75s 后 CDP 断连、台账变空。
+
+**根因**：by-design 的 idle reaper（hidden 档「用完即关」，默认 `LASSO_LAUNCH_IDLE_MS=60s`）。**若 Chrome 由非 lasso browse 通道消费（外部 CDP 直连，如其他 MCP/自动化脚本），reaper 看不到活动信号，照样收割**——这是已知盲区（R-INT-07 活案例，全案见 [`BUG-chrome-idle-reaper-second-consumer.md`](./BUG-chrome-idle-reaper-second-consumer.md)）。
+
+**修法**：外部消费场景拉起时禁用收割：
+
+```bash
+lasso launch-chrome --port 9223 --idle-ms 0   # record 级：仅这条 Chrome 永不收割（推荐）
+# 或全局：export LASSO_LAUNCH_IDLE_MS=0（影响所有 launched Chrome，粒度粗）
+```

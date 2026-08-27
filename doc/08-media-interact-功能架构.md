@@ -1,7 +1,8 @@
 # Lasso 全周期功能架构（08）
 
 > **Lasso**（npm `lasso-mcp`）= CC 的**全交互**对外抓手 MCP（浏览器 + 桌面）。与 media-gen-mcp（图像抓手）双子星。
-> 本文档是权威架构基线（2026-07-21 重写为干净最终版，合并所有调研/审查修正，清除增量附录累积与矛盾）。上游：[07 可行性](07-CC统一交互抓手MCP-可行性分析.md)/[10 搜索](10-搜索MCP调研对架构的启发.md)/[11 简单审查](11-简单架构审查报告.md)/[12 pi-computer-use](12-pi-computer-use及生态深度分析.md)/[13 全交互重设计](13-全交互抓手重设计.md)。下游：[09 排期](09-media-interact-实施排期.md)。
+> 本文档是权威架构基线（2026-07-21 重写为干净最终版，合并所有调研/审查修正，清除增量附录累积与矛盾）。上游：[07 可行性](archive/research/07-CC统一交互抓手MCP-可行性分析.md)/[10 搜索](archive/research/10-搜索MCP调研对架构的启发.md)/[11 简单审查](archive/research/11-简单架构审查报告.md)/[12 pi-computer-use](archive/research/12-pi-computer-use及生态深度分析.md)/[13 全交互重设计](archive/research/13-全交互抓手重设计.md)。下游：[09 排期](09-media-interact-实施排期.md)。
+> **仓迁注（2026-08-27）**：上游调研 07/10/11/12/13 已随外层仓 `cc-control-all/doc/` 退役迁入本目录 `archive/research/` 同名文件（00-18 全系列同迁；真源 = 本仓）。
 
 ## ⚠️ 现状对齐横幅（v1.17.1 · 2026-08-18）
 

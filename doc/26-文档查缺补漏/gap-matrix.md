@@ -16,7 +16,7 @@
 
 新鲜度档位：**A 新鲜**（≤1 版滞后，可不动）/ **B 过期**（滞后但表述不含错）/ **C 失实**（含与现实相反的表述，照行会错）/ **D 缺失**（应有而无）。
 
-| # | 文档（绝对路径省略前缀 `/Users/wangdong/Documents/Project/cc-control-all/`） | 行数 | 写到哪个版本 | 新鲜度 | 核心问题（缺什么 / 错什么） | 优先级 |
+| # | 文档（绝对路径省略前缀 `/Users/wangdong/Documents/Project/claude技能/lasso/`；**2026-08-27 仓迁 re-base**：原 `cc-control-all/` 前缀已随外层仓退役失效，其 doc/ 资产已抢救入本仓 `doc/archive/research/` 与 `doc/archive/parse/`，下表 cc-control-all 行按迁移后位置改写） | 行数 | 写到哪个版本 | 新鲜度 | 核心问题（缺什么 / 错什么） | 优先级 |
 |---|---|---|---|---|---|---|
 | 1 | `lasso/ARCHITECTURE.md` | 337 | v1.13（仅 2 处 d3d1b24/v1.15 局部回补） | **C** | §9.1 链含已删的「智谱」直连 + 违 INV-58 的「→ Wayback」步；缺 serp_http；§11 版本 1.13.0；§7/§8 数字停 1961/79/207/14；§10 文件索引缺 6+ 新模块；缺 v1.14-1.17 全部架构事实 | **P0** |
 | 2 | `lasso/doc/08-media-interact-功能架构.md` | 442 | **2026-07-21 v0.x 时代基线** | **C** | 四通道定义含「search（智谱 web-search-prime）」、`engine="zhipu"` 默认、分层图「智谱 web-search-prime」盒、F3.5「智谱 http 子进程」——全部失实（INV-80）；F3.12 future 行里 7 项早已交付；F3.8「Google selector」从未实现 | **P0**（处置=加现状横幅，不重写） |
@@ -25,14 +25,14 @@
 | 5 | `lasso/doc/TROUBLESHOOTING.md` | 332 | v1.13 | **B**（局部 C） | 零覆盖 v1.14-1.17：无 `--deep` 四分类（200/401/403/429）、serp_http、`quality=stale`、`content_status` 失败标注、search_local `notes_deferred_v2`（Apple Notes 诚实 didnt）、elicitation 降级（能力未声明→didnt）、include_refs 句柄失效、IPv6 字面量 SSRF（v1.17.1 剥括号）；§1 示例 `1.13.0`；§7「doc/09 — v0.1 → v1.0 路径」描述过期且链到外层仓 | **P1** |
 | 6 | `lasso/doc/SELECTOR-MAINTENANCE.md` | 259 | v1.13 + 1 处 v1.15 回补 | **B** | §1「主路径走结构化 API（智谱 / Brave）」——智谱直连已删（machine_mcp 为载体）；**selector 新消费面 `src/serp/http-serp.ts`（v1.15 裸 HTTP 快探复用同一 selector 集 + bot 探测）全文档未提**；§2.1 示例只写 BAIDU（现实三引擎 BAIDU/DDG/BRAVE_SERP，`selectors.ts` 实核）；§6「加新引擎（如 DuckDuckGo）」示例已过时（DDG v1.11 已在） | **P1** |
 | 7 | `lasso/README.md` | 445 | v1.17（changelog 至 v1.17 五项全） | **A** | 无实质缺漏 | P3 保持 |
-| 8 | `cc-control-all/doc/00-总览与落地推荐.md` | 148 | 2026-07-20 调研快照 | **B+D** | 「文档导航」**只索引 00-06，07-18 全部缺号**；无落地状态行——决策树仍推荐「AXAPI 自建 MCP【通识未验证】」而该项目**已产品化为 lasso-mcp v1.17.1（npm）** | **P1** |
-| 9 | `cc-control-all/doc/01..06`（6 份调研） | — | 2026-07-20 快照 | **B** | 头部无「历史快照」状态标注（与 00 同策：只加标注不改语义） | P2 |
-| 10 | `cc-control-all/doc/07,10,11,12,13,14,15,16,18` | — | 各自带日期（07-22~08-15） | **A**（快照性质） | 自洽；其中 18 基线写明 v1.9.0（声明式，无需改） | 不动 |
+| 8 | `doc/archive/research/00-总览与落地推荐.md`（原 cc-control-all/doc/00） | 148 | 2026-07-20 调研快照 | **B+D** | 「文档导航」**只索引 00-06，07-18 全部缺号**；无落地状态行——决策树仍推荐「AXAPI 自建 MCP【通识未验证】」而该项目**已产品化为 lasso-mcp v1.18.4（npm）**。**仓迁处置（2026-08-27）**：随外层仓退役抢救入 archive/research/，改判定为**历史快照（B，勿再改）**——P1-4「补导航/落地状态」随仓退役撤销 | 历史快照（原 **P1**） |
+| 9 | `doc/archive/research/01..06`（6 份调研，原 cc-control-all/doc/01..06） | — | 2026-07-20 快照 | **B** | 头部无「历史快照」状态标注。**仓迁处置**：同入 archive/research/，P2-2 撤销（快照冻结，不回改） | 历史快照（原 P2） |
+| 10 | `doc/archive/research/07,10,11,12,13,14,15,16,18`（原 cc-control-all/doc/ 同名） | — | 各自带日期（07-22~08-15） | **A**（快照性质） | 自洽；其中 18 基线写明 v1.9.0（声明式，无需改）。**仓迁处置**：抢救入 archive/research/；src 注释引用 ×14（doc/14 §4.2d / doc/16 §5 等）已 re-base 校验成立 | 不动 |
 | 11 | `lasso/doc/17,19,20,21,22,23,23a,24,25` | — | v1.7→v1.17.1 | **A** | 当代执行/决策记录，**新鲜，勿动语义** | 不动 |
 | 12 | `lasso/doc/README.md`（索引） | — | — | **D** | 17 份编号文档 + 3 份手册无导读（见 §3-②） | **P1**（新建） |
 | 13 | 08 F 编号 ↔ 现实映射表 | — | — | **D** | v0.x F 编号大量退役/从未实现/无编号新增，无对照表（本文档 §4 直接产出） | **P0**（已随本文档交付） |
 
-**结构性风险（矩阵外发现）**：`lasso/doc/08` 与 `cc-control-all/doc/08`、`lasso/doc/09` 与 `cc-control-all/doc/09` 为 **byte-identical 双拷贝**（`diff -q` 实核）。更新任一份必须双写，否则两仓立即分叉。处置建议见 §5-P2。
+**结构性风险（矩阵外发现，2026-08-27 已消除）**：`lasso/doc/08` 与 `cc-control-all/doc/08`、`lasso/doc/09` 与 `cc-control-all/doc/09` 曾为 **byte-identical 双拷贝**（`diff -q` 实核）。**随外层仓退役，双拷贝纪律废止——真源唯一 = 本仓 `lasso/doc/`**（08/09 迁移当日 diff -q 复核一致后外层副本随仓消亡）。
 
 ---
 
@@ -135,9 +135,9 @@
 
 ---
 
-## 4. F 编号 ↔ 现实映射表（08 §4 总表 → v1.17.1 现实）
+## 4. F 编号 ↔ 现实映射表（08 §4 总表 → v1.18.4 现实）
 
-> 状态四值：**活**（实现且生效）/ **退役**（曾实现已删，墓碑 INV 守）/ **从未**（规划未做）/ **无号**（实现于 F 体系之外）。逐行经源码/INV/grep 实核。
+> 状态四值：**活**（实现且生效）/ **退役**（曾实现已删，墓碑 INV 守）/ **从未**（规划未做）/ **无号**（实现于 F 体系之外）。逐行经源码/INV/grep 实核。**2026-08-27 续盘 v1.18 行**（§8）。
 
 | F 编号 / 08 表述 | 08 原文 | 现实状态 | 证据锚点 |
 |---|---|---|---|
@@ -170,6 +170,9 @@
 | F3.10.x desktop 四档 | v0.3.5 | **活且超规划**：v1.11-v1.13 从「能看」到「能点」（ax_act 真实现/坐标鼠标/VLM 真执行/Electron 兜底） | src/desktop/ |
 | F3.11.x forest | v0.4 调度层 | **活且工具化**：interact_roots/observe/act 3 个真实 MCP 工具（17 工具之三） | src/tools/interact.ts |
 | F3.12.x future（browse_cloud/stagehand/fetch_url/screenshot/pdf/network/wayback） | v0.4-v0.9 | **全部已交付**；Steel 自托管（v1.6）与 fetch_feed（v1.16）无号 | tools/{screenshot,pdf,network,fetch-url,wayback}.ts |
+| （无号）静默性/守则体系 | — | **无号**：v1.17.2 全通道静默（doc/27）+ v1.18.0 静默守则入宪（INV-82，doc/28）+ v1.18.3 hide 粘滞看门狗（P27） | launcher/desired-hide-watchdog.ts |
+| （无号）rust-helper 路径根治与四态门 | — | **无号**：v1.18.4，任 cwd 可用 + rustSpawnGate 四态 + ad-hoc 签名链 + CI（BUG-rust-helper §7-9） | src/subprocess/rust-helper-path.ts |
+| （无号）错配机制守卫二分 | — | **无号**：v1.18.2（doc/29）——SSRF/熔断/envelope 失败 reason 二分 + steps 链 120s 预算（超限=unknown） | src/ssrf/ssrf-guard.ts |
 
 ---
 
@@ -200,7 +203,7 @@
 
 | 动作 | 对象 | 怎么改 |
 |---|---|---|
-| P2-1 | 08/09 单真源化 | 决策：`lasso/doc/` 为真源，外层 `cc-control-all/doc/08,09` 改为 3 行指针文件（或加同步脚本）；至少在 doc/README 声明双拷贝纪律 |
+| P2-1 | 08/09 单真源化 | ~~决策：`lasso/doc/` 为真源，外层改指针文件~~ **已随仓迁终局解决（2026-08-27）**：外层 cc-control-all 退役，真源唯一 = 本仓 doc/08、09 |
 | P2-2 | 外层 01-06 | 头部统一加「历史调研快照」状态标注 |
 
 ### P3（保持）
@@ -281,3 +284,26 @@ KEY-GUIDE.md、README.md、doc/17-25——新鲜；每次发版按既有流程�
 - `npx vitest run`（2240）/ `cargo test`（207）审查员亲跑复证，与文档数字一致。
 
 **审查结论：PASS（附 10 处已闭环修正）**。更新报告所列 §7/§8/§9 新增章节、§9.1 链纠正、doc/08 横幅、doc/09 五行经 45 条逐项对源核验全部属实；发现的 10 处次级失实（层级图 ×2、SearchChannel 幽灵文件 ×2、云工具名、V5 键数、状态路径、INV-54 缺行、3 处行数漂移）已当场修正并复跑门禁。文档链现状：外层 00-总览（落地状态）→ lasso/ARCHITECTURE.md（v1.17.1 现状权威）→ doc/08（冻结基线+横幅）+ doc/09（全周期）→ doc/26 §4（F 映射真源），四层互链闭环，无悬挂引用。
+
+---
+
+## 8. 续盘 v1.17.2 → v1.18.4（2026-08-27，仓迁后首盘）
+
+> 本节是 §1 矩阵的续行（增补不推翻；§1 原行不动）。基线：`lasso-mcp v1.18.4`（HEAD=`e4c73aa`，npm latest）。新事实基准：**17 工具 / 82 INV / 2417 passed + 1 skipped（143 files）/ selftest 23 / GitHub CI（.github/workflows/ci.yml，含 Linux cargo check --target 面）**。
+
+| # | 文档 | 写到哪个版本 | 新鲜度 | 处置（本轮已做 / 遗留） |
+|---|---|---|---|---|
+| 14 | `doc/27-静默性全面审计/`（5 件 + verify-data 真机证据） | v1.17.2 | **A** | 原位不动（TROUBLESHOOTING §8 引用成立） |
+| 15 | `doc/28-静默守则审计/`（6 件） | v1.18.0/1 | **A** | 原位不动（INV-82 出处；check-invariants L112 引用成立） |
+| 16 | `doc/29-错配机制审计/`（3 件） | v1.18.2 | **A** | 原位不动（src 注释引用 ×54 最密；ARCHITECTURE L25） |
+| 17 | `doc/BUG-rust-helper-relative-path.md` | v1.18.4（已根治） | **A** | 本轮纳入 git 跟踪（原 untracked）；§9 勘误制度示范 |
+| 18 | `doc/BUG-chrome-idle-reaper-second-consumer.md` | v1.18.3（缓解在档，**根治未做**） | **A**（活档） | 本轮纳入 git 跟踪；R-INT-07 活案例，修复建议 §6 四级待裁决 |
+| 19 | `doc/archive/parse/`（36 件，原 cc-control-all/doc/parse/） | v0.1-v1.10 执行史 | **快照** | 本轮抢救迁入；src/index.ts、doc/09 引用已 re-base；TROUBLESHOOTING Q5 链已修 |
+| 20 | `doc/archive/research/`（16 件 + 搜索mcp工具/，原 cc-control-all/doc/00-18） | 2026-07-20~08-17 调研 | **快照** | 本轮抢救迁入；src 注释 doc/00/14/16 引用已 re-base 校验成立 |
+| 21 | `doc/得到课程全量抓取/`（68 件，自洽模板目录） | v1.17.3/v1.18.1 实战母本 | **A** | 本轮整体迁入（内部零外部引用，自洽性保持） |
+| 22 | `doc/09` 阶段表 | **本轮补齐 v1.17.2-v1.18.4 六行** | **A** | 已做（2026-08-27） |
+| 23 | `doc/17` | **本轮补 v1.18 增补记录节**（门禁 2417+82、CI、四态门、看门狗、reaper 盲区、二分覆盖声明） | **A** | 已做；T-SILENCE-01..09 之外的新用例组（gate 四态/watchdog/reaper 缓解）待 round2 补 |
+| 24 | `doc/TROUBLESHOOTING.md` | **本轮补 §2.16 + §9（v1.18.x 故障面）**；§1 版本 1.18.4；Q5/§2.4/§7 断链修 | **A** | 已做 |
+| 25 | `doc/README.md` | **本轮重写为按项目逻辑导读** | **A** | 已做（双拷贝纪律节废止） |
+| 26 | `../ARCHITECTURE.md` | v1.17.1 | **C**（同 §1 行 1 旧判定，叠加 v1.18 新事实缺） | **遗留 P0**：静默守则/看门狗/CI/82 INV 全缺——下次架构文档专项 |
+| 27 | `doc/KEY-GUIDE.md` | v1.17（时效标注 2026-08-17/18） | **A**（90 天时效期内；下次重核 ≈2026-11，含 Brave 免费计划扣卡口径） | 本轮加轻核对注；无新 key 面（v1.18.x 未新增供应商/env） |

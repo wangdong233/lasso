@@ -28,8 +28,8 @@
  * ToolAnnotations 完整（INV-5）由 tools/*.ts 注册时携带。
  *
  * 权威：../doc/08-media-interact-功能架构.md
- * 实施：../doc/parse/parse1.md (v0.1) + parse2.md (v0.2) + parse3.md (v0.3) +
- *       parse4.md (v0.3.5) + parse5.md (v0.4)
+ * 实施：../doc/archive/parse/parse1.md (v0.1) + parse2.md (v0.2) + parse3.md (v0.3) +
+ *       parse4.md (v0.3.5) + parse5.md (v0.4)（2026-08-27 仓迁：parse/ 已归档至 doc/archive/parse/）
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
