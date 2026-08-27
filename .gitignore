@@ -29,3 +29,4 @@ Thumbs.db
 # agent/devteam tooling state (not project source)
 .devteam/
 output/
+.private/

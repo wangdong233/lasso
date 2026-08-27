@@ -34,3 +34,11 @@ coverage/
 
 # ----- Misc dev logs（v0.2.9.x _panel-debug.log 类）-----
 *.log
+
+# ----- 私有应用域（得到课程等：平台合规风险，绝不进发布包）-----
+.private/
+.dedao*/
+probe-dedao/
+probe-*
+output/
+doc/得到*/
