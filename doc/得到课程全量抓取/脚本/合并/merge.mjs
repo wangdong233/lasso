@@ -32,8 +32,8 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { holeReport, chromeGuard, textZeroLoss, pdfImages } from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/analyze.mjs";
-import { RULES, matchFigsToPdf, planGapFill, figChainAnnotations, assertNoUnfilledGaps, inkTailScan } from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/gapfill.mjs";
+import { holeReport, chromeGuard, textZeroLoss, pdfImages } from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/analyze.mjs";
+import { RULES, matchFigsToPdf, planGapFill, figChainAnnotations, assertNoUnfilledGaps, inkTailScan } from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/gapfill.mjs";
 
 // —— 课程配置（2026-08-20 F1 整改）：课程相关常量唯一入口 = ./config.mjs，换课程只改该文件 ——
 import { BASE, ENGINE, OUT, CDP, COURSE, VENV_PY, CFG } from "./config.mjs";

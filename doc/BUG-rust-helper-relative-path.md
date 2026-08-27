@@ -1,6 +1,8 @@
 # BUG 报告:rust-helper 相对路径导致 desktop 通道全挂(subproc_spawn_failed)
 
 > 发现日期:2026-08-22 · 发现环境:Claude Code(VSCode extension)以 stdio 启动 lasso MCP server v1.18.3 · 严重级:**阻断**(desktop 全通道不可用)
+>
+> **仓迁注(2026-08-27)**:本文档写就时仓在 `/Users/wangdong/Documents/Project/cc-control-all/lasso`,现已迁至 `/Users/wangdong/Documents/Project/claude技能/lasso`——文中出现的旧绝对路径(含 §内 env 注入示例)均为当时历史现场,今已失效勿照抄;`~/.claude.json` 的 `LASSO_RUST_HELPER_PATH` 已由主循环重定位到新仓,且 v1.18.4 根治后该 env 覆盖本身已非必需(见 TROUBLESHOOTING §2.16 rustSpawnGate 四态)。
 
 ## 1. 现象
 

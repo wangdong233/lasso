@@ -24,7 +24,7 @@ description: 得到专栏课程全量抽取成书的薄壳 skill——环境宪�
 
 | 键 | 含义 | 本书值（示例） |
 |---|---|---|
-| `COURSE_DIR` | 课程根绝对路径 | `…/cc-control-all/得到_薛兆丰的经济学` |
+| `COURSE_DIR` | 课程根绝对路径 | `…/lasso/output/得到_薛兆丰的经济学` |
 | `COURSE_NAME` | 成书命名/书签前缀 | `薛兆丰的经济学课`（→ `薛兆丰的经济学课-全419讲.pdf`） |
 | `TARGET` | 课程主页 URL（侧栏枚举起点） | `https://www.dedao.cn/course/article?id=…` |
 | `SIKAO` | 课后思考整段删除锚文本 | `课后思考` |

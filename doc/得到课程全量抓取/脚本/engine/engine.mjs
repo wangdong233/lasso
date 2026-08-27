@@ -28,8 +28,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   holeReport, promoInPdf, textZeroLoss, chromeGuard, PAGE_CSS, pdfImages,
-} from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/analyze.mjs";
-import { RULES, decideGapFill } from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/gapfill.mjs";
+} from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/analyze.mjs";
+import { RULES, decideGapFill } from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/gapfill.mjs";
 
 // —— 课程配置（2026-08-20 F1 整改）：课程相关常量唯一入口 = ./config.mjs，换课程只改该文件 ——
 import { LASSO_ROOT, ENGINE, BASE, TARGET, CDP, PROMO_MD5S, SIKAO } from "./config.mjs";

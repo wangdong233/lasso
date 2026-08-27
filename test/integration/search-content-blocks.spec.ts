@@ -179,9 +179,9 @@ function makeDecider(): FallbackDecider {
 }
 
 const THREE_RESULTS = [
-  { title: "R1", url: "https://r1.test/doc" },
-  { title: "R2", url: "https://r2.test/doc" },
-  { title: "R3", url: "https://r3.test/doc" },
+  { title: "R1", url: "https://127.0.0.1/r1/doc" },
+  { title: "R2", url: "https://127.0.0.1/r2/doc" },
+  { title: "R3", url: "https://127.0.0.1/r3/doc" },
 ];
 
 // ============================================================
@@ -308,7 +308,7 @@ describe("content_blocks=N 富化（单源出口路径）", () => {
       expect(contentDeps.fetchImpl).toHaveBeenCalledTimes(2);
       // 蓝链字段保留
       expect(rs[0]!.title).toBe("R1");
-      expect(rs[0]!.url).toBe("https://r1.test/doc");
+      expect(rs[0]!.url).toBe("https://127.0.0.1/r1/doc");
     } finally {
       await shutdown();
     }

@@ -54,9 +54,16 @@ describe("AxBackendFactory.detectKind —— 三平台路由", () => {
       .toBe<AxBackendKind>("linux_atspi");
   });
 
-  it("本机默认（macOS）→ mac（生产路径无 opts）", () => {
-    // 本机 Darwin 21.6.0 Intel（parse11 §1.3）
-    expect(AxBackendFactory.detectKind()).toBe<AxBackendKind>("mac");
+  it("本机默认 → 本平台 kind（生产路径无 opts；CI Linux=linux_atspi）", () => {
+    // 本机 Darwin 21.6.0 Intel（parse11 §1.3）；CI ubuntu 上无 opts 默认即
+    // linux_atspi——期望按 process.platform 派生，不再硬编码 mac。
+    const expected: AxBackendKind =
+      process.platform === "darwin"
+        ? "mac"
+        : process.platform === "win32"
+          ? "win_uia"
+          : "linux_atspi";
+    expect(AxBackendFactory.detectKind()).toBe<AxBackendKind>(expected);
   });
 });
 
@@ -133,10 +140,16 @@ describe("AxBackendFactory.createFromKind —— 三 kind 路由到对应 class"
 // 4. create：便捷入口（生产路径）
 // ============================================================
 describe("AxBackendFactory.create —— 便捷入口", () => {
-  it("本机默认（macOS）→ MacAxBackend（生产路径）", () => {
+  it("本机默认 → 本平台 backend 实例（生产路径；CI Linux=LinuxAtspiBackend）", () => {
     const rust = makeRust();
     const backend = AxBackendFactory.create(rust);
-    expect(backend).toBeInstanceOf(MacAxBackend);
+    const Expected =
+      process.platform === "darwin"
+        ? MacAxBackend
+        : process.platform === "win32"
+          ? WinUiaBackend
+          : LinuxAtspiBackend;
+    expect(backend).toBeInstanceOf(Expected);
   });
 
   it("opts.rawPlatform=win32 → WinUiaBackend（测试 mock 平台）", () => {

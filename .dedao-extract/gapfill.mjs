@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gapfill.mjs — 「大空缺 + 下方有图 → 缩小补入；不行则删图；文字绝不丢」共享规则模块（P23）
+// gapfill.mjs — 「大空缺 + 下方有图 → 缩小补入；不行则删图；文字绝不丢」共享规则模块（P23；P30 链感知升级）
 //
 // 用户裁决（2026-08-19）原文语义：
 //   空缺足够大（≥ 页内容高 ~35-40%）且下方（次页顶）有图片 → 尝试等比缩小放入（下限防过小，≥200px 高）；
@@ -24,26 +24,35 @@ export const RULES = {
   IMG_MIN_COSMETIC_CSS: 120, // cosmetic 档缩图下限（engine v2 传承）
   FIG_VMARGIN_CSS: 38,    // figure 上下 margin 2×1.35em@10.5pt≈14px 行距字
   SAFETY_CSS: 10,         // 行内图基线隙/碎片化舍入安全垫
+  // ---- P30 链头建模（2026-08-20）：标题 break-after:avoid 会带着图一起被推到次页 ----
+  // 实证（shard13 终态复扫）：8 处大空白里图已被缩到 printHCss == availCss 仍留在次页顶
+  // （916vs915、645=645、541=541、537=537、691=691…）——「恰好放下却不回流」= 前方有未计高的
+  // 链头块。链头高由版式 CSS 实算：
+  CHAIN_H_CSS: 70,        //   h2-h4 前邻（merge.mjs 版式：12pt×1.7 行盒 + 1.9em/.8em margin ≈ 52.8pt ≈ 70css）
+  CHAIN_CHHEAD_CSS: 135,  //   章首块前邻（.ch-head：rule+ch-mod+16pt 标题+margin ≈ 101pt ≈ 135css）
+  CHAIN_FALLBACK_CSS: 96, //   无标注兜底（big 档 fits 悖论时扣；介于 h2 与章头之间，覆盖舍入/孤行绑定）
+  MAX_ROUNDS: 6,          // 收敛轮次上限（P30：3 轮截断致 7/14 片带动作退出，4 处 40-49% 空白幸存）
 };
 
 // ---- 核心裁决（纯函数，两管线共用） ----
 // 输入：freePt=该页版面自由空间(pt, holeReport freePt)；freePct=同上百分比；
-//       printHCss=候选图当前打印显示高(css px)；natDisplayCss=等宽自然显示高（上限，不放大）。
-// 输出：{action: 'shrink'|'delete'|'leave', maxCss, availCss, tier, reason}
-export function decideGapFill({ freePt, freePct, printHCss, natDisplayCss = Infinity }) {
+//       printHCss=候选图当前打印显示高(css px)；natDisplayCss=等宽自然显示高（上限，不放大）；
+//       chainHeadCss=图前方经 break-after:avoid 绑定的链头块高（P30：0=无链/未标注，行为与旧版全同）。
+// 输出：{action: 'shrink'|'delete'|'leave', maxCss, availCss, tier, reason, chainHeadCss}
+export function decideGapFill({ freePt, freePct, printHCss, natDisplayCss = Infinity, chainHeadCss = 0 }) {
   const freeCss = (freePt * 96) / 72;
-  const availCss = freeCss - RULES.FIG_VMARGIN_CSS - RULES.SAFETY_CSS;
+  const availCss = freeCss - RULES.FIG_VMARGIN_CSS - RULES.SAFETY_CSS - chainHeadCss;
   const big = freePct >= RULES.GAP_BIG_PCT;
   const floor = big ? RULES.IMG_MIN_CSS : RULES.IMG_MIN_COSMETIC_CSS;
   const tier = big ? "big" : "cosmetic";
-  if (printHCss <= availCss) return { action: "leave", reason: "fits", availCss: Math.round(availCss), tier };
+  if (printHCss <= availCss) return { action: "leave", reason: "fits", availCss: Math.round(availCss), tier, chainHeadCss };
   if (availCss >= floor) {
     const maxCss = Math.max(1, Math.floor(Math.min(availCss, natDisplayCss)));
-    if (printHCss <= maxCss) return { action: "leave", reason: "nat-capped-fits", availCss: Math.round(availCss), tier };
-    return { action: "shrink", maxCss, availCss: Math.round(availCss), tier };
+    if (printHCss <= maxCss) return { action: "leave", reason: "nat-capped-fits", availCss: Math.round(availCss), tier, chainHeadCss };
+    return { action: "shrink", maxCss, availCss: Math.round(availCss), tier, reason: chainHeadCss > 0 ? `chain(${chainHeadCss}css)` : "fits-after-cap", chainHeadCss };
   }
-  if (big) return { action: "delete", reason: `avail(${Math.round(availCss)}css)<floor(${floor}css)`, availCss: Math.round(availCss), tier };
-  return { action: "leave", reason: `cosmetic-below-floor(${Math.round(availCss)}<${floor})`, availCss: Math.round(availCss), tier };
+  if (big) return { action: "delete", reason: `avail(${Math.round(availCss)}css)<floor(${floor}css)`, availCss: Math.round(availCss), tier, chainHeadCss };
+  return { action: "leave", reason: `cosmetic-below-floor(${Math.round(availCss)}<${floor})`, availCss: Math.round(availCss), tier, chainHeadCss };
 }
 
 // ---- DOM 图元 ↔ PDF 图像对齐（engine alignFigures 泛化；文档序 + 自然尺寸匹配） ----
@@ -69,7 +78,46 @@ export function matchFigsToPdf(figs, pdf) {
 // per = holeReport(pdf).per；figsAligned = matchFigsToPdf(...)（key 必填，建议带 src/chapter）；
 // chapterStartPages = 各章起始页（次页为章首的空缺是刻意的章尾留白，不动）。
 // alreadyShrunk: Map<key, maxCss>（上一轮已缩仍候选 → 缩后仍溢出 → 按 big 规则删）。
-export function planGapFill({ per, figsAligned, chapterStartPages = [], totalPages, alreadyShrunk = new Map(), deletedKeys = new Set() }) {
+// ---- P30 链头标注：按文档序扫 blocks，给每个可寻址图标注前方 break-after:avoid 链头高 ----
+// chapters: [{blocks:[{t:'h'|'img'|'p'|..., lvl?, ...}]}]（文档序；blocks 与 merge.mjs parseMd 同构）。
+// 键序契约：buildHtml 的 figKey 计数器按「章序×块序×img 块」递增——本函数同序同计数（h1 渲染前被
+// 过滤，跳过；行内图（非整段唯一内容的 ![]()）不占键）。返回 Map<figKey, chainHeadCss>；
+// 未入 Map 的图 = 无链（0）。
+export function figChainAnnotations(chapters) {
+  const out = new Map();
+  let key = 0;
+  for (const c of chapters) {
+    let firstRendered = true;
+    let prev = null; // 前一个会被渲染的块（h1 已滤除）
+    for (const b of c.blocks) {
+      if (b.t === "h" && b.lvl === 1) continue; // buildHtml 渲染前过滤章标题 h1
+      if (b.t === "img") {
+        const k = key++;
+        if (firstRendered) out.set(k, RULES.CHAIN_CHHEAD_CSS); // 章首块：.ch-head break-after:avoid 绑定
+        else if (prev && prev.t === "h" && prev.lvl >= 2 && prev.lvl <= 4) out.set(k, RULES.CHAIN_H_CSS); // h2-h4 前邻
+      }
+      prev = b;
+      firstRendered = false;
+    }
+  }
+  return out;
+}
+
+// ---- 空缺补图计划（每页扫描：空缺达标 ∧ 次页非章首 ∧ 次页文档序第一图为候选） ----
+// per = holeReport(pdf).per；figsAligned = matchFigsToPdf(...)（key 必填，建议带 src/chapter）；
+// chapterStartPages = 各章起始页（次页为章首的空缺是刻意的章尾留白，不动）。
+// alreadyShrunk: Map<key, maxCss>（上一轮已缩仍候选 → 缩后仍溢出 → 按 big 规则删）。
+// deletedKeys: 已删图键集。figChain: Map<key, chainHeadCss>（figChainAnnotations 产物，P30）。
+//
+// P30 链感知语义（只作用于 big 档；cosmetic 档保持 P23 原语义不变，防冒烟行为漂移）：
+//   1) 链扣除：候选图有链头标注时，可用空间先减链头高再判 fits/定 maxCss——
+//      「图放下还得把绑定的标题一起放下」才是物理真相。
+//   2) fits 悖论兜底：big 档判 fits 但 (a) 该图已有 prev 缩放记录（被缩到 printH≈avail 仍留次页）
+//      或 (b) 已知链头 → 事实存在未计高阻塞块；无标注按 CHAIN_FALLBACK_CSS 补扣重判一轮。
+//   3) big 档链感知重试优先于删：链感知目标 maxCss < prev 时先再缩（旧版直接删——
+//      链盲时代的 prev 本身就是被高估的目标）；只有 maxCss ≥ prev（已缩到链感知目标之下仍被推）
+//      才按用户规则删图。
+export function planGapFill({ per, figsAligned, chapterStartPages = [], totalPages, alreadyShrunk = new Map(), deletedKeys = new Set(), figChain = new Map() }) {
   const starts = new Set(chapterStartPages);
   const plan = { shrink: [], delete: [], skip: [] };
   for (let i = 0; i < per.length; i++) {
@@ -81,12 +129,27 @@ export function planGapFill({ per, figsAligned, chapterStartPages = [], totalPag
     if (!onPage.length) { plan.skip.push({ page: p.page, freePct: p.freePct, why: "no-fig-on-next-page" }); continue; }
     const fig = onPage.reduce((a, b) => (a.key <= b.key ? a : b)); // 文档序第一图
     if (typeof fig.key !== "number") { plan.skip.push({ page: p.page, freePct: p.freePct, why: "inline-fig-not-addressable" }); continue; } // 行内图属文字流，不可独立操作（规则红线旁路）
-    const d = decideGapFill({ freePt: p.freePt, freePct: p.freePct, printHCss: fig.printHCss ?? Infinity, natDisplayCss: fig.natDisplayCss ?? Infinity });
+    const big = p.freePct >= RULES.GAP_BIG_PCT;
+    let chain = big ? (figChain.get(fig.key) ?? fig.chainHeadCss ?? 0) : 0; // 链扣除只进 big 档
+    let d = decideGapFill({ freePt: p.freePt, freePct: p.freePct, printHCss: fig.printHCss ?? Infinity, natDisplayCss: fig.natDisplayCss ?? Infinity, chainHeadCss: chain });
+    let paradox = false;
+    if (d.action === "leave" && d.reason === "fits" && big) {
+      // fits 悖论：判「放得下」却仍留在次页顶——prev 在案（缩到 avail 仍没回流）或已知链头即坐实
+      if (chain > 0 || alreadyShrunk.has(fig.key)) {
+        if (!(chain > 0)) chain = RULES.CHAIN_FALLBACK_CSS;
+        d = decideGapFill({ freePt: p.freePt, freePct: p.freePct, printHCss: fig.printHCss ?? Infinity, natDisplayCss: fig.natDisplayCss ?? Infinity, chainHeadCss: chain });
+        paradox = true;
+      }
+    }
     const prev = alreadyShrunk.get(fig.key);
     if (d.action === "shrink" && prev !== undefined) {
-      // 上轮已缩到 prev 仍被推到次页顶（如标题 break-after:avoid 随行占位）→ 缩后仍溢出 → 删（big 规则）
-      if (p.freePct >= RULES.GAP_BIG_PCT) {
-        plan.delete.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, reason: `still-overflow-after-shrink(${prev}css)`, prevMax: prev });
+      if (big) {
+        if (d.maxCss < prev) {
+          // 链感知再缩：上一轮 prev 是链盲目标（≥ 链感知目标），还有物理上讲得通的缩小空间
+          plan.shrink.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, maxCss: d.maxCss, tier: paradox ? "big-paradox-retry" : "big-chain-retry", reason: `${paradox ? "fits-paradox" : "chain"}-retry-${prev}->${d.maxCss}(h=${chain}css)`, availCss: d.availCss, chainHeadCss: chain });
+        } else {
+          plan.delete.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, reason: `still-overflow-after-chain-shrink(prev=${prev}css<=max=${d.maxCss}css,h=${chain}css)`, prevMax: prev });
+        }
         continue;
       }
       const maxCss = Math.max(RULES.IMG_MIN_COSMETIC_CSS, Math.floor(d.availCss - RULES.SAFETY_CSS));
@@ -94,9 +157,9 @@ export function planGapFill({ per, figsAligned, chapterStartPages = [], totalPag
       else plan.skip.push({ page: p.page, freePct: p.freePct, why: `shrink-stalled(${prev})` });
       continue;
     }
-    if (d.action === "shrink") plan.shrink.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, maxCss: d.maxCss, tier: d.tier, reason: d.reason, availCss: d.availCss });
-    else if (d.action === "delete") plan.delete.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, reason: d.reason });
-    else plan.skip.push({ page: p.page, freePct: p.freePct, why: `${d.action}:${d.reason}` });
+    if (d.action === "shrink") plan.shrink.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, maxCss: d.maxCss, tier: d.tier, reason: paradox ? `fits-paradox-chain(${chain}css)` : d.reason, availCss: d.availCss, chainHeadCss: chain });
+    else if (d.action === "delete") plan.delete.push({ page: p.page, freePct: p.freePct, freePt: p.freePt, fig, reason: paradox ? `fits-paradox-${d.reason}` : d.reason });
+    else plan.skip.push({ page: p.page, freePct: p.freePct, why: paradox ? `fits-paradox-unexplained(chain=${chain},avail=${d.availCss},printH=${fig.printHCss})` : `${d.action}:${d.reason}` });
   }
   return plan;
 }
@@ -123,7 +186,7 @@ export function inkTailScan(pdf, { dpi = 36, tailInkTh = 242, contentFrac = 813.
   const dir = path.join(os.tmpdir(), `dz-gap-${process.pid}-${path.basename(pdf)}`);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  execFileSync("pdftoppm", ["-r", String(dpi), "-gray", pdf, path.join(dir, "p")], { maxBuffer: 64 << 20, timeout: 570000 });
+  execFileSync("pdftoppm", ["-r", String(dpi), "-gray", pdf, path.join(dir, "p")], { maxBuffer: 64 << 20, timeout: 1_500_000 }); // P27 终局：全本 1360 页实测 >9.5min（内存压力），抬到 25min
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".pgm")).sort();
   const out = [];
   for (const f of files) {

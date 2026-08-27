@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fileURLToPath } from "node:url";
 import { SelectorRegistry } from "../../src/serp/SelectorRegistry.js";
 import { HitRateStats } from "../../src/serp/HitRateStats.js";
 import { ChangeDetection } from "../../src/serp/ChangeDetection.js";
@@ -207,7 +208,7 @@ describe("SerpHealthMonitor — INV-45 禁自动重写 selector", () => {
   it("源文件无 setSelectors/upgradeVersion/rewriteSelector 调用", async () => {
     const src = fs.readFileSync(
       path.resolve(
-        new URL(".", import.meta.url).pathname,
+        fileURLToPath(new URL(".", import.meta.url)),
         "../../src/serp/SerpHealthMonitor.ts",
       ),
       "utf8",
@@ -224,7 +225,7 @@ describe("SerpHealthMonitor — INV-45 禁自动重写 selector", () => {
   it("改版确认后只 logger.warn + recordings.save（不调 registry mutator）", () => {
     const src = fs.readFileSync(
       path.resolve(
-        new URL(".", import.meta.url).pathname,
+        fileURLToPath(new URL(".", import.meta.url)),
         "../../src/serp/SerpHealthMonitor.ts",
       ),
       "utf8",

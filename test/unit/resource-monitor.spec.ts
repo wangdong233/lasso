@@ -10,6 +10,7 @@
  *  - INV-46：不渗协议帧（只读 OS 文件 + pid 数字）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fileURLToPath } from "node:url";
 import { ResourceMonitor } from "../../src/observ/ResourceMonitor.js";
 
 // ============================================================
@@ -145,7 +146,7 @@ describe("ResourceMonitor — INV-46 不渗协议帧", () => {
     const path = await import("node:path");
     const src = fs.readFileSync(
       path.resolve(
-        new URL(".", import.meta.url).pathname,
+        fileURLToPath(new URL(".", import.meta.url)),
         "../../src/observ/ResourceMonitor.ts",
       ),
       "utf8",

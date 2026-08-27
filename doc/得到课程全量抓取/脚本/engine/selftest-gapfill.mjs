@@ -21,14 +21,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import assert from "node:assert";
-import { holeReport } from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/analyze.mjs";
+import { holeReport } from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/analyze.mjs";
 import {
   RULES, decideGapFill, planGapFill, matchFigsToPdf, figChainAnnotations, assertNoUnfilledGaps,
-} from "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/gapfill.mjs";
+} from "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/gapfill.mjs";
 
-const BASE = "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学";
+const BASE = "/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学";
 const OUT = path.join(BASE, "终局成书");
-const GF = "/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/gapfill.mjs";
+const GF = "/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/gapfill.mjs";
 
 // ======================== 基线（P30 前原版，逐字拷贝自 lasso git e5dde99 的 gapfill.mjs） ========================
 // 证明手段：同输入喂旧/新两版 planGapFill，diff 出的 delta 即 P30 行为变化全集。
@@ -221,7 +221,7 @@ console.log(`\n== E. P31 陈旧分片守卫谓词干跑（F1：Aug19 的 5 章 s
   console.log(`  shard02-meta ${meta2.chapters.length} 章 vs plan shard2 ${planShard2.chapters.length} 章 → 守卫判定=${stale ? "陈旧→强制重渲" : "可跳过"}`);
   check(`守卫判真（旧事故形态在新 cmdRender/cmdAssemble 下被拦截）`, () => assert.equal(stale, true));
   check(`守卫源码在位（cmdRender 与 cmdAssemble 双闸）`, () => {
-    const src = fs.readFileSync("/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/.engine/merge.mjs", "utf8");
+    const src = fs.readFileSync("/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/.engine/merge.mjs", "utf8");
     assert.ok(src.includes("陈旧分片强制重渲") && src.includes("陈旧分片：meta"), "守卫标记缺失");
     assert.ok(src.includes("QC-FAIL.pdf"), "交付隔离缺失");
     assert.ok(src.includes("RULES.MAX_ROUNDS"), "轮次上限未接 RULES.MAX_ROUNDS");

@@ -25,7 +25,7 @@
 ## 1. 启动前检查（30 秒，全过才点火）
 
 ```bash
-CD=/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学
+CD=/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学
 # ① Chrome 活着且隐藏（期望 Browser 版本行 + false）
 curl -s http://127.0.0.1:9226/json/version | head -2
 osascript -e 'tell application "System Events" to get visible of (first process whose unix id is 85359)'   # → false
@@ -43,7 +43,7 @@ pgrep -fl "engine.mjs produce|run-k2" || echo OK
 **K=2 全量（正典，约 2× 速度；用户已授权并发，取代旧「全程单 producer」红线）：**
 
 ```bash
-cd /Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/.engine
+cd /Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/.engine
 nohup node run-k2.mjs >> logs/run-k2.nohup.log 2>&1 &
 echo $! > logs/run-k2.pid
 ```
@@ -69,7 +69,7 @@ nohup node engine.mjs produce >> logs/produce-full.nohup.log 2>&1 &   # 或 --re
 ## 3. 运行中监控 + 批级熔断（每 15-20 min 一次）
 
 ```bash
-cd /Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/.engine
+cd /Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/.engine
 tail -5 "$(ls -t logs/*-produce*.log | head -1)"    # [OK]…| 进度 i/N…ETA（K2 兼看 -w0/-w1）
 node engine.mjs status                             # done/failed 汇总 + 失败清单
 osascript -e '…visible of (first process whose unix id is 85359)'   # 应 false
@@ -97,7 +97,7 @@ K2 下任一 worker 触发 → 写 `.engine/BREAKER.trip` → 所有 worker 章�
 **脚本**：`.engine/merge.mjs`（分片渲染器）+ `.engine/merge-assemble.py`（pypdf 组装，venv 走 config `VENV_PY`）。**正典四步 + 抽查**：
 
 ```bash
-cd /Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/.engine
+cd /Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/.engine
 
 # ① 完整性门禁：419/419 MD 齐 + 引用图片全在（缺任一 FATAL 退出，不产半本）
 node merge.mjs plan
@@ -128,7 +128,7 @@ node merge.mjs sample --pages 1,2,3,20,120,400,900,1300,1360
 - **中断恢复**：render 按片幂等（重跑跳过已成片）；assemble 可整体重跑（`.work/` 中间件自动重建）；qc/sample 只读。
 - **兜底（路线 a，仅 b′ 渲染故障）**：单章 PDF 已全在产，用 venv pypdf 按 manifest 顺序拼接（无统一 TOC/页码，保底成品）：
   ```bash
-  cd /Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学
+  cd /Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学
   合并演示/.venv/bin/python - <<'EOF'
   import json, pathlib
   from pypdf import PdfReader, PdfWriter

@@ -62,5 +62,7 @@
 
 - 探察总报告：`00-探察报告.md`（同目录）
 - 抽取产物：`../课前必读(1讲)/`、`../01-经济学本源之一：东西不够(110讲)/`、章节树 `../章节树.json`
-- 抽取脚本（含 CDP 直连打印参考实现）：`/Users/wangdong/Documents/Project/cc-control-all/lasso/.dedao-extract/`
-- lasso 并行工作流（P4 + v1.18.0 全量）：`/Users/wangdong/Documents/Project/cc-control-all/lasso/doc/28-静默守则审计/`
+- 抽取脚本（含 CDP 直连打印参考实现）：`/Users/wangdong/Documents/Project/claude技能/lasso/.dedao-extract/`
+- lasso 并行工作流（P4 + v1.18.0 全量）：`/Users/wangdong/Documents/Project/claude技能/lasso/doc/28-静默守则审计/`
+
+> **仓迁注（2026-08-27）**：本档案写就于 `cc-control-all/` 外层仓时期——正文中的历史性绝对路径 `…/Project/cc-control-all/lasso/…` 一律对应现 `/Users/wangdong/Documents/Project/claude技能/lasso/…`（外层仓退役；`.dedao-scout/`、`output/得到_薛兆丰的经济学/` 同在 lasso 仓内，寻档按此换算，正文不回改）。

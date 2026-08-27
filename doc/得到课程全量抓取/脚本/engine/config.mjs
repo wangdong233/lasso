@@ -13,7 +13,7 @@ import * as path from "node:path";
 export const CFG = {
   // —— 课程身份（每课必改）——
   COURSE_NAME: "薛兆丰的经济学课", // 成书命名 `<COURSE_NAME>-全N讲.pdf` / assemble 书签
-  COURSE_DIR: "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学", // 课程根（章节产物 + .engine 所在）
+  COURSE_DIR: "/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学", // 课程根（章节产物 + .engine 所在）
   TARGET: "https://www.dedao.cn/course/article?id=6EBOqDNZ27YlVdg8oKm4bQ1odMAkgz", // 课程主页（侧栏枚举起点）
   SIKAO: "课后思考", // 课后思考整段删除的锚文本（v3①；无此栏目的课须白盒重定段界）
   // 宣传图 md5 指纹集：P26-③m 经典版 + 视频课页变体（1080×607 同尺寸不同图，全量取证后入集）
@@ -22,10 +22,10 @@ export const CFG = {
   // 开篇图是课程身份的一部分；按模块 dirName/label 子串匹配）
   END_IMG_KEEP_MODULES: ["课前必读"],
   OUT_DIR: "终局成书", // 成书输出目录名（COURSE_DIR 相对）
-  VENV_PY: "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/合并演示/.venv/bin/python", // pypdf venv（PEP 668 禁系统安装；新书可复用此绝对路径）
+  VENV_PY: "/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/合并演示/.venv/bin/python", // pypdf venv（PEP 668 禁系统安装；新书可复用此绝对路径）
 
   // —— 共享基础设施（跨课程恒定）——
-  LASSO_ROOT: "/Users/wangdong/Documents/Project/cc-control-all/lasso",
+  LASSO_ROOT: "/Users/wangdong/Documents/Project/claude技能/lasso",
   CDP_PORT: 9226,
 };
 

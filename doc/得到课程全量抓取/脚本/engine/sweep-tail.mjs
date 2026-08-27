@@ -2,7 +2,7 @@
 // P26 收尾：剩余失败章小批重启跑（每批新进程=新 lasso 会话，规避长会话劣化白盒结论）
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
-const ENGINE = "/Users/wangdong/Documents/Project/cc-control-all/得到_薛兆丰的经济学/.engine";
+const ENGINE = "/Users/wangdong/Documents/Project/claude技能/lasso/output/得到_薛兆丰的经济学/.engine";
 const st = JSON.parse(fs.readFileSync(`${ENGINE}/state.json`, "utf8"));
 const hard = new Set(["加餐", "直播回顾", "第七单元串讲"]);
 const easy = Object.values(st.chapters).filter((e) => e.status === "failed" && !hard.has(e.title)).map((e) => e.title);

@@ -181,7 +181,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
     );
     const deps: ContentSecondHopDeps = { fetchImpl, extractImpl: fakeExtract };
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -197,7 +197,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       new Response("forbidden", { status: 403, headers: { "content-type": "text/html" } }),
     );
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -214,7 +214,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       }),
     );
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -235,7 +235,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
         }),
     ) as unknown as typeof fetch;
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       { timeoutMs: 30 },
@@ -252,7 +252,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       }),
     );
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -266,7 +266,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       throw new Error("boom");
     });
     const out1 = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -275,7 +275,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
     expect(out1[0]).toEqual({ content_status: "extract_failed" });
 
     const out2 = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       {},
@@ -307,7 +307,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       }),
     );
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       { maxBytes: 256 * 1024 },
@@ -330,7 +330,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       markdown: `trimmed page (${htmlIn.length} chars) about wasm`,
     }));
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       1,
       { maxBytes: 120 },
@@ -352,7 +352,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
       inFlight--;
       return htmlResponse("<html><body><p>wasm</p></body></html>");
     }) as unknown as typeof fetch;
-    const urls = Array.from({ length: 5 }, (_, i) => `https://a.test/${i}`);
+    const urls = Array.from({ length: 5 }, (_, i) => `https://127.0.0.1/${i}`);
     const out = await fetchContentBlocks(
       urls.map((u) => item(u)),
       "wasm",
@@ -369,7 +369,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
     let calls = 0;
     const now = () => (++calls <= 2 ? 0 : 10_000); // start=0；worker1 首查=0 过，其后全部 10000
     const fetchImpl = vi.fn(async () => htmlResponse("<html><body><p>wasm</p></body></html>"));
-    const urls = Array.from({ length: 5 }, (_, i) => `https://a.test/${i}`);
+    const urls = Array.from({ length: 5 }, (_, i) => `https://127.0.0.1/${i}`);
     const out = await fetchContentBlocks(
       urls.map((u) => item(u)),
       "wasm",
@@ -385,7 +385,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
   it("N 超过 results 长度 → 全量尝试，返回与入参等长", async () => {
     const fetchImpl = vi.fn(async () => htmlResponse("<html><body><p>wasm</p></body></html>"));
     const out = await fetchContentBlocks(
-      [item("https://a.test/1")],
+      [item("https://127.0.0.1/1")],
       "wasm",
       5, // > 1
       {},
@@ -397,7 +397,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
 
   it("topN=0 → 全 null（零网络）", async () => {
     const fetchImpl = vi.fn(async () => htmlResponse("<html></html>"));
-    const out = await fetchContentBlocks([item("https://a.test/1")], "wasm", 0, {}, { fetchImpl });
+    const out = await fetchContentBlocks([item("https://127.0.0.1/1")], "wasm", 0, {}, { fetchImpl });
     expect(out).toEqual([null]);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -408,7 +408,7 @@ describe("fetchContentBlocks（mock fetch 态机）", () => {
 // ============================================================
 describe("enrichWithContentBlocks（tri-state 诚实 + cache 零污染）", () => {
   it("部分失败：失败条目保留蓝链字段 + content_status，主信封逐字节不动", async () => {
-    const input = workedResult(["https://a.test/ok", "https://a.test/bad"]);
+    const input = workedResult(["https://127.0.0.1/ok", "https://127.0.0.1/bad"]);
     const fetchImpl = vi.fn(async (url: unknown) => {
       if (String(url).includes("/bad")) {
         return new Response("nope", { status: 403, headers: { "content-type": "text/html" } });
@@ -428,15 +428,15 @@ describe("enrichWithContentBlocks（tri-state 诚实 + cache 零污染）", () =
     // 条目级：成功条 ok + content；失败条保留蓝链 + fetch_failed、无 content
     expect(out.data!.results[0]!.content_status).toBe("ok");
     expect(typeof out.data!.results[0]!.content).toBe("string");
-    expect(out.data!.results[1]!.title).toBe("t-https://a.test/bad");
-    expect(out.data!.results[1]!.url).toBe("https://a.test/bad");
+    expect(out.data!.results[1]!.title).toBe("t-https://127.0.0.1/bad");
+    expect(out.data!.results[1]!.url).toBe("https://127.0.0.1/bad");
     expect(out.data!.results[1]!.snippet).toBe("s");
     expect(out.data!.results[1]!.content_status).toBe("fetch_failed");
     expect(out.data!.results[1]!.content).toBeUndefined();
   });
 
   it("全失败：所有条目 fetch_failed，主 outcome 仍 worked（不伪装不吞）", async () => {
-    const input = workedResult(["https://a.test/1", "https://a.test/2"]);
+    const input = workedResult(["https://127.0.0.1/1", "https://127.0.0.1/2"]);
     const fetchImpl = vi.fn(async () =>
       new Response("no", { status: 503, headers: { "content-type": "text/html" } }),
     );
@@ -464,7 +464,7 @@ describe("enrichWithContentBlocks（tri-state 诚实 + cache 零污染）", () =
   });
 
   it("纯函数性：入参对象树不被改写（cache 写入对象零污染）", async () => {
-    const input = workedResult(["https://a.test/1"]);
+    const input = workedResult(["https://127.0.0.1/1"]);
     const snapshot = JSON.parse(JSON.stringify(input));
     const fetchImpl = vi.fn(async () => htmlResponse("<html><body><p>wasm</p></body></html>"));
     await enrichWithContentBlocks(input, "wasm", 1, {}, {
@@ -475,7 +475,7 @@ describe("enrichWithContentBlocks（tri-state 诚实 + cache 零污染）", () =
   });
 
   it("top N 之外的条目原对象保留（不带增强字段）", async () => {
-    const input = workedResult(["https://a.test/1", "https://a.test/2", "https://a.test/3"]);
+    const input = workedResult(["https://127.0.0.1/1", "https://127.0.0.1/2", "https://127.0.0.1/3"]);
     const fetchImpl = vi.fn(async () => htmlResponse("<html><body><p>wasm</p></body></html>"));
     const out = await enrichWithContentBlocks(input, "wasm", 2, {}, {
       fetchImpl,
@@ -484,8 +484,8 @@ describe("enrichWithContentBlocks（tri-state 诚实 + cache 零污染）", () =
     expect(out.data!.results[0]!.content_status).toBe("ok");
     expect(out.data!.results[1]!.content_status).toBe("ok");
     expect(out.data!.results[2]).toEqual({
-      title: "t-https://a.test/3",
-      url: "https://a.test/3",
+      title: "t-https://127.0.0.1/3",
+      url: "https://127.0.0.1/3",
       snippet: "s",
     }); // 无 content/content_status/truncated 键
     expect(fetchImpl).toHaveBeenCalledTimes(2);
