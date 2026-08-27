@@ -30,7 +30,7 @@ doc/
 | [`usage/02-TROUBLESHOOTING.md`](usage/02-TROUBLESHOOTING.md) | FAQ + error_kind 释义 + 浏览器静默/看门狗/reaper 排障（§2.16 rust-helper 四态门、§9 chrome-hide/粘滞看门狗） | 活（对齐 v1.18.4） |
 | [`usage/03-SELECTOR-MAINTENANCE.md`](usage/03-SELECTOR-MAINTENANCE.md) | selector 债维护手册（生命周期 + 改版检测 + 升级流程） | 活（内容债见 governance/07 §2.6） |
 
-另有根级 [`../README.md`](../README.md)（用户手册：安装 / 配置 / 17 工具清单 / 隐私 / changelog，8 语言）。
+另有根级 [`../README.md`](../README.md)（用户手册：安装 / 配置 / 17 工具清单 / 隐私 / changelog，中英双语）。
 
 ## ② architecture/ — 架构基线与排期（改代码前后必读）
 
@@ -80,7 +80,7 @@ doc/
 
 ## ⑦ assets/ — 图片资产
 
-`assets/support-alipay.jpg` / `assets/support-wechat.jpg`——8 个 README（主 + 7 语言）`<img src="doc/assets/support-*.jpg">` 引用。
+`assets/support-alipay.jpg` / `assets/support-wechat.jpg`——2 个 README（中 + 英）`<img src="doc/assets/support-*.jpg">` 引用。
 
 ## 新鲜度表（下次盘点在此续行）
 

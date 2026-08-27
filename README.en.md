@@ -15,7 +15,7 @@ Twin star of [media-gen-mcp](https://github.com/wangdong233/media-gen-mcp) (the 
 
 <div align="center">
 
-[简体中文](README.md) | **English** | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português](README.pt.md) | [Русский](README.ru.md)
+[简体中文](README.md) | **English**
 
 </div>
 
@@ -206,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.18.3** (changelog in the collapsed block at the end of this section).
+**Current version v1.18.5** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -219,8 +219,10 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
 <details>
-<summary>📋 Changelog (v1.8 → v1.18.3 — click to see what each version changed)</summary>
+<summary>📋 Changelog (v1.8 → v1.18.5 — click to see what each version changed)</summary>
 
+- **v1.18.5**: release-package cleanup — **the npm packages of v1.18.1 ~ v1.18.4 accidentally shipped application-domain files** (intermediate artifacts of a course-scraping project, unrelated to Lasso itself; those versions are deprecated). Do not install them. From this version on the published package contains only Lasso proper; size drops from ~28 MB back to normal.
+- **v1.18.4**: desktop-channel fix — ① previously, when the server was not started from the repo root (e.g. launched by a host such as Claude Code from any directory), all desktop tools failed with `rust_helper_crashed`; the helper path is now resolved from the install location, **works from any directory**; ② startup failures now fail fast with a self-diagnosing message (actual path, cwd, and fix suggestions; missing file / points-to-directory / no-exec-bit / corrupt-binary each get their own wording, failing in seconds instead of hanging); ③ binaries are ad-hoc signed during build (skipped silently on machines without codesign); ④ GitHub CI added (full test suite on every push).
 - **v1.18.3**: background-silence triple — ① **a window folded into the background by `chrome-hide` gets pressed back within ~1.5 s no matter what un-hides it** (upstream pages popping themselves included; guarded the whole time the server runs, and the sticky state survives restarts); use `chrome-show` when you want to look at it (explicit release, no more pressing back); ② `chrome-hide` / `chrome-show` gain `--pid N`: when the ledger has no entry (Chrome launched by an older Lasso, ledger cleared) you can target by process id — only Lasso's own profiles are accepted, your manually-opened daily Chrome is always refused; ③ a busy Chrome no longer slows down parallel operations.
 - **v1.18.2**: fixed the mismatch where long batch tasks throttled themselves — batch tasks now run through by default (a single-user local setup has no "abuser" to guard against; quota self-throttling became an opt-in config); transient DNS failures are no longer misclassified as policy blocks and no longer trigger long circuit breaks; chain-budget overruns now honestly report as retryable; large-task spill files no longer evict recent pages.
 - **v1.18.1**: five fixes from real batch runs — in-page evaluation failures are no longer silently swallowed (honestly reported); the "no tab selected" state self-heals instead of getting stuck; visible-tier cold-start probing now waits up to 12 s (slow-starting machines no longer fail spuriously); a missing PDF upstream tool is honestly reported up front as "didn't" instead of wasting a navigation first.

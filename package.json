@@ -11,7 +11,7 @@
     "build": "tsc && chmod +x dist/index.js && mkdir -p dist/doctor/fixtures && cp src/doctor/fixtures/creepjs-baseline.json dist/doctor/fixtures/ && node scripts/ad-hoc-sign-helper.mjs",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "vitest run && node scripts/check-readme-sync.mjs",
     "test:watch": "vitest",
     "check-invariants": "node src/invariants/check-invariants.mjs",
     "inv-selftest": "node scripts/inv-selftest.mjs",
