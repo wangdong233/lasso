@@ -27,6 +27,7 @@
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import type { BrowseOptions, BrowseResult } from "../types.js";
+import { firstText, type UpstreamContentResult } from "./upstream-response.js";
 
 // ============================================================
 // 顶级 const：chrome-devtools-mcp 上游工具名集中表（parse6 §4.4 决策）
@@ -95,12 +96,6 @@ const FILTER_TO_RESOURCE_TYPES: Record<string, string[] | undefined> = {
 };
 
 // ============================================================
-// SDK 返回结构类型（与 BrowseChannel.ts 同构，本文件局部复用）
-// ============================================================
-type TextBlock = { type: "text"; text?: string };
-type ContentResult = { content?: TextBlock[]; isError?: boolean };
-
-// ============================================================
 // doPdf：pdf action handler（parse6 §3.3.3 实装）
 // ============================================================
 /**
@@ -144,9 +139,9 @@ export async function doPdf(
   // reject 抛出的原生错误透传到 BrowseChannel.browse() 的 catch（→ outcome=unknown），
   // 上层 pdf.ts 检测错误信息含 "pdf" + ("Unknown tool" | "not found") 时改包为
   // outcome=didnt + retrieval_method=upstream_unsupported:pdf（守 parse6 §4.4）
-  let r: ContentResult;
+  let r: UpstreamContentResult;
   try {
-    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.pdf, args)) as ContentResult;
+    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.pdf, args)) as UpstreamContentResult;
   } catch (e) {
     // 把上游缺失错误标准化（上游工具名漂移 / pdf 未暴露都会落到这里）
     const msg = String(e).slice(0, 200);
@@ -203,11 +198,11 @@ export async function doNetwork(
   const filter = opts.network_filter ?? "all";
   const resourceTypes = FILTER_TO_RESOURCE_TYPES[filter];
 
-  let r: ContentResult;
+  let r: UpstreamContentResult;
   try {
     r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.network_log, {
       ...(resourceTypes ? { resourceTypes } : {}),
-    })) as ContentResult;
+    })) as UpstreamContentResult;
   } catch (e) {
     // 上游工具缺失/协议错 → 标准化 upstream_network_error 前缀（network.ts Go/No-Go F2 识别）
     const msg = String(e).slice(0, 200);
@@ -283,9 +278,9 @@ export async function doConsole(
   _url: string,
   _opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  let r: ContentResult;
+  let r: UpstreamContentResult;
   try {
-    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.console_log, {})) as ContentResult;
+    r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.console_log, {})) as UpstreamContentResult;
   } catch (e) {
     const msg = String(e).slice(0, 200);
     throw new Error(`upstream_console_error:tool_call_failed:${msg}`);
@@ -330,15 +325,4 @@ export function parseConsoleMessageLines(text: string): Array<{
     });
   }
   return out;
-}
-
-// ============================================================
-// helper：firstText（与 BrowseChannel.ts 同构）
-// ============================================================
-function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
 }

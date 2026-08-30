@@ -10,8 +10,14 @@
  * 策略：doFetchUrl 用 stub（隔离网络）；parseFeedBody 直接调（纯函数）。
  */
 import { describe, it, expect, vi } from "vitest";
+
+// review-r1：连接池自 SubprocessManager 迁 util/http-pool——stub 改为模块 mock
+vi.mock("../../src/util/http-pool.js", () => ({
+  acquireHttpClient: vi.fn(),
+}));
+
 import { parseFeedBody, doFetchFeed } from "../../src/tools/fetch-feed.js";
-import type { SubprocessManager } from "../../src/subprocess/SubprocessManager.js";
+import { acquireHttpClient } from "../../src/util/http-pool.js";
 import type { SsrfConfig } from "../../src/ssrf/ssrf-guard.js";
 import type { InteractResult, FetchUrlResult } from "../../src/types.js";
 
@@ -214,8 +220,8 @@ describe("parseFeedBody — 非 feed", () => {
 });
 
 // ============================================================
-// doFetchFeed（stub doFetchUrl 不可行——它是模块内直调；改 stub subproc.fetch）
-// 实操：stub SubprocessManager.acquireHttpClient 返回可控 fetch。
+// doFetchFeed（stub doFetchUrl 不可行——它是模块内直调；改 stub http-pool）
+// 实操：stub util/http-pool.acquireHttpClient 返回可控 fetch（review-r1 迁移后形态）。
 // ============================================================
 function makeSubprocWithBody(
   body: string,
@@ -224,24 +230,22 @@ function makeSubprocWithBody(
     contentType?: string;
     headers?: Record<string, string>;
   } = {},
-): SubprocessManager {
+): void {
   const status = init.status ?? 200;
   const contentType = init.contentType ?? "application/rss+xml; charset=utf-8";
-  return {
-    acquireHttpClient: () => ({
-      fetch: vi.fn(async () => ({
-        status,
-        ok: status >= 200 && status < 300,
-        headers: new Map(
-          Object.entries({
-            "content-type": contentType,
-            ...(init.headers ?? {}),
-          }),
-        ),
-        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
-      })),
-    }),
-  } as unknown as SubprocessManager;
+  vi.mocked(acquireHttpClient).mockReturnValue({
+    fetch: vi.fn(async () => ({
+      status,
+      ok: status >= 200 && status < 300,
+      headers: new Map(
+        Object.entries({
+          "content-type": contentType,
+          ...(init.headers ?? {}),
+        }),
+      ),
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    })) as unknown as typeof fetch,
+  });
 }
 
 const SSRF_ALLOW: SsrfConfig = {
@@ -255,10 +259,10 @@ function envelopeFor(text: string): { preview: string; truncated: boolean } {
 
 describe("doFetchFeed — 端到端（stub HTTP）", () => {
   it("application/rss+xml → worked + rss 解析（路由表 ZB-4 配套条目生效）", async () => {
+    makeSubprocWithBody(RSS_BODY);
     const r = await doFetchFeed(
       "https://example.com/feed.xml",
       10,
-      makeSubprocWithBody(RSS_BODY),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("worked");
@@ -269,10 +273,10 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("text/xml → worked（既有 text 路由）", async () => {
+    makeSubprocWithBody(ATOM_BODY, { contentType: "text/xml" });
     const r = await doFetchFeed(
       "https://example.com/feed",
       2,
-      makeSubprocWithBody(ATOM_BODY, { contentType: "text/xml" }),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("worked");
@@ -281,12 +285,12 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("application/feed+json → worked + json 解析", async () => {
+    makeSubprocWithBody(JSON_FEED_BODY, {
+      contentType: "application/feed+json",
+    });
     const r = await doFetchFeed(
       "https://example.com/feed.json",
       10,
-      makeSubprocWithBody(JSON_FEED_BODY, {
-        contentType: "application/feed+json",
-      }),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("worked");
@@ -294,12 +298,12 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("非 feed 的 HTML body → didnt not_a_feed（诚实不伪造）", async () => {
+    makeSubprocWithBody("<html><body>not a feed</body></html>", {
+      contentType: "text/html",
+    });
     const r = await doFetchFeed(
       "https://example.com/page",
       10,
-      makeSubprocWithBody("<html><body>not a feed</body></html>", {
-        contentType: "text/html",
-      }),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("didnt");
@@ -307,10 +311,10 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("私网 URL → didnt ssrf_blocked（INV-56 家族）", async () => {
+    makeSubprocWithBody(RSS_BODY);
     const r = await doFetchFeed(
       "http://192.168.1.1/feed.xml",
       10,
-      makeSubprocWithBody(RSS_BODY),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("didnt");
@@ -319,10 +323,10 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("image/png 等 binary content-type → didnt unsupported_content_type", async () => {
+    makeSubprocWithBody(RSS_BODY, { contentType: "image/png" });
     const r = await doFetchFeed(
       "https://example.com/pic.png",
       10,
-      makeSubprocWithBody(RSS_BODY, { contentType: "image/png" }),
       SSRF_ALLOW,
     );
     expect(r.outcome).toBe("didnt");
@@ -330,13 +334,13 @@ describe("doFetchFeed — 端到端（stub HTTP）", () => {
   });
 
   it("HTTP 500 → 透传 unknown（fetch 层语义不吞）", async () => {
+    makeSubprocWithBody("server error", {
+      status: 500,
+      contentType: "text/plain",
+    });
     const r = await doFetchFeed(
       "https://example.com/feed.xml",
       10,
-      makeSubprocWithBody("server error", {
-        status: 500,
-        contentType: "text/plain",
-      }),
       SSRF_ALLOW,
     );
     expect(r.outcome).not.toBe("worked");

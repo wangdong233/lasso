@@ -6,6 +6,8 @@
  * 铁律（parse5 §3.3 + INV-30，类比 INV-14 / INV-27 anti-gaming）：
  *  - 本文件**只放顶级 const 数据**：STEALTH_PROFILES / STEALTH_INJECTION_SCRIPT /
  *    CLOUDFLARE_DETECTION_SCRIPT / CLOUDFLARE_CHALLENGE_MARKERS。
+ *    （例外：defaultHeadlessProfileForHost()——3 行纯选择函数，review-r1 自
+ *     HeadlessChannel.ts 迁入；仍只读 process.platform，不触 env/config。）
  *  - **不从 config / env / ProviderRegistry 读**（防 LLM 通过 channel 改 env 绕过）。
  *  - 加新 profile = 加 STEALTH_PROFILES 一行（≤2 处改动守 02 §4）。
  *
@@ -225,6 +227,26 @@ export type StealthProfileName = keyof typeof STEALTH_PROFILES;
 export const STEALTH_PROFILE_NAMES = Object.keys(
   STEALTH_PROFILES,
 ) as StealthProfileName[];
+
+/**
+ * v1.12（round2 T2-1）：宿主平台对齐的默认 stealth profile。
+ *
+ * darwin → mac_chrome：chrome-devtools-mcp 1.7.0 不暴露 setExtraHTTPHeaders，
+ * 低熵 client hints（sec-ch-ua-platform）发宿主真值——windows profile 在 mac
+ * 宿主上产生「UA 称 Windows、hints 招供 macOS」的 OS 级 shape 矛盾（round2-browser
+ * E1 实测）。非 darwin → windows_chrome_120（Windows 宿主自洽；Linux 宿主为已知
+ * 残余矛盾，round2-verdict T2-1 记档）。
+ *
+ * 构造期确定性选择（process.platform 只读），非 env/config 可配——不触 INV-30
+ * anti-gaming 面（profile 数据本体仍在 stealth-profiles.ts 顶级 const）。
+ *
+ * 2026-08-31（review-r1）：从 channels/HeadlessChannel.ts 迁入本文件（StealthProfileName
+ * 的定义处）——消除 doctor → channels 的唯一 value 依赖（doctor 与 channels 保持单向：
+ * 组合根实例化只在 doctor-cli.ts / index.ts）。
+ */
+export function defaultHeadlessProfileForHost(): StealthProfileName {
+  return process.platform === "darwin" ? "mac_chrome" : "windows_chrome_120";
+}
 
 // ============================================================
 // STEALTH_INJECTION_SCRIPT 顶级 const（parse5 §3.3.1 + v1.5 parse13 §3.1 16 路）

@@ -9,7 +9,8 @@
  *
  * 测试策略：
  *  - browse 路径：HeadlessChannel + stub McpClient（evaluate_script 返 outerHTML JSON）
- *  - fetch_url 路径：doFetchUrl + mock SubprocessManager（fetch 返 HTML Response）
+ *  - fetch_url 路径：doFetchUrl + mock util/http-pool（fetch 返 HTML Response；
+ *    review-r1 连接池迁出后 doFetchUrl 不再收 subproc）
  *  - 不 spawn 真实 chrome-devtools-mcp；只验 Lasso 的 mode 分流 + 引擎接入
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -42,8 +43,14 @@ vi.mock("node:dns/promises", () => ({
   }),
 }));
 
+// review-r1：http-pool 模块 mock（连接池迁出 SubprocessManager 后的注入点）
+vi.mock("../../src/util/http-pool.js", () => ({
+  acquireHttpClient: vi.fn(),
+}));
+
 // 在 mock 之后才 import SUT
 import { doFetchUrl } from "../../src/tools/fetch-url.js";
+import { acquireHttpClient } from "../../src/util/http-pool.js";
 import { mockEvalResponse } from "../helpers/upstream-mock.js";
 
 // ============================================================
@@ -143,13 +150,12 @@ function makeResponse(opts: {
 }
 
 function makeMockSubproc(fetchMock: ReturnType<typeof vi.fn>): {
-  subproc: SubprocessManager;
   fetchMock: ReturnType<typeof vi.fn>;
 } {
-  const subproc = {
-    acquireHttpClient: vi.fn((_origin: string) => ({ fetch: fetchMock })),
-  } as unknown as SubprocessManager;
-  return { subproc, fetchMock };
+  vi.mocked(acquireHttpClient).mockImplementation(
+    (_origin: string) => ({ fetch: fetchMock }),
+  );
+  return { fetchMock };
 }
 
 // ============================================================
@@ -289,7 +295,7 @@ describe("browse extract — markdown_cited 档（⟨N⟩ 角标 + References）
 describe("fetch_url — raw 默认 byte-identical v1.0（INV-66 硬验收）", () => {
   it("extract_mode 未传 → bodyKind=html（原始 HTML，v1.0 行为）", async () => {
     const html = "<html><body><p>raw content</p></body></html>";
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: html,
@@ -300,7 +306,6 @@ describe("fetch_url — raw 默认 byte-identical v1.0（INV-66 硬验收）", (
     const r = await doFetchUrl(
       "https://example.com/",
       { method: "GET", timeout_ms: 30_000, max_bytes: 2_000_000, no_cache: false },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -324,7 +329,7 @@ describe("fetch_url — raw 默认 byte-identical v1.0（INV-66 硬验收）", (
     const r1 = await doFetchUrl(
       "https://example.com/",
       { method: "GET", timeout_ms: 30_000, max_bytes: 2_000_000, no_cache: false },
-      mk().subproc,
+      
       EMPTY_CONFIG,
     );
     const r2 = await doFetchUrl(
@@ -336,7 +341,7 @@ describe("fetch_url — raw 默认 byte-identical v1.0（INV-66 硬验收）", (
         no_cache: false,
         extract_mode: "raw",
       },
-      mk().subproc,
+      
       EMPTY_CONFIG,
     );
     // byte-identical
@@ -350,7 +355,7 @@ describe("fetch_url — raw 默认 byte-identical v1.0（INV-66 硬验收）", (
 // ============================================================
 describe("fetch_url — markdown 档（html route → MarkdownExtractor）", () => {
   it('extract_mode="markdown" + text/html → bodyKind 含 markdown: 前缀', async () => {
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: HTML_FIXTURE,
@@ -367,7 +372,6 @@ describe("fetch_url — markdown 档（html route → MarkdownExtractor）", () 
         no_cache: false,
         extract_mode: "markdown",
       },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -383,7 +387,7 @@ describe("fetch_url — markdown 档（html route → MarkdownExtractor）", () 
 describe("fetch_url — 非 html route 忽略 extract_mode（文档化）", () => {
   it("application/json + extract_mode=markdown → bodyKind=json（mode 被忽略）", async () => {
     const json = JSON.stringify({ key: "value", n: 42 });
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: json,
@@ -400,7 +404,6 @@ describe("fetch_url — 非 html route 忽略 extract_mode（文档化）", () =
         no_cache: false,
         extract_mode: "markdown",
       },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -410,7 +413,7 @@ describe("fetch_url — 非 html route 忽略 extract_mode（文档化）", () =
   });
 
   it("text/plain + extract_mode=markdown_cited → bodyKind=text（mode 被忽略）", async () => {
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: "plain text content",
@@ -427,7 +430,6 @@ describe("fetch_url — 非 html route 忽略 extract_mode（文档化）", () =
         no_cache: false,
         extract_mode: "markdown_cited",
       },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -440,7 +442,7 @@ describe("fetch_url — 非 html route 忽略 extract_mode（文档化）", () =
 // ============================================================
 describe("fetch_url — markdown_cited 档（html route → ⟨N⟩ 角标 + citations）", () => {
   it('extract_mode="markdown_cited" + text/html → citations 非空 + References', async () => {
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: HTML_FIXTURE,
@@ -457,7 +459,6 @@ describe("fetch_url — markdown_cited 档（html route → ⟨N⟩ 角标 + cit
         no_cache: false,
         extract_mode: "markdown_cited",
       },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -484,7 +485,7 @@ describe("冒烟测 — CC 真实调用链（parse12 §5）", () => {
     expect(browseResult.data!.preview).toContain("Hello World");
 
     // 2. fetch_url raw → 原始 HTML（保留元素）
-    const { subproc } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: HTML_FIXTURE,
@@ -501,7 +502,6 @@ describe("冒烟测 — CC 真实调用链（parse12 §5）", () => {
         no_cache: false,
         extract_mode: "raw",
       },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(fetchRaw.outcome).toBe("worked");
@@ -509,7 +509,7 @@ describe("冒烟测 — CC 真实调用链（parse12 §5）", () => {
     expect(fetchRaw.data!.envelope!.preview).toContain("<html>");
 
     // 3. fetch_url 不传 mode → v1.0 行为（byte-identical raw）
-    const { subproc: subproc2 } = makeMockSubproc(
+    makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({
           body: HTML_FIXTURE,
@@ -520,7 +520,6 @@ describe("冒烟测 — CC 真实调用链（parse12 §5）", () => {
     const fetchDefault = await doFetchUrl(
       "https://example.com/",
       { method: "GET", timeout_ms: 30_000, max_bytes: 2_000_000, no_cache: false },
-      subproc2,
       EMPTY_CONFIG,
     );
     expect(fetchDefault.outcome).toBe("worked");

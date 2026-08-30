@@ -60,7 +60,7 @@ import { applyOutputEnvelope } from "../util/output-envelope.js";
 import {
   parseEvalResult,
   imageBlock,
-  firstText as upstreamFirstText,
+  firstText,
 } from "../browse/upstream-response.js";
 // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：doPdf + doConsole + doNetwork
 //   追加进 actionDispatch Map
@@ -1263,10 +1263,8 @@ function extractEvalPreview(r: EvaluateResult): string {
   return firstText(r) ?? "(no eval output)";
 }
 
-// W1-DEF-1b（v1.8）：firstText 统一来自 upstream-response 适配器（单一权威解析入口）
-function firstText(r: ContentResult | undefined): string | undefined {
-  return upstreamFirstText(r);
-}
+// W1-DEF-1b（v1.8）：firstText 直接 import 自 upstream-response 适配器
+// （单一权威解析入口；r1 收敛：删除本地委托包装，全仓唯一定义）
 
 // ============================================================
 // 工具

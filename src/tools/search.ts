@@ -229,7 +229,7 @@ export function registerSearchTool(
    *   content_status；照 httpSerp 未注入的注入式手法，零回归 byte-identical）。
    * 注入          → 三条路径（fanout / 单源 / fallback_chain+replay）+ cache 命中
    *                 路径的 worked 结果统一富化 top content_blocks 条。
-   * fetchImpl 由 index.ts 装 subproc.acquireHttpClient(origin).fetch 池包装（INV-32）。
+   * fetchImpl 由 index.ts 装 acquireHttpClient(origin).fetch 池包装（INV-32；util/http-pool）。
    */
   contentDeps?: ContentSecondHopDeps | null,
 ): void {

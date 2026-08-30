@@ -10,7 +10,8 @@
  *
  * 铁律（parse6 §1.5 + §4.1）：
  *  - SSRF 必经：与 browse_headless 同函数同 config 对象（INV-31）
- *  - 连接池必经：经 SubprocessManager.acquireHttpClient，禁 new Agent / 禁裸 fetch（INV-32）
+ *  - 连接池必经：经 util/http-pool.acquireHttpClient，禁 new Agent / 禁裸 fetch（INV-32；
+ *    review-r1 池自 SubprocessManager 迁出——纯 HTTP 工具不再持子进程管理器句柄）
  *  - redirect:"manual"：3xx 不跟随，返 location 给 caller 二次显式调用（防 169.254.169.254 元数据绕过）
  *  - bounded output：响应 body 经 applyOutputEnvelope，>48KiB 自动落盘 .txt（INV-15 衍生 INV-34 同源）
  *
@@ -26,13 +27,13 @@ import type {
   FetchUrlResult,
   InteractResult,
 } from "../types.js";
-import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
 import { routeContentType } from "../browse/content-type-router.js";
 import { FETCH_URL_DESCRIPTION } from "./descriptions.js";
 import { fetchUrlAnnotations } from "./annotations.js";
 import { logger } from "../util/logger.js";
+import { acquireHttpClient } from "../util/http-pool.js";
 
 // ============================================================
 // Schema（parse6 §3.1.2）
@@ -82,7 +83,7 @@ function payloadContent<T>(result: InteractResult<T>) {
  *
  * 流程（parse6 §3.1.3 伪码逐条对齐）：
  *  1. SSRF 守门（INV-31）—— 与 browse_headless 同函数同 config
- *  2. 取 host 专属 keep-alive client（INV-32）—— 经 SubprocessManager.acquireHttpClient
+ *  2. 取 host 专属 keep-alive client（INV-32）—— 经 util/http-pool.acquireHttpClient
  *  3. 发请求（method + headers + timeout；redirect:"manual"）
  *  4. 响应大小硬上限（content-length > max_bytes → didnt 提前返回）
  *  5. content-type 分流（content-type-router.ts）
@@ -92,7 +93,6 @@ function payloadContent<T>(result: InteractResult<T>) {
 export async function doFetchUrl(
   rawUrl: string,
   opts: FetchUrlOptions,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): Promise<InteractResult<FetchUrlResult>> {
   // ---------- 1. SSRF 守门（INV-31；与 browse_headless 同函数同 config） ----------
@@ -112,7 +112,7 @@ if (!ssrfResult.allowed) {
   }
 
   // ---------- 2. 取 host 专属 keep-alive client（INV-32） ----------
-  // origin 含 scheme + host（可选 :port），不含 path/query —— 与 SubprocessManager 装配 BraveChannel 同源
+  // origin 含 scheme + host（可选 :port），不含 path/query —— 与 index.ts 装配 BraveChannel 的池同源
   let origin: string;
   try {
     origin = new URL(rawUrl).origin;
@@ -127,7 +127,7 @@ if (!ssrfResult.allowed) {
       error: "invalid_url_post_ssrf",
     };
   }
-  const httpClient = subproc.acquireHttpClient(origin);
+  const httpClient = acquireHttpClient(origin);
 
   // ---------- 3. 发请求（method + headers + timeout；redirect:"manual"） ----------
   // 自报身份 lasso-mcp/0.5（不伪装浏览器；与 browse_headless 默认 UA 区分，避免反爬误判）
@@ -353,12 +353,10 @@ function outcomeFromFetchError(_e: unknown): "didnt" | "unknown" {
 // ============================================================
 /**
  * @param server     MCP server
- * @param subproc    SubprocessManager（acquireHttpClient 拿 undici keep-alive Agent）
  * @param ssrfConfig SSRF allowRanges / denyRanges（从 env 加载，与 browse_headless 共用）
  */
 export function registerFetchUrlTool(
   server: McpServer,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): void {
   server.tool(
@@ -379,7 +377,7 @@ export function registerFetchUrlTool(
         extract_mode: args.options.extract_mode,
       };
 
-      const result = await doFetchUrl(url, opts, subproc, ssrfConfig);
+      const result = await doFetchUrl(url, opts, ssrfConfig);
       // doFetchUrl 把 ssrf_blocked / 4xx / 5xx / 2xx 都包成 InteractResult；
       // 这里只需序列化。SSRF 拒绝风格与 browse.ts::ssrfBlocked 同构（同 served_by / retrieval_method）。
       return payloadContent(result);

@@ -81,7 +81,7 @@ function makeMockSubproc(stubClient: McpClient): SubprocessManager {
     healthProbe: vi.fn(async () => "healthy" as const),
     restart: vi.fn(async () => stubClient),
     listManagedPids: vi.fn(() => []),
-    acquireHttpClient: vi.fn(),
+    // review-r1：acquireHttpClient 已迁 util/http-pool（SubprocessManager 不再持有）
     startZombieReaper: vi.fn(),
   } as unknown as SubprocessManager;
 }

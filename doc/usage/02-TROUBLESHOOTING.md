@@ -269,7 +269,7 @@ Lasso 把页面 DOM / 桌面 OutlineNode 写本地磁盘（`~/.cache/lasso/state
 
 ### 4.2 连接池
 
-`SubprocessManager.acquireHttpClient`（INV-32 守）复用 undici Agent。不要 new Agent / 裸 fetch。
+`util/http-pool.ts` 的 `acquireHttpClient`（INV-32 守）复用 undici Agent。不要 new Agent / 裸 fetch。（review-r1：池自 SubprocessManager 迁出——子进程管理器不再持有 HTTP Agent。）
 
 ### 4.3 并发限流
 

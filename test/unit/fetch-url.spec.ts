@@ -10,11 +10,12 @@
  *  6. timeout → unknown；ENOTFOUND → unknown（v1.18.2 doc/governance/10 Y2：DNS/连接错环境瞬态，可重试）
  *  7. bounded output > 48 KiB 自动落盘 .txt + @oN ref
  *  8. max_bytes 截断（content-length > max_bytes → didnt）
- *  9. INV-32 守护：经 subproc.acquireHttpClient（不裸 fetch / 不 new Agent）
+ *  9. INV-32 守护：经 util/http-pool acquireHttpClient（不裸 fetch / 不 new Agent）
  *
  * 测试策略：
  *  - vi.mock("node:dns/promises") 注入可控 DNS（让 ssrfGuard 走真实代码路径）
- *  - 注入 mock SubprocessManager，spy acquireHttpClient，返 mock { fetch }
+ *  - vi.mock util/http-pool，spy acquireHttpClient，返 mock { fetch }（review-r1：
+ *    连接池自 SubprocessManager 迁出，doFetchUrl 不再收 subproc 句柄）
  *  - doFetchUrl 直接调（不经 server.tool 装配，单测更聚焦）
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -38,9 +39,14 @@ vi.mock("node:dns/promises", () => ({
   }),
 }));
 
+// review-r1：http-pool 模块 mock（连接池单一注入点；doFetchUrl 直接 import 它）
+vi.mock("../../src/util/http-pool.js", () => ({
+  acquireHttpClient: vi.fn(),
+}));
+
 // 在 mock 之后才 import SUT（vi.mock 被 hoist）
 import { doFetchUrl } from "../../src/tools/fetch-url.js";
-import type { SubprocessManager } from "../../src/subprocess/SubprocessManager.js";
+import { acquireHttpClient } from "../../src/util/http-pool.js";
 
 // ============================================================
 // helpers
@@ -72,20 +78,18 @@ const DEFAULT_OPTS: FetchUrlOptions = {
 };
 
 /**
- * 构造一个 mock SubprocessManager，spy acquireHttpClient。
+ * 配置 http-pool 模块 mock（review-r1：连接池自 SubprocessManager 迁 util/http-pool，
+ * mock 从「假 subproc 对象」改为模块级 vi.mock —— spy 能力不变）。
  * - acquireHttpClient(origin) 返 mock { fetch }
  * - fetchMock 是 vi.fn() —— 每个测试 mockResolvedValue / mockRejectedValue
  */
 function makeMockSubproc(fetchMock: ReturnType<typeof vi.fn>): {
-  subproc: SubprocessManager;
   fetchMock: ReturnType<typeof vi.fn>;
   acquireSpy: ReturnType<typeof vi.fn>;
 } {
-  const acquireSpy = vi.fn((_origin: string) => ({ fetch: fetchMock }));
-  const subproc = {
-    acquireHttpClient: acquireSpy,
-  } as unknown as SubprocessManager;
-  return { subproc, fetchMock, acquireSpy };
+  const acquireSpy = vi.mocked(acquireHttpClient);
+  acquireSpy.mockImplementation((_origin: string) => ({ fetch: fetchMock }));
+  return { fetchMock, acquireSpy };
 }
 
 /**
@@ -123,11 +127,10 @@ beforeEach(() => {
 describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）", () => {
   it("私网 10.x → outcome=didnt + retrieval_method=ssrf_blocked + fetch 不被调", async () => {
     setDns(PRIVATE_IPS_10);
-    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const { fetchMock } = makeMockSubproc(vi.fn());
     const r = await doFetchUrl(
       "https://intranet.example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -140,11 +143,10 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
   // ---- v1.18.2（doc/governance/10 F1）：DNS 环境瞬态 ≠ 策略拦截 ----
   it("F1: DNS 解析失败（dns_failed）→ outcome=unknown + retrieval_method=ssrf_dns_unresolved（可重试，非「政策拦截」终答）", async () => {
     setDns([], "getaddrinfo ENOTFOUND flaky.test");
-    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const { fetchMock } = makeMockSubproc(vi.fn());
     const r = await doFetchUrl(
       "https://flaky.test/chapter-1",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     // 环境瞬态（TUN 断网 / DNS 抖动）必须落 unknown（可重试），
@@ -157,11 +159,10 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
 
   it("F1: DNS 空记录（dns_empty）→ outcome=unknown + ssrf_dns_unresolved", async () => {
     setDns([]); // lookup 返回空数组，无 err
-    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const { fetchMock } = makeMockSubproc(vi.fn());
     const r = await doFetchUrl(
       "https://empty-records.test/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -172,7 +173,7 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
   it("loopback 127.0.0.1 默认拒（仅 127.0.0.1/32 在 default allow）", async () => {
     // 127.0.0.1 在 DEFAULT_ALLOW_RANGES → 放行
     setDns(["127.0.0.1"]);
-    const { subproc, fetchMock } = makeMockSubproc(
+    const { fetchMock } = makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
       ),
@@ -180,7 +181,6 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
     const r = await doFetchUrl(
       "https://localhost/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -189,11 +189,10 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
 
   it("127.0.0.2 拒（不在 /32 allow；私网 127.0.0.0/8 段）", async () => {
     setDns(["127.0.0.2"]);
-    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const { fetchMock } = makeMockSubproc(vi.fn());
     const r = await doFetchUrl(
       "https://localhost/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -203,11 +202,10 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
 
   it("元数据服务 169.254.169.254 拒（防云元数据泄露）", async () => {
     setDns(METADATA_IPS);
-    const { subproc, fetchMock } = makeMockSubproc(vi.fn());
+    const { fetchMock } = makeMockSubproc(vi.fn());
     const r = await doFetchUrl(
       "http://169.254.169.254/latest/meta-data/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -224,11 +222,10 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
     const fetchMock = vi.fn().mockResolvedValue(
       makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://tun-proxy.example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -237,7 +234,7 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
 
   it("fake-ip 198.18.x 经 LASSO_SSRF_ALLOW_RANGES 放行（TUN 场景）", async () => {
     setDns(FAKE_IPS);
-    const { subproc, fetchMock } = makeMockSubproc(
+    const { fetchMock } = makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
       ),
@@ -245,7 +242,6 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
     const r = await doFetchUrl(
       "https://tun-proxy.example.com/",
       DEFAULT_OPTS,
-      subproc,
       FAKE_IP_ALLOWED,
     );
     expect(r.outcome).toBe("worked");
@@ -254,11 +250,11 @@ describe("fetch_url — SSRF 守门（INV-31；与 browse_headless 同函数）"
 });
 
 // ============================================================
-// INV-32：经 SubprocessManager.acquireHttpClient
+// INV-32：经 util/http-pool acquireHttpClient
 // ============================================================
-describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch）", () => {
+describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch；util/http-pool）", () => {
   it("acquireHttpClient 被调且参数是 origin（scheme + host，不含 path）", async () => {
-    const { subproc, acquireSpy } = makeMockSubproc(
+    const { acquireSpy } = makeMockSubproc(
       vi.fn().mockResolvedValue(
         makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
       ),
@@ -266,7 +262,6 @@ describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch）", 
     await doFetchUrl(
       "https://api.example.com/v1/foo?bar=baz",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(acquireSpy).toHaveBeenCalledWith("https://api.example.com");
@@ -276,11 +271,10 @@ describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch）", 
     const fetchMock = vi.fn().mockResolvedValue(
       makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -295,11 +289,10 @@ describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch）", 
     const fetchMock = vi.fn().mockResolvedValue(
       makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     await doFetchUrl(
       "https://example.com/",
       { ...DEFAULT_OPTS, no_cache: true },
-      subproc,
       EMPTY_CONFIG,
     );
     const init = fetchMock.mock.calls[0]![1] as RequestInit;
@@ -310,11 +303,10 @@ describe("fetch_url — INV-32 经连接池（禁 new Agent / 禁裸 fetch）", 
     const fetchMock = vi.fn().mockResolvedValue(
       makeResponse({ status: 200, body: "ok", headers: { "content-type": "text/plain" } }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     await doFetchUrl(
       "https://example.com/",
       { ...DEFAULT_OPTS, headers: { "X-Custom": "foo" } },
-      subproc,
       EMPTY_CONFIG,
     );
     const headers = fetchMock.mock.calls[0]![1].headers as Record<string, string>;
@@ -335,11 +327,10 @@ describe("fetch_url — content-type 分流", () => {
         headers: { "content-type": "text/html; charset=utf-8" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -356,11 +347,10 @@ describe("fetch_url — content-type 分流", () => {
         headers: { "content-type": "application/json; charset=utf-8" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://api.example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.body_kind).toBe("json");
@@ -375,11 +365,10 @@ describe("fetch_url — content-type 分流", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.body_kind).toBe("text");
@@ -395,11 +384,10 @@ describe("fetch_url — content-type 分流", () => {
         headers: { "content-type": "image/png" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/img.png",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.body_kind).toBe("binary:png");
@@ -417,11 +405,10 @@ describe("fetch_url — content-type 分流", () => {
         headers: { "content-type": "application/pdf" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/doc.pdf",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.body_kind).toBe("binary:pdf");
@@ -435,11 +422,10 @@ describe("fetch_url — content-type 分流", () => {
         // 故意不设 content-type
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.body_kind).toBe("binary:octet-stream");
@@ -460,11 +446,10 @@ describe("fetch_url — redirect:manual 不跟随（防 SSRF 绕过）", () => {
         },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/old",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -484,11 +469,10 @@ describe("fetch_url — redirect:manual 不跟随（防 SSRF 绕过）", () => {
         // 无 location header
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -503,11 +487,10 @@ describe("fetch_url — redirect:manual 不跟随（防 SSRF 绕过）", () => {
         headers: { location: "https://other.example.com/" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -527,11 +510,10 @@ describe("fetch_url — tri-state outcome", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -546,11 +528,10 @@ describe("fetch_url — tri-state outcome", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/missing",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -565,11 +546,10 @@ describe("fetch_url — tri-state outcome", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -584,11 +564,10 @@ describe("fetch_url — tri-state outcome", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -603,11 +582,10 @@ describe("fetch_url — tri-state outcome", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -620,11 +598,10 @@ describe("fetch_url — tri-state outcome", () => {
 describe("fetch_url — 错误分类", () => {
   it("ENOTFOUND → unknown（doc/governance/10 Y2：TUN/代理环境 DNS 高频瞬态，可重试——不再是「host 不存在」终答）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND nope.test"));
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://nope.test/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -633,11 +610,10 @@ describe("fetch_url — 错误分类", () => {
 
   it("ECONNREFUSED → unknown（doc/governance/10 Y2：代理未起/服务暂不可达是环境瞬态，可重试）", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 93.184.216.34:443"));
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -647,11 +623,10 @@ describe("fetch_url — 错误分类", () => {
     const fetchMock = vi.fn().mockRejectedValue(
       Object.assign(new Error("The operation was aborted"), { name: "AbortError" }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -659,11 +634,10 @@ describe("fetch_url — 错误分类", () => {
 
   it("网络挂（ECONNRESET）→ unknown", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("read ECONNRESET"));
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("unknown");
@@ -685,11 +659,10 @@ describe("fetch_url — max_bytes 截断", () => {
         },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/big",
       { ...DEFAULT_OPTS, max_bytes: 100_000 },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -708,11 +681,10 @@ describe("fetch_url — max_bytes 截断", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       { ...DEFAULT_OPTS, max_bytes: 100 },
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("didnt");
@@ -735,11 +707,10 @@ describe("fetch_url — bounded output > 48 KiB 自动落盘", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.outcome).toBe("worked");
@@ -758,11 +729,10 @@ describe("fetch_url — bounded output > 48 KiB 自动落盘", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.data!.envelope!.truncated).toBe(false);
@@ -777,11 +747,10 @@ describe("fetch_url — bounded output > 48 KiB 自动落盘", () => {
 describe("fetch_url — 边界（不 fallback browse_headless）", () => {
   it("fetch 失败永远不 fallback —— outcome 透传，fallback_used=false", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.fallback_used).toBe(false);
@@ -796,11 +765,10 @@ describe("fetch_url — 边界（不 fallback browse_headless）", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     await doFetchUrl(
       "https://example.com/",
       { ...DEFAULT_OPTS, method: "HEAD" },
-      subproc,
       EMPTY_CONFIG,
     );
     const init = fetchMock.mock.calls[0]![1] as RequestInit;
@@ -815,11 +783,10 @@ describe("fetch_url — 边界（不 fallback browse_headless）", () => {
         headers: { "content-type": "text/plain" },
       }),
     );
-    const { subproc } = makeMockSubproc(fetchMock);
+    makeMockSubproc(fetchMock);
     const r = await doFetchUrl(
       "https://example.com/",
       DEFAULT_OPTS,
-      subproc,
       EMPTY_CONFIG,
     );
     expect(r.served_by).toBe("fetch_url");

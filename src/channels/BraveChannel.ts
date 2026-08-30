@@ -73,7 +73,7 @@ export const BRAVE_FRESHNESS_MAP: Record<string, string> = {
 
 /**
  * 注入式 HTTP client，便于测试 mock fetch。
- * SubprocessManager.acquireHttpClient 返回 keep-alive 版；测试返 vi.fn().
+ * util/http-pool acquireHttpClient 返回 keep-alive 版；测试返 vi.fn().
  */
 export interface BraveHttpClient {
   fetch: typeof fetch;
@@ -90,7 +90,7 @@ export class BraveChannel extends BaseChannel {
     private readonly endpoint: string,
     /** 多 Key 池账本（INV-10：禁直读 env，必须经 ledger）。 */
     private readonly ledger: QuotaLedger,
-    /** HTTP client（注入，便于测试 mock；生产走 SubprocessManager.acquireHttpClient）。 */
+    /** HTTP client（注入，便于测试 mock；生产走 util/http-pool acquireHttpClient）。 */
     private readonly httpClient: BraveHttpClient,
   ) {
     super();

@@ -389,7 +389,9 @@ describe("STEALTH_PROFILES v1.12 — mac_chrome（round2 T2-1 宿主对齐）", 
 });
 
 describe("defaultHeadlessProfileForHost — 装配分支（round2 T2-1）", () => {
-  const MODULE = "../../src/channels/HeadlessChannel.js";
+  // review-r1：函数自 HeadlessChannel.ts 迁至 stealth-profiles.ts（StealthProfileName
+  // 定义处；doctor 不再 value-import channels）
+  const MODULE = "../../src/browse/stealth-profiles.js";
 
   it("darwin → mac_chrome", async () => {
     const { defaultHeadlessProfileForHost } = await import(MODULE);

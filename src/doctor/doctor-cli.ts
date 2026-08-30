@@ -16,10 +16,10 @@
 import type { DoctorOptions } from "./doctor.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 import { SubprocessManager } from "../subprocess/SubprocessManager.js";
-import {
-  HeadlessChannel,
-  defaultHeadlessProfileForHost,
-} from "../channels/HeadlessChannel.js";
+import { HeadlessChannel } from "../channels/HeadlessChannel.js";
+// review-r1：defaultHeadlessProfileForHost 迁至 browse/stealth-profiles.ts
+// （doctor 对 channels 的 import 收敛为组合根 class 实例化一种，守 INV-84）
+import { defaultHeadlessProfileForHost } from "../browse/stealth-profiles.js";
 import { StealthEngine } from "../browse/StealthEngine.js";
 import { logger } from "../util/logger.js";
 

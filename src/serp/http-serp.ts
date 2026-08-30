@@ -37,7 +37,7 @@
  * 仍过一遍 ssrfGuard 防御纵深（与 fetch_url / browse 同函数同 config）。
  *
  * 连接池单一真源（INV-32 同精神）：本模块**不 new Agent**；fetch 经注入的
- * pooled fetchImpl（index.ts 用 subproc.acquireHttpClient(origin).fetch 包装）。
+ * pooled fetchImpl（index.ts 用 acquireHttpClient(origin).fetch（util/http-pool）包装）。
  */
 import type { InteractResult, SearchFreshness, SearchResult } from "../types.js";
 import {
@@ -68,7 +68,7 @@ export interface HttpSerpOptions {
   limit?: number;
   /** 单次引擎尝试超时（默认 5000ms；级联时总上界 ≈ 2×） */
   timeoutMs?: number;
-  /** 注入 pooled fetch（缺省 global fetch；index.ts 装配时传 httpAgents 池包装） */
+  /** 注入 pooled fetch（缺省 global fetch；index.ts 装配时传 util/http-pool 池包装） */
   fetchImpl?: typeof fetch;
   serpHealth?: SerpHealthMonitor | null;
   /** SSRF 配置（缺省 loadSsrfConfig()；单测注入可控段） */
@@ -106,9 +106,9 @@ export const SERP_HTTP_ALLOWED_HOSTS: readonly string[] = [
 // 浏览器级 headers（复用 STEALTH_PROFILES 既有值；parse22 §1.2 步骤 4）
 // ============================================================
 /**
- * profile 选择规则与 HeadlessChannel.defaultHeadlessProfileForHost 一致
- * （darwin→mac_chrome，否则 windows_chrome_120）。不 import channels/ 防止
- * serp→channels 缠绕——与 extract.ts BrowseExec 注入同立场（提取器不硬依赖通道）。
+ * profile 选择规则与 browse/stealth-profiles.ts::defaultHeadlessProfileForHost 一致
+ * （darwin→mac_chrome，否则 windows_chrome_120）。不 import 该函数防止
+ * serp→channels/browse 缠绕——与 extract.ts BrowseExec 注入同立场（提取器不硬依赖通道）。
  */
 function httpSerpProfileName(): "mac_chrome" | "windows_chrome_120" {
   return process.platform === "darwin" ? "mac_chrome" : "windows_chrome_120";

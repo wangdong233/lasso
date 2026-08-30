@@ -34,7 +34,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InteractResult } from "../types.js";
-import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import { doFetchUrl } from "./fetch-url.js";
 import { FETCH_FEED_DESCRIPTION } from "./descriptions.js";
@@ -323,7 +322,6 @@ export function parseFeedBody(
 export async function doFetchFeed(
   rawUrl: string,
   limit: number,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): Promise<InteractResult<FeedResult>> {
   // ---------- 1. SSRF 守门（INV-56 家族） ----------
@@ -353,7 +351,6 @@ if (!ssrfResult.allowed) {
       // feed 抓取自报用途（不伪装浏览器）
       headers: { Accept: "application/rss+xml, application/atom+xml, application/feed+json, application/xml, text/xml, */*" },
     },
-    subproc,
     ssrfConfig,
   );
 
@@ -440,12 +437,11 @@ if (!ssrfResult.allowed) {
 // ============================================================
 /**
  * @param server     MCP server
- * @param subproc    SubprocessManager（doFetchUrl 经 acquireHttpClient 拿 undici keep-alive Agent）
+ * （review-r1：doFetchUrl 连接池改经 util/http-pool，本注册器不再收 subproc）
  * @param ssrfConfig SSRF allowRanges / denyRanges（与 fetch_url / wayback 共用）
  */
 export function registerFetchFeedTool(
   server: McpServer,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): void {
   server.tool(
@@ -454,12 +450,7 @@ export function registerFetchFeedTool(
     fetchFeedSchema,
     fetchFeedAnnotations,
     async (args) => {
-      const result = await doFetchFeed(
-        args.url,
-        args.limit,
-        subproc,
-        ssrfConfig,
-      );
+      const result = await doFetchFeed(args.url, args.limit, ssrfConfig);
       return payloadContent(result);
     },
   );

@@ -433,20 +433,15 @@ export interface FetchUrlResult {
  *
  * v0.5 立场（守简单性 + 守边界）：
  *  - 仅 URL 入参；pageRef 推 v0.6 forest 合并后（4 工具不接受 @pN / @wN rootRef）
- *  - format v0.5 接受但 doScreenshot 现不映射（上游 chrome-devtools-mcp take_screenshot
- *    已固定 format=png；format 字段为 v0.6+ 预留）
- *  - region v0.5 接受但 doScreenshot 现不映射（v0.6+ 评估）
- *  - viewport v0.5 接受但 doScreenshot 现不映射（mobile emulation 推 v0.6+）
  *
- * 设计原则：schema 接受 → browseOpts 不映射 → 文档明确「未接入字段」（守 R-CI-02）。
- *            不抛错（避免 caller 误以为格式错）；CC 据 description 知道哪些字段生效。
+ * review-r1（2026-08-31）：viewport / region / format / quality 四字段删除——
+ * 自 v0.5 起「schema 接受 → browseOpts 不映射」的静默丢弃是接口面死角（调用方传
+ * region 得到整页 PNG）；deferred 依据（上游 0.3.0 只接 fullPage+format）已随 v1.11
+ * 锁 1.7.0 失效。未来接入 format 时须连同 doScreenshot 的 PNG magic 校验 / 扩展名 /
+ * extractScreenshotPath 一起实装后再回 schema + 类型。
  */
 export interface ScreenshotOptions {
   full_page: boolean;
-  viewport?: { width: number; height: number };
-  region?: { x: number; y: number; width: number; height: number };
-  format: "png" | "jpeg";
-  quality?: number;
   wait_until: "load" | "domcontentloaded" | "networkidle";
   timeout_ms: number;
 }

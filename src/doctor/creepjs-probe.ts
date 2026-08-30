@@ -44,7 +44,7 @@
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
-import { parseEvalResult } from "../browse/upstream-response.js";
+import { parseEvalResult, firstText, type UpstreamContentResult } from "../browse/upstream-response.js";
 
 // ============================================================
 // 类型
@@ -226,7 +226,7 @@ export async function probeCreepjs(
   try {
     const r = (await client.callTool("evaluate_script", {
       function: CREEPJS_LIES_EXTRACT_SCRIPT,
-    })) as ContentResult;
+    })) as UpstreamContentResult;
     // W1-DEF-1b（v1.8）：经 parseEvalResult 解围栏（脚本 return JSON.stringify(payload) 双层编码）
     rawText =
       (() => {
@@ -305,20 +305,6 @@ export async function probeCreepjs(
     elapsedMs: Date.now() - start,
     rawSample: rawText.slice(0, 500),
   };
-}
-
-// ============================================================
-// 内部 helper（同构 StealthEngine.ts:220-229）
-// ============================================================
-type TextBlock = { type: "text"; text?: string };
-type ContentResult = { content?: TextBlock[]; isError?: boolean };
-
-function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
 }
 
 // evaluate_script 返回 payload 形状（与 CREEPJS_LIES_EXTRACT_SCRIPT 字段集一一对应）

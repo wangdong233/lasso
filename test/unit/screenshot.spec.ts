@@ -58,9 +58,9 @@ const METADATA_IPS = ["169.254.169.254"];
 
 const EMPTY_CONFIG: SsrfConfig = { allowRanges: [], denyRanges: [] };
 
+// review-r1：viewport / region / format / quality 已从 ScreenshotOptions 移除
 const DEFAULT_OPTS: ScreenshotOptions = {
   full_page: false,
-  format: "png",
   wait_until: "load",
   timeout_ms: 30_000,
 };

@@ -24,7 +24,7 @@
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
-import { evalTextValue } from "./upstream-response.js";
+import { evalTextValue, firstText, type UpstreamContentResult } from "./upstream-response.js";
 import {
   STEALTH_PROFILES,
   STEALTH_INJECTION_SCRIPT,
@@ -130,7 +130,7 @@ export class StealthEngine {
     try {
       const r = (await client.callTool("evaluate_script", {
         function: CLOUDFLARE_DETECTION_SCRIPT,
-      })) as ContentResult;
+      })) as UpstreamContentResult;
       // W1-DEF-1b（v1.8）：围栏提取（upstream-response.ts 实测契约），无围栏时
       // 保留原文走既有正则兜底路径（防上游形状再漂移）。
       raw = evalTextValue(r) ?? firstText(r) ?? "";
@@ -202,7 +202,7 @@ export class StealthEngine {
     try {
       const r = (await client.callTool("evaluate_script", {
         function: script,
-      })) as ContentResult;
+      })) as UpstreamContentResult;
       if (r?.isError) {
         // stealth 注入失败 → 仅 warn（不阻断 browse）；caller 经 detectCloudflareChallenge
         // 探知页面状态后再决定是否 escalateManualSwitch
@@ -299,18 +299,4 @@ export function buildUserAgentOverrideScript(profile: StealthProfile): string {
     });
   } catch (e) {}
 }`;
-}
-
-// ============================================================
-// SDK 返回结构解析（与 BrowseChannel / ExpectPoll 内部解析同构）
-// ============================================================
-type TextBlock = { type: "text"; text?: string };
-type ContentResult = { content?: TextBlock[]; isError?: boolean };
-
-function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
 }

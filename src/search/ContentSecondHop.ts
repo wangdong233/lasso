@@ -15,7 +15,7 @@
  *    redirect:"manual"（照 fetch_url SSRF 红线）：3xx 不跟随，防
  *    「公开域 302 → 169.254.169.254」重定向绕过；跳转链页如实 fetch_failed。
  *  - **连接池单一真源**（INV-32 同精神）：本模块**不 new Agent**；fetch 经注入
- *    的 pooled fetchImpl（index.ts 装配：subproc.acquireHttpClient(origin).fetch
+ *    的 pooled fetchImpl（index.ts 装配：acquireHttpClient(origin).fetch（util/http-pool）
  *    包装，与 serpHttpExec 同款）。
  *  - **零新增 npm 依赖**：并发 = 自实现 Promise 工作池 + 计数器；裁剪 = 空白
  *    分词 + CJK bigram + 长度归一打分（parse24 §3.3 机械化算法）。
@@ -68,7 +68,7 @@ export interface ContentBlockOutcome {
 /** 第二跳可注入依赖（照 http-serp HttpSerpOptions 范式；全可选，缺省零装配可测）。 */
 export interface ContentSecondHopDeps {
   /**
-   * pooled fetch（INV-32：index.ts 装配 subproc.acquireHttpClient(origin).fetch 包装；
+   * pooled fetch（INV-32：index.ts 装配 acquireHttpClient(origin).fetch（util/http-pool）包装；
    * 缺省 global fetch——仅单测/直调用，生产装配恒注入池包装，模块本体不 new Agent）。
    */
   fetchImpl?: typeof fetch;

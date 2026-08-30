@@ -40,26 +40,8 @@ export const screenshotSchema = {
   url: z.string().url(),
   options: z
     .object({
-      // 整页截图（v0.5 唯一完全接入的字段；透传 doScreenshot 的 opts.screenshot.full）
+      // 整页截图（透传 doScreenshot 的 opts.screenshot.full）
       full_page: z.boolean().default(false),
-      // v0.5 接受但 doScreenshot 现不映射（守 parse6 §3.2.3 文档化「v0.5 暂不映射」）
-      // 这些字段为 v0.6+ 预留，避免 schema 漂移；CC 据 description 知道哪些生效
-      viewport: z
-        .object({
-          width: z.number().int().min(320).max(4096).default(1280),
-          height: z.number().int().min(240).max(4096).default(800),
-        })
-        .optional(),
-      region: z
-        .object({
-          x: z.number(),
-          y: z.number(),
-          width: z.number(),
-          height: z.number(),
-        })
-        .optional(),
-      format: z.enum(["png", "jpeg"]).default("png"),
-      quality: z.number().int().min(1).max(100).optional(),
       wait_until: z
         .enum(["load", "domcontentloaded", "networkidle"])
         .default("load"),
@@ -115,9 +97,11 @@ if (!ssrfResult.allowed) {
   }
 
   // ---------- 2. 透传 BrowseOptions 形状（与 browse.ts schema 对齐） ----------
-  // region / format / viewport v0.5 暂不映射（doScreenshot 现不支持；上游 chrome-devtools-mcp
-  // 0.3.0 take_screenshot 只接 fullPage + format、返回 base64（W1-DEF-3：Lasso 侧自行
-  // 落盘 /tmp/lasso-screenshot-*.png 并 fs 校验）；region 在 v0.5 不接入，description 明确）
+  // review-r1：viewport / region / format / quality 四参数已从 schema 移除——
+  // v0.5 起「接受但不映射」的 deferred 依据（上游 0.3.0 只接 fullPage+format）已随
+  // v1.11 锁 1.7.0 失效且从未复审，调用方传 region 会静默得到整页 PNG（接口面死角）。
+  // 接口面诚实化：只声明真正落地的三参数。format/viewport 若未来接入，须连同
+  // doScreenshot 的 PNG magic 校验 / 扩展名 / extractScreenshotPath 一起实装后再回 schema。
   const browseOpts: BrowseOptions = {
     screenshot: { full: opts.full_page },
     wait_until: opts.wait_until,
@@ -187,28 +171,6 @@ export function registerScreenshotTool(
       // zod .default({}) 已注入所有默认值
       const opts: ScreenshotOptions = {
         full_page: args.options.full_page,
-        ...(args.options.viewport
-          ? {
-              viewport: {
-                width: args.options.viewport.width,
-                height: args.options.viewport.height,
-              },
-            }
-          : {}),
-        ...(args.options.region
-          ? {
-              region: {
-                x: args.options.region.x,
-                y: args.options.region.y,
-                width: args.options.region.width,
-                height: args.options.region.height,
-              },
-            }
-          : {}),
-        format: args.options.format,
-        ...(args.options.quality !== undefined
-          ? { quality: args.options.quality }
-          : {}),
         wait_until: args.options.wait_until,
         timeout_ms: args.options.timeout_ms,
       };

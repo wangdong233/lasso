@@ -54,10 +54,11 @@ import { BraveChannel } from "./channels/BraveChannel.js";
 import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
 // v1.4 Phase A：detectMachineSearchMcp（只读 ~/.claude.json，永不 log key 值）
 import { detectMachineSearchMcp } from "./search/MachineMcpDetector.js";
-import {
-  HeadlessChannel,
-  defaultHeadlessProfileForHost,
-} from "./channels/HeadlessChannel.js";
+import { HeadlessChannel } from "./channels/HeadlessChannel.js";
+// review-r1：defaultHeadlessProfileForHost 迁至 browse/stealth-profiles.ts（单一真源）
+import { defaultHeadlessProfileForHost } from "./browse/stealth-profiles.js";
+// review-r1：undici keep-alive 池自 SubprocessManager 迁出（util/http-pool 单一真源）
+import { acquireHttpClient, closeAllHttpAgents } from "./util/http-pool.js";
 import { LoggedInChannel } from "./channels/LoggedInChannel.js";
 import { DesktopChannel } from "./channels/DesktopChannel.js";
 import { AxProvider } from "./desktop/AxProvider.js";
@@ -548,7 +549,7 @@ async function runMcpServer(): Promise<void> {
     brave = new BraveChannel(
       braveProvider.config.endpoint_url,
       braveProvider.ledger,
-      subproc.acquireHttpClient("https://api.search.brave.com"),
+      acquireHttpClient("https://api.search.brave.com"),
     );
     logger.info({
       evt: "brave_channel_wired",
@@ -781,7 +782,7 @@ async function runMcpServer(): Promise<void> {
   // browse_headless（冷启动 ~11s + Chromium 树）之前的 ~1s 级探针。
   // 白盒依据（doc/governance/02 + v1.14 实测）：裸 curl 打 search.brave.com 返 200+22 条，
   // 真 Chrome 反吃验证码——API 全挂时先裸 HTTP 探一次，探不到再升真浏览器。
-  // fetch 经 SubprocessManager.httpAgents 池（per-origin 懒建；单一真源不 new Agent）；
+  // fetch 经 util/http-pool 池（per-origin 懒建；单一真源不 new Agent）；
   // SSRF 纵深与 browse/fetch_url 共用同一 ssrfConfig；serpHealth 复用改版检测链。
   const serpHttpExec: HttpSerpExec = (query, o) =>
     rawSerpSearch(query, {
@@ -789,20 +790,20 @@ async function runMcpServer(): Promise<void> {
       freshness: o.freshness,
       limit: o.limit,
       fetchImpl: ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-        subproc.acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
+        acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
       ssrfConfig,
       serpHealth,
     });
   logger.info({ evt: "serp_http_layer_wired", hosts: SERP_HTTP_ALLOWED_HOSTS.length });
 
   // ----- v1.17 Phase C（A2′ 自研第二跳）：content_blocks 正文富化装配（parse24 §3）-----
-  // fetch 经 SubprocessManager.httpAgents 池（per-origin 懒建；INV-32 单一真源
+  // fetch 经 util/http-pool 池（per-origin 懒建；INV-32 单一真源
   // 不 new Agent——与上面 serpHttpExec 同款包装）；SSRF 纵深与 browse/fetch_url/
   // serp_http 共用同一 ssrfConfig（INV-31 同函数同 config）。
   // 未传该参时 content_blocks 参数被诚实忽略（search.ts 注入式手法，零回归）。
   const contentHopDeps: ContentSecondHopDeps = {
     fetchImpl: ((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-      subproc.acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
+      acquireHttpClient(new URL(String(url)).origin).fetch(url, init)) as typeof fetch,
     ssrfConfig,
   };
   logger.info({ evt: "content_second_hop_wired", budget_chars: 6000 });
@@ -855,7 +856,7 @@ async function runMcpServer(): Promise<void> {
   }
   // v0.5 M0.5a：fetch_url 独立 HTTP 工具（parse6 §3.1）
   // 与 browse_headless 同 SSRF guard；不经浏览器、不挂 fallback 链（INV-23 衍生：caller-tier）
-  registerFetchUrlTool(server, subproc, ssrfConfig);
+  registerFetchUrlTool(server, ssrfConfig);
   // v0.5 M0.5b：screenshot + pdf 独立工具（parse6 §3.2 + §3.3）
   // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
   // screenshot 走既有 v0.1 dispatch entry（doScreenshot）；pdf 走新加 entry（doPdf from cdp-actions）
@@ -872,12 +873,12 @@ async function runMcpServer(): Promise<void> {
   // 纯本地只读、零网络（INV-81(d)）；四处联动第 2 处（INV-81(f)）
   registerSearchLocalTool(server);
   // v0.9 Phase B（parse10 §3.3 + §6 M3 手测）：wayback_lookup 独立 tool
-  // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
+  // 经 util/http-pool acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56）
   // 是独立 tool，不在 search 主路径里自动调（守 INV-58：CC 显式 opt-in）
-  registerWaybackTool(server, subproc, ssrfConfig);
+  registerWaybackTool(server, ssrfConfig);
   // doc/governance/05 verdict D-GO-2（2026-08-18）：fetch_feed 独立 tool（RSS/Atom/JSON Feed 原语）
-  // 经 SubprocessManager.acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56 家族）
-  registerFetchFeedTool(server, subproc, ssrfConfig);
+  // 经 util/http-pool acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56 家族）
+  registerFetchFeedTool(server, ssrfConfig);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
   // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：
   // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
@@ -1373,6 +1374,10 @@ async function runMcpServer(): Promise<void> {
       // 整棵 shim→node→Chrome 树泄漏）。SIGTERM 路径直接同步树杀（SIGKILL 递归
       // pgrep -P）+ 立即 exit；优雅 close 留给 exit 钩子外无路径依赖。
       subproc.killAllSync();
+      // review-r1：http 池迁 util/http-pool 后的清池点（原先在
+      // subproc.shutdown() 内——该调用已不在信号路径；Agent.close 仅销毁空闲
+      // socket，无网络等待，不违反停机链 no-hang 纪律）
+      await closeAllHttpAgents();
     } catch (e) {
       logger.warn({ evt: "shutdown_error", error: String(e) });
     }

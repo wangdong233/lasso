@@ -148,9 +148,10 @@ import {
 // 守 INV-75：creepjs 门禁纯 doctor 侧（probeCreepjs 仅 doctor 调用，不入运行时四通道）；
 //            CREEPJS_LIES_EXTRACT_SCRIPT 是顶级 const（INV-30 衍生：不从 env/config 读）。
 import { probeCreepjs, type CreepjsLiesReport } from "./creepjs-probe.js";
-import type { StealthProfileName } from "../browse/stealth-profiles.js";
 // v1.12（round2 T2-1）：探测默认 = 宿主对齐 profile（与运行时装配同一选择）
-import { defaultHeadlessProfileForHost } from "../channels/HeadlessChannel.js";
+// review-r1：改自 stealth-profiles.js import（原先 value-import
+// channels/HeadlessChannel.js——doctor↔channels 双向 value 依赖拆除，守 INV-84）
+import { defaultHeadlessProfileForHost, type StealthProfileName } from "../browse/stealth-profiles.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 
 const execFileP = promisify(execFile);

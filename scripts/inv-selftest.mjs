@@ -249,6 +249,35 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // review-r1：INV-83——任意文件出现第二份 function firstText 定义（W1-DEF-1b
+    // 迁移 abandoned 回潮形态）→ 红。
+    inv: "INV-83",
+    desc: "firstText 私有拷贝回潮（upstream-response 之外再现定义）",
+    file: "channels/evil-selftest.ts",
+    mutation: { append: "export function firstText() {}\n" },
+  },
+  {
+    // review-r1：INV-84——doctor 层 import channels（doctor-cli 组合根之外的文件）→ 红。
+    inv: "INV-84",
+    desc: "doctor 层反向 value-import channels（ESM 循环温床回潮）",
+    file: "doctor/creepjs-probe.ts",
+    mutation: {
+      append:
+        'import { HeadlessChannel as __EvilChannelsImport } from "../channels/HeadlessChannel.js";\n',
+    },
+  },
+  {
+    // review-r1：INV-32 改写后（直连 util/http-pool 形态）——fetch_url 出现裸
+    // global.fetch（绕过 httpClient 连接池）→ 红。
+    inv: "INV-32",
+    desc: "fetch_url 引入裸 fetch(（绕过 http-pool 连接池）",
+    file: "tools/fetch-url.ts",
+    mutation: {
+      append:
+        'export const __evilBareFetch = fetch("http://evil.invalid/leak");\n',
+    },
+  },
 ];
 
 // ============================================================

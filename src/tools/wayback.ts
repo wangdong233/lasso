@@ -28,7 +28,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { InteractResult } from "../types.js";
-import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
 import { doFetchUrl } from "./fetch-url.js";
 import { WAYBACK_DESCRIPTION } from "./descriptions.js";
@@ -118,7 +117,6 @@ export interface WaybackLookupResult {
  */
 export async function doWaybackLookup(
   rawUrl: string,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): Promise<InteractResult<WaybackLookupResult>> {
   // ---------- 1. SSRF 守门用户 URL（INV-56；与 fetch_url 同函数同 config） ----------
@@ -152,7 +150,6 @@ if (!ssrfResult.allowed) {
       max_bytes: 256 * 1024, // wayback availability API 响应很小（≤几 KB）；256 KiB 上限足够
       no_cache: false,
     },
-    subproc,
     ssrfConfig,
   );
 
@@ -238,14 +235,13 @@ if (!ssrfResult.allowed) {
 // ============================================================
 /**
  * @param server     MCP server
- * @param subproc    SubprocessManager（doFetchUrl 经 acquireHttpClient 拿 undici keep-alive Agent）
+ * （review-r1：doFetchUrl 连接池改经 util/http-pool，本注册器不再收 subproc）
  * @param ssrfConfig SSRF allowRanges / denyRanges（与 fetch_url / browse_headless 共用）
  *
  * 注：本 tool 的 ToolAnnotations 走 readOnlyHint + openWorldHint（与 fetch_url 同语义）。
  */
 export function registerWaybackTool(
   server: McpServer,
-  subproc: SubprocessManager,
   ssrfConfig: SsrfConfig,
 ): void {
   server.tool(
@@ -254,7 +250,7 @@ export function registerWaybackTool(
     waybackSchema,
     waybackAnnotations,
     async (args) => {
-      const result = await doWaybackLookup(args.url, subproc, ssrfConfig);
+      const result = await doWaybackLookup(args.url, ssrfConfig);
       return payloadContent(result);
     },
   );

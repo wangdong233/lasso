@@ -33,7 +33,7 @@
  */
 import type { ExpectCondition } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
-import { evalTextValue } from "./upstream-response.js";
+import { evalTextValue, firstText, type UpstreamContentResult } from "./upstream-response.js";
 
 // ============================================================
 // 公共类型
@@ -189,7 +189,7 @@ async function snapshotCondition(
   try {
     const r = (await client.callTool("evaluate_script", {
       function: expr,
-    })) as ContentResult;
+    })) as UpstreamContentResult;
     // W1-DEF-1b（v1.8）：上游返回 markdown 围栏包裹（实测契约见 upstream-response.ts）
     const text = evalTextValue(r) ?? firstText(r);
     return { holds: text?.trim() === "true" };
@@ -229,16 +229,4 @@ export function buildConditionExpr(cond: ExpectCondition): string {
 // ============================================================
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-// SDK 返回结构解析（与 BrowseChannel 内部解析同构；Phase C 再 DRY 到 util）
-type TextBlock = { type: "text"; text?: string };
-type ContentResult = { content?: TextBlock[]; isError?: boolean };
-
-function firstText(r: ContentResult | undefined): string | undefined {
-  if (!r?.content) return undefined;
-  for (const b of r.content) {
-    if (b.type === "text" && b.text) return b.text;
-  }
-  return undefined;
 }

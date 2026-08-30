@@ -48,7 +48,7 @@
  *
  * v0.5 M0.5a 状态（parse6 §1.5 + §3.1）：
  *  - 新增 INV-31（fetch_url 必经 ssrfGuard；与 browse_headless 同函数同 config）
- *  - 新增 INV-32（fetch_url 必经 SubprocessManager.acquireHttpClient；禁 new Agent / 禁裸 fetch）
+ *  - 新增 INV-32（fetch_url 必经连接池 acquireHttpClient；禁 new Agent / 禁裸 fetch；review-r1 池迁 util/http-pool）
  *  - 共 **32 条** invariants（INV-1..32 顺序编号；INV-33/34 推 M0.5b/c screenshot/pdf/network 时加）
  *
  * v0.5 M0.5b 状态（parse6 §1.5 + §3.2 + §3.3）：
@@ -90,7 +90,7 @@
  *  INV-29 DesktopChannel act 4 档 plan 全 desktop.*，顺序 ax→appleScript→cgEvent→screenshotVlm —— v0.4 M0.4b
  *  INV-30 stealth-profiles.ts 顶级 const（不从 config/env 读；anti-gaming，类比 INV-14/27）—— v0.4 M0.4c
  *  INV-31 fetch_url 必经 ssrfGuard（与 browse_headless 同函数；URL 入 fetch 前必命中）—— v0.5 M0.5a
- *  INV-32 fetch_url 必经 SubprocessManager.acquireHttpClient（禁 new Agent / 禁裸 fetch）—— v0.5 M0.5a
+ *  INV-32 fetch_url 必经 util/http-pool.acquireHttpClient 连接池（禁 new Agent / 禁裸 fetch；review-r1 池自 SubprocessManager 迁出 + 墓碑禁回迁）—— v0.5 M0.5a
  *  INV-33 pdf/console/network 三 action 必以 entry 形式在 BrowseChannel.actionDispatch Map（INV-6 衍生：禁第二 dispatch）—— v0.5 M0.5b/M0.5c
  *  INV-34 screenshot/pdf/network 独立 tool handler 返回路径必经 applyOutputEnvelope 或经 BrowseChannel.browse 入口（INV-15 衍生到二进制内容）—— v0.5 M0.5b/M0.5c
  *  INV-62 录制源禁 logged_in（replay-baseline.ts + RecordingStore 不录 logged_in cookie 场景；INV-51 同源；08 §5.1 cookie=身份）—— v1.0 Phase C
@@ -108,6 +108,8 @@
  *  INV-74 Steel cloud 通道零回归守护 —— SteelChannel（browse_cloud_steel）必经 LASSO_ALLOW_CLOUD_BROWSER + STEEL_ENDPOINT 双重解锁；STEEL ProviderConfig 单独导出不进 BUILTIN_PROVIDERS（保 v1.5 零回归）；SteelChannel extends BrowseChannel（平级兄弟子类，禁嵌套 / 禁自造 fallback）—— v1.6 Phase A
  *  INV-75 creepjs 门禁纯 doctor 侧零回归守护（INV-73/74 后）；INV-76 v1.8 wave1 修复回归守护 —— 上游 chrome-devtools-mcp@0.3.0 契约（evaluate_script 函数表达式 / wait_for text string / take_screenshot 自落盘+stat 校验）+ CdpClient Storage 域 + launch-chrome 探活 + 孤儿清理 + rust crash 归因 + screenshot_region 跨语言配对（TS↔rust-helper）+ caller-tier 接线 + read_text 四处联动 + CLI 惯例（--version/--stealth-check/未知参数非零退）—— v1.8
  *  INV-80 zhipu 直连死层清除墓碑（v1.17 A3，doc/governance/06 裁决③）—— channels/SearchChannel.ts 不存在；无 ZhipuSearchChannel import / "search.zhipu" 字面量；DEFAULT_FALLBACK_ORDER 无 zhipu；providers 无 ZHIPU ProviderConfig；config 不消费 ZHIPU_API_KEY（键容忍读）；doctor zhipu_keys_retired；engine enum 无 "zhipu"
+ *  INV-83 firstText 单一定义（review-r1 2026-08-31）—— browse/upstream-response.ts 是唯一 function firstText 定义点；其余 src 文件只能 import（R-CI-08：W1-DEF-1b 迁移曾做到一半 abandoned，5 份私有拷贝收敛后防回潮）
+ *  INV-84 doctor 层禁 import channels（review-r1 2026-08-31）—— src/doctor/*.ts（doctor-cli.ts 组合根除外）禁 from "../channels/"（R-FF-02：双向 value 依赖是 ESM 循环温床；defaultHeadlessProfileForHost 已迁 browse/stealth-profiles.ts）
  *  INV-81 search_local 本地私有搜索隐私红线（v1.17 Phase D，doc/governance/06 裁决④）—— 源库禁写（唯一写面 mkdtemp 临时目录）；无 content 全文导出字段；limit≤50 硬顶；模块零网络（import 白名单）；日志只记 query_len；四处联动（注册器+index.ts 注册+V5_TOOL_TO_CHANNEL+descriptions）；notes_deferred_v2 诚实 didnt
  *  INV-82 用户运行守则生命周期红线（v1.18，doc/governance/09-静默守则审计）—— exit 钩子 modes:['hidden']（D-5 visible 登录窗口生存）；同步版过滤同款 + 零 await；C2 登录后自动 hide 默认 off（opt-in）；只挂 visible 分支永不进 kill 路径；四重护栏（见墙/延迟窗/agent 安静/失败降级）机械化；hide 走 chrome-hide PID 定向；延迟窗默认单一真源（reaper 导出，config 引用）
  *
@@ -944,7 +946,7 @@ const assertions = [
   },
   {
     id: "INV-32-fetch-url-via-acquire-http-client",
-    desc: "v0.5 M0.5a：fetch_url 必经 SubprocessManager.acquireHttpClient（禁 new Agent / 禁裸 global.fetch / 禁新造连接池；守 v0.2 连接池单一真源）",
+    desc: "v0.5 M0.5a（review-r1 改写）：fetch_url 必经 util/http-pool.acquireHttpClient 连接池（禁 new Agent / 禁裸 global.fetch / 禁新造连接池；守 v0.2 连接池单一真源）",
     check: () => {
       const fu = SRC.find((s) =>
         /tools\/fetch-url\.ts$/.test(s.f.replace(/\\/g, "/")),
@@ -952,34 +954,44 @@ const assertions = [
       if (!fu) return false; // v0.5 起必须存在
       const code = stripComments(fu.text);
 
-      // 必要条件 1：必须调 subproc.acquireHttpClient / SubprocessManager.acquireHttpClient
-      //   （grep acquireHttpClient( 调用形式）
-      if (!/\.acquireHttpClient\s*\(/.test(code)) return false;
+      // 必要条件 1：必须 import acquireHttpClient 自 util/http-pool
+      //   （review-r1：池自 SubprocessManager 迁出——工具层直连模块级单一真源）
+      if (!/from\s+["'][^"']*util\/http-pool(\.js)?["']/.test(code)) {
+        return false;
+      }
 
-      // 必要条件 2：禁 new Agent( （v0.2 连接池单一真源；类比 INV-4 单一 FallbackDecider）
-      //   注：SubprocessManager.ts 内部 new Agent 是允许的（那是连接池内部实装），
+      // 必要条件 2：必须调 acquireHttpClient(（直接调用形，无 this./subproc. 前缀）
+      if (!/(?<![.\w])acquireHttpClient\s*\(/.test(code)) return false;
+
+      // 必要条件 3：禁 new Agent( （v0.2 连接池单一真源；类比 INV-4 单一 FallbackDecider）
+      //   注：util/http-pool.ts 内部 new Agent 是允许的（那是连接池实装本体），
       //   本断言只针对 tools/fetch-url.ts（fetch_url 工具层不能自造 Agent）
       if (/\bnew\s+Agent\s*\(/.test(code)) return false;
 
-      // 必要条件 3：禁裸 global.fetch（即 fetch( 直接调用，不经 httpClient）
+      // 必要条件 4：禁裸 global.fetch（即 fetch( 直接调用，不经 httpClient）
       //   fetch_url 必须经 httpClient.fetch（acquireHttpClient 返的注入版）。
-      //   注意：stripComments 后还含 import 语句里的 fetch 不会被匹配；
-      //   `httpClient.fetch(` 不会被误中（前面带 `httpClient.`）。
-      //   精确匹配 `fetch(` 前面不带 `httpClient.` / `client.` 等限定符 = 裸 fetch。
-      //   用负向断言：`\b(?<!\.)fetch\s*\(` —— 前面不是点。
-      //   JS Node 20+ 支持 lookbehind。
-      //   但要排除 `typeof fetch`（类型引用）和注释里的代码片段。
       //   做法：先排除合法的 httpClient.fetch，再看是否有剩余裸 fetch(
       const withoutHttpClientFetch = code.replace(/httpClient\.fetch\s*\(/g, "");
       if (/(?<![.\w])fetch\s*\(/.test(withoutHttpClientFetch)) return false;
 
-      // 必要条件 4：禁 new undici.Pool / new ProxyAgent / new EnvHttpProxyAgent 等其他连接池形态
+      // 必要条件 5：禁 new undici.Pool / new ProxyAgent / new EnvHttpProxyAgent 等其他连接池形态
       if (/\bnew\s+(Pool|ProxyAgent|EnvHttpProxyAgent|Agent)\s*\(/.test(code)) {
         return false;
       }
 
-      // 必要条件 5：fetch 调用必须经 httpClient（确认连接池路径落地）
+      // 必要条件 6：fetch 调用必须经 httpClient（确认连接池路径落地）
       if (!/httpClient\.fetch\s*\(/.test(code)) return false;
+
+      // 必要条件 7（review-r1 墓碑）：连接池禁止回迁 SubprocessManager——
+      //   undici Agent 池与子进程管理零语义关系（R-DEP-01：18 方法 public 面）
+      const sm = SRC.find((s) =>
+        /subprocess\/SubprocessManager\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!sm) return false;
+      const smCode = stripComments(sm.text);
+      if (/acquireHttpClient|httpAgents|from\s+["']undici["']/.test(smCode)) {
+        return false;
+      }
 
       return true;
     },
@@ -1365,7 +1377,7 @@ const assertions = [
       if (/this\.shutdown\s*\(\s*\)/.test(body)) return false;
 
       // 必要条件 4：shutdown() 全停方法仍存在且语义不变（INV-7 守护 + INV-39 对比基线）
-      //   shutdown 方法体内必须 still 调 this._kill + this._killRust + clear httpAgents
+      //   shutdown 方法体内必须 still 调 this._kill + this._killRust（http 池已迁 util/http-pool，review-r1）
       const shutdownMatch = code.match(
         /async\s+shutdown\s*\(\s*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s,
       );
@@ -4515,6 +4527,49 @@ const assertions = [
       if (!/AUTO_HIDE_AFTER_LOGIN_DELAY_MS/.test(configCode)) return false; // config 从 reaper 取默认
 
       return true;
+    },
+  },
+  // ============================================================
+  // review-r1（2026-08-31）新增 —— R-CI-08 / R-FF-02 落地守卫
+  // ============================================================
+  {
+    id: "INV-83-firsttext-single-source",
+    desc:
+      "review-r1：firstText（SDK content 取首个 text block）全仓唯一定义在 browse/upstream-response.ts（W1-DEF-1b 单一权威解析入口；其余文件只能 import，禁再出现第 6 份私有拷贝）",
+    check: () => {
+      // 必要条件 1：权威定义存在
+      const adapter = SRC.find((s) =>
+        /^browse\/upstream-response\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!adapter) return false;
+      if (!/export\s+function\s+firstText\s*\(/.test(adapter.text)) return false;
+      // 必要条件 2：其余 src .ts（去注释）禁出现 firstText 的 function/const 定义
+      //   （import 语句 `import { firstText }` 是合法消费，不匹配以下两个 regex）
+      return SRC.every((s) => {
+        const rel = s.f.replace(/\\/g, "/");
+        if (rel === "browse/upstream-response.ts") return true;
+        const code = stripComments(s.text);
+        if (/\bfunction\s+firstText\s*\(/.test(code)) return false;
+        if (/\b(?:const|let|var)\s+firstText\s*=/.test(code)) return false;
+        return true;
+      });
+    },
+  },
+  {
+    id: "INV-84-doctor-no-channels-import",
+    desc:
+      "review-r1：doctor 层（src/doctor/*.ts，doctor-cli.ts 组合根除外）禁 import ../channels/*（doctor 与 channels 保持单向——channels→doctor 的 runDoctor 复用合法，反向 value 依赖即 ESM 循环温床；defaultHeadlessProfileForHost 已迁 browse/stealth-profiles.ts）",
+    check: () => {
+      const doctorFiles = SRC.filter((s) =>
+        /^doctor\//.test(s.f.replace(/\\/g, "/")),
+      );
+      if (doctorFiles.length === 0) return false; // doctor/ 目录必须存在
+      return doctorFiles.every((s) => {
+        const rel = s.f.replace(/\\/g, "/");
+        if (rel === "doctor/doctor-cli.ts") return true; // 组合根例外（实例化 HeadlessChannel）
+        // 去注释后禁任何形式（value 或 type）的 ../channels/ import
+        return !/from\s+["']\.\.\/channels\//.test(stripComments(s.text));
+      });
     },
   },
 ];
