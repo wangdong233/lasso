@@ -62,7 +62,7 @@ describe("detectPlatform —— 默认读 process.*", () => {
     expect(typeof info.arch).toBe("string");
   });
 
-  it("本机 macOS（darwin）→ platform=mac + raw=darwin", () => {
+  it.skipIf(process.platform !== "darwin")("本机 macOS（darwin）→ platform=mac + raw=darwin（宿主 sanity，CI-linux 跳过）", () => {
     // 本机 Darwin 21.6.0 Intel（parse11 §1.3 macOS-only 现实红线）
     const info = detectPlatform();
     expect(info.raw).toBe("darwin");

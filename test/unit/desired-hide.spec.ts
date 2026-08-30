@@ -119,6 +119,7 @@ function makeWatchdog(
   const logs: Array<Record<string, unknown>> = [];
   const rewrites: DesiredHiddenRecord[][] = [];
   const wd = startDesiredHideWatchdog({
+    platform: "darwin", // CI-linux：被测的是 watchdog 机制非平台门（平台门另有 it 单测）
     intervalMs: DESIRED_HIDE_WATCHDOG_INTERVAL_MS,
     readStateFn: () => state,
     rewriteStateFn: (records) => rewrites.push(records),

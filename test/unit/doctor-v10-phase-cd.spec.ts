@@ -59,7 +59,7 @@ describe("doctor #31 platform_backend_active", () => {
     expect(check).toBeDefined();
   });
 
-  it("macOS 本机：status=pass + detail 含 platform=darwin + backend=mac", async () => {
+  it.skipIf(process.platform !== "darwin")("macOS 本机：status=pass + detail 含 platform=darwin + backend=mac（宿主 sanity，CI-linux 跳过）", async () => {
     const report = await runDoctor({
       skipNetwork: true,
       skipInvariants: true,

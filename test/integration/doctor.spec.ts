@@ -81,7 +81,7 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
     // 改用不可写 cacheDir 制造结构性 fail 样本。
     const impossible = process.platform === "win32"
       ? "Z:\\\\nonexistent-lasso-test"
-      : "/proc/lasso-cannot-create";
+      : "/dev/null/lasso-cannot-create"; // linux 真有 /proc 致 mkdir 挂起超时；/dev/null/xxx 两平台 ENOTDIR 秒败
     const r = await runDoctor({
       cacheDir: impossible,
       skipNetwork: true,
@@ -173,7 +173,7 @@ describe("runDoctor — 场景判定", () => {
     // 用一个不存在也不可创建的路径（父目录无权限）触发失败
     const impossible = process.platform === "win32"
       ? "Z:\\\\nonexistent-lasso-test"
-      : "/proc/lasso-cannot-create";
+      : "/dev/null/lasso-cannot-create"; // linux 真有 /proc 致 mkdir 挂起超时；/dev/null/xxx 两平台 ENOTDIR 秒败
     const r = await runDoctor({
       cacheDir: impossible,
       skipNetwork: true,
@@ -299,7 +299,7 @@ describe("runDoctor — v0.2 4 项新 check", () => {
   });
 
   it("14. search_cache_dir_writable 失败 → fail + blocker", async () => {
-    const impossible = "/proc/lasso-cannot-create";
+    const impossible = "/dev/null/lasso-cannot-create"; // 同上：linux CI 修正
     const r = await runDoctor({
       cacheDir: impossible,
       skipNetwork: true,

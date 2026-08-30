@@ -61,6 +61,9 @@ describe("ResourceMonitor — sample 基础路径", () => {
 // hot_streak 阈值告警
 // ============================================================
 describe("ResourceMonitor — hot_streak 阈值", () => {
+  // CI-linux 修正：本组测 host 降级路径的阈值语义——pid 必须为 null
+  // （linux+真 pid 会去读 /proc/<pid>/statm，假 pid ENOENT → hot=false 假失败；
+  //  mac 的非 linux 分支不受影响——两平台都走 host memoryUsage，确定性一致）
   beforeEach(() => {
     // process.memoryUsage 在测试进程一般 ~100-300MB；设阈值极低强制 hot
   });
@@ -68,7 +71,7 @@ describe("ResourceMonitor — hot_streak 阈值", () => {
   it("连续超阈值 hot_streak 次 → hotStreakCount 累积", async () => {
     // 阈值 rss_mb=1（host RSS 必然超过 1MB → hot=true）
     const rm = new ResourceMonitor(
-      () => [{ name: "headless", pid: 12345 }],
+      () => [{ name: "headless", pid: null }],
       { rss_mb: 1, cpu_percent: 80, hot_streak: 3 },
     );
     await rm.sample();
@@ -82,12 +85,12 @@ describe("ResourceMonitor — hot_streak 阈值", () => {
   it("未超阈值 → hotStreak 清零", async () => {
     // 阈值 rss_mb=999999（host RSS 不可能超 → hot=false）
     const rm = new ResourceMonitor(
-      () => [{ name: "headless", pid: 12345 }],
+      () => [{ name: "headless", pid: null }],
       { rss_mb: 999_999, cpu_percent: 80, hot_streak: 3 },
     );
     // 先累积（设低阈值）
     const rmLow = new ResourceMonitor(
-      () => [{ name: "headless", pid: 12345 }],
+      () => [{ name: "headless", pid: null }],
       { rss_mb: 1, cpu_percent: 80, hot_streak: 5 },
     );
     await rmLow.sample();
@@ -96,7 +99,7 @@ describe("ResourceMonitor — hot_streak 阈值", () => {
 
     // 切换高阈值后第一次采样清零
     const rmHigh = new ResourceMonitor(
-      () => [{ name: "headless", pid: 12345 }],
+      () => [{ name: "headless", pid: null }],
       { rss_mb: 999_999, cpu_percent: 80, hot_streak: 5 },
     );
     await rmHigh.sample();
