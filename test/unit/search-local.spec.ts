@@ -49,7 +49,10 @@ try {
 } catch {
   DatabaseSync = null;
 }
-const HAS_NODE_SQLITE = DatabaseSync !== null;
+const NODE_MAJOR = Number(process.versions.node.split(".")[0]);
+// node:sqlite 稳定线：v23.4 起去旗标（22.x 能 require 但实验态 API 不完备——
+// CI 实测 22 败 18 过混合，readOnly/open 行为漂移）。require 成功≠可用。
+const HAS_NODE_SQLITE = DatabaseSync !== null && NODE_MAJOR >= 23;
 // 整文件门控（CI 修正二轮）：node:sqlite 是实验模块——CI 矩阵 node20 无此模块、
 // node22.x 需 --experimental-sqlite 旗标（不塞 CI 免脆弱）。缺它时 fixture db 造不出，
 // 全组连带假失败，故整文件跳过；本地 node ≥ 23.4/24 稳定态承担全量覆盖。
