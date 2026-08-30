@@ -200,11 +200,16 @@ function makeHeadlessWithStub(htmlFixture: string): {
 describe("browse extract — raw 默认 byte-identical v1.0（INV-66 硬验收）", () => {
   it("extract_mode 未传 → 走 take_snapshot（a11y 文本树）；不调 evaluate_script", async () => {
     const { channel, calls } = makeHeadlessWithStub(HTML_FIXTURE);
+    // review-r3 F3：先 navigate 暖会话（空白会话 extract 会门控先导航——那是
+    // navigate 的合法 evaluate 开销，不属于 raw 抽取管线；暖会话后本测试钉的
+    // 「raw 管线自身零 evaluate_script」断言语义不变）
+    await channel.browse("https://example.com/", "navigate", {});
+    const warmLen = calls.length;
     const r = await channel.browse("https://example.com/", "extract", {});
     expect(r.outcome).toBe("worked");
     expect(r.data!.preview).toContain("Hello World");
     // raw 档必走 take_snapshot（不走 evaluate_script outerHTML）
-    const toolNames = calls.map((c) => c.name);
+    const toolNames = calls.slice(warmLen).map((c) => c.name);
     expect(toolNames).toContain("take_snapshot");
     expect(toolNames).not.toContain("evaluate_script");
     // raw 档不填 markdown 元数据
@@ -213,17 +218,23 @@ describe("browse extract — raw 默认 byte-identical v1.0（INV-66 硬验收�
 
   it('extract_mode 显式 "raw" → 与未传 byte-identical（undefined ≡ "raw"）', async () => {
     const { channel: ch1, calls: calls1 } = makeHeadlessWithStub(HTML_FIXTURE);
+    await ch1.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
+    const warm1 = calls1.length;
     const r1 = await channel_browse(ch1, {});
     const { channel: ch2, calls: calls2 } = makeHeadlessWithStub(HTML_FIXTURE);
+    await ch2.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
+    const warm2 = calls2.length;
     const r2 = await channel_browse(ch2, { extract_mode: "raw" });
 
     // 输出 byte-identical
     expect(r1.data!.preview).toBe(r2.data!.preview);
     expect(r1.data!.title).toBe(r2.data!.title);
-    // 工具调用一致（都走 take_snapshot）
-    expect(calls1.map((c) => c.name)).toEqual(calls2.map((c) => c.name));
-    expect(calls2.map((c) => c.name)).toContain("take_snapshot");
-    expect(calls2.map((c) => c.name)).not.toContain("evaluate_script");
+    // 工具调用一致（都走 take_snapshot；暖会话后的 extract 段零 evaluate_script）
+    expect(calls1.slice(warm1).map((c) => c.name)).toEqual(
+      calls2.slice(warm2).map((c) => c.name),
+    );
+    expect(calls2.slice(warm2).map((c) => c.name)).toContain("take_snapshot");
+    expect(calls2.slice(warm2).map((c) => c.name)).not.toContain("evaluate_script");
   });
 });
 

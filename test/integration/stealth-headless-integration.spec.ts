@@ -167,16 +167,21 @@ describe("HeadlessChannel — P0 stealth 接入（parse13 §3.4 值级 trace）"
     expect(secondEvalIdx).toBeGreaterThan(navIdx);
   });
 
-  it("snapshot action → beforeNavigate 不调（仅 navigate 入口包 wrapNavigate）", async () => {
+  it("snapshot action → beforeNavigate 不调（仅 navigate 入口包 wrapNavigate；空白会话门控导航除外——review-r3 F3）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const stealth = new StealthEngine();
     const spy = vi.spyOn(stealth, "injectProfile");
     const ch = new HeadlessChannel(subproc, stealth, "windows_chrome_120");
 
+    // review-r3 F3：先 navigate 暖会话（空白会话 snapshot 门控导航合法触发 hook）；
+    // 暖会话后 snapshot 本身不触发 hook
+    await ch.browse("https://example.com/", "navigate", {});
+    expect(spy).toHaveBeenCalledTimes(1);
+
     await ch.browse("https://example.com/", "snapshot", {});
 
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("stealth.injectProfile 失败 → browse 不抛（best-effort；parse13 §8.3）", async () => {

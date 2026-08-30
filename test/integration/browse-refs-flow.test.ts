@@ -178,8 +178,10 @@ describe("include_refs 缺省关 — byte-identical 基线", () => {
 
   it("markdown 档缺省：expr 无 refs 注入（不含 data-lasso-uid setAttribute）", async () => {
     const { channel, calls } = makeHeadless();
+    await channel.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
+    const warmLen = calls.length;
     await extract(channel, { extract_mode: "markdown" });
-    const evalCalls = calls.filter((c) => c.name === "evaluate_script");
+    const evalCalls = calls.slice(warmLen).filter((c) => c.name === "evaluate_script");
     expect(evalCalls).toHaveLength(1);
     const fn = String(evalCalls[0].args.function);
     expect(fn).not.toContain("data-lasso-uid");
@@ -217,8 +219,10 @@ describe("extract_mode=markdown + include_refs=true — refs 附录", () => {
 
   it("expr 走注入路径（含 data-lasso-uid setAttribute + refs 收集）", async () => {
     const { channel, calls } = makeHeadless();
+    await channel.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
+    const warmLen = calls.length;
     await extract(channel, { extract_mode: "markdown", include_refs: true });
-    const evalCalls = calls.filter((c) => c.name === "evaluate_script");
+    const evalCalls = calls.slice(warmLen).filter((c) => c.name === "evaluate_script");
     expect(evalCalls).toHaveLength(1);
     const fn = String(evalCalls[0].args.function);
     expect(fn).toContain("data-lasso-uid");
@@ -279,14 +283,17 @@ describe("extract_mode=markdown + include_refs=true — refs 附录", () => {
 describe("extract_mode=raw + include_refs=true — 运行时忽略 + 诚实标注", () => {
   it("走 take_snapshot（不走 evaluate_script）+ data.ignored_include_refs=true", async () => {
     const { channel, calls } = makeHeadless();
+    await channel.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
+    const warmLen = calls.length;
     const r = await extract(channel, { include_refs: true });
     expect(r.outcome).toBe("worked");
     expect(r.data!.ignored_include_refs).toBe(true);
-    const names = calls.map((c) => c.name);
+    const names = calls.slice(warmLen).map((c) => c.name);
     expect(names).toContain("take_snapshot");
     expect(names).not.toContain("evaluate_script");
     // preview 与 raw 基线一致（忽略 = 不改变输出内容本身）
     const { channel: chBase } = makeHeadless();
+    await chBase.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
     const base = await extract(chBase, {});
     expect(r.data!.preview).toBe(base.data!.preview);
   });

@@ -303,6 +303,17 @@ export abstract class BrowseChannel extends UiChannel {
   /**
    * W2-DEF-N1 的执行体（P6 v1.18.1 抽出以便自愈重试原样复跑）：
    * NAV_FIRST 采集类 action 先导航，再跑 handler。
+   *
+   * review-r3 F3：导航的 final_url 透传进 handler 结果（`partial.final_url ??
+   * navFinalUrl`）——此前 nav-first 路径丢弃 nav 返回，browseSingle 兜底
+   * `partial.final_url ?? url` 回显请求 url（重定向后即伪造）。
+   *
+   * review-r3 F3（blank-gated nav-first）：snapshot/extract 只在**会话页仍空白**
+   * （本 client 生命周期从未导航 → 恒 about:blank）时先导航——兑现工具契约
+   * 「url (required) 定向采集」（descriptions：extract — full-page text
+   * extraction）。已导航会话保持「作用于当前页」语义（T-BROWSE-33 记录的设计）：
+   * navigate → click → extract 的点击后观察态不被回灌导航破坏；interact_observe/
+   * act(@pN) 经 InteractDispatcher 也走本路径，同享此保证。
    */
   private async dispatchAction(
     c: McpClient,
@@ -311,12 +322,47 @@ export abstract class BrowseChannel extends UiChannel {
     options: BrowseOptions,
     handler: ActionHandler,
   ): Promise<Partial<BrowseResult>> {
-    if (NAV_FIRST_ACTIONS.has(action)) {
+    if (
+      NAV_FIRST_ACTIONS.has(action) ||
+      this.needsFreshPageNav(c, action, url)
+    ) {
       const nav = this.actionDispatch.get("navigate");
-      if (nav) await nav(c, url, options);
+      let navFinalUrl: string | undefined;
+      if (nav) navFinalUrl = (await nav(c, url, options)).final_url;
+      this.navSeenClients.add(c);
+      const partial = await handler(c, url, options);
+      return { ...partial, final_url: partial.final_url ?? navFinalUrl };
     }
-    return await handler(c, url, options);
+    const partial = await handler(c, url, options);
+    // navigate 自身成功后才标记会话已导航（失败不标——下次 snapshot/extract 仍门控导航）
+    if (action === "navigate") this.navSeenClients.add(c);
+    return partial;
   }
+
+  /**
+   * review-r3 F3：FRESH_PAGE_NAV_ACTIONS 命中 + 本 client 会话从未导航（当前页
+   * = 上游新开空白页，L3 实证：此时单发 extract/snapshot 返 about:blank 空内容
+   * + outcome=worked）+ url 非占位 about:blank（forest 调度器缺 subtitle 时的
+   * 兜底值，无可导航目标）→ 返 true 需先导航。
+   */
+  private needsFreshPageNav(
+    c: McpClient,
+    action: string,
+    url: string,
+  ): boolean {
+    return (
+      FRESH_PAGE_NAV_ACTIONS.has(action) &&
+      url !== "about:blank" &&
+      !this.navSeenClients.has(c)
+    );
+  }
+
+  /**
+   * review-r3 F3：已导航会话集（WeakSet——上游 respawn 换 McpClient 实例自动
+   * 重置为「空白」，fresh-page 门控重新生效）。单一写者（dispatchAction），
+   * 不构成共享 mutable state 耦合面。
+   */
+  private readonly navSeenClients = new WeakSet<McpClient>();
 
   /**
    * P6（v1.18.1，得到实战问题集 P6）："No page selected" 零页面自愈钩子。
@@ -923,7 +969,8 @@ async function doSnapshot(
 ): Promise<Partial<BrowseResult>> {
   const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
   const { title, text } = extractSnapshot(r);
-  return { title, preview: text };
+  // review-r3 F3：final_url = a11y 树里的真实页面 URL（miss → browseSingle 兜底）
+  return { title, preview: text, final_url: extractRootWebAreaUrl(text) };
 }
 
 async function doScreenshot(
@@ -991,7 +1038,11 @@ async function doExtract(
     // v1.0 路径 byte-identical：take_snapshot → a11y 文本树
     const r = (await c.callTool("take_snapshot", {})) as SnapshotResult;
     const { title, text } = extractSnapshot(r);
-    return includeRefs ? { title, preview: text, ignored_include_refs: true } : { title, preview: text };
+    // review-r3 F3：final_url 诚实化（同 doSnapshot——a11y 树真实页面 URL）
+    const fu = extractRootWebAreaUrl(text);
+    return includeRefs
+      ? { title, preview: text, ignored_include_refs: true, final_url: fu }
+      : { title, preview: text, final_url: fu };
   }
 
   // ---------- markdown / markdown_cited 档（v1.1 新增） ----------
@@ -1051,6 +1102,9 @@ async function doExtract(
   return {
     title: mdResult.title ?? parsed.title ?? undefined,
     preview,
+    // review-r3 F3：markdown 档 evaluate 已抓 window.location.href——透传为
+    // final_url（真实页面 URL，不回显未被消费的请求 url）
+    final_url: parsed.url || undefined,
     // markdown 专属元数据（v1.1 扩展；raw 档不填，v1.0 调用方不读）
     ...(mdResult.byline ? { byline: mdResult.byline } : {}),
     ...(mdResult.citations ? { citations: mdResult.citations } : {}),
@@ -1259,6 +1313,20 @@ function extractSnapshot(r: SnapshotResult): { title?: string; text: string } {
   return { title: firstLine || undefined, text: txt };
 }
 
+/**
+ * review-r3 F3：从 a11y 文本树解析真实页面 URL。chrome-devtools-mcp snapshot
+ * 的 RootWebArea 行带 url="..."（L3 真机实证两种形态：带 title
+ * `RootWebArea "Example Domain" url="https://..."` 与裸 `RootWebArea url="..."`；
+ * about:blank 场景可检出——r3 空内容缺陷的取证信号）。
+ * 宽松匹配 + miss 返 undefined（格式漂移时退回 browseSingle 的 `?? url` 兜底，
+ * 不新增失败模式）。用途：snapshot/raw extract 的 final_url 诚实化——不再回显
+ * 未被消费的请求 url 伪装成已导航。
+ */
+function extractRootWebAreaUrl(snapshotText: string): string | undefined {
+  const m = snapshotText.match(/RootWebArea(?:\s+"[^"]*")?\s+url="([^"]*)"/);
+  return m ? m[1] : undefined;
+}
+
 function extractEvalPreview(r: EvaluateResult): string {
   return firstText(r) ?? "(no eval output)";
 }
@@ -1302,10 +1370,21 @@ export function truncatePreviewKeepingRefs(s: string): string {
  *  - timeout / 429 / 5xx / 网络错 → unknown
  * action 名拼错不在这里出现（browse() 提前 didnt 返回）。
  */
-// W2-DEF-N1（v1.8.1）：这些 URL 驱动的采集 action 要求目标页已加载——
+// W2-DEF-N1（v1.8.1）：这些 URL 驱动的采集 action **无条件**先导航——
 // browseSingle 先 navigate 再 dispatch（工具注释自 v0.5 起就承诺「URL → navigate + X」，
-// v1.8.1 补上真实导航）。snapshot/extract/wait/click 等保持原语义（作用于当前页）。
+// v1.8.1 补上真实导航）。wait/click 等保持原语义（作用于当前页）。
 const NAV_FIRST_ACTIONS = new Set(["network", "screenshot", "pdf"]);
+
+// review-r3 F3：URL 驱动但**会话语义敏感**的采集 action——只在会话页仍空白时
+// 先导航（needsFreshPageNav 门控），已导航会话作用于当前页。理由：
+//  - snapshot/extract 是工具默认 action + descriptions 承诺 URL 定向——空白会话
+//    单发返 about:blank 空内容 + worked + final_url 回显请求 url（L3 真机 ×6 实证，
+//    生产实例同病），是必修缺陷；
+//  - 但它们同时是「观察当前页」的合法用法（navigate → click → extract 看
+//    点击后状态；interact_observe/act(@pN) 经 InteractDispatcher 走同一
+//    dispatchAction）——无条件 nav-first 会把 root 注册 URL 回灌导航、破坏
+//    观察态（r3 原提案的反证，故收敛为空白门控）。
+const FRESH_PAGE_NAV_ACTIONS = new Set(["snapshot", "extract"]);
 
 function classifyBrowseError(msg: string, _action: string): Outcome {
   const m = msg.toLowerCase();

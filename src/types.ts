@@ -146,9 +146,12 @@ export interface BrowseResult {
 }
 
 // ============================================================
-// BrowseOptions（附录 A，v0.1 子集；steps/expect 仅类型定义占位，v0.3 实装）
+// BrowseOptions（附录 A；steps v1.8 Phase D 实装、expect 由 wait action 消费）
 // ============================================================
-/** v0.1 仅类型，v0.3 实装（expect 后置条件 tri-state） */
+/**
+ * expect 后置条件（steps 内 step.expect 由 StepEngine 三态消费；
+ * 顶层 expect 由 action=wait 消费——doWait 读 expect.text，BrowseChannel doWait）
+ */
 export interface ExpectCondition {
   text?: string;
   selector?: string;
@@ -165,8 +168,8 @@ export interface ScreenshotSpec {
 export interface BrowseOptions {
   selectors?: Record<string, string>;
   js?: string;
-  steps?: unknown[]; // v0.1 忽略
-  expect?: ExpectCondition; // v0.1 忽略
+  steps?: unknown[]; // browse() 入口消费：非空 → StepEngine.runChain（BrowseChannel browse 入口分流）
+  expect?: ExpectCondition; // action=wait 消费（doWait 读 expect.text，必需）；其余 action 忽略
   wait_until?: "load" | "domcontentloaded" | "networkidle";
   screenshot?: ScreenshotSpec;
   timeout_ms?: number;

@@ -162,6 +162,84 @@ describe("HeadlessChannel.browse — action 分发", () => {
     expect(getCalls().some((c) => c.name === "navigate_page")).toBe(true);
   });
 
+  // ============================================================
+  // review-r3 F3：空白会话门控导航（blank-gated nav-first for snapshot/extract）
+  // ============================================================
+  it("review-r3 F3：空白会话单发 snapshot → 先 navigate_page 再 take_snapshot（兑现 url 定向契约）", async () => {
+    const { channel, getCalls } = makeHeadlessWithStub();
+    const r = await channel.browse(
+      "https://example.com/",
+      "snapshot",
+      {},
+    );
+    expect(r.outcome).toBe("worked");
+    const calls = getCalls();
+    const navIdx = calls.findIndex((c) => c.name === "navigate_page");
+    const snapIdx = calls.findIndex((c) => c.name === "take_snapshot");
+    // 空白会话（本 client 从未导航，L3 实证恒 about:blank）必须先导航再采集
+    expect(navIdx).toBeGreaterThanOrEqual(0);
+    expect(snapIdx).toBeGreaterThan(navIdx);
+  });
+
+  it("review-r3 F3：已导航会话的 snapshot 不回灌导航（保持「作用于当前页」语义）", async () => {
+    const { channel, getCalls } = makeHeadlessWithStub();
+    await channel.browse("https://example.com/", "navigate", {});
+    const navCount = getCalls().filter((c) => c.name === "navigate_page").length;
+    const r = await channel.browse("https://example.com/", "snapshot", {});
+    expect(r.outcome).toBe("worked");
+    // navigate 之后的 snapshot 不再触发 navigate_page——navigate → click →
+    // extract/snapshot 的点击后观察态不被回灌导航破坏（interact forest 同享）
+    expect(
+      getCalls().filter((c) => c.name === "navigate_page").length,
+    ).toBe(navCount);
+  });
+
+  it("review-r3 F3：空白会话单发 extract（raw）→ 先导航再 take_snapshot", async () => {
+    const { channel, getCalls } = makeHeadlessWithStub();
+    const r = await channel.browse(
+      "https://example.com/",
+      "extract",
+      {},
+    );
+    expect(r.outcome).toBe("worked");
+    const calls = getCalls();
+    const navIdx = calls.findIndex((c) => c.name === "navigate_page");
+    expect(navIdx).toBeGreaterThanOrEqual(0);
+    expect(calls.findIndex((c) => c.name === "take_snapshot")).toBeGreaterThan(navIdx);
+  });
+
+  it("review-r3 F3：snapshot final_url 取 a11y 树 RootWebArea 真实页面 URL（不回显未被消费的请求 url）", async () => {
+    const custom = {
+      callTool: vi.fn(async (name: string) => {
+        if (name === "take_snapshot") {
+          // 页面真实位置 ≠ 请求 url（如 SPA 跳转后 / 点击后态）。
+          // L3 真机格式（review-r3 实抓）：RootWebArea 与 url= 之间带 title。
+          return textContent(
+            '## Latest page snapshot\nuid=1_0 RootWebArea "SPA" url="https://actual.example.com/spa"\n  uid=1_1 heading "After click"',
+          );
+        }
+        return textContent("stubbed");
+      }),
+      listTools: vi.fn(async () => [
+        { name: "navigate_page", inputSchema: {} },
+        { name: "take_snapshot", inputSchema: {} },
+      ]),
+      close: vi.fn(async () => {}),
+      pid: 1,
+      stderr: null,
+      isConnected: true,
+    } as unknown as McpClient;
+    const { channel, setClient } = makeHeadlessWithStub();
+    setClient(custom);
+    const r = await channel.browse(
+      "https://requested.example.com/",
+      "snapshot",
+      {},
+    );
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.final_url).toBe("https://actual.example.com/spa");
+  });
+
   it("screenshot action → take_screenshot 被调", async () => {
     const { channel, getCalls } = makeHeadlessWithStub();
     const r = await channel.browse(

@@ -61,7 +61,7 @@ export class ChangeDetection {
       dom_hash: sha1(dom),
       captured_at: Date.now(),
     };
-    const file = this._file(engine, query);
+    const file = this.baselinePath(engine, query);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(snapshot));
     logger.info({
@@ -87,7 +87,7 @@ export class ChangeDetection {
     currentDom: string,
   ): Promise<ChangeDetectionResult> {
     const currentHash = sha1(currentDom);
-    const file = this._file(engine, query);
+    const file = this.baselinePath(engine, query);
     try {
       const raw = await fs.readFile(file, "utf8");
       const baseline = JSON.parse(raw) as SerpSnapshot;
@@ -111,12 +111,11 @@ export class ChangeDetection {
     }
   }
 
-  /** 暴露 baseline 文件路径（doctor + 测试用）。 */
+  /**
+   * baseline 落盘路径：<baselineDir>/<sha1[0:2]>/<full>.json。
+   * 测试用公开面（review-r3：吸收原私有 _file 实现，消灭穿堂式包装——R-FF-04/R-DEP-03）。
+   */
   baselinePath(engine: string, query: string): string {
-    return this._file(engine, query);
-  }
-
-  private _file(engine: string, query: string): string {
     const h = sha1(`${engine}|${query}`);
     return path.join(this.baselineDir, h.slice(0, 2), `${h}.json`);
   }

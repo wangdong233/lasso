@@ -388,7 +388,7 @@ describe("SteelChannel — StealthEngine beforeNavigate hook", () => {
     expect(args[1]).toBe("windows_chrome_120"); // 默认 profile
   });
 
-  it("snapshot action → beforeNavigate 不调（仅 navigate hook）", async () => {
+  it("snapshot action → beforeNavigate 不调（仅 navigate hook；空白会话门控导航除外——review-r3 F3）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const stealth = new StealthEngine();
@@ -400,8 +400,12 @@ describe("SteelChannel — StealthEngine beforeNavigate hook", () => {
       { sessionProvider: makeMockSessionProvider() },
     );
 
+    // review-r3 F3：先 navigate 暖会话（空白会话 snapshot 门控导航合法触发 hook）；
+    // 暖会话后 snapshot 本身不触发 hook
+    await ch.browse("https://example.com/", "navigate", {});
+    expect(spy).toHaveBeenCalledTimes(1);
     await ch.browse("https://example.com/", "snapshot", {});
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("custom profile 名 → injectProfile 接该 profile", async () => {

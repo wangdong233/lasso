@@ -149,10 +149,13 @@ export class MachineMcpSearchChannel extends BaseChannel {
     }
     try {
       const c = await this._getClient();
+      // review-r3 F4：wire 参数对齐 producer schema（2026-08-31 本机 tools/list
+      // L2 实证：web_search_prime 仅收 search_query / search_domain_filter /
+      // search_recency_filter / content_size / location——无 count、无 search_intent，
+      // zod strip 静默丢弃）。此前发送的 count: opts.limit 与 search_intent: true
+      // 是死 wire 参数（L3：limit=2 实返 10 条），全链移除。
       const resp = (await c.callTool("web_search_prime", {
         search_query: query,
-        search_intent: true,
-        count: opts.limit,
         // v1.12（round2 T2-5）：freshness 透传（同一上游同参数名；不传 = 不限时效）
         ...(opts.freshness
           ? { search_recency_filter: ZHIPU_RECENCY_MAP[opts.freshness] ?? opts.freshness }
@@ -160,15 +163,19 @@ export class MachineMcpSearchChannel extends BaseChannel {
       })) as { content?: Array<{ type: string; text?: string }> };
 
       const parsed = parseMachineMcpContent(resp?.content);
+      // review-r3 F4：上游无 count 参数（恒返默认 ~10 条）→ limit 在本层落实
+      // （slice 到调用方声明的上限；工具 schema 契约「limit 1-50」自此真实生效。
+      // 此前单源路径（machine_mcp 是零配置默认源）limit 完全被忽略）。
+      const results = parsed.slice(0, opts.limit);
       // 10 §D.1：200 但 0 结果 = unknown（触发跨模态 fallback）
-      const outcome: Outcome = parsed.length === 0 ? "unknown" : "worked";
+      const outcome: Outcome = results.length === 0 ? "unknown" : "worked";
 
       return {
         outcome,
         data: {
           query,
-          results: parsed,
-          count: parsed.length,
+          results,
+          count: results.length,
           engine: "machine_mcp",
           region: opts.region,
         },

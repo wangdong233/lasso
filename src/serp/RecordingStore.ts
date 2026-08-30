@@ -90,7 +90,7 @@ export class RecordingStore {
    * 应通过 saveIfRecording() fire-and-forget。
    */
   async save(engine: string, query: string, snapshot: string): Promise<RecordingEntry> {
-    const file = this._file(engine, query);
+    const file = this.pathOf(engine, query);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, snapshot, "utf8");
     const entry: RecordingEntry = {
@@ -137,7 +137,7 @@ export class RecordingStore {
    * 这就是 v0.9 的「replay」入口（parse10 §3.4）：按 (engine, query) 哈希读盘。
    */
   async load(engine: string, query: string): Promise<string | null> {
-    const file = this._file(engine, query);
+    const file = this.pathOf(engine, query);
     try {
       return await fs.readFile(file, "utf8");
     } catch {
@@ -170,7 +170,7 @@ export class RecordingStore {
     recorded_at?: number;
     note: string;
   }> {
-    const file = this._file(engine, query);
+    const file = this.pathOf(engine, query);
     try {
       const stat = await fs.stat(file);
       const snapshot = await fs.readFile(file, "utf8");
@@ -196,7 +196,7 @@ export class RecordingStore {
   /** 是否存在录制（doctor + 测试用）。 */
   async has(engine: string, query: string): Promise<boolean> {
     try {
-      await fs.access(this._file(engine, query));
+      await fs.access(this.pathOf(engine, query));
       return true;
     } catch {
       return false;
@@ -244,12 +244,11 @@ export class RecordingStore {
     return out;
   }
 
-  /** 暴露录制文件路径（测试用）。 */
+  /**
+   * 录制文件路径：<dir>/<sha1[0:2]>/<full>.html。
+   * 测试用公开面（review-r3：吸收原私有 _file 实现，消灭穿堂式包装——R-FF-04/R-DEP-03）。
+   */
   pathOf(engine: string, query: string): string {
-    return this._file(engine, query);
-  }
-
-  private _file(engine: string, query: string): string {
     const h = crypto
       .createHash("sha1")
       .update(`${engine}|${query}`)

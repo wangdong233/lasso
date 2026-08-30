@@ -158,7 +158,7 @@ describe("MachineMcpSearchChannel.search — detected + 非空 → worked", () =
     );
   });
 
-  it("callTool 参数含 search_query + search_intent + count（同 ZhipuSearchChannel）", async () => {
+  it("callTool wire 参数对齐 producer schema（review-r3 F4：无 count / 无 search_intent 死参数）", async () => {
     stubCall.mockResolvedValue(NONEMPTY);
     const ch = new MachineMcpSearchChannel(
       "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
@@ -175,8 +175,29 @@ describe("MachineMcpSearchChannel.search — detected + 非空 → worked", () =
     expect(toolName).toBe("web_search_prime");
     const a = args as Record<string, unknown>;
     expect(a.search_query).toBe("hello world");
-    expect(a.search_intent).toBe(true);
-    expect(a.count).toBe(7);
+    // 2026-08-31 tools/list L2 实证：上游 schema 只收
+    // search_query/search_domain_filter/search_recency_filter/content_size/location。
+    // count/search_intent 曾被 zod strip 静默丢弃（limit=2 实返 10 条）→ 已移除。
+    expect(a.count).toBeUndefined();
+    expect(a.search_intent).toBeUndefined();
+  });
+
+  it("limit 在 channel 层落实（review-r3 F4：上游无 count 参数 → slice 到声明上限）", async () => {
+    stubCall.mockResolvedValue(NONEMPTY); // 2 条结果
+    const ch = new MachineMcpSearchChannel(
+      "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
+      "Bearer xxx",
+    );
+    const r = await ch.search("rust tokio", {
+      limit: 1,
+      engine: "machine_mcp",
+      region: "cn",
+      no_cache: false,
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.results).toHaveLength(1);
+    expect(r.data!.count).toBe(1);
+    expect(r.data!.results[0].url).toBe("https://tokio.rs/");
   });
 
   it("client 进程内复用（多次 search 只 connectHttp 一次）", async () => {

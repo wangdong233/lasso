@@ -81,7 +81,7 @@ export class SearchCache {
     limit: number,
     freshness?: string,
   ): Promise<InteractResult<SearchResult> | null> {
-    const key = this._key(query, engine, region, limit, freshness);
+    const key = this.computeKey(query, engine, region, limit, freshness);
     const file = this._file(key);
     try {
       const stat = await fs.stat(file);
@@ -112,7 +112,7 @@ export class SearchCache {
     result: InteractResult<SearchResult>,
     freshness?: string,
   ): Promise<void> {
-    const key = this._key(query, engine, region, limit, freshness);
+    const key = this.computeKey(query, engine, region, limit, freshness);
     const file = this._file(key);
     try {
       await fs.mkdir(path.dirname(file), { recursive: true });
@@ -155,7 +155,14 @@ export class SearchCache {
   }
 
   /**
-   * 暴露 cache key（测试 + doctor 用）。INV-11 守：含 engine+region+limit（+freshness）。
+   * attribution key：sha1(canonical(query) | engine | region | limit | freshness?)。
+   * 测试用公开面（review-r3：吸收原私有 _key 实现，消灭穿堂式包装——R-FF-04/R-DEP-03）。
+   * INV-11 守：含 engine+region+limit（+freshness）。
+   *
+   * INV-11（v1.11 T6 修订）：必须含 engine + region + limit + 全部影响结果的
+   * query 参数（当前为 freshness）；缺一即违反不变量。freshness 不传时 key 与
+   * v1.10 基线 byte-identical（可选参数零回归）。
+   * canonical：trim + lowercase + 单空格 + NFD + 去 combining diacritics。
    */
   computeKey(
     query: string,
@@ -164,33 +171,7 @@ export class SearchCache {
     limit: number,
     freshness?: string,
   ): string {
-    return this._key(query, engine, region, limit, freshness);
-  }
-
-  /** 当前 cache 文件总数（测试 + doctor 用；非递归只到分片根）。 */
-  async count(): Promise<number> {
-    return (await this._listAllFiles()).length;
-  }
-
-  // ============================================================
-  // 私有
-  // ============================================================
-  /**
-   * attribution key：sha1(canonical(query) | engine | region | limit | freshness?)。
-   *
-   * INV-11（v1.11 T6 修订）：必须含 engine + region + limit + 全部影响结果的
-   * query 参数（当前为 freshness）；缺一即违反不变量。freshness 不传时 key 与
-   * v1.10 基线 byte-identical（可选参数零回归）。
-   * canonical：trim + lowercase + 单空格 + NFD + 去 combining diacritics。
-   */
-  private _key(
-    q: string,
-    engine: string,
-    region: string,
-    limit: number,
-    freshness?: string,
-  ): string {
-    const canon = q
+    const canon = query
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ")
@@ -202,6 +183,14 @@ export class SearchCache {
       .digest("hex");
   }
 
+  /** 当前 cache 文件总数（测试 + doctor 用；非递归只到分片根）。 */
+  async count(): Promise<number> {
+    return (await this._listAllFiles()).length;
+  }
+
+  // ============================================================
+  // 私有
+  // ============================================================
   /** 分片路径：<cacheDir>/<sha1[0:2]>/<sha1[2:4]>/<full>.json */
   private _file(key: string): string {
     return path.join(

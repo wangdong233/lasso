@@ -94,7 +94,8 @@ const browseSchema = {
       // byte-identical，INV-66 手法）。markdown* 档注入 data-lasso-uid ref +
       // 附录；raw 档运行时忽略 + ignored_include_refs:true 标注（冲突 #8）。
       include_refs: z.boolean().optional(),
-      // v0.1 忽略（types.ts 里有定义，仅供 LLM 提前写好）
+      // action=wait 消费（doWait 读 expect.text，必需；BrowseChannel doWait）；
+      // 其余 action 忽略。steps 内的 expect 是 step 自有字段（StepEngine 三态消费）。
       expect: z
         .object({
           text: z.string().optional(),
