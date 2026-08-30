@@ -318,7 +318,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **20 样本**（外部契约类全覆盖；未验证 pin 显性化报告） |
 | TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2253 测试**（135 文件；doc/testing/01 ft-round1 门禁两轮独立复跑在档 + doc/governance/08 静默性审计补测） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；rust-helper 自 v1.13 起零改） |
-| 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | CI Linux runner |
+| 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤） |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ × 三引擎 × 多 query | 12+ fixtures |
 | 故障注入 | vitest | fallback 链 / 限流 / 政策 gate / SERP 改版 | ~20 场景 |
 | 全量功能测试 | doc/testing/01 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |

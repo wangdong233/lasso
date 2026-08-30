@@ -213,7 +213,7 @@ Lasso 不存 cookie；cookie 留在本机 Chrome。如果 Chrome 的 cookie 过�
 
 ### Q5：`desktop` 在 Windows/Linux 上能跑吗？
 
-**编译可证 + 契约可证，真机执行待社区反馈**。Lasso v1.0 的 Windows UIA + Linux AT-SPI backend 经 `cargo check --target` 验证编译可过（v1.18.4 起 GitHub CI 每次推送都跑 Linux `cargo check --target x86_64-unknown-linux-gnu` 面），OutlineNode 三平台同构契约层有 CI 单测。但真实 Win/Linux 运行时执行留 [parse11-acceptance.md](../archive/parse/parse11-acceptance.md) 手测清单（标 pending）。**不伪造「已验证 Windows/Linux」**。
+**编译可证 + 契约可证，真机执行待社区反馈**。Lasso v1.0 的 Windows UIA + Linux AT-SPI backend 经 `cargo check --target` 验证编译可过（跨平台 `cargo check --target` 属**本地/手测面**——GitHub CI 为 ubuntu × Node 20/22 的 JS 门禁三件套，**不含** Rust 交叉编译步骤），OutlineNode 三平台同构契约层有 CI 单测。但真实 Win/Linux 运行时执行留 [parse11-acceptance.md](../archive/parse/parse11-acceptance.md) 手测清单（标 pending）。**不伪造「已验证 Windows/Linux」**。
 
 ### Q6：如何录制 search 基线？
 

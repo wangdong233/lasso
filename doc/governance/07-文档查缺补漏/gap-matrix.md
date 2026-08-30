@@ -289,7 +289,7 @@ KEY-GUIDE.md、README.md、doc/testing/01 与 doc/governance/01-06（原 17-25�
 
 ## 8. 续盘 v1.17.2 → v1.18.4（2026-08-27，仓迁后首盘）
 
-> 本节是 §1 矩阵的续行（增补不推翻；§1 原行不动）。基线：`lasso-mcp v1.18.4`（HEAD=`e4c73aa`，npm latest）。新事实基准：**17 工具 / 82 INV / 2417 passed + 1 skipped（143 files）/ selftest 23 / GitHub CI（.github/workflows/ci.yml，含 Linux cargo check --target 面）**。
+> 本节是 §1 矩阵的续行（增补不推翻；§1 原行不动）。基线：`lasso-mcp v1.18.4`（HEAD=`e4c73aa`，npm latest）。新事实基准：**17 工具 / 82 INV / 2417 passed + 1 skipped（143 files）/ selftest 23 / GitHub CI（.github/workflows/ci.yml = ubuntu × Node 20/22 门禁三件套，不含 Rust cargo 面——跨平台编译仍为本地手测）**。
 
 | # | 文档 | 写到哪个版本 | 新鲜度 | 处置（本轮已做 / 遗留） |
 |---|---|---|---|---|
