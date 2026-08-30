@@ -54,10 +54,8 @@ export const pdfSchema = {
       margin_bottom: z.number().min(0).max(5).optional(),
       margin_left: z.number().min(0).max(5).optional(),
       margin_right: z.number().min(0).max(5).optional(),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .default("load"),
-      timeout_ms: z.number().int().positive().default(30_000),
+      // review-r2：wait_until / timeout_ms 已删——doNavigate 只透传
+      // {type,url,ignoreCache}（BrowseChannel），两参数全链路零消费。
     })
     .default({}),
 };
@@ -151,8 +149,6 @@ if (!ssrfResult.allowed) {
     ...(opts.margin_right !== undefined
       ? { pdf_margin_right: opts.margin_right }
       : {}),
-    wait_until: opts.wait_until,
-    timeout_ms: opts.timeout_ms,
   };
 
   // ---------- 3. 经 BrowseChannel 入口（隐式享受 browse fallback 链；不绕过 INV-6） ----------
@@ -277,10 +273,7 @@ export function registerPdfTool(
         ...(args.options.margin_right !== undefined
           ? { margin_right: args.options.margin_right }
           : {}),
-        wait_until: args.options.wait_until,
-        timeout_ms: args.options.timeout_ms,
       };
-
       const result = await doPdfTool(url, opts, headless, ssrfConfig);
       // SSRF 拒绝 / Go/No-Go F1 / browse 失败 / 成功 都包成 InteractResult，序列化即可
       return payloadContent(result);

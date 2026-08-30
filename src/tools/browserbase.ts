@@ -40,18 +40,17 @@ const browserbaseSchema = {
     .object({
       selectors: z.record(z.string()).optional(),
       js: z.string().optional(),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .optional(),
+      // review-r2：wait_until / screenshot.element / timeout_ms / stealth_profile
+      // 已删——四者全链路零消费（doNavigate 只读 no_cache；doScreenshot 只读
+      // screenshot.full；stealth 注入走 BrowserbaseChannel constructor profileName，
+      // 本字段从未被读取）。与 browse.ts schema 同步诚实化。
       screenshot: z
         .object({
           full: z.boolean().optional(),
-          element: z.string().optional(),
         })
         .optional(),
-      timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
-      // 与 browse.ts 同构：expect 字段供 LLM 提前写好（channel 内 ExpectPoll 消费）
+      // 与 browse.ts 同构：expect 字段供 LLM 提前写好（channel 内 wait action 消费）
       expect: z
         .object({
           text: z.string().optional(),
@@ -60,17 +59,6 @@ const browserbaseSchema = {
           gone: z.boolean().optional(),
           timeout_ms: z.number().int().positive().optional(),
         })
-        .optional(),
-      /**
-       * stealth profile 名（parse5 §3.3.2 STEALTH_PROFILES 顶级 const 的 key）。
-       * 默认 "windows_chrome_120"（BrowserbaseChannel 构造期默认值；这里仅作 schema 提示，
-       * 实际 profile 由 BrowserbaseChannel.beforeNavigate 读取 constructor.profileName）。
-       *
-       * INV-30：profile 数据是 stealth-profiles.ts 顶级 const，不从 env 读（anti-gaming）。
-       * 本字段允许 LLM 在 options 里**建议** profile，但实际注入由 channel 决定。
-       */
-      stealth_profile: z
-        .enum(["windows_chrome_120", "mac_safari_17", "linux_firefox_121"])
         .optional(),
     })
     .default({}),

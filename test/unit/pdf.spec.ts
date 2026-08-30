@@ -69,8 +69,6 @@ const DEFAULT_OPTS: PdfOptions = {
   format: "A4",
   landscape: false,
   print_background: true,
-  wait_until: "load",
-  timeout_ms: 30_000,
 };
 
 function makeMockHeadless(

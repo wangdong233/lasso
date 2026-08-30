@@ -60,9 +60,8 @@ export const networkSchema = {
       include_bodies: z.boolean().default(false),
       // v1.11 T5：原生工具即时返回，timeout_ms 不再控制采集窗口；字段保留（zod 契约稳定）
       timeout_ms: z.number().int().positive().max(30_000).default(3_000),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .default("load"),
+      // review-r2：wait_until 已删——doNavigate 只透传 {type,url,ignoreCache}，
+      // 全链路零等待语义（与 screenshot/pdf 同族接口面死角）。
     })
     .default({}),
 };
@@ -235,11 +234,12 @@ if (!ssrfResult.allowed) {
   }
 
   // ---------- 2. 透传 BrowseOptions 形状（network_* 字段；doNetwork 读） ----------
+  // review-r2：wait_until 转发已删（channel 零消费）；timeout_ms → network_timeout_ms
+  // 保留（cdp-actions.ts:186 已披露「原生工具即时返回、不再适用」）。
   const browseOpts: BrowseOptions = {
     network_filter: opts.filter,
     network_include_bodies: opts.include_bodies,
     network_timeout_ms: opts.timeout_ms,
-    wait_until: opts.wait_until,
   };
 
   // ---------- 3. 经 BrowseChannel 入口（隐式享受 browse fallback 链；不绕过 INV-6） ----------
@@ -416,7 +416,6 @@ export function registerNetworkTool(
         filter: args.options.filter,
         include_bodies: args.options.include_bodies,
         timeout_ms: args.options.timeout_ms,
-        wait_until: args.options.wait_until,
       };
 
       const result = await doNetworkTool(url, opts, headless, ssrfConfig);

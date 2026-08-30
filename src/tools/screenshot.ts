@@ -42,10 +42,6 @@ export const screenshotSchema = {
     .object({
       // 整页截图（透传 doScreenshot 的 opts.screenshot.full）
       full_page: z.boolean().default(false),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .default("load"),
-      timeout_ms: z.number().int().positive().default(30_000),
     })
     .default({}),
 };
@@ -100,12 +96,14 @@ if (!ssrfResult.allowed) {
   // review-r1：viewport / region / format / quality 四参数已从 schema 移除——
   // v0.5 起「接受但不映射」的 deferred 依据（上游 0.3.0 只接 fullPage+format）已随
   // v1.11 锁 1.7.0 失效且从未复审，调用方传 region 会静默得到整页 PNG（接口面死角）。
-  // 接口面诚实化：只声明真正落地的三参数。format/viewport 若未来接入，须连同
-  // doScreenshot 的 PNG magic 校验 / 扩展名 / extractScreenshotPath 一起实装后再回 schema。
+  // review-r2：wait_until / timeout_ms 同理由移除——doNavigate 只透传
+  // {type,url,ignoreCache}（BrowseChannel doNavigate），两参数全链路零消费，
+  // description 却宣称 default 'load' 等待语义（接口面死角同族）。
+  // 接口面诚实化：只声明真正落地的参数。format/viewport/wait_until 若未来接入，
+  // 须连同 doScreenshot 的 PNG magic 校验 / 扩展名 / extractScreenshotPath /
+  // doNavigate 的等待映射一起实装后再回 schema。
   const browseOpts: BrowseOptions = {
     screenshot: { full: opts.full_page },
-    wait_until: opts.wait_until,
-    timeout_ms: opts.timeout_ms,
   };
 
   // ---------- 3. 经 BrowseChannel 入口（隐式享受 browse fallback 链；不绕过 INV-6） ----------
@@ -171,8 +169,6 @@ export function registerScreenshotTool(
       // zod .default({}) 已注入所有默认值
       const opts: ScreenshotOptions = {
         full_page: args.options.full_page,
-        wait_until: args.options.wait_until,
-        timeout_ms: args.options.timeout_ms,
       };
 
       const result = await doScreenshotTool(url, opts, headless, ssrfConfig);

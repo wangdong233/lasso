@@ -49,16 +49,16 @@ const browseSchema = {
     .object({
       selectors: z.record(z.string()).optional(),
       js: z.string().optional(),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .optional(),
+      // review-r2：wait_until / screenshot.element / timeout_ms 已从 schema 删除——
+      // 三者自 v0.1 起「schema 接受 → channel 零消费」（doNavigate 只读 no_cache、
+      // doScreenshot 只读 screenshot.full；grep waitUntil 全 src=0），调用方传
+      // wait_until=networkidle 期望等待语义会静默无效（review-r1 F3 同类死角）。
+      // 未来接入时须连同 doNavigate 的 navigate_page 映射一起实装后再回 schema。
       screenshot: z
         .object({
           full: z.boolean().optional(),
-          element: z.string().optional(),
         })
         .optional(),
-      timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
       // v1.18.2（doc/governance/10 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
       // （慢站/长 SPA/多步表单等合法长链显式放宽；预算耗尽终止语义=unknown 可重试）。

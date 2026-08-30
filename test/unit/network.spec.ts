@@ -75,7 +75,6 @@ const DEFAULT_OPTS: NetworkOptions = {
   filter: "all",
   include_bodies: false,
   timeout_ms: 3_000,
-  wait_until: "load",
 };
 
 function makeMockHeadless(
@@ -264,7 +263,6 @@ describe("network — 经 BrowseChannel.browse 入口（INV-33）", () => {
         network_filter: "all",
         network_include_bodies: false,
         network_timeout_ms: 3_000,
-        wait_until: "load",
       }),
     );
   });

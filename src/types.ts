@@ -439,11 +439,12 @@ export interface FetchUrlResult {
  * region 得到整页 PNG）；deferred 依据（上游 0.3.0 只接 fullPage+format）已随 v1.11
  * 锁 1.7.0 失效。未来接入 format 时须连同 doScreenshot 的 PNG magic 校验 / 扩展名 /
  * extractScreenshotPath 一起实装后再回 schema + 类型。
+ *
+ * review-r2（2026-08-31）：wait_until / timeout_ms 同理由删除——doNavigate 只透传
+ * {type,url,ignoreCache}，两参数全链路零消费（review-r1 F3 同族接口面死角）。
  */
 export interface ScreenshotOptions {
   full_page: boolean;
-  wait_until: "load" | "domcontentloaded" | "networkidle";
-  timeout_ms: number;
 }
 
 /**
@@ -478,8 +479,7 @@ export interface PdfOptions {
   margin_bottom?: number;
   margin_left?: number;
   margin_right?: number;
-  wait_until: "load" | "domcontentloaded" | "networkidle";
-  timeout_ms: number;
+  // review-r2：wait_until / timeout_ms 已删（channel 零消费；与 ScreenshotOptions 同步）
 }
 
 /**
@@ -515,7 +515,8 @@ export interface PdfResult {
  *  - filter 维度 = xhr / fetch / img / 3rd-party / all（5 case 单维度 switch；parse6 §3.4.3）
  *  - include_bodies v0.5 接受但 doNetwork 不实装（文档化推迟 v0.6；schema forward-compat）
  *  - timeout_ms 默认 3000ms（v1.11 T5：字段保留；原生工具即时返回）
- *  - wait_until 默认 "load"（与 screenshot/pdf 同档；先 navigate 完再注入 observer）
+ *  - review-r2：wait_until 已删——doNavigate 只透传 {type,url,ignoreCache}，
+ *    全链路零等待语义（接口面死角；与 screenshot/pdf 同步诚实化）
  *
  * 设计原则：schema 接受 → doNetwork 透传 → 简化或文档化未实装字段（守 R-CI-02）。
  */
@@ -525,7 +526,6 @@ export interface NetworkOptions {
   include_bodies: boolean;
   /** v1.11 T5：字段保留（原生工具即时返回，不再控制采集窗口）；默认 3000ms */
   timeout_ms: number;
-  wait_until: "load" | "domcontentloaded" | "networkidle";
 }
 
 /**

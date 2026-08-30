@@ -40,18 +40,17 @@ const steelSchema = {
     .object({
       selectors: z.record(z.string()).optional(),
       js: z.string().optional(),
-      wait_until: z
-        .enum(["load", "domcontentloaded", "networkidle"])
-        .optional(),
+      // review-r2：wait_until / screenshot.element / timeout_ms / stealth_profile
+      // 已删——四者全链路零消费（doNavigate 只读 no_cache；doScreenshot 只读
+      // screenshot.full；stealth 注入走 SteelChannel constructor profileName，
+      // 本字段从未被读取）。与 browse.ts schema 同步诚实化。
       screenshot: z
         .object({
           full: z.boolean().optional(),
-          element: z.string().optional(),
         })
         .optional(),
-      timeout_ms: z.number().int().positive().optional(),
       no_cache: z.boolean().optional(),
-      // 与 browserbase.ts 同构：expect 字段供 LLM 提前写好（channel 内 ExpectPoll 消费）
+      // 与 browse.ts 同构：expect 字段供 LLM 提前写好（channel 内 wait action 消费）
       expect: z
         .object({
           text: z.string().optional(),
@@ -60,14 +59,6 @@ const steelSchema = {
           gone: z.boolean().optional(),
           timeout_ms: z.number().int().positive().optional(),
         })
-        .optional(),
-      /**
-       * stealth profile 名（parse5 §3.3.2 STEALTH_PROFILES 顶级 const 的 key）。
-       * Steel 自带 fingerprint-generator（比 Browserbase 更强）；Lasso StealthEngine 作为可选叠加。
-       * INV-30：profile 数据是 stealth-profiles.ts 顶级 const，不从 env 读（anti-gaming）。
-       */
-      stealth_profile: z
-        .enum(["windows_chrome_120", "mac_safari_17", "linux_firefox_121"])
         .optional(),
     })
     .default({}),

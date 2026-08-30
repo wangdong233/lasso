@@ -59,10 +59,9 @@ const METADATA_IPS = ["169.254.169.254"];
 const EMPTY_CONFIG: SsrfConfig = { allowRanges: [], denyRanges: [] };
 
 // review-r1：viewport / region / format / quality 已从 ScreenshotOptions 移除
+// review-r2：wait_until / timeout_ms 已从 ScreenshotOptions 移除（channel 零消费）
 const DEFAULT_OPTS: ScreenshotOptions = {
   full_page: false,
-  wait_until: "load",
-  timeout_ms: 30_000,
 };
 
 /**
@@ -174,8 +173,6 @@ describe("screenshot — 经 BrowseChannel.browse 入口（INV-33）", () => {
       "screenshot",
       expect.objectContaining({
         screenshot: { full: false },
-        wait_until: "load",
-        timeout_ms: 30_000,
       }),
     );
   });
@@ -203,7 +200,9 @@ describe("screenshot — 经 BrowseChannel.browse 入口（INV-33）", () => {
     expect(opts.screenshot?.full).toBe(true);
   });
 
-  it("wait_until + timeout_ms 透传到 browseOpts", async () => {
+  // review-r2：wait_until / timeout_ms 已从 schema+类型移除（channel 零消费）。
+  // 守护：browseOpts 只携带 screenshot 字段——若未来有人把死参数转发加回来，本测红。
+  it("browseOpts 不携带 wait_until / timeout_ms（review-r2 接口面诚实化）", async () => {
     const browseMock = vi.fn().mockResolvedValue({
       outcome: "worked",
       data: { url: "https://example.com/", action: "screenshot", preview: "/tmp/x.png" },
@@ -214,13 +213,14 @@ describe("screenshot — 经 BrowseChannel.browse 入口（INV-33）", () => {
     const { headless } = makeMockHeadless(browseMock);
     await doScreenshotTool(
       "https://example.com/",
-      { ...DEFAULT_OPTS, wait_until: "networkidle", timeout_ms: 60_000 },
+      { ...DEFAULT_OPTS, full_page: false },
       headless,
       EMPTY_CONFIG,
     );
     const opts = browseMock.mock.calls[0]![2] as BrowseOptions;
-    expect(opts.wait_until).toBe("networkidle");
-    expect(opts.timeout_ms).toBe(60_000);
+    expect(opts).toEqual({ screenshot: { full: false } });
+    expect("wait_until" in opts).toBe(false);
+    expect("timeout_ms" in opts).toBe(false);
   });
 });
 
