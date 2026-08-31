@@ -320,7 +320,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 |---|---|---|---|
 | 架构不变量 | `check-invariants.mjs`（自写） | INV-1..84 静态 grep + 形状测 | **84 条** |
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84，26 个 pin 红翻转实证**（外部契约类全覆盖；未验证 pin 显性化报告） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak 等 | **2467 passed + 1 skipped**（147 文件；P2 处置轮本机实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak 等 | **2471 passed + 1 skipped**（148 文件；#4 裁决落地后本机实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；`rust-helper/src/*.rs` 自 v1.13 零改——v1.18.4 仅动 `build/sign.sh` ad-hoc 签名链） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤——r4 轮改真口径） |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ 三引擎录制基线 | 6 条 HTML fixture（baidu/bing/google ×2；doctor #32 实跑 detail） |
@@ -451,9 +451,9 @@ $ lasso launch-chrome
   - **v1.18.5**：发布面清理——npm 包 1.18.1~1.18.4 误含应用域私有文件已弃用，本版起发布面收敛为本体（~28MB → 正常体积）；doc/ 目录重整为七组结构（usage/architecture/testing/governance/bugs/history/archive，2026-08-27）
   - **v1.18.6**：bug02 真闭环 + 隐藏全生命周期执守（doc/bugs/02）——CLI 显式拉起默认 `idleMs:0` + `chrome-touch` 约定文件外部活动信号 + `desired-hide-enforcer` 独立执守进程（server 不在也 ≤2s 压回，账空自退）
   - **v1.18.7**：架构重审落地——browse 族接口面死参数清扫（诚实化）+ doctor/channels 解耦（INV-84）+ firstText 单一定义（INV-83）+ 文档改真 + INV 82→84；随后 P2 处置轮（doc/governance/11）46 项三档裁决 + `launch-chrome --help` 误启动修复 + CI actions 升 checkout@v7 / setup-node@v6 并加 Node 24
-- **doctor readiness 现状（如实）**：任一 check fail → `ready:false`。**#15 `rust_helper_signed` 现行语义 = ad-hoc 签名 → fail**（「binary 已签但非 Developer ID」，终致 ready:false）——与 build 链 ad-hoc 兜底签名共存（无 Developer ID 环境的实际产物即 ad-hoc）；「#15 降级 warn」为**待产品裁决的未决项**，未拍板前不动代码，现状如实保留
+- **doctor readiness 现状（如实）**：任一 check fail → `ready:false`。**#15 `rust_helper_signed` 现行语义 = ad-hoc 签名 → warn**（2026-08-31 用户裁决降级：ad-hoc 是官方免费合法方案、功能正常，唯一代价 rebuild 后 TCC 重授权；FAIL 把正常配置判成 ready:false 属噪音。Developer ID 长期方案保留在 next_step；Developer ID 正签仍 pass、未签仍 warn——回归测试 rust-helper-signed-warn.spec 三态锚定）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁（本地）**：`npm run build` / `npm test`（vitest 2467 passed + 1 skipped，147 文件 + readme-sync）/ `npm run check-invariants`（84）/ `npm run inv-selftest`（20 样本 26 pin 红翻转）+ `cargo test`（207，CI 不含）
+- **门禁（本地）**：`npm run build` / `npm test`（vitest 2471 passed + 1 skipped，148 文件 + readme-sync）/ `npm run check-invariants`（84）/ `npm run inv-selftest`（20 样本 26 pin 红翻转）+ `cargo test`（207，CI 不含）
 - **CI（.github/workflows/ci.yml 实况）**：ubuntu-latest × Node **20/22/24** 矩阵（20=下限锚点 / 22=maintenance LTS / 24=active LTS——search-local 的 `node:sqlite` 依赖 NODE_MAJOR>=23，加 24 后该文件 40 测在 CI 真跑）；actions checkout@v7 / setup-node@v6；步骤 = npm ci → build → test → check-invariants（**JS 门禁三件套，无 cargo 步骤**——Rust 面靠本地 cargo test/check 守）
 
 ## 15. 质量与决策主线（doc/governance/01 → doc/governance/06 → doc/testing/01）

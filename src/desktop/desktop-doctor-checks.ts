@@ -135,24 +135,34 @@ export async function runRustDoctorChecks(
  *
  * 用 codesign -dvvv 验证 helper binary 签了 Developer ID Application:。
  *  - 找不到 binary → warn（M0.5a 阶段允许尚未构建；doctor 提示 `cargo build --release`）
- *  - 找到但未签 / ad-hoc 签 → fail（TCC.db 不持久；验收 #7 红）
+ *  - 找到但未签 / ad-hoc 签 → **warn**（2026-08-31 用户裁决：ad-hoc 是官方免费合法方案，
+ *    功能完全正常——唯一代价是 rebuild 后 TCC 重授权；FAIL 语义把正常配置判成
+ *    ready:false 属噪音。Developer ID 长期方案保留在 next_step）
  *  - 找到且签了 Developer ID → pass，detail 报 Authority
  *
  * INV-21：本 check 只跑 shell `codesign`，不调 AXAPI/CG 平台符号。
  */
-async function checkRustHelperSigned(
+export async function checkRustHelperSigned(
   helperPath: string | undefined,
+  execProbe: (
+    cmd: string,
+    args: string[],
+  ) => Promise<{ stdout: string; stderr: string }> = (cmd, args) =>
+    execFileP(cmd, args, { timeout: 5_000 }) as Promise<{
+      stdout: string;
+      stderr: string;
+    }>,
 ): Promise<DoctorCheck> {
   const probePath = helperPath ?? DEFAULT_HELPER_PATH();
   let stdout: string;
   try {
-    const r = await execFileP("codesign", ["-dvvv", probePath], {
-      timeout: 5_000,
-    }).catch((e: unknown) => {
-      // binary 不存在或 codesign 失败 → warn（M0.5a 允许未构建）
-      const msg = e instanceof Error ? e.message : String(e);
-      return { stdout: "", stderr: msg };
-    });
+    const r = await execProbe("codesign", ["-dvvv", probePath]).catch(
+      (e: unknown) => {
+        // binary 不存在或 codesign 失败 → warn（M0.5a 允许未构建）
+        const msg = e instanceof Error ? e.message : String(e);
+        return { stdout: "", stderr: msg };
+      },
+    );
     stdout = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   } catch (e) {
     return {
@@ -181,9 +191,10 @@ async function checkRustHelperSigned(
   if (/CodeSignature|Identifier=/i.test(stdout)) {
     return {
       name: "rust_helper_signed",
-      status: "fail",
-      detail: `binary 已签但非 Developer ID（ad-hoc 或遗留）：${probePath}`,
-      next_step: `LASSO_DEV_ID='Developer ID Application: Your Name (TEAMID)' ./rust-helper/build/sign.sh`,
+      status: "warn",
+      detail: `ad-hoc 签名（免费方案，功能正常；rebuild 后需重新系统授权 TCC）：${probePath}`,
+      // 2026-08-31 用户裁决：FAIL→warn——ad-hoc 合法可用，不该拉低 ready
+      next_step: `想免去每次 rebuild 重授权：LASSO_DEV_ID='Developer ID Application: Your Name (TEAMID)' ./rust-helper/build/sign.sh`,
     };
   }
   // codesign 返回但无任何关键字。BUG-rust-helper-relative-path §4.2：
