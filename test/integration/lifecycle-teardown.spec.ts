@@ -46,6 +46,17 @@ describe("index.ts 装配链 —— 停机收尾顺序（parse17 §3.6 + §4.4�
     expect(shutdownBody).toMatch(/restoreTabs\(\)[\s\S]{0,400}3_000/);
   });
 
+  it("P2(F19)：killAllSync 后清池步 closeAllHttpAgents 亦有 3s race 上界（裸 await 回潮守卫）", () => {
+    // 白盒锚点（本文件既有 grep 场式，parse17 §7.2-30/31 择一路径）：P2 处置轮
+    // （4a40b7e）给清池步补的 Promise.race 必须存在且包住 closeAllHttpAgents()
+    // 本体——Agent.close 等 in-flight 请求完成才 resolve，裸 await 可在恶劣网络
+    // 下挂死停机链（与上方两个收尾步同段兄弟纪律）。
+    const afterKill = bodyAfter("subproc.killAllSync()");
+    expect(afterKill).toMatch(
+      /Promise\.race\(\[\s*closeAllHttpAgents\(\),[\s\S]{0,160}?3_000/,
+    );
+  });
+
   it("process.on(\"exit\") 钩子：stopLaunchedChromesSync 零 await 且先于 killAllSync", () => {
     const exitBody = bodyAfter('process.on("exit", () => {');
     const syncStopIdx = exitBody.indexOf("stopLaunchedChromesSync(");
