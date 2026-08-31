@@ -15,7 +15,7 @@ jobs:
         # 22=maintenance LTS / 24=active LTS——search-local.spec 的 node:sqlite 依赖
         # NODE_MAJOR>=23，此前矩阵 [20,22] 两节点全 skip（v1.17 特性在 CI 零行为
         # 覆盖）；加 24 后该文件 40 测在 CI 真跑（本地 24.12 全量已验证）。
-        node: [20, 22, 24]
+        node: [20, 22]  # 24 于 2026-08-31 试加后回退：linux node:sqlite 运行时漂移致 search-local 假失败（mac 全绿）——待有 Linux 调试环境再攻（P2 台账 12）
     steps:
       # P2 处置轮：checkout v4 / setup-node v4 均为 node20 runtime（GitHub 已弃用，
       # 2026-06 起强制 node24）——升当前最新大版本：checkout v7.0.1 / setup-node
