@@ -1,6 +1,6 @@
 # Lasso 架构
 
-> 本文是 Lasso **v1.18.7** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。头部版本与 §9 计数由 P2 处置轮（doc/governance/11）刷新——governance/07 §8 遗留 P0 销账。
+> 本文是 Lasso **v1.18.7** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。头部版本与全文计数由 P2 处置轮刷新（doc/governance/11 台账 + 本轮 20 条机械对账，2026-08-31，事实基准 = HEAD `4a40b7e` 源码实核 + `tools/list` / `npm test` / `check-invariants` / `cargo test` / `doctor` 实跑）。
 
 ## 1. 项目定位
 
@@ -148,7 +148,10 @@ outcome = worked | didnt | unknown
 ### 3.6 生命周期与稳定性（v1.9 → v1.13）
 
 - **无头浏览器**：空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS`，v1.9；touchKeepalive 防误杀）
-- **launch-chrome**：台账（`launched-chromes.json`）+ `lasso chrome-stop`（只杀 cmdline 验证归属的 pid，防 pid 复用误杀，v1.9）；hidden 档默认 + 最后使用后 ~60s 自动关（`LASSO_LAUNCH_MODE` / `LASSO_LAUNCH_IDLE_MS`，v1.10）；`admin tab_restore` 恢复用户原 tab（红线：不关用户原有 tab；v1.17.1 修复恒 no-op 缺陷，双 targetId 守卫）
+- **launch-chrome**：台账（`launched-chromes.json`）+ `lasso chrome-stop`（只杀 cmdline 验证归属的 pid，防 pid 复用误杀，v1.9）；hidden 档默认 + 最后使用后 ~60s 自动关（`LASSO_LAUNCH_MODE` / `LASSO_LAUNCH_IDLE_MS`，v1.10）；`admin tab_restore` 恢复用户原 tab（红线：不关用户原有 tab；v1.17.1 修复恒 no-op 缺陷，双 targetId 守卫）。**bug02 修复 2（v1.18.6，doc/bugs/02）：CLI 显式拉起默认 `idleMs:0`**——用户/工作流手敲命令要的 Chrome 不被后台 server reaper 60s 静默收割（外部 CDP 直连消费者误杀根因）；显式配置（env / config.json `LASSO_LAUNCH_IDLE_MS`）与 argv `--idle-ms` 仍最高优先
+- **hide 粘滞复隐看门狗**（v1.18.3，P27）：`chrome-hide` 转后台的窗口被任何来源掀出（含上游页面自己弹的）约 1.5s 内自动压回；`chrome-show` 明示解除；粘滞状态跨重启保留（`desired-hide-state.ts`）；`chrome-hide/--pid` 台账缺条目时按进程号直达（只认 lasso 自己的 profile）；hide 原语异步化（Chrome 正忙时不拖慢并行操作）
+- **chrome-touch 外部活动信号**（v1.18.6 bug02 闭环，`chrome-touch.ts`）：约定文件 `~/.cache/lasso/chrome-touch-<port>` 的 **mtime 即活动信号**——任何第二消费者（外部 CDP 工具 / shell 工作流）一行 `touch` 即续命，不需要 lasso API、不改 reaper 写路径；reaper 每 tick 顺带 stat（`chromeTouchMtimeSync`）。修的是 R-INT-07 活案例：touch 活动源曾唯一（LoggedInChannel browse 回调），外部 CDP 直连消费者对 reaper 完全不可见、台账 Chrome 60s 被误收割
+- **desired-hide-enforcer 独立执守**（v1.18.6 bug02，`desired-hide-enforcer.ts`）：粘滞看门狗「只活在 server 进程」而 Chrome 是 detached+unref 的失配（server 崩溃 / 3s race 失败 / 纯 CLI 拉起三种窗口）由**独立执守进程**兜底——chrome-hide 成功 / launch-chrome hidden 记账后 `ensureHideEnforcerRunning()`（pidfile + ps cmdline 标记双复验的 detached 单例）；执守体复用 `startDesiredHideWatchdog` 单一调度真源 + 账空 2 tick 自退（不留常驻 node）；与 server 内看门狗并发安全（reassert「可见才压回」幂等）
 - **stdin-EOF 收尾**（v1.12）：CC 异常退出 → 父进程死 → stdin EOF → 复用幂等 shutdown；受管子进程不再孤儿到 zombie reaper 1h 阈值（上游 SDK #2002 的进程侧缓解）
 - **停机链全路径有界**（v1.13）：Steel 会话释放双层 3s 上界（停机链 race 3s + fetch `AbortSignal.timeout(3s)`）——自托管 Steel 停摆/endpoint 悬挂（实测可挂 ~301s）不再拖死退出
 - **`LASSO_PROXY` 出口代理**（v1.11）：headless 经 `--proxy-server`、Steel 经 session `proxyUrl`；**`browse_logged_in` 永不读取**（用户真实 Chrome 出口原样，铁律）；doctor `proxy_config` 回显
@@ -202,10 +205,10 @@ AxBackend interface（三平台同构 OutlineNode 契约）
 2. **页面/界面状态写磁盘**：4× token 效率
 3. **减少推理调用**：多步链式（如 search → click → extract）一次工具调用完成
 4. **fallback 对 CC 透明**：CC 只看到 `worked / didnt`，不感知降级细节
-5. **诚实三态交付**：`worked / didnt / unknown`（unknown 是 fallback 触发器）；假成功零容忍（expect 稳定性采样 / VLM 链尾诚实化 / find 拒纯 ref / content_blocks 失败标注 / ref 失效诚实报错同族）
+5. **诚实三态交付**：`worked / didnt / unknown`（unknown 是 fallback 触发器）；假成功零容忍（expect 稳定性采样 / VLM 链尾诚实化 / find 拒纯 ref / content_blocks 失败标注 / ref 失效诚实报错同族）；**接口面同样诚实**（v1.18.7 架构重审）：browse 族 schema 里「接受但 channel 零消费」的死参数（顶层 `wait_until` / `timeout_ms` / `screenshot.element` / `stealth_profile`）自 schema+描述+转发全链路移除——文档不再承诺不存在的行为（嵌套语义位如 `steps[].expect.timeout_ms` 是真消费，不在清扫之列）
 6. **零侵入跟随上游**：chrome-devtools-mcp 升级时 Lasso 不改业务（契约锁版本，当前 1.7.0）
 7. **第二套做法红线**（R-CI-02）：横切关注点变体只允许一套（fallback 范式 / state 模型 / dispatch Map / provider registry 等）
-8. **不变量脚本化**（CI 守门）：**81 条 INV** 静态 grep + 形状测，防 refactor 回退；另有 `inv-selftest` 20 样本「注入违规 → 必红」复证（见 §10）
+8. **不变量脚本化**（CI 守门）：**84 条 INV** 静态 grep + 形状测，防 refactor 回退；另有 `inv-selftest` 20 样本「注入违规 → 必红」复证（见 §10）
 9. **平台差异隔离在 backend 内部**：AxBackend 三平台同构 OutlineNode 契约；TS 层零平台字面量
 10. **质量轴静态映射**（v1.17 A1）：`quality`（api/scrape/stale）按 `served_by` 静态映射，零启发式——宁缺毋假（查不到就不标）
 11. **用户运行守则**（v1.18，doc/governance/09-静默守则审计确立为设计宪法）：「能后台静默执行就尽量后台静默执行；不能完全静默则用户介入后**及时恢复**静默执行」。三条可判定子句——S1 能静默则静默（存在零打扰路径时不选非静默实现）/ S2 介入最小化（只在不可避免处介入，信号明确及时，范本 = C1 elicitation 同轮继续）/ S3 及时恢复（自动化三档：L2 系统自动 > L1 CC 可调 > L0 人工；kill 永远不是恢复手段——hide 才是）
@@ -313,19 +316,19 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 ## 10. 测试策略
 
-| 层 | 工具 | 覆盖 | 规模（v1.18.7 终态） |
+| 层 | 工具 | 覆盖 | 规模（v1.18.7 终态，2026-08-31 本机全量实跑） |
 |---|---|---|---|
 | 架构不变量 | `check-invariants.mjs`（自写） | INV-1..84 静态 grep + 形状测 | **84 条** |
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84，26 个 pin 红翻转实证**（外部契约类全覆盖；未验证 pin 显性化报告） |
 | TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak 等 | **2467 passed + 1 skipped**（147 文件；P2 处置轮本机实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
-| Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；rust-helper 自 v1.13 起零改） |
-| 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤） |
-| 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ × 三引擎 × 多 query | 12+ fixtures |
+| Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；`rust-helper/src/*.rs` 自 v1.13 零改——v1.18.4 仅动 `build/sign.sh` ad-hoc 签名链） |
+| 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤——r4 轮改真口径） |
+| 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ 三引擎录制基线 | 6 条 HTML fixture（baidu/bing/google ×2；doctor #32 实跑 detail） |
 | 故障注入 | vitest | fallback 链 / 限流 / 政策 gate / SERP 改版 | ~20 场景 |
 | 全量功能测试 | doc/testing/01 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
 | 契约锁 | chrome-devtools-mcp@**1.7.0** version pin（`LOCKED_CDP_MCP_VERSION` 单一真源） | 上游小版本升级不破 Lasso；迁移要点见 §2.1 | SubprocessManager.ts |
 
-## 11. 不变量（82 条）分类
+## 11. 不变量（84 条）分类
 
 | 范畴 | INV 编号 | 守的是什么 |
 |---|---|---|
@@ -344,6 +347,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | v1.11 1.7.0 迁移守护 | INV-79 | 版本锁 1.7.0 / 遥测关 / --wsEndpoint / launch 级 stealth / 零哑 flag 形态 |
 | v1.14-v1.17 运营事实与死层清除 | INV-54 / 80 | 死层墓碑：Bing（BingChannel 全链删、配置静默忽略）/ zhipu 直连（无 SearchChannel 类 / engine enum 无 "zhipu" / config 键容忍不消费 / doctor 报 retired） |
 | v1.18 用户运行守则生命周期 | **82** | D-5 exit 钩子 modes:['hidden']（visible 登录窗口不被 server 退出杀死）/ C2 自动 hide 默认 off + 只挂 visible 分支永不进 kill 路径 / 四重护栏（见墙→延迟窗→agent 安静→失败降级）/ hide 走 chrome-hide PID 定向 / 延迟窗默认单一真源 |
+| v1.18.7 架构重审轮（2026-08-31） | **83 / 84** | firstText 全仓唯一定义在 browse/upstream-response.ts（5 份私有拷贝收敛后防回潮）/ doctor 层（src/doctor/*.ts，doctor-cli.ts 组合根除外）禁 import ../channels/*（反向 value 依赖 = ESM 循环温床；defaultHeadlessProfileForHost 已迁 browse/stealth-profiles.ts） |
 
 完整 INV 列表 + 释义见 `src/invariants/check-invariants.mjs` 顶部注释。
 
@@ -415,10 +419,10 @@ $ lasso launch-chrome
 
 | 模块 | 主文件 | 备注 |
 |---|---|---|
-| Tool 注册 / 生命周期 | src/index.ts（stdin-EOF 收尾 / reaper / Steel 3s 上界 / V5_TOOL_TO_CHANNEL 18 键 = 16 默认工具 + browserbase/steel；admin 是虚拟 channel 经 toolManager 直注册，不入表） | ~1470 |
+| Tool 注册 / 生命周期 | src/index.ts（stdin-EOF 收尾 / reaper / Steel 3s 上界 / V5_TOOL_TO_CHANNEL 18 键 = 16 默认工具 + browserbase/steel；admin 是虚拟 channel 经 toolManager 直注册，不入表） | ~1580 |
 | Tool handler | src/tools/{search,browse,desktop,admin,doctor,network,fetch-url,fetch-feed,wayback,screenshot,pdf,read-text,interact}.ts + descriptions.ts（描述单一真源） | — |
 | Channel 层 | src/channels/{BaseChannel,UiChannel}.ts | — |
-| BrowseChannel 族 | src/browse/BrowseChannel.ts；HeadlessChannel（launch 级 stealth + 宿主对齐 profile）；SteelChannel（session mutex + proxyUrl） | — |
+| BrowseChannel 族 | src/channels/BrowseChannel.ts（abstract）+ HeadlessChannel（launch 级 stealth + 宿主对齐 profile）+ LoggedInChannel / SteelChannel（session mutex + proxyUrl）+ BrowserbaseChannel——族文件全在 src/channels/ | — |
 | stealth | src/browse/{StealthEngine,stealth-profiles}.ts（16 路 + 4 profile + 值域 2026-07） | — |
 | markdown 抽取 | src/browse/markdown-extractor.ts（defuddle 双激活 + turndown 降级保底）；extract-refs.ts（include_refs 三件套，v1.17） | — |
 | 搜索域 | src/search/{FallbackChain,SearchCache,MultiSourceFanout,FreeTierRouter,AttributedSearch,QualityTag,ContentSecondHop,MachineMcpDetector}.ts；src/channels/{MachineMcpSearchChannel,BraveChannel}.ts（BingChannel / SearchChannel〔zhipu 直连〕均已删，INV-54/80 墓碑） | QualityTag/ContentSecondHop = v1.17 |
@@ -428,20 +432,29 @@ $ lasso launch-chrome
 | 交互升级 | src/interact/ElicitationPort.ts（C1）；src/browse/{HighRiskGate,extract-refs}.ts | — |
 | desktop 四档 | src/desktop/{AxProvider,AxBackend,AxBackendFactory,OutlineMapper,CGEventProvider,ScreenshotVlmProvider}.ts | AxProvider ~330 |
 | FallbackDecider | src/fallback/FallbackDecider.ts | ~350 |
-| Launcher | src/launcher/{launch-chrome,chrome-paths,chrome-stop,chrome-idle-reaper,chrome-ledger,chrome-hide}.ts（INV-64 不引新 npm dep） | 共 ~1540 |
-| Doctor | src/doctor/doctor.ts（40 项 check 量级，以实跑为准；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / #11b brave_deep_probe（--deep）/ zhipu_keys_retired） | ~3100 |
-| Invariants | src/invariants/check-invariants.mjs（81 条 INV） | ~4450 |
-| INV 自测 | scripts/inv-selftest.mjs（20 样本红转复证） | ~330 |
-| Subprocess | src/subprocess/SubprocessManager.ts（`LOCKED_CDP_MCP_VERSION = "1.7.0"`） | ~730 |
-| Rust helper | rust-helper/src/{ax,uia,atspi,applescript,cgevent,cgevent_keymap,screenshot,tcc,windows,protocol,main,ax_role_map,app_bundle_map}.rs | ~5000；自 v1.13 零改 |
+| Launcher | src/launcher/{launch-chrome,chrome-paths,chrome-stop,chrome-idle-reaper,chrome-ledger,chrome-hide,chrome-hideshow-cli,chrome-touch,desired-hide-state,desired-hide-watchdog,desired-hide-enforcer}.ts（INV-64 不引新 npm dep；chrome-touch / desired-hide-* = v1.18.3~v1.18.6 bug02 链） | 11 文件共 ~2900 |
+| Doctor | src/doctor/doctor.ts（doctor CLI 默认 34 项实跑核；MCP doctor tool / DesktopChannel 装配 desktopChecks:true 时加 #15-#21 共 41 项；--deep 加 #11b brave_deep_probe；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / zhipu_keys_retired） | ~3060 |
+| Invariants | src/invariants/check-invariants.mjs（84 条 INV） | ~4600 |
+| INV 自测 | scripts/inv-selftest.mjs（20 样本红转复证） | ~410 |
+| Subprocess | src/subprocess/SubprocessManager.ts（`LOCKED_CDP_MCP_VERSION = "1.7.0"`）；rust-helper-path.ts（模块锚定：`new URL("../../rust-helper/...", import.meta.url)` 与宿主 cwd 解耦——v1.18.4 根治「非仓库根目录启动 desktop 全报 rust_helper_crashed」） | ~750 |
+| Rust helper | rust-helper/src/{ax,uia,atspi,applescript,applescript_whitelist,cgevent,cgevent_keymap,screenshot,tcc,windows,protocol,main,lib,ax_role_map,app_bundle_map}.rs（15 文件）；build/sign.sh（v1.18.4 ad-hoc 兜底签名进构建链） | ~5000；src/*.rs 自 v1.13 零改 |
 
 ## 14. 版本与发布
 
-- **当前版本**：`1.18.0`（doc/governance/09 静默守则审计修复轮：D-5 exit 钩子 visible 生存 + C2 登录后自动 hide opt-in + INV-82 + 守则入文档；2026-08-19）
+- **当前版本**：`1.18.7`（架构重审落地版；2026-08-31）
 - **version 真源**：`package.json` + `src/index.ts:LASSO_SERVER_VERSION` + `src/doctor/doctor.ts:LASSO_VERSION`（INV-63 守：三处必字面量一致）
-- **doctor readiness**：全量 check pass → `ready: true`（检查项随版本增长，以实跑输出为准）
+- **v1.18.1 ~ v1.18.7 要点**（用户向完整版见 README changelog；决策记录见 doc/architecture/02 排期表）：
+  - **v1.18.0/1.18.1**：静默守则入宪（doc/governance/09）——D-5 exit 钩子 modes:['hidden']（visible 登录窗口不再被 server 退出杀死）+ C2 登录后自动 hide（opt-in）+ INV-82；批量实战五修（求值失败不静默吞 / 无选中 tab 自愈 / visible 冷启动探活 12s / PDF 上游缺失前置如实报）
+  - **v1.18.2**：错配机制审计（doc/governance/10）——威胁模型错配守卫四修 + 默认放行（单用户本地 stdio 形态下「多租户滥用」类限额默认 Infinity / opt-in；瞬态 DNS ≠ 策略拦截，语义 unknown 可重试）
+  - **v1.18.3**：hide 粘滞复隐看门狗（~1.5s 压回 + 跨重启）+ chrome-hide `--pid` 直达 + hide 原语异步化
+  - **v1.18.4**：rust-helper 路径根治——`rust-helper-path.ts` 模块锚定（`import.meta.url` 相对解析，任意宿主 cwd 可用）+ spawn 四态自诊断（缺文件/指到目录/缺执行位/损坏各说各话）+ ad-hoc 兜底签名进构建链（`scripts/ad-hoc-sign-helper.mjs`）+ GitHub CI 建立
+  - **v1.18.5**：发布面清理——npm 包 1.18.1~1.18.4 误含应用域私有文件已弃用，本版起发布面收敛为本体（~28MB → 正常体积）；doc/ 目录重整为七组结构（usage/architecture/testing/governance/bugs/history/archive，2026-08-27）
+  - **v1.18.6**：bug02 真闭环 + 隐藏全生命周期执守（doc/bugs/02）——CLI 显式拉起默认 `idleMs:0` + `chrome-touch` 约定文件外部活动信号 + `desired-hide-enforcer` 独立执守进程（server 不在也 ≤2s 压回，账空自退）
+  - **v1.18.7**：架构重审落地——browse 族接口面死参数清扫（诚实化）+ doctor/channels 解耦（INV-84）+ firstText 单一定义（INV-83）+ 文档改真 + INV 82→84；随后 P2 处置轮（doc/governance/11）46 项三档裁决 + `launch-chrome --help` 误启动修复 + CI actions 升 checkout@v7 / setup-node@v6 并加 Node 24
+- **doctor readiness 现状（如实）**：任一 check fail → `ready:false`。**#15 `rust_helper_signed` 现行语义 = ad-hoc 签名 → fail**（「binary 已签但非 Developer ID」，终致 ready:false）——与 build 链 ad-hoc 兜底签名共存（无 Developer ID 环境的实际产物即 ad-hoc）；「#15 降级 warn」为**待产品裁决的未决项**，未拍板前不动代码，现状如实保留
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁四链**：`npm run build` / `npm test`（2292）/ `npm run check-invariants`（82）/ `npm run inv-selftest`（23）+ `cargo test`（207）
+- **门禁（本地）**：`npm run build` / `npm test`（vitest 2467 passed + 1 skipped，147 文件 + readme-sync）/ `npm run check-invariants`（84）/ `npm run inv-selftest`（20 样本 26 pin 红翻转）+ `cargo test`（207，CI 不含）
+- **CI（.github/workflows/ci.yml 实况）**：ubuntu-latest × Node **20/22/24** 矩阵（20=下限锚点 / 22=maintenance LTS / 24=active LTS——search-local 的 `node:sqlite` 依赖 NODE_MAJOR>=23，加 24 后该文件 40 测在 CI 真跑）；actions checkout@v7 / setup-node@v6；步骤 = npm ci → build → test → check-invariants（**JS 门禁三件套，无 cargo 步骤**——Rust 面靠本地 cargo test/check 守）
 
 ## 15. 质量与决策主线（doc/governance/01 → doc/governance/06 → doc/testing/01）
 
@@ -452,13 +465,15 @@ $ lasso launch-chrome
 3. **方法论检讨与颠覆性调研**（doc/governance/04（含原 23a 作附录A）→ doc/governance/05，v1.16）：零基视角制度化（「搜索优化失效」根因 = 只在既有方案内比较）；颠覆性扫描按 D-GO / D-DECISION / D-WATCH / D-NOGO 分级裁决 → 落地 D-GO 三项：freshness TTL 耦合 / fetch_feed / README 生态段（v1.16）。
 4. **五项用户裁决**（doc/governance/06，v1.17）：A1 quality 轴 / A3 删 zhipu 直连（INV-80）/ A2′ content_blocks 第二跳 / B1 search_local（INV-81）/ C1 elicitation + C2 include_refs。
 5. **全量功能测试轮**（doc/testing/01，v1.17.1）：四面板 ~170 用例真机执行，抓出并修复 6 缺陷（🔴IPv6 字面量 SSRF 绕过 / 🔴HighRiskGate 裸 JSON.parse / doWait 假成功 / tab_restore no-op / doctor file 键 / SIGHUP），R1 独立裁决 **ALL-CLEAN**；§6 简单架构 38 条终判见 §6.1。
+6. **静默性 / 守则 / 错配审计三连**（doc/governance/08 / 09 / 10，v1.17.2 → v1.18.2）：全通道零抢焦点（S-7/S-10）→ 用户运行守则入宪（S1/S2/S3 三子句 + INV-82）→ 错配机制审计（47 处命中逐个裁决：4 修复 + 5 黄 + 19 保留）。
+7. **全面重审与 P2 处置**（2026-08-31，wf_c02ef3df 15-agent 五路 review + doc/governance/11 台账）：首轮五路 34 + 复审 22 = 56 原始 P2 去重合并 46 项，三档裁决 **20 fixed / 25 deferred / 1 rejected（已被 r3 轮修复偿）**；fixed 批次含 types.ts 死字段清理、doctor.spec flake 抬 15s、CI actions 升级 + Node 24 矩阵、`launch-chrome --help` 误启动短路；deferred 项全部留档可追。
 
 方法学沉淀（供复用）：裁决官不采信文档（关键声称白盒双源亲验）；证据阶梯 L0-L3；mutation 即验收；「先拿事实再加参数」；收敛协议前置；零基视角才可见方案级盲区；决策分级（GO/DECISION/WATCH/NOGO）交用户裁决而非默认全做。
 
 ## 16. 相关文档
 
 - [README.md](./README.md) — 用户手册（安装 / 配置 / 工具列表 / 隐私 / 故障排查）
-- [doc/README.md](./doc/README.md) — doc/ 目录导读（用户向 / 维护手册 / 决策档案三分法 + 决策时间线 + 新鲜度表）
+- [doc/README.md](./doc/README.md) — doc/ 目录导读（**七组结构**：usage / architecture / testing / governance / bugs / history / archive，2026-08-27 重整；旧全局编号 08/09/17-29 → 新路径映射表在此；决策时间线 + 新鲜度表）
 - [doc/architecture/01 功能架构](./doc/architecture/01-功能架构.md) — 权威架构基线（F 编号；冻结于 2026-07-21，头部含 v1.17.1 现状对齐横幅 + F 编号 ↔ 现实映射）
 - [doc/architecture/02 实施排期](./doc/architecture/02-实施排期.md) — v0.1 → v1.17.1 能力跃升全路径与决策记录
 - [doc/governance/01 最优性审查轮次](./doc/governance/01-最优性审查轮次/00-总结.md) — 五轮审查全记录（v1.10 → v1.13 质量主线）
@@ -466,7 +481,9 @@ $ lasso launch-chrome
 - [doc/usage/02-TROUBLESHOOTING.md](./doc/usage/02-TROUBLESHOOTING.md) — FAQ + error_kind 释义
 - [doc/usage/03-SELECTOR-MAINTENANCE.md](./doc/usage/03-SELECTOR-MAINTENANCE.md) — selector 债维护手册
 - [doc/governance/07 文档查缺补漏](./doc/governance/07-文档查缺补漏/gap-matrix.md) — 文档盘点矩阵（新鲜度档位 + F 编号映射真源）
+- [doc/governance/11 P2 处置台账](./doc/governance/11-P2处置台账.md) — 全面重审 46 项 P2 三档裁决全记录（20 修 / 25 留档 / 1 已偿）
+- [doc/bugs](./doc/bugs/) — BUG 档案（01 rust-helper 路径 / 02 外部消费与隐藏全生命周期——v1.18.4 / v1.18.6 修复轮的根因链）
 
 ---
 
-本文档是 Lasso v1.17.1 架构概览（user-first；2026-08-18 同步，事实基准 = HEAD `1432bd4` 源码实核 + `tools/list` / `cargo test` / `check-invariants` 实跑）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)；v0.1 → v1.17.1 实施排期（含每 phase 决策记录）见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)。
+本文档是 Lasso v1.18.7 架构概览（user-first；2026-08-31 全量对齐刷新，事实基准 = HEAD `4a40b7e` 源码实核 + `tools/list` / `npm test` / `check-invariants` / `inv-selftest` / `cargo test` / `doctor` 实跑，20 条机械断言逐条对账零漂移）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)；v0.1 → v1.18.7 实施排期（含每 phase 决策记录）见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)。
