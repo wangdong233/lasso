@@ -2705,15 +2705,18 @@ const assertions = [
         //   （通过括号配对近似：本 check 用更直接的形式 ——
         //    禁 launcher 模块顶级调用 runLaunchChromeCli / launchChrome）
         //   此处用 grep：模块顶级（缩进 0）禁直接调 runLaunchChromeCli();
+        //   P2 处置轮（redundancy 路发现）：原只枚举 runLaunchChromeCli /
+        //   runReplayBaselineCli 两个旧入口——runChromeHideShowCli / runHideEnforcerCli
+        //   等新 CLI 入口不在枚举（潜伏缺口）。改为通用 run[A-Z]\w* 形态，
+        //   一次覆盖现在与未来的全部 run* 子命令入口（声明行为 `function runX(`
+        //   / `const runX =` 不匹配，只命中顶级裸调用）。
         const lines = f.text.split("\n");
         for (const ln of lines) {
           // 顶级调用（无缩进）且非注释行
           if (/^\s/.test(ln)) continue; // 有缩进 → 函数体内，合规
           if (/^\s*(\/\/|\*|\/\*)/.test(ln)) continue; // 注释行
-          // 顶级直接 invoke 子命令入口（违规划分）
-          if (/^void\s+runLaunchChromeCli\s*\(/.test(ln)) return false;
-          if (/^runLaunchChromeCli\s*\(/.test(ln)) return false;
-          if (/^runReplayBaselineCli\s*\(/.test(ln)) return false;
+          // 顶级直接 invoke 任意 run* 子命令入口（违规划分；泛化枚举）
+          if (/^(void\s+)?run[A-Z]\w*\s*\(/.test(ln)) return false;
         }
       }
 

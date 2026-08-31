@@ -153,6 +153,30 @@ describe("ensureHideEnforcerRunning —— 单例执守拉起（best-effort）",
     expect(spawnCalls).toBe(0);
   });
 
+  it("6c. P2：pidfile 写失败 → hide_enforcer_pidfile_error 事件流经注入 logFn（错误不吞；spawn 仍成功）", async () => {
+    // 构造写失败：pid 路径指到普通文件之下（mkdirSync ENOTDIR → catch 分支）
+    const { writeFileSync: wf } = await import("node:fs");
+    const blocker = path.join(pidTmpDir, "blocker-file");
+    wf(blocker, "not-a-dir", "utf8");
+    const prev = process.env.LASSO_HIDE_ENFORCER_PID_PATH;
+    process.env.LASSO_HIDE_ENFORCER_PID_PATH = path.join(blocker, "sub", "pid.json");
+    const logs: Array<Record<string, unknown>> = [];
+    try {
+      const r = await ensureHideEnforcerRunning({
+        probe: { running: false, reason: "no_pidfile" },
+        entry: path.join(pidTmpDir, "fake-entry.js"), // 6 用例已写入
+        spawnFn: () => fakeChild(777002),
+        logFn: (p) => logs.push(p),
+      });
+      expect(r.spawned).toBe(true); // pidfile 失败不阻断 spawn（best-effort 语义）
+      expect(
+        logs.some((p) => p.evt === "hide_enforcer_pidfile_error"),
+      ).toBe(true); // P2 修复前：logFn 未透传，事件被默认 no-op 吞掉
+    } finally {
+      process.env.LASSO_HIDE_ENFORCER_PID_PATH = prev;
+    }
+  });
+
   it("8. hideEnforcerEntryPath：launcher/ 上**一级**的 index.js（真机实锤回归——初版 ../../ 落仓库根致 entry_missing 永不真起）", () => {
     // 结构锚定：入口必须 === 本模块目录（launcher/）的父目录下的 index.js
     //（src 布局解析为 src/index.js；生产 dist 布局同构为 dist/index.js = bin 入口）
@@ -250,8 +274,9 @@ describe("runHideEnforcerCli —— 执守主体接线（白盒）", () => {
     const src = readFileSync("src/launcher/desired-hide-enforcer.ts", "utf8");
     // 让位：别的执守在世（pid ≠ 自己）→ exit 0
     expect(src).toMatch(/probe\.running && probe\.pid !== process\.pid/);
-    // 自写 pidfile（父进程写失败时的权威兜底）
-    expect(src).toMatch(/writeEnforcerPidfile\(process\.pid\)/);
+    // 自写 pidfile（父进程写失败时的权威兜底；P2 处置轮起透传 cliLogFn——
+    // 写失败事件不再被默认 no-op 吞掉）
+    expect(src).toMatch(/writeEnforcerPidfile\(process\.pid, cliLogFn\)/);
     // 自退出口接线 + keep-alive 持活（watchdog timer unref 不阻退出）
     expect(src).toMatch(/exitWhenIdleTicks: 2/);
     expect(src).toMatch(/clearInterval\(keepAlive\)/);

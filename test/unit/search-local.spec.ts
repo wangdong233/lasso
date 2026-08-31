@@ -39,8 +39,10 @@ import {
 // 与 src/search-local/chrome-history.ts loadDefaultOpener 同款手法，同真源）
 const nodeRequire = createRequire(import.meta.url);
 // CI-node20 修正：node:sqlite 于 Node 22.5+ 才存在——顶层裸 require 在 node20 直接
-// 炸整个文件。守卫加载 + HAS_NODE_SQLITE 门（缺模块时跳过依赖 fixture db 的组，
-// 纯函数/mdfind/装配组不依赖它，仍应跑）。
+// 炸整个文件。守卫加载 + HAS_NODE_SQLITE 门。注意：门是**整文件级**（见下方
+// describeOrSkip 注释）——纯函数/mdfind/装配组本可不依赖 sqlite，但 22.x 实验
+// 态 API 漂移波及造 fixture 的辅助函数，统一跳过；覆盖由 CI 矩阵 node 24 承担
+// （P2 处置轮订正：本段旧文「纯函数组仍应跑」与实际整文件门控行为矛盾）。
 let DatabaseSync: (new (path: string, options?: { readOnly?: boolean }) => unknown) | null = null;
 try {
   ({ DatabaseSync } = nodeRequire("node:sqlite") as {

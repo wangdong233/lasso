@@ -44,9 +44,9 @@ describe("P1 visible Chrome 生命周期保护", () => {
     expect(src).toMatch(/modes\?: Array<"hidden" \| "visible">/);
   });
 
-  it("index.ts 停机收尾只关 hidden（P1 修复锚点）", () => {
+  it("index.ts 停机收尾只关 hidden（P1 修复锚点；P2 处置轮删死 all 字段后无 port = --all）", () => {
     const src = readFileSync("src/index.ts", "utf8");
-    expect(src).toMatch(/stopLaunchedChromes\(\{ all: true, modes: \["hidden"\]/);
+    expect(src).toMatch(/stopLaunchedChromes\(\{ modes: \["hidden"\]/);
   });
 
   it("idle reaper：visible 记录直接 continue（永不 idle 收割；C2 autoHide 分支也在 continue 之前，不进 kill 路径）", () => {
@@ -60,7 +60,6 @@ describe("P1 visible Chrome 生命周期保护", () => {
   it("行为验证：modes 过滤路径可安全执行（空台账 no-op 不炸）", async () => {
     const { stopLaunchedChromes } = await import("../../src/launcher/chrome-stop.js");
     const r = await stopLaunchedChromes({
-      all: true,
       modes: ["hidden"],
       aliveFn: () => true,
       psFn: () => "/Applications/Google Chrome --user-data-dir=/x --remote-debugging-port=9222",
@@ -83,7 +82,6 @@ describe("P3 端口被非 CDP 进程占用（tcpProbeFn）", () => {
       tcpProbeFn: async () => true,
       probeIntervalMs: 1,
       defaultProfileDir: "/tmp/x",
-      fuseDelayMs: 1,
       hideFn: () => ({ ok: true }),
     });
     expect(r.ok).toBe(false);
@@ -104,7 +102,6 @@ describe("P3 端口被非 CDP 进程占用（tcpProbeFn）", () => {
       tcpProbeFn: async () => false,
       probeIntervalMs: 1,
       defaultProfileDir: "/tmp/x",
-      fuseDelayMs: 1,
       hideFn: () => ({ ok: true }),
     });
     expect(spawnCalled).toBe(true);

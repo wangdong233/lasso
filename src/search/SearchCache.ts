@@ -183,7 +183,9 @@ export class SearchCache {
       .digest("hex");
   }
 
-  /** 当前 cache 文件总数（测试 + doctor 用；非递归只到分片根）。 */
+  /** 当前 cache 文件总数（测试用公开面；doctor 只经 checkSearchCacheDir 查目录
+   *  可写性、从不数文件——r3 曾删同文件 computeKey 的同款「doctor 用」谎言注释，
+   *  此处是漏网的最后一处）。非递归只到分片根。 */
   async count(): Promise<number> {
     return (await this._listAllFiles()).length;
   }

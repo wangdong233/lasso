@@ -659,7 +659,9 @@ export abstract class BrowseChannel extends UiChannel {
     const opts: BrowseOptions = {
       selectors: step.selectors,
       js: step.js,
-      timeout_ms: step.timeout_ms,
+      // P2 处置轮：删死写 timeout_ms: step.timeout_ms——BrowseOptions.timeout_ms
+      // 已删（doNavigate 从不读，r2 审查实证），step.timeout_ms 的等待语义
+      // 由 step.expect.timeout_ms（ExpectPoll 消费）承载。
       // wait step：expect 就是等待目标（等到了 postcondition 自然成立）——
       // 不剥则链内 wait 永远报 "opts.expect.text required"（wave2 smoke 实证）。
       // 其余 action 仍剥 expect（防 doWait 误把 postcondition 当 wait 目标）。

@@ -95,8 +95,17 @@ export async function runChromeHideShowCli(
   deps: { ensureEnforcer?: () => Promise<unknown> } = {},
 ): Promise<void> {
   // bug02（v1.18.5）：hide 成功记账后确保独立执守进程在世（server 不在时兜压回）
+  // P2 处置轮（contract 路发现）：透传 logFn 写 stderr（chrome-ledger defaultLog 同款）——
+  // 原裸调用让 entry_missing/spawn_error/pidfile_error 事件被 ensureHideEnforcerRunning
+  // 内部默认 no-op logFn 吞掉（对照 launch-chrome.ts 同函数传了 logFn，两调用点不一致）。
   const ensureEnforcer =
-    deps.ensureEnforcer ?? (async () => { await ensureHideEnforcerRunning(); });
+    deps.ensureEnforcer ??
+    (async () => {
+      await ensureHideEnforcerRunning({
+        logFn: (p) =>
+          process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`),
+      });
+    });
   const argv = process.argv.slice(3);
   const portArgIdx = argv.indexOf("--port");
   const port =

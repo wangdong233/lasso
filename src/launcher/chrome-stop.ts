@@ -34,10 +34,11 @@ import {
 // 类型
 // ============================================================
 export interface ChromeStopOptions {
-  /** 只关这个 port 的记录；与 all 二选一；都不传 = --all。 */
+  /** 只关这个 port 的记录；不传 = --all（台账本身已 scoped 到 lasso-owned，全清是安全默认）。 */
   port?: number;
-  /** 全部台账记录。 */
-  all?: boolean;
+  // P2 处置轮：删除 all? 死字段——stopLaunchedChromes 从不读它（:139 以「无 port」
+  // 实现 --all），parseChromeStopArgs 写入的 all=true 只是把对象从 {} 变 {all:true}，
+  // 行为零差。--all flag 本身保留（写不写都等价，flag 语义由「无 port」承载）。
   /**
    * P1（v1.17.3，得到实战根因）：按 launchMode 过滤目标。停机收尾传
    * ["hidden"] —— visible 档是用户拥有的窗口（登录/查看中），任何 server
@@ -272,7 +273,7 @@ export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
       if (!Number.isNaN(n)) opts.port = n;
       i++;
     } else if (a === "--all") {
-      opts.all = true;
+      // 接受 --all flag 但不写字段：无 port = --all（P2 处置轮删除死 all 字段）。
     }
     // 未知 flag 忽略（forward-compat）
   }

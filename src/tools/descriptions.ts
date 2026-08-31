@@ -521,8 +521,8 @@ export const STEEL_DESCRIPTION = [
 // FETCH_URL（v0.5 M0.5a 新增，parse6 §3.1 + §1.4 路由决策表）
 // ============================================================
 export const FETCH_URL_DESCRIPTION = [
-  "Direct HTTP fetch — raw bytes only, no JS rendering, no browser. Uses the",
-  "shared undici keep-alive pool (util/http-pool acquireHttpClient) and the",
+  "Direct HTTP fetch — raw bytes only, no JS rendering, no browser. Uses a",
+  "shared undici keep-alive connection pool and the",
   "same SSRF guard as browse_headless.",
   "",
   "Use for:",
@@ -704,9 +704,9 @@ export const NETWORK_DESCRIPTION = [
   "",
   "DOES NOT:",
   "  - capture WebSocket frames (v1.0+)",
-  "  - capture response bodies in the list view (options.include_bodies accepted",
-  "    for forward-compat but NOT wired in v1.11; per-request body/header detail",
-  "    needs a network_get action — not exposed yet)",
+  "  - capture response bodies in any view (options.include_bodies is accepted",
+  "    for schema stability but its value is ignored — the upstream native tool",
+  "    returns the list view only, immediately; body detail is not available",
   "  - accept options.wait_until (removed in review-r2: never wired to any",
   "    navigation-wait semantics — silently ignored since v0.5)",
   "  - mock / intercept / replay requests (永远 NO-GO; v1.0+)",
@@ -719,7 +719,7 @@ export const NETWORK_DESCRIPTION = [
   "",
   "Args:  url (str, required)             — http(s) URL (userinfo @ forbidden)",
   "       options.filter (str, default 'all') — 'xhr' | 'fetch' | 'img' | '3rd-party' | 'all'",
-  "       options.include_bodies (bool, default false) — accepted, not wired (detail via upstream tool)",
+  "       options.include_bodies (bool, default false) — accepted, value ignored (schema stability)",
   "       options.timeout_ms (int, default 3000) — v1.11: kept for schema compat; native tool returns immediately",
   "",
   "Returns: InteractResult<NetworkResult> as JSON text.",

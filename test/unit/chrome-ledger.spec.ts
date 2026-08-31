@@ -211,13 +211,15 @@ describe("chrome-stop —— 台账收尾（parse17 §3.4）", () => {
   });
 
   it("空台账 → 空 stopped + exit-0 语义（幂等）", async () => {
-    const r = await stopLaunchedChromes({ all: true });
+    // 无 port = --all（P2 处置轮删除死 all 字段后，--all 语义由「无 port」承载）
+    const r = await stopLaunchedChromes({});
     expect(r.stopped).toEqual([]);
   });
 
   it("parseChromeStopArgs：--port N / --all / 无 flag / 未知忽略", () => {
     expect(parseChromeStopArgs(["--port", "9227"])).toEqual({ port: 9227 });
-    expect(parseChromeStopArgs(["--all"])).toEqual({ all: true });
+    // --all 接受但不写字段（无 port = --all）
+    expect(parseChromeStopArgs(["--all"])).toEqual({});
     expect(parseChromeStopArgs([])).toEqual({});
     expect(parseChromeStopArgs(["--port", "abc", "--bogus"])).toEqual({});
   });

@@ -463,7 +463,8 @@ async function runMcpServer(): Promise<void> {
   const headlessStealth = new StealthEngine();
   // v1.11（round1 T10）：LASSO_PROXY 出口代理（仅 headless 生效；logged_in 永不读）
   // v1.12（round2 T2-1）：默认 profile 宿主对齐（darwin→mac_chrome，消除 UA↔
-  // client hints 的 OS 级 shape 矛盾；见 HeadlessChannel.defaultHeadlessProfileForHost）
+  // client hints 的 OS 级 shape 矛盾；定义在 browse/stealth-profiles.ts::
+  // defaultHeadlessProfileForHost——review-r1 F2 迁移后的单一真源）
   const headless = new HeadlessChannel(
     subproc,
     headlessStealth,
@@ -1323,7 +1324,7 @@ async function runMcpServer(): Promise<void> {
     shuttingDown = true;
     logger.info({ evt: "lasso_shutdown", sig, run_id: runId });
     // v1.10（parse18 §2.6）：停 chrome-idle-reaper timer（best-effort；幂等；
-    // Chrome 收尾由下方既有 stopLaunchedChromes({all:true}) 覆盖）
+    // Chrome 收尾由下方既有 stopLaunchedChromes（无 port = 全台账）覆盖）
     chromeReaper?.stop();
     // P27（v1.18.3）：停粘滞复隐看门狗（best-effort；幂等）
     desiredHideWatchdog?.stop();
@@ -1352,7 +1353,7 @@ async function runMcpServer(): Promise<void> {
     // （登录/查看中），短命 server 退出无权关闭；关闭出口只有显式 chrome-stop。
     try {
       await Promise.race([
-        stopLaunchedChromes({ all: true, modes: ["hidden"], logFn: (p) => logger.info(p) }),
+        stopLaunchedChromes({ modes: ["hidden"], logFn: (p) => logger.info(p) }),
         new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
       ]);
     } catch (e) {
@@ -1375,9 +1376,14 @@ async function runMcpServer(): Promise<void> {
       // pgrep -P）+ 立即 exit；优雅 close 留给 exit 钩子外无路径依赖。
       subproc.killAllSync();
       // review-r1：http 池迁 util/http-pool 后的清池点（原先在
-      // subproc.shutdown() 内——该调用已不在信号路径；Agent.close 仅销毁空闲
-      // socket，无网络等待，不违反停机链 no-hang 纪律）
-      await closeAllHttpAgents();
+      // subproc.shutdown() 内——该调用已不在信号路径）。
+      // P2 处置轮（contract 复审发现）：Agent.close 等 in-flight 请求完成后才
+      // resolve（原注释「仅销毁空闲 socket，无网络等待」不精确）——按同段兄弟
+      // 步纪律加 3s race 上界（所有池化 fetch 均带 AbortSignal 超时，最坏有界）。
+      await Promise.race([
+        closeAllHttpAgents(),
+        new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
+      ]);
     } catch (e) {
       logger.warn({ evt: "shutdown_error", error: String(e) });
     }

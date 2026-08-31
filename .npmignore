@@ -41,3 +41,6 @@ coverage/
 probe-dedao/
 probe-*
 output/
+
+# ----- ProfileRegistry 运行态（P2 处置轮：防 dev 残留再混入发布包）-----
+profiles/

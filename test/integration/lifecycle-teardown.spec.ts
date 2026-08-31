@@ -31,7 +31,8 @@ function bodyAfter(marker: string): string {
 describe("index.ts 装配链 —— 停机收尾顺序（parse17 §3.6 + §4.4）", () => {
   it("shutdown(sig) 内：stopLaunchedChromes 与 logged_in.restoreTabs 均先于 subproc.killAllSync", () => {
     const shutdownBody = bodyAfter("const shutdown = async (sig: string)");
-    const chromeStopIdx = shutdownBody.indexOf("stopLaunchedChromes({ all: true");
+    // P2 处置轮：ChromeStopOptions.all 死字段已删——无 port = --all（锚点同步）
+    const chromeStopIdx = shutdownBody.indexOf('stopLaunchedChromes({ modes: ["hidden"]');
     const restoreIdx = shutdownBody.indexOf("logged_in.restoreTabs()");
     const killAllIdx = shutdownBody.indexOf("subproc.killAllSync()");
     expect(chromeStopIdx).toBeGreaterThan(-1);

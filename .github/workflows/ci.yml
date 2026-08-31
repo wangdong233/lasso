@@ -11,11 +11,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Node 20(LTS)与 22(current)；与 media-gen-mcp CI 同矩阵约定
-        node: [20, 22]
+        # P2 处置轮（perf 路发现）：20=engines 下限锚点（已 EOL 2026-04，只守地板）/
+        # 22=maintenance LTS / 24=active LTS——search-local.spec 的 node:sqlite 依赖
+        # NODE_MAJOR>=23，此前矩阵 [20,22] 两节点全 skip（v1.17 特性在 CI 零行为
+        # 覆盖）；加 24 后该文件 40 测在 CI 真跑（本地 24.12 全量已验证）。
+        node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # P2 处置轮：checkout v4 / setup-node v4 均为 node20 runtime（GitHub 已弃用，
+      # 2026-06 起强制 node24）——升当前最新大版本：checkout v7.0.1 / setup-node
+      # v6.4.0（2026-08-31 releases 页核真；setup-node v6 破坏面=自动缓存限 npm，
+      # 本仓本就显式 cache: npm，无影响）。远程 CI 结论待主循环 push 后回查。
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: npm

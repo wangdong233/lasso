@@ -112,8 +112,8 @@ export interface LaunchChromeOptions {
   /** 测试注入：mock 隐藏保险丝（生产走 chrome-hide.ts hideChromeByPidAsync——
    *  P31 起异步；返回 Promise 或裸结果均可，调用点统一 await）。 */
   hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
-  /** 保险丝延迟（默认 1.5s；测试传 1ms 提速）。 */
-  fuseDelayMs?: number;
+  // P2 处置轮：删除 fuseDelayMs? 死参数——F1（v1.10）改立即执行后实现零读取
+  // （v1.10 起只余「保留参数兼容」的假注释，5 处测试传 1 是 placebo）。
   /**
    * bug02（v1.18.5）测试注入：隐藏全生命周期的执守启动（默认
    * ensureHideEnforcerRunning——真实 spawn detached 进程；测试注入 no-op 防真起）。
@@ -435,7 +435,7 @@ export async function launchChrome(
   // hide（chrome-hide 内部非 mac no-op / TCC 缺失降级不 fail）。
   // F1（v1.10.0 收尾修复，真机验证 03 发现）：原 1.5s 延迟 timer 在 CLI 路径被
   // process.exit 击败（fuse 永不触发）——改为立即执行（osascript 对刚 spawn 的
-  // pid 即有效）；fuseDelayMs 保留参数兼容但不再延迟。
+  // pid 即有效）；fuseDelayMs 死参数已于 P2 处置轮删除（v1.10 起实现零读取）。
   // P31（v1.18.3 同类横扫 S4）：hideFn 默认 execFile 异步（MCP chrome-launch
   // 请求路径零事件循环阻塞）后，**await 在 launchChrome 返回前完成**——CLI 路径
   // runLaunchChromeCli 返回后随即 process.exit，fire-and-forget 会重演 F1

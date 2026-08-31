@@ -701,7 +701,7 @@ describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () 
     expect(parseLaunchChromeArgs(["--mode", "visible"]).launchMode).toBe("visible");
   });
 
-  it("v1.10：hidden 档成功路径触发隐藏保险丝（fuseDelayMs=1 注入提速；非 mac hideFn no-op 由 chrome-hide.spec 覆盖）", async () => {
+  it("v1.10：hidden 档成功路径触发隐藏保险丝（F1 起立即执行；非 mac hideFn no-op 由 chrome-hide.spec 覆盖）", async () => {
     const mockSpawn = makeMockSpawn(24680);
     const hideCalls: Array<number | undefined> = [];
     await launchChrome({
@@ -713,7 +713,6 @@ describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () 
         hideCalls.push(pid);
         return { ok: true };
       },
-      fuseDelayMs: 1,
       ...FAST_PROBE,
       ...makeMockFetchSafe(),
     });
@@ -733,7 +732,6 @@ describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () 
         hideCalls.push(pid);
         return { ok: true };
       },
-      fuseDelayMs: 1,
       ...FAST_PROBE,
       ...makeMockFetchSafe(),
     });

@@ -162,7 +162,8 @@ export interface ExpectCondition {
 
 export interface ScreenshotSpec {
   full?: boolean;
-  element?: string;
+  // review-r2 裁决留档的 element? 死字段已于 P2 处置轮删除（零写入零读取；
+  // zod wire 面早在 r2 已删，此处是内部类型残留——上游 0.3.0 只接 fullPage）。
 }
 
 export interface BrowseOptions {
@@ -170,9 +171,10 @@ export interface BrowseOptions {
   js?: string;
   steps?: unknown[]; // browse() 入口消费：非空 → StepEngine.runChain（BrowseChannel browse 入口分流）
   expect?: ExpectCondition; // action=wait 消费（doWait 读 expect.text，必需）；其余 action 忽略
-  wait_until?: "load" | "domcontentloaded" | "networkidle";
+  // review-r2 裁决留档的 wait_until? / timeout_ms? 死字段已于 P2 处置轮删除
+  // （全链路零写入零读取；doNavigate 只透传 {type,url,ignoreCache}，
+  //  network 面用 network_timeout_ms 独立字段）。
   screenshot?: ScreenshotSpec;
-  timeout_ms?: number;
   no_cache?: boolean;
   /**
    * v1.18.2（doc/governance/10 F3+Y1）：steps chain 总时间预算（ms），默认 120s。

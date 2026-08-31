@@ -167,7 +167,9 @@ export async function ensureHideEnforcerRunning(
     const child = spawnFn(process.execPath, [entry, HIDE_ENFORCER_CMDLINE_MARKER]);
     child.unref();
     const pid = child.pid;
-    writeEnforcerPidfile(pid);
+    // P2 处置轮（contract 路发现）：透传 logFn——原默认 no-op 把 pidfile 写失败
+    // 完全吞掉（参数存在却从未接线，错误不吞红线边角违例）。
+    writeEnforcerPidfile(pid, logFn);
     logFn({ evt: "hide_enforcer_spawned", pid, previous: probe.reason });
     return { spawned: true, pid, reason: "spawned" };
   } catch (e) {
@@ -205,7 +207,12 @@ export async function runHideEnforcerCli(): Promise<void> {
     // 并发双起收敛：已在世的执守继续，本进程让位
     process.exit(0);
   }
-  writeEnforcerPidfile(process.pid);
+  // P2 处置轮：CLI 主体统一 stderr 结构化日志（与 watchdog logFn 同款）——
+  // 自写 pidfile 失败不再被默认 no-op logFn 吞掉（hide_enforcer_pidfile_error
+  // 事件此前全库不可达）。
+  const cliLogFn = (p: Record<string, unknown>) =>
+    process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`);
+  writeEnforcerPidfile(process.pid, cliLogFn);
   const { startDesiredHideWatchdog } = await import("./desired-hide-watchdog.js");
   const watchdog = startDesiredHideWatchdog({
     exitWhenIdleTicks: 2,
@@ -213,8 +220,7 @@ export async function runHideEnforcerCli(): Promise<void> {
       clearInterval(keepAlive);
       process.exit(0);
     },
-    logFn: (p) =>
-      process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`),
+    logFn: cliLogFn,
   });
   if (!watchdog) {
     // 非 darwin：无执守对象（reassert 原语 darwin-only），立即退

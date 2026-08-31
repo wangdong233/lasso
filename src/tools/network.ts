@@ -19,7 +19,9 @@
  * 边界（parse6 §1.2）：
  *  - 不抓 CDP Network-level 请求（v0.7 F3.7.x 完整 perf trace；F2 文档化为已知限制）
  *  - 不抓 WebSocket frame（v1.0+）
- *  - 不抓 response body（include_bodies 接受但不实装；推 v0.6）
+ *  - 不抓 response body（include_bodies 接受但值被忽略——P2 处置轮口径对齐：
+ *    cdp-actions.ts doNetwork 白盒结论「上游原生工具即时返回列表，值被忽略；
+ *    字段保留 zod 契约稳定」。原「推 v0.6」是未实装的过时承诺，删除）
  *  - 不 mock / 不 intercept / 不 replay（永远 NO-GO）
  *  - 不导出 HAR 文件（v0.7 F3.7.x）
  *

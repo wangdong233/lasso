@@ -136,7 +136,7 @@ import { CDP_UPSTREAM_TOOL_NAMES } from "../browse/cdp-actions.js";
 import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 // v1.3 Phase A：config 文件机制（#35 config_file doctor check）
 // 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
-import { getConfigFilePath, loadConfigFileEnv } from "../config/config.js";
+import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
 // v1.4 Phase B（parse-v1.4 §Phase B）：#36 machine_search_mcp doctor check
 // 守 INV-72：doctor 经 detectMachineSearchMcp() 只读探测 ~/.claude.json；永不 log Authorization 值；
 //            detail 只报 hostname（open.bigmodel.cn），不报完整 url（path 可含 token 片段）。
@@ -507,7 +507,10 @@ export async function runDoctor(
 
   // v1.17 A3：zhipuKey 仅用于 zhipu_keys_retired 静态退役提示（不再装配任何 channel）。
   const zhipuKey = opts.zhipuKey ?? process.env.ZHIPU_API_KEY;
-  const cdpPort = opts.cdpPort ?? parseInt(process.env.LASSO_CDP_PORT ?? "9222", 10);
+  // P2 处置轮：改用 config.parseCdpPort（v1.11 round1 T12 的 NaN/越界守卫解析器）——
+  // 原裸 parseInt 对 LASSO_CDP_PORT=垃圾值 产出 NaN 直灌 checkCdp9222(NaN)；
+  // 现在 NaN/越界回退 DEFAULT_CDP_PORT=9222 + config_invalid_value warn（守卫免费获得）。
+  const cdpPort = opts.cdpPort ?? parseCdpPort(process.env.LASSO_CDP_PORT);
   const cacheDir = opts.cacheDir ?? path.join(os.homedir(), ".cache", "lasso");
 
   // 1. node_version

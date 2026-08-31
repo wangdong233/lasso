@@ -146,7 +146,7 @@ lasso doctor
 
 **根因**：Steel Docker 容器停了 / 没起，或 endpoint 悬挂不返回（实测可挂 ~5 分钟不响应）。
 
-**修复**：`docker ps` 看容器、`docker start <容器>` 或重跑一行启动命令（见 [KEY-GUIDE · Steel](./KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)），`curl http://localhost:3000/health` 验证。**退出卡顿在 v1.13 已修**：Steel 会话释放加了 3 秒双层上界——旧版 Steel 停摆会把 Claude Code 退出拖到分钟级，现在最多 3 秒收尾，「Steel 挂了」不再拖死退出，恢复容器即可。
+**修复**：`docker ps` 看容器、`docker start <容器>` 或重跑一行启动命令（见 [KEY-GUIDE · Steel](./01-KEY-GUIDE.md#steel_endpoint--自托管云浏览器v16-新推荐免费)），`curl http://localhost:3000/health` 验证。**退出卡顿在 v1.13 已修**：Steel 会话释放加了 3 秒双层上界——旧版 Steel 停摆会把 Claude Code 退出拖到分钟级，现在最多 3 秒收尾，「Steel 挂了」不再拖死退出，恢复容器即可。
 
 ### 2.14 Electron 输入框的 type 降级（v1.12）
 

@@ -1,6 +1,6 @@
 # Lasso 架构
 
-> 本文是 Lasso **v1.17.2** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。
+> 本文是 Lasso **v1.18.7** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。头部版本与 §9 计数由 P2 处置轮（doc/governance/11）刷新——governance/07 §8 遗留 P0 销账。
 
 ## 1. 项目定位
 
@@ -45,7 +45,8 @@ Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户�
 │                           │ typed call                          │
 │  ┌────────────────────────▼─────────────────────────────────┐  │
 │  │  Channel Layer（src/channels/ + src/browse/ + src/desktop/│  │
-│  │   + src/search/ + src/search-local/ + src/logged-in/）    │  │
+│  │   + src/search/ + src/logged-in/；search-local 不在此层—— │  │
+│  │   工具直连范式，见 §1/§3.1）                               │  │
 │  │   BaseChannel ← MachineMcpSearchChannel / BraveChannel    │  │
 │  │   BaseChannel ← UiChannel                                 │  │
 │  │        ← BrowseChannel（abstract）                        │  │
@@ -312,11 +313,11 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 ## 10. 测试策略
 
-| 层 | 工具 | 覆盖 | 规模（v1.17.2 终态） |
+| 层 | 工具 | 覆盖 | 规模（v1.18.7 终态） |
 |---|---|---|---|
-| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..81 静态 grep + 形状测 | **81 条** |
-| INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **20 样本**（外部契约类全覆盖；未验证 pin 显性化报告） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed 等 | **2253 测试**（135 文件；doc/testing/01 ft-round1 门禁两轮独立复跑在档 + doc/governance/08 静默性审计补测） |
+| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..84 静态 grep + 形状测 | **84 条** |
+| INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84，26 个 pin 红翻转实证**（外部契约类全覆盖；未验证 pin 显性化报告） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak 等 | **2467 passed + 1 skipped**（147 文件；P2 处置轮本机实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；rust-helper 自 v1.13 起零改） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤） |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ × 三引擎 × 多 query | 12+ fixtures |

@@ -222,6 +222,12 @@ describe("desired-hide 接线", () => {
     expect(src).toMatch(/if \(r\.ok\)\s*\{/);
   });
 
+  it("P2：chrome-hideshow-cli 默认执守拉起透传 logFn（entry_missing/spawn_error/pidfile_error 不再被吞）", () => {
+    const src = readFileSync("src/launcher/chrome-hideshow-cli.ts", "utf8");
+    // 默认 ensureEnforcer 分支必须给 ensureHideEnforcerRunning 传 logFn（stderr 结构化）
+    expect(src).toMatch(/ensureHideEnforcerRunning\(\{\s*logFn:/);
+  });
+
   it("index.ts：server 启动 startDesiredHideWatchdog + shutdown 调 stop", () => {
     const src = readFileSync("src/index.ts", "utf8");
     expect(src).toMatch(/startDesiredHideWatchdog\(\{/);

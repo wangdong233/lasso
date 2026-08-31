@@ -108,28 +108,10 @@ export interface InteractTask {
 export type InteractEnvelope<T = unknown> = InteractResult<T>;
 
 // ============================================================
-// 形状校验（用于单测 + doctor 自检；非 zod，零依赖）
+// 形状校验（P2 处置轮删除 isRootRef/isRootKind/isRootInfo 三函数）
+// ------------------------------------------------------------
+// 删除依据（redundancy 路审查）：全仓（src/test/scripts）零消费者；原分节注释
+// 自称「用于单测 + doctor 自检」为 L0 假注释——单测与 doctor 均无引用。类型
+// RootRef/RootKind/RootInfo 保留；wire-shape 守护由 interact_* 契约测承担。
 // ============================================================
-/** RootRef 形状校验：`@pN` 或 `@wN`。 */
-export function isRootRef(v: unknown): v is RootRef {
-  if (typeof v !== "string") return false;
-  return /^@[pw]\d+$/.test(v);
-}
 
-/** RootKind 形状校验。 */
-export function isRootKind(v: unknown): v is RootKind {
-  return v === "browser_page" || v === "window";
-}
-
-/** RootInfo 形状校验（守护 wire-shape 不漂移）。 */
-export function isRootInfo(v: unknown): v is RootInfo {
-  if (typeof v !== "object" || v === null) return false;
-  const r = v as Record<string, unknown>;
-  return (
-    isRootRef(r.rootRef) &&
-    isRootKind(r.kind) &&
-    typeof r.title === "string" &&
-    typeof r.source === "string" &&
-    (r.subtitle === undefined || typeof r.subtitle === "string")
-  );
-}

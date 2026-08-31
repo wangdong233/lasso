@@ -14,7 +14,7 @@
  * 也可稳定跑过。
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { promises as fs, mkdtempSync, mkdirSync, chmodSync } from "node:fs";
+import { promises as fs, mkdtempSync, mkdirSync, chmodSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { runDoctor, LASSO_VERSION } from "../../src/doctor/doctor.js";
@@ -54,7 +54,10 @@ function findCheck(
 // ============================================================
 // cases
 // ============================================================
-describe("runDoctor — 结构合法性（验收 #2）", () => {
+describe("runDoctor — 结构合法性（验收 #2）", { timeout: 15_000 }, () => {
+  // P2 处置轮（perf 路发现）：全量套件并行负载下 doctor 检查链含 8s AbortSignal
+  // 网络探测（+Chrome --version 等），默认 5000ms 曾在全量跑超窗（隔离复跑绿）。
+  // 照 doctor-v17-integration.spec.ts describe timeout 45s 先例抬到 15s 治 flake。
   it("checks.length >= 10", async () => {
     const r = await runDoctor({
       cacheDir: tempCache,
@@ -62,6 +65,12 @@ describe("runDoctor — 结构合法性（验收 #2）", () => {
       skipInvariants: true,
     });
     expect(r.checks.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("P2：cdpPort 走 config.parseCdpPort（守卫单源——垃圾 env 值不再 NaN 下渗，白盒锚点）", () => {
+    const src = readFileSync("src/doctor/doctor.ts", "utf8");
+    expect(src).toMatch(/parseCdpPort\(process\.env\.LASSO_CDP_PORT\)/);
+    expect(src).not.toMatch(/parseInt\(process\.env\.LASSO_CDP_PORT/);
   });
 
   it("包含 ready:bool + blockers:string[] + timestamp + lasso_version", async () => {

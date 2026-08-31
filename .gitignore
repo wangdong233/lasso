@@ -30,3 +30,7 @@ Thumbs.db
 .devteam/
 output/
 .private/
+
+# ProfileRegistry 运行态产物（P2 处置轮：dev 跑测残留在仓根曾被误 track 进 npm 包；
+# 生产路径在 ~/.cache/lasso/profiles/，repo 根出现即异常残留）
+profiles/
