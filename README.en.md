@@ -206,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.18.7** (changelog in the collapsed block at the end of this section).
+**Current version v1.18.8** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -221,6 +221,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 <details>
 <summary>📋 Changelog (v1.8 → v1.18.6 — click to see what each version changed)</summary>
 
+- **v1.18.8**: doctor & CLI polish — ① `doctor` no longer reports "unhealthy" due to **ad-hoc signing** (previously a false `ready:false`: ad-hoc is Apple's free legitimate scheme, fully functional — the only cost is re-granting system permissions after rebuilds; a proper Developer ID signature still passes); ② `lasso launch-chrome --help` fixed (previously it actually launched a Chrome; now prints usage); ③ architecture doc fully aligned + 20 legacy cleanups (tests up to 2471 / invariants 84).
 - **v1.18.7**: architecture re-review landed (five-dimension checklist with fix loops) — ① browse-family interface honesty: `wait_until` / `timeout_ms` / `screenshot.element` / `stealth_profile` — four **never-effective dead parameters** — removed from tool descriptions and schema (previously silently ignored; docs no longer promise nonexistent behavior; non-breaking — unknown keys are silently stripped); ② four false statements about the CI cargo face corrected in docs; ③ internals: doctor decoupled from channels, firstText single definition, test-only pass-through methods converged (2 new architecture invariants, INV 82→84; tests 2446→2455).
 - **v1.18.6**: external-consumer & hide-enforcement closure — ① a CLI-launched Chrome **is no longer silently reaped after 60 s** (external CDP-direct tools previously died reliably at 60–75 s, e.g. automation workflows); external consumers can also stay alive with one line, `touch ~/.cache/lasso/chrome-touch-<port>`; ② "the hidden Chrome sometimes won't stay hidden" fixed for good — the hidden tier writes the sticky ledger at birth + a standalone enforcer process presses back within ~2 s even with no server alive (self-exits on an empty ledger, leaving nothing resident).
 - **v1.18.5**: release-package cleanup — ① **the npm packages of v1.18.1 ~ v1.18.4 accidentally shipped application-domain files** (intermediate artifacts of a course-scraping project, unrelated to Lasso itself; those versions are deprecated). Do not install them. From this version on the published package contains only Lasso proper; size drops from ~28 MB back to normal.
