@@ -206,7 +206,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.18.6** (changelog in the collapsed block at the end of this section).
+**Current version v1.18.7** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
@@ -221,6 +221,7 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 <details>
 <summary>📋 Changelog (v1.8 → v1.18.6 — click to see what each version changed)</summary>
 
+- **v1.18.7**: architecture re-review landed (five-dimension checklist with fix loops) — ① browse-family interface honesty: `wait_until` / `timeout_ms` / `screenshot.element` / `stealth_profile` — four **never-effective dead parameters** — removed from tool descriptions and schema (previously silently ignored; docs no longer promise nonexistent behavior; non-breaking — unknown keys are silently stripped); ② four false statements about the CI cargo face corrected in docs; ③ internals: doctor decoupled from channels, firstText single definition, test-only pass-through methods converged (2 new architecture invariants, INV 82→84; tests 2446→2455).
 - **v1.18.6**: external-consumer & hide-enforcement closure — ① a CLI-launched Chrome **is no longer silently reaped after 60 s** (external CDP-direct tools previously died reliably at 60–75 s, e.g. automation workflows); external consumers can also stay alive with one line, `touch ~/.cache/lasso/chrome-touch-<port>`; ② "the hidden Chrome sometimes won't stay hidden" fixed for good — the hidden tier writes the sticky ledger at birth + a standalone enforcer process presses back within ~2 s even with no server alive (self-exits on an empty ledger, leaving nothing resident).
 - **v1.18.5**: release-package cleanup — ① **the npm packages of v1.18.1 ~ v1.18.4 accidentally shipped application-domain files** (intermediate artifacts of a course-scraping project, unrelated to Lasso itself; those versions are deprecated). Do not install them. From this version on the published package contains only Lasso proper; size drops from ~28 MB back to normal.
 - **v1.18.4**: desktop-channel fix — ① previously, when the server was not started from the repo root (e.g. launched by a host such as Claude Code from any directory), all desktop tools failed with `rust_helper_crashed`; the helper path is now resolved from the install location, **works from any directory**; ② startup failures now fail fast with a self-diagnosing message (actual path, cwd, and fix suggestions; missing file / points-to-directory / no-exec-bit / corrupt-binary each get their own wording, failing in seconds instead of hanging); ③ binaries are ad-hoc signed during build (skipped silently on machines without codesign); ④ GitHub CI added (full test suite on every push).
