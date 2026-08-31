@@ -10,6 +10,8 @@
  *  6. parseLaunchChromeArgs() --port / --profile / --incognito / --extra-args 解析
  *  7. INV-64 衍生：launcher/*.ts 不引新 npm dep（grep 由 INV-64 守；本 spec 验
  *     chrome-paths + launch-chrome 互引合规 + 阈值常量稳定）
+ *  8. #5（v1.18.7 审查 P2）：runLaunchChromeCli --help/-h 短路——不 spawn +
+ *     打印注入的 usage + exit 0（DI 注入 spawnFn 零真实启动）
  *
  * macOS-only 现实红线（parse11 §1.3）：本 spec 用 mock probeExists + spawnFn；
  * 不真 spawn Chrome；Win/Linux 路径仅静态验 shape，真机 spawn 手测 #W7/#L7 pending。
@@ -19,13 +21,15 @@
  *  - spawnFn 注入：mock child_process.spawn → 返伪 ChildProcess（不真启子进程）
  *  - 不引入 puppeteer / open / chrome-launcher 等社区包（INV-64 守）
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import * as path from "node:path";
 import * as os from "node:os";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import {
   launchChrome,
   parseLaunchChromeArgs,
+  mergeLaunchDefaults,
+  runLaunchChromeCli,
   fileUrlToPathSafe,
 } from "../../src/launcher/launch-chrome.js";
 import {
@@ -993,7 +997,7 @@ describe("parseLaunchChromeArgs —— argv 解析", () => {
     );
   });
 
-  it("--help / -h → 忽略（caller 处理）", () => {
+  it("--help / -h → 解析层忽略（runLaunchChromeCli 入口短路处理，见 #5 describe）", () => {
     const opts = parseLaunchChromeArgs(["--help"]);
     expect(opts.port).toBeUndefined();
     expect(parseLaunchChromeArgs(["-h"]).port).toBeUndefined();
@@ -1002,6 +1006,141 @@ describe("parseLaunchChromeArgs —— argv 解析", () => {
   it("未知 flag → 忽略（forward-compat）", () => {
     const opts = parseLaunchChromeArgs(["--unknown-flag", "--port", "9222"]);
     expect(opts.port).toBe(9222);
+  });
+});
+
+// ============================================================
+// #5（v1.18.7 审查 P2 修复）· runLaunchChromeCli --help/-h 短路
+// ============================================================
+/**
+ * 修复前的 bug 路径（白盒）：parseLaunchChromeArgs 吞掉 --help（注释称 "caller
+ * 处理"）但 runLaunchChromeCli 从不检查 → `lasso launch-chrome --help` 直接落入
+ * launchChrome 真启动 Chrome。
+ *
+ * 本 describe 守修复后契约：--help/-h → 打印注入的 usage（生产经 index.ts 以
+ * CLI_USAGE 单一真源注入 helpText）+ process.exit(0)，**零 spawn**。
+ *
+ * 测试策略（守零真实启动）：
+ *  - spawnFn 经 defaults 注入 makeMockSpawn（伪 ChildProcess；即使修复回归也只
+ *    记 calls 不真启 Chrome）
+ *  - process.exit spy（throw 哨兵阻断后续代码）+ process.stdout.write spy（捕获
+ *    usage 输出）；afterEach restore
+ */
+describe("#5 · runLaunchChromeCli --help/-h 短路（不 spawn + usage + exit 0）", () => {
+  /** process.exit 哨兵（阻断 exit 后代码；携带 exit code 供断言）。 */
+  class ExitSentinel extends Error {
+    constructor(public readonly code: number) {
+      super(`__process_exit_${code}__`);
+    }
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("#5-1. --help：打印注入的 usage + exit 0 + 零 spawn（DI spawnFn 断言）", async () => {
+    const mockSpawn = makeMockSpawn(41001);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new ExitSentinel(code ?? 0);
+    }) as never);
+    const chunks: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as never);
+
+    const USAGE_SENTINEL = "lasso-mcp usage sentinel — CLI_USAGE 单一真源注入位";
+    await expect(
+      runLaunchChromeCli(["--help"], {
+        helpText: USAGE_SENTINEL,
+        spawnFn: mockSpawn.spawnFn,
+      }),
+    ).rejects.toThrow("__process_exit_0__");
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    // usage 打印且只打印 usage（不落 JSON result）
+    expect(chunks.join("")).toBe(USAGE_SENTINEL + "\n");
+    // 零 spawn：--help 短路在 launchChrome 之前（旧 bug 形态会真启动 Chrome）
+    expect(mockSpawn.calls.length).toBe(0);
+  });
+
+  it("#5-2. -h 短 flag 同款短路（usage + exit 0 + 零 spawn）", async () => {
+    const mockSpawn = makeMockSpawn(41002);
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new ExitSentinel(code ?? 0);
+    }) as never);
+    const chunks: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as never);
+
+    await expect(
+      runLaunchChromeCli(["-h"], { helpText: "usage-text", spawnFn: mockSpawn.spawnFn }),
+    ).rejects.toThrow("__process_exit_0__");
+    expect(chunks.join("")).toBe("usage-text\n");
+    expect(mockSpawn.calls.length).toBe(0);
+  });
+
+  it("#5-3. --help 与其他 flag 混排（--port 9333 --help）：仍短路（help 存在即退出，不解析启动）", async () => {
+    const mockSpawn = makeMockSpawn(41003);
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new ExitSentinel(code ?? 0);
+    }) as never);
+    const chunks: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as never);
+
+    await expect(
+      runLaunchChromeCli(["--port", "9333", "--help"], {
+        helpText: "usage-text",
+        spawnFn: mockSpawn.spawnFn,
+      }),
+    ).rejects.toThrow("__process_exit_0__");
+    expect(mockSpawn.calls.length).toBe(0);
+    expect(chunks.join("")).toBe("usage-text\n");
+  });
+
+  it("#5-4. 未注入 helpText 的直调形态：--help 仍 exit 0 + 零 spawn（防旧 bug 复活；silent 退出）", async () => {
+    const mockSpawn = makeMockSpawn(41004);
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new ExitSentinel(code ?? 0);
+    }) as never);
+    const chunks: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as never);
+
+    await expect(
+      runLaunchChromeCli(["--help"], { spawnFn: mockSpawn.spawnFn }),
+    ).rejects.toThrow("__process_exit_0__");
+    expect(mockSpawn.calls.length).toBe(0);
+    expect(chunks.join("")).toBe(""); // 无注入 → 不打印 usage（契约：恒不 spawn）
+  });
+
+  it("#5-5. mergeLaunchDefaults：defaults.spawnFn 透传进 opts（#5 DI 通道接线）", () => {
+    const mockSpawn = makeMockSpawn(41005);
+    const merged = mergeLaunchDefaults(parseLaunchChromeArgs([]), {
+      spawnFn: mockSpawn.spawnFn,
+    });
+    expect(merged.spawnFn).toBe(mockSpawn.spawnFn);
+    // opts 已有 spawnFn 时不覆盖（argv/直传层优先）
+    const own = (): ChildProcess => ({ pid: 1 } as unknown as ChildProcess);
+    expect(
+      mergeLaunchDefaults({ spawnFn: own }, { spawnFn: mockSpawn.spawnFn }).spawnFn,
+    ).toBe(own);
+  });
+
+  it("#5-6. 白盒：index.ts 生产接线注入 helpText=CLI_USAGE（usage 单一真源，非复制体）", () => {
+    const src = readFileSync("src/index.ts", "utf8");
+    // CLI_USAGE 定义 + launch-chrome dispatch 注入同一常量（同源证明）
+    expect(src).toMatch(/const CLI_USAGE = \[/);
+    expect(src).toMatch(/helpText: CLI_USAGE,/);
+    // launcher 侧不 import index（INV-64 单向依赖；usage 只能经注入流入）
+    const launcherSrc = readFileSync("src/launcher/launch-chrome.ts", "utf8");
+    expect(launcherSrc).not.toMatch(/from\s+["']\.\.\/index\.js["']/);
   });
 });
 

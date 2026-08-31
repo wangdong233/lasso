@@ -605,12 +605,13 @@ export async function launchChrome(
  *   lasso launch-chrome --mode visible           # v1.9 可见行为
  *   lasso launch-chrome --idle-ms 3600000        # 本次 launch 的 idle 覆盖（1h）
  *   lasso launch-chrome --incognito              # 加 --incognito 参数
+ *   lasso launch-chrome --help / -h              # 打印 usage + exit 0（不 spawn Chrome）
  *
  * 优先级：argv > config.json（index.ts CLI 入口先 loadConfig 再经 defaults 传入；
  * launcher 不 import config 模块保 INV-64）> 内置默认（visible——保守）。
  *
  * exit code：
- *  - 0  → ok=true（Chrome 已 spawn）
+ *  - 0  → ok=true（Chrome 已 spawn）**或 --help/-h（usage 打印后短路退出）**
  *  - 1  → ok=false（未找到 Chrome / spawn 失败 / unsupported_platform）
  *
  * 进程内不接管 Chrome lifecycle：spawn 后本 CLI 退出，Chrome detached 继续跑。
@@ -622,10 +623,39 @@ export async function launchChrome(
  *
  * INV-64 衍生：本函数只解析 argv + 调 launchChrome；不引新 dep。
  */
+/**
+ * CLI 装配层（index.ts）与测试注入共用的 defaults 包（v1.18.7 #5 起独立导出接口）。
+ *
+ *  - launchMode / idleMs / tcpProbeFn ：config 层默认（见 mergeLaunchDefaults）
+ *  - helpText  ：--help/-h 时打印的 usage 文本。**单一真源在 index.ts CLI_USAGE**，
+ *    launcher 不 import index（守 INV-64 单向依赖）→ 经注入流入。生产 CLI 恒注入；
+ *    未注入时 --help 仍 exit 0 不 spawn（silent——防直调方拿到「help 反而启动
+ *    Chrome」的旧 bug 形态）。
+ *  - spawnFn   ：测试注入（#5 spec 断言 --help 不 spawn 用）；生产不传。
+ */
+export interface LaunchChromeCliDefaults {
+  launchMode?: "hidden" | "visible";
+  idleMs?: number;
+  tcpProbeFn?: (port: number) => Promise<boolean>;
+  helpText?: string;
+  spawnFn?: LaunchChromeOptions["spawnFn"];
+}
+
 export async function runLaunchChromeCli(
   argv: string[] = process.argv.slice(3),
-  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number; tcpProbeFn?: (port: number) => Promise<boolean> },
+  defaults?: LaunchChromeCliDefaults,
 ): Promise<void> {
+  // #5（v1.18.7 审查 P2 修复）：--help / -h 短路。此前 parseLaunchChromeArgs 吞掉
+  // --help（注释称 "caller 处理"）但本函数从不检查 → `lasso launch-chrome --help`
+  // 直接落入 launchChrome **真启动 Chrome**。修复：检测到 help flag → 打印 usage
+  // （helpText 由 index.ts 以 CLI_USAGE 单一真源注入）+ exit 0，绝不进 launch 路径。
+  if (argv.includes("--help") || argv.includes("-h")) {
+    if (defaults?.helpText !== undefined) {
+      process.stdout.write(defaults.helpText + "\n");
+    }
+    process.exit(0);
+    return;
+  }
   const opts = mergeLaunchDefaults(parseLaunchChromeArgs(argv), defaults);
   const result = await launchChrome(opts);
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -640,7 +670,7 @@ export async function runLaunchChromeCli(
  */
 export function mergeLaunchDefaults(
   opts: LaunchChromeOptions,
-  defaults?: { launchMode?: "hidden" | "visible"; idleMs?: number; tcpProbeFn?: (port: number) => Promise<boolean> },
+  defaults?: LaunchChromeCliDefaults,
 ): LaunchChromeOptions {
   if (!opts.launchMode && defaults?.launchMode) opts.launchMode = defaults.launchMode;
   // P3（v1.17.3）：CLI 装配层注入的 TCP 探测透传（核心缺省不探测）
@@ -648,6 +678,8 @@ export function mergeLaunchDefaults(
   if (opts.idleMs === undefined && defaults?.idleMs !== undefined) {
     opts.idleMs = defaults.idleMs;
   }
+  // #5（v1.18.7）：测试注入 spawnFn 透传（生产不传；spec 断言 --help 短路不 spawn 用）
+  if (!opts.spawnFn && defaults?.spawnFn) opts.spawnFn = defaults.spawnFn;
   return opts;
 }
 
@@ -663,7 +695,8 @@ export function mergeLaunchDefaults(
  *  - --idle-ms <N>       ：per-launch idle 覆盖（v1.10；负数忽略）
  *  - --incognito         ：等价 --extra-args=--incognito 的快捷 flag
  *  - --extra-args <args> ：附加 Chrome 命令行参数（逗号分隔，如 "--incognito,--start-maximized"）
- *  - --help / -h         ：打印用法（解析忽略，由 caller 处理）
+ *  - --help / -h         ：解析层忽略；runLaunchChromeCli 入口短路（打印 usage + exit 0，
+ *                          #5 v1.18.7 修复——此前无人处理导致 --help 误启动 Chrome）
  */
 export function parseLaunchChromeArgs(
   argv: string[],
@@ -672,7 +705,7 @@ export function parseLaunchChromeArgs(
   const extra: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--help" || a === "-h") continue; // caller 处理
+    if (a === "--help" || a === "-h") continue; // runLaunchChromeCli 入口短路处理（#5）
     if (a === "--port") {
       const v = argv[i + 1];
       const n = v ? parseInt(v, 10) : NaN;

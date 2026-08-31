@@ -1520,6 +1520,9 @@ async function main(): Promise<void> {
       idleMs: idleDefault,
       // P3（v1.17.3）：CLI 装配层注入真实 TCP 探测（核心缺省关闭保测试语义）
       tcpProbeFn: tcpConnectable,
+      // #5（v1.18.7 审查 P2 修复）：--help/-h 时打印的 usage 单一真源（CLI_USAGE
+      // 定义在本文件；launcher 不 import index 守 INV-64 → 经注入流入）。
+      helpText: CLI_USAGE,
     });
     return;
   }
