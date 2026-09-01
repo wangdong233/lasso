@@ -245,4 +245,72 @@ describe("chrome-idle-reaper —— 台账 Chrome idle 用完即关（parse18 §
     // 三源取 max：外部信号只会延后收割、永不提前
     expect(src).toMatch(/Math\.max\(\s*rec\.launchedAt,\s*touchMap\.get\(rec\.port\) \?\? 0,\s*touchStatFn\(rec\.port\) \?\? 0,/);
   });
+
+  // ============================================================
+  // v1.19（渲染档设计决议 1.3）：exitWhenLedgerEmptyTicks 账空自退（opt-in）
+  // ============================================================
+  it("13. exitWhenLedgerEmptyTicks=2：连续 2 tick 空账 → onIdleExit 被调 + 自停（后续 tick 零动作）", async () => {
+    let ledger: ReturnType<typeof makeRec>[] = [];
+    let idleExitCalls = 0;
+    const stopCalls: Array<{ port: number }> = [];
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => ledger,
+      nowFn: () => 1_000_000,
+      stopFn: async (o) => {
+        stopCalls.push({ port: o.port });
+      },
+      exitWhenLedgerEmptyTicks: 2,
+      onIdleExit: () => {
+        idleExitCalls++;
+      },
+    });
+    expect(reaper).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // 空账 tick 1
+    expect(idleExitCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // 空账 tick 2 → 自退
+    expect(idleExitCalls).toBe(1);
+    // 自停后再走 3 个 tick：无重复 onIdleExit、无 stopFn
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS * 3);
+    expect(idleExitCalls).toBe(1);
+    expect(stopCalls).toEqual([]);
+    reaper?.stop();
+  });
+
+  it("14. 计数器在非空 tick 清零：空→有→空 两轮不提前退（须重新连续 2 tick）", async () => {
+    let ledger: ReturnType<typeof makeRec>[] = [makeRec({ launchedAt: 1_000_000, idleMs: 3_600_000 })];
+    let idleExitCalls = 0;
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => ledger,
+      nowFn: () => 1_000_000,
+      exitWhenLedgerEmptyTicks: 2,
+      onIdleExit: () => {
+        idleExitCalls++;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // 非空 tick → 计数清零
+    ledger = []; // 转空
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // 空 tick 1（重新计数）
+    expect(idleExitCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS); // 空 tick 2 → 退
+    expect(idleExitCalls).toBe(1);
+    reaper?.stop();
+  });
+
+  it("15. 不传 exitWhenLedgerEmptyTicks：空账永不自退（默认零变化锚——server 进程内形态）", async () => {
+    let idleExitCalls = 0;
+    const reaper = startChromeIdleReaper({
+      defaultIdleMs: 60_000,
+      readLedgerFn: () => [],
+      nowFn: () => 1_000_000,
+      onIdleExit: () => {
+        idleExitCalls++;
+      },
+    });
+    expect(reaper).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS * 5);
+    expect(idleExitCalls).toBe(0);
+    reaper?.stop();
+  });
 });

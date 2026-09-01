@@ -224,6 +224,21 @@ describe("chrome-stop —— 台账收尾（parse17 §3.4）", () => {
     expect(parseChromeStopArgs(["--port", "abc", "--bogus"])).toEqual({});
   });
 
+  // v1.19（渲染档设计决议 3.5）：--modes CSV 解析
+  it("parseChromeStopArgs：--modes CSV 解析（render / 多值 / 非法值抛错）", () => {
+    expect(parseChromeStopArgs(["--modes", "render"])).toEqual({ modes: ["render"] });
+    expect(parseChromeStopArgs(["--modes", "hidden,render"])).toEqual({
+      modes: ["hidden", "render"],
+    });
+    expect(parseChromeStopArgs(["--modes", " render , visible "])).toEqual({
+      modes: ["render", "visible"],
+    });
+    // 空值 = 未提供（--all 语义不受影响）
+    expect(parseChromeStopArgs(["--modes", ""])).toEqual({});
+    expect(() => parseChromeStopArgs(["--modes", "render,evil"])).toThrow(/invalid --modes/);
+    expect(() => parseChromeStopArgs(["--modes", "daily"])).toThrow(/hidden\|visible\|render/);
+  });
+
   it("stopLaunchedChromesSync：同步路径同红线（pid 复用不 kill）+ 清台账", async () => {
     await recordLaunch(makeRec({ pid: 9995 }));
     // 同步版不可注入 —— pid 9995 不存在 → already_dead 分支
@@ -258,3 +273,150 @@ function recorder(): { fn: (pid: number) => void; calls: number[] } {
   const calls: number[] = [];
   return { fn: (pid: number) => void calls.push(pid), calls };
 }
+
+// ============================================================
+// v1.19（渲染档设计决议 3.1 落点 1 / 3.4 / 3.5）：launchMode 第三值 "render"
+// ——台账写读往返（守 readLedgerSync 解析守卫漏改）+ chrome-stop render 收割
+// 连带 profile 清理 + modes 过滤三值
+// ============================================================
+describe("render 台账三值（渲染档设计决议 3.1）", () => {
+  it("render 写读往返：recordLaunch launchMode=render → readLedgerSync 读回 render（守守卫漏改负例）", async () => {
+    await recordLaunch(makeRec({ launchMode: "render", idleMs: 600_000 }));
+    const ledger = readLedgerSync();
+    expect(ledger).toHaveLength(1);
+    // 🔴 守卫（:107-110 一带）漏改时 launchMode 被静默读成 undefined = 按 hidden 处理
+    expect(ledger[0]!.launchMode).toBe("render");
+    expect(ledger[0]!.idleMs).toBe(600_000);
+  });
+
+  it("非法 launchMode 值仍降级 undefined（前向兼容不变）", async () => {
+    await fs.writeFile(
+      ledgerPath,
+      JSON.stringify([{ port: 9227, pid: 1, profileDir: "/x", launchedAt: 1, status: "ready", launchMode: "daily" }]),
+      "utf8",
+    );
+    expect(readLedgerSync()[0]!.launchMode).toBeUndefined();
+  });
+});
+
+describe("chrome-stop render 收割（渲染档设计决议 3.4/3.5）", () => {
+  /** 建 render 记录 + 真实临时 profile 目录（rmSync 真实断言用）。 */
+  async function makeRenderRec(overrides: Partial<LaunchedChromeRecord> = {}): Promise<string> {
+    const profileDir = path.join(
+      tmpDir,
+      `render-chrome-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    await fs.mkdir(path.join(profileDir, "Default"), { recursive: true });
+    await fs.writeFile(path.join(profileDir, "Default", "Preferences"), "{}");
+    await recordLaunch(makeRec({ launchMode: "render", profileDir, ...overrides }));
+    return profileDir;
+  }
+
+  it("killed（归属验证通过）→ render profile 连带 rmSync；台账清空", async () => {
+    const profileDir = await makeRenderRec({ pid: 8101 });
+    let alive = true;
+    const r = await stopLaunchedChromes({
+      aliveFn: () => alive,
+      psFn: () => `chrome --user-data-dir=${profileDir}`,
+      killTreeFn: () => {},
+      sleepFn: async () => {
+        alive = false;
+      },
+    });
+    expect(r.stopped[0]!.action).toBe("killed");
+    await expect(fs.stat(profileDir)).rejects.toThrow();
+    expect(readLedgerSync()).toEqual([]);
+  });
+
+  it("already_dead → render profile 连带 rmSync（收尸路径；设计决议 3.6）", async () => {
+    const profileDir = await makeRenderRec({ pid: 8102 });
+    const r = await stopLaunchedChromes({ aliveFn: () => false, killTreeFn: () => {} });
+    expect(r.stopped[0]!.action).toBe("already_dead");
+    await expect(fs.stat(profileDir)).rejects.toThrow();
+    expect(readLedgerSync()).toEqual([]);
+  });
+
+  it("pid_reused_skipped → 只清账不删 profile（无法确认无主；doctor 24h 扫描兜底）", async () => {
+    const profileDir = await makeRenderRec({ pid: 8103 });
+    const k = recorder();
+    const r = await stopLaunchedChromes({
+      aliveFn: () => true,
+      psFn: () => "/Applications/Safari.app/Contents/MacOS/Safari",
+      killTreeFn: k.fn,
+    });
+    expect(r.stopped[0]!.action).toBe("pid_reused_skipped");
+    expect(k.calls).toHaveLength(0);
+    expect(readLedgerSync()).toEqual([]);
+    await expect(fs.stat(profileDir)).resolves.toBeTruthy(); // profile 保留
+  });
+
+  it("日常档（hidden/visible）killed → profile 不删（持久 profile 是设计）", async () => {
+    const profileDir = path.join(tmpDir, "chrome-profile-daily");
+    await fs.mkdir(profileDir, { recursive: true });
+    await recordLaunch(makeRec({ pid: 8104, launchMode: "hidden", profileDir }));
+    let alive = true;
+    const r = await stopLaunchedChromes({
+      aliveFn: () => alive,
+      psFn: () => `chrome --user-data-dir=${profileDir}`,
+      killTreeFn: () => {},
+      sleepFn: async () => {
+        alive = false;
+      },
+    });
+    expect(r.stopped[0]!.action).toBe("killed");
+    await expect(fs.stat(profileDir)).resolves.toBeTruthy();
+  });
+
+  it("basename 前缀守卫：render 记录 profileDir 无 render-chrome-profile- 前缀 → 拒删（rmSync 归属红线）", async () => {
+    const profileDir = path.join(tmpDir, "some-user-dir");
+    await fs.mkdir(profileDir, { recursive: true });
+    await recordLaunch(makeRec({ pid: 8105, launchMode: "render", profileDir }));
+    const r = await stopLaunchedChromes({ aliveFn: () => false, killTreeFn: () => {} });
+    expect(r.stopped[0]!.action).toBe("already_dead");
+    await expect(fs.stat(profileDir)).resolves.toBeTruthy(); // 拒删
+    expect(readLedgerSync()).toEqual([]);
+  });
+
+  it("stopLaunchedChromesSync：already_dead render → profile 同步连带清理（sync 路径）", async () => {
+    const profileDir = await makeRenderRec({ pid: 8106 });
+    const r = stopLaunchedChromesSync();
+    expect(r.stopped[0]!.action).toBe("already_dead");
+    await expect(fs.stat(profileDir)).rejects.toThrow();
+    expect(readLedgerSync()).toEqual([]);
+  });
+
+  it("modes 过滤三值：--modes render 只收 render；--modes hidden 不动 render", async () => {
+    const renderProfile = await makeRenderRec({ port: 9224, pid: 8201 });
+    const hiddenProfile = path.join(tmpDir, "chrome-profile-hidden");
+    await fs.mkdir(hiddenProfile, { recursive: true });
+    await recordLaunch(makeRec({ port: 9225, pid: 8202, launchMode: "hidden", profileDir: hiddenProfile }));
+
+    // --modes hidden：render 记录不动（精确匹配不命中）
+    const rHidden = await stopLaunchedChromes({
+      modes: ["hidden"],
+      aliveFn: () => false,
+      killTreeFn: () => {},
+    });
+    expect(rHidden.stopped.map((s) => s.port)).toEqual([9225]);
+    await expect(fs.stat(renderProfile)).resolves.toBeTruthy();
+    expect(readLedgerSync().map((x) => x.port)).toEqual([9224]);
+
+    // --modes render：收 render + 连带 profile
+    const rRender = await stopLaunchedChromes({
+      modes: ["render"],
+      aliveFn: () => false,
+      killTreeFn: () => {},
+    });
+    expect(rRender.stopped.map((s) => s.port)).toEqual([9224]);
+    await expect(fs.stat(renderProfile)).rejects.toThrow();
+    expect(readLedgerSync()).toEqual([]);
+  });
+
+  it("chrome-stop.ts 的 render 前缀镜像与 src/render/render-flags.ts 真源一致（tripwire）", () => {
+    const stopSrc = readFileSync(
+      new URL("../../src/launcher/chrome-stop.ts", import.meta.url),
+      "utf8",
+    );
+    expect(stopSrc).toContain('const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";');
+  });
+});

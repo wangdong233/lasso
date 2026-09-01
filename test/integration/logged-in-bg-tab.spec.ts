@@ -76,7 +76,7 @@ afterEach(async () => {
   }
 });
 
-function writeHiddenLedger(port: number, launchMode: "hidden" | "visible"): void {
+function writeHiddenLedger(port: number, launchMode: "hidden" | "visible" | "render"): void {
   writeFileSync(
     ledgerPath,
     JSON.stringify([
@@ -142,6 +142,16 @@ describe("LoggedInChannel —— background tab 预建 + reaper touch 接线（p
 
   it("26b. 台账 launchMode=visible（或无台账）→ 不预建（判定门：仅 hidden 档）", async () => {
     writeHiddenLedger(9222, "visible");
+    const ch = await makeChannel();
+    await callGetMcpClient(ch);
+    expect(createBgCalls).toEqual([]);
+  });
+
+  // v1.19（渲染档设计决议 3.1 落点 4 回归锚）：render 档不进日常档预建 tab
+  // 判定门——渲染档 Chrome 是确定性 headless 资源（外部消费方经 CDP attach），
+  // 不参与 LoggedInChannel 的 about:blank 预建（那是 headed 日常档的零打扰语义）。
+  it("26c. 台账 launchMode=render → 不预建（渲染档不进日常档判定门；边界 6）", async () => {
+    writeHiddenLedger(9222, "render");
     const ch = await makeChannel();
     await callGetMcpClient(ch);
     expect(createBgCalls).toEqual([]);

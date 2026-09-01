@@ -40,8 +40,11 @@ export interface LaunchedChromeRecord {
   /**
    * v1.10（parse18 §2.5）：spawn 档冗余记录（诊断 / audit 用；reaper 预建判定读）。
    * 可选 = 前向兼容（v1.9 台账无此字段仍可读）。
+   * v1.19（渲染档设计决议 3.1 落点 1）：扩第三值 "render"——渲染档（确定性 headless，
+   * 服务 media-gen-mcp 等外部消费方）。readLedgerSync 解析守卫同步三值
+   * （🔴 守卫漏改则 render 记录被静默降级 undefined = 按 hidden 处理，表面能跑语义错）。
    */
-  launchMode?: "hidden" | "visible";
+  launchMode?: "hidden" | "visible" | "render";
   /**
    * v1.10（parse18 §2.5）：per-launch idle 覆盖（CLI --idle-ms 传入）。
    * undefined = 用全局默认（config.launchIdleMs）；显式 0 = 该记录禁用回收。
@@ -104,8 +107,12 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
       status: r.status === "cdp_not_ready" ? "cdp_not_ready" : "ready",
       // v1.10（parse18 §2.5）：两可选字段 typeof 守卫解析（前向兼容；
       // 非法形态降级 undefined = 走全局默认档）
+      // v1.19（渲染档设计决议 3.1 落点 1）：launchMode 扩第三值 "render"（守卫
+      // 同步三值——漏改则 render 记录被静默读成 undefined，chrome-ledger.spec
+      // 「render 写读往返」用例钉死）
       launchMode:
-        typeof r.launchMode === "string" && (r.launchMode === "hidden" || r.launchMode === "visible")
+        typeof r.launchMode === "string" &&
+        (r.launchMode === "hidden" || r.launchMode === "visible" || r.launchMode === "render")
           ? r.launchMode
           : undefined,
       idleMs: typeof r.idleMs === "number" && Number.isFinite(r.idleMs) ? r.idleMs : undefined,

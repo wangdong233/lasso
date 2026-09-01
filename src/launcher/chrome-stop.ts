@@ -13,20 +13,28 @@
  * 与 SubprocessManager 共享 util/kill-tree.ts 单一树杀真源（INV-77a 守；
  * 禁第二套 pgrep 递归实现漂移）。
  *
- * CLI：`lasso-mcp chrome-stop [--port N|--all]`（index.ts 子命令路由）。
- * 无 flag = --all（台账本身已 scoped 到 lasso-owned + 验证归属，全清是安全默认）。
+ * CLI：`lasso-mcp chrome-stop [--port N|--all] [--modes <m1,m2>]`（index.ts 子命令路由）。
+ * 无 flag = --all（台账本身已 scoped 到 lasso-owned + 验证归属，全清是安全默认；
+ * --all 含渲染档 = 有意「全停」出口）。v1.19（渲染档设计决议 3.5）：--modes 值域
+ * hidden|visible|render——`--modes render` 单收渲染档、`--modes hidden` 不动渲染档
+ * （精确匹配天然生效）；render 记录收割连带 rmSync 临时 profile（cleanupRenderProfile，
+ * 设计决议 3.4——清理单点落在本文件，CLI stop / reaper / 执守 / doctor 四条收割路径
+ * 自动继承）。
  * 幂等：无记录也 exit 0。
  *
  * INV-64 衍生：只 import node:* 内置 + ../util/kill-tree.js（v1.9 显式豁免的
  * 共享 lifecycle 原语；INV-64 (b) 白名单）+ ./chrome-ledger.js 同目录互引。
  */
 import { spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
+import * as path from "node:path";
 import process from "node:process";
 import { killTreeSync } from "../util/kill-tree.js";
 import {
   readLedgerSync,
   removeLedgerEntries,
   removeLedgerEntriesSync,
+  type LaunchedChromeRecord,
   type LedgerLogFn,
 } from "./chrome-ledger.js";
 
@@ -44,8 +52,10 @@ export interface ChromeStopOptions {
    * ["hidden"] —— visible 档是用户拥有的窗口（登录/查看中），任何 server
    * 进程退出都无权关闭它（短命 server 退出曾把用户登录窗口砸掉）。
    * chrome-stop CLI 显式操作不过滤（用户主动=最高权限）。
+   * v1.19（渲染档设计决议 3.1 落点 2 / 3.5）：扩第三值 "render"——
+   * `--modes render` 可单独收渲染档；`--modes hidden` 因精确匹配不动渲染档。
    */
-  modes?: Array<"hidden" | "visible">;
+  modes?: Array<"hidden" | "visible" | "render">;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -116,6 +126,55 @@ function defaultAliveFn(pid: number): boolean {
   }
 }
 
+// ============================================================
+// v1.19（渲染档设计决议 3.4）：render 记录收割连带临时 profile 清理
+// ============================================================
+/**
+ * 渲染档临时 profile 前缀（rmSync 的「归属验证」镜像——删目录与杀进程同红线：
+ * 只删验证归属的 profile）。真源在 src/render/render-flags.ts RENDER_PROFILE_PREFIX；
+ * launcher 禁反向引 render（INV-64 修订 b）→ 本地镜像字面量，
+ * test/unit/render-flags.spec.ts tripwire 断言两处一致。
+ */
+const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";
+
+/**
+ * render 记录收割后清理其临时 profile 目录（设计决议 3.4：仅对 launchMode==="render"；
+ * 日常档持久 profile 是设计，勿全局改）。
+ *
+ * 调用时机（与杀路径的验证强度对齐）：
+ *  - killed（归属验证通过后杀掉）→ 清理；
+ *  - already_dead（pid 探活已死 = 渲染档 Chrome 确已不在）→ 清理（设计决议 3.6 收尸）；
+ *  - pid_reused_skipped → **不清理**（pid 被无关进程占用 = 无法确认 profile 无主；
+ *    陈年目录交 render-chrome doctor 的 24h 陈年扫描兜底）。
+ * basename 前缀守卫：手工污染/损坏的台账指向任意路径时拒绝删除（等价 verifyOwnership
+ * 的前缀拼接防线）。best-effort：rmSync 失败 warn 不影响退出路径。
+ */
+function cleanupRenderProfile(
+  rec: LaunchedChromeRecord,
+  log: LedgerLogFn,
+  trigger: string,
+): void {
+  if (rec.launchMode !== "render") return;
+  const base = path.basename(rec.profileDir);
+  if (!base.startsWith(RENDER_PROFILE_BASENAME_PREFIX)) {
+    log({
+      evt: "render_profile_cleanup_skipped",
+      port: rec.port,
+      pid: rec.pid,
+      profileDir: rec.profileDir,
+      reason: "basename_prefix_mismatch",
+      trigger,
+    });
+    return;
+  }
+  try {
+    rmSync(rec.profileDir, { recursive: true, force: true });
+    log({ evt: "render_profile_removed", port: rec.port, pid: rec.pid, profileDir: rec.profileDir, trigger });
+  } catch (e) {
+    log({ evt: "render_profile_remove_error", port: rec.port, pid: rec.pid, error: String(e), trigger });
+  }
+}
+
 async function defaultSleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
@@ -150,6 +209,9 @@ export async function stopLaunchedChromes(
     // 1. 探活
     if (!aliveFn(rec.pid)) {
       stopped.push({ port: rec.port, pid: rec.pid, action: "already_dead" });
+      // v1.19（渲染档设计决议 3.6 收尸）：render 记录 pid 已死 = 渲染档 Chrome
+      // 确已不在，临时 profile 即垃圾 → 连带清理（best-effort）。
+      cleanupRenderProfile(rec, log, "stop_already_dead");
       continue;
     }
     // 2. cmdline 归属验证（红线：验证不通过绝不 kill）
@@ -181,6 +243,9 @@ export async function stopLaunchedChromes(
     if (!dead) killTreeFn(rec.pid);
     stopped.push({ port: rec.port, pid: rec.pid, action: "killed" });
     log({ evt: "chrome_stop_result", port: rec.port, pid: rec.pid, action: "killed", tree_kill: !dead });
+    // v1.19（渲染档设计决议 3.4）：render 记录归属验证通过并收割后，
+    // 连带清理临时 profile（在杀进程之后；best-effort）。
+    cleanupRenderProfile(rec, log, "stop_killed");
   }
 
   // 5. 删台账条目（全部已处理记录——含 already_dead / pid_reused_skipped 的陈旧条目）
@@ -203,7 +268,7 @@ export interface ChromeStopSyncOptions {
    * 任何 server 进程退出（优雅 shutdown 之外的 exit 钩子兜底路径）都无权关闭它。
    * P1（v1.17.3）只修了优雅停机路径；本参数把同一裁决补到 exit 钩子。
    */
-  modes?: Array<"hidden" | "visible">;
+  modes?: Array<"hidden" | "visible" | "render">;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -237,6 +302,9 @@ export function stopLaunchedChromesSync(
   for (const rec of targets) {
     if (!aliveFn(rec.pid)) {
       stopped.push({ port: rec.port, pid: rec.pid, action: "already_dead" });
+      // v1.19（渲染档设计决议 3.4/3.6）：sync 路径（exit 钩子）同款 render
+      // profile 连带清理——already_dead = 渲染档 Chrome 确已不在。
+      cleanupRenderProfile(rec, log, "stop_sync_already_dead");
       continue;
     }
     if (!verifyOwnership(rec.pid, rec.profileDir, psFn)) {
@@ -246,6 +314,8 @@ export function stopLaunchedChromesSync(
     if (killTreeFn) killTreeFn(rec.pid);
     else killTreeSync(rec.pid, "chrome-stop-exit");
     stopped.push({ port: rec.port, pid: rec.pid, action: "killed" });
+    // v1.19（渲染档设计决议 3.4）：归属验证通过并收割后连带清理临时 profile。
+    cleanupRenderProfile(rec, log, "stop_sync_killed");
   }
   if (stopped.length > 0) {
     removeLedgerEntriesSync(
@@ -260,9 +330,14 @@ export function stopLaunchedChromesSync(
 // CLI 入口（`lasso-mcp chrome-stop [--port N|--all]`）
 // ============================================================
 /**
- * argv 解析：--port N / --all / --help。都不传 = --all（安全默认）。
+ * argv 解析：--port N / --all / --modes <csv> / --help。都不传 = --all（安全默认）。
+ * v1.19（渲染档设计决议 3.5）：--modes 值域 hidden|visible|render（CSV），
+ * 非法值抛错（runChromeStopCli 捕获后 stderr + exit 1）。
+ * 无 --modes 的 --all 语义 = 全停（含渲染档），属有意「全停」出口，文档化。
  * 单独导出便于单测（不 spawn 真进程）。
  */
+const CHROME_STOP_MODE_VALUES = ["hidden", "visible", "render"] as const;
+
 export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
   const opts: ChromeStopOptions = {};
   for (let i = 0; i < argv.length; i++) {
@@ -274,17 +349,39 @@ export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
       i++;
     } else if (a === "--all") {
       // 接受 --all flag 但不写字段：无 port = --all（P2 处置轮删除死 all 字段）。
+    } else if (a === "--modes") {
+      const v = argv[i + 1] ?? "";
+      const modes: Array<"hidden" | "visible" | "render"> = [];
+      for (const piece of v.split(",").map((s) => s.trim()).filter(Boolean)) {
+        if (!(CHROME_STOP_MODE_VALUES as readonly string[]).includes(piece)) {
+          throw new Error(
+            `invalid --modes value "${piece}" (expected hidden|visible|render, CSV)`,
+          );
+        }
+        if (!modes.includes(piece as "hidden" | "visible" | "render")) {
+          modes.push(piece as "hidden" | "visible" | "render");
+        }
+      }
+      if (modes.length > 0) opts.modes = modes;
+      i++;
     }
     // 未知 flag 忽略（forward-compat）
   }
   return opts;
 }
 
-/** CLI 主入口：打印 JSON 结果 + exit 0（幂等：无记录也 0）。 */
+/** CLI 主入口：打印 JSON 结果 + exit 0（幂等：无记录也 0）；--modes 非法值 → stderr + exit 1。 */
 export async function runChromeStopCli(
   argv: string[] = process.argv.slice(3),
 ): Promise<void> {
-  const opts = parseChromeStopArgs(argv);
+  let opts: ChromeStopOptions;
+  try {
+    opts = parseChromeStopArgs(argv);
+  } catch (e) {
+    process.stderr.write(`${String(e)}\n`);
+    process.exit(1);
+    return;
+  }
   const result = await stopLaunchedChromes(opts);
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   process.exit(0);

@@ -84,6 +84,15 @@ export interface ChromeIdleReaperOptions {
   nowFn?: () => number;
   /** 测试注入：回收出口（默认 stopLaunchedChromes({port})）。 */
   stopFn?: (opts: { port: number }) => Promise<unknown>;
+  /**
+   * v1.19（渲染档设计决议 1.3）：连续 N tick readLedgerFn() 返回空 → 自停 +
+   * onIdleExit 回调（独立执守进程 render-guardian 的自退出口——账空即无收割对象，
+   * 不留常驻 node；desired-hide-watchdog exitWhenIdleTicks 同款形态）。
+   * **缺省 undefined = 现行为不变**（server 进程内永不自退；index.ts 装配不传）。
+   */
+  exitWhenLedgerEmptyTicks?: number;
+  /** exitWhenLedgerEmptyTicks 触发时回调（执守进程在此清 keep-alive 后 process.exit）。 */
+  onIdleExit?: () => void;
   /** 结构化日志注入（index.ts 用 logger 包）。 */
   logFn?: LedgerLogFn;
 }
@@ -178,6 +187,9 @@ export function startChromeIdleReaper(
 
   let stopped = false;
   let ticking = false; // 上一 tick 的 async stop 未完时不叠 tick（守并发）
+  // v1.19（渲染档设计决议 1.3）：账空连续计数（有任何记录即清零；
+  // 仅 exitWhenLedgerEmptyTicks 显式传入时参与判定——默认路径永不自退）
+  let emptyTicks = 0;
   const timer = setInterval(() => {
     if (stopped || ticking) return;
     ticking = true;
@@ -194,6 +206,22 @@ export function startChromeIdleReaper(
   async function tick(): Promise<void> {
     const now = nowFn();
     const ledger = readLedgerFn();
+    // v1.19（渲染档设计决议 1.3）：账空自退（opt-in）——连续 N tick 无记录 = 无收割
+    // 对象。仅独立执守进程（render-guardian）传入；server 进程内缺省永不自退
+    // （chrome-idle-reaper.spec「不传时永不自退」用例钉死默认零变化）。
+    if (ledger.length === 0) {
+      if (opts.exitWhenLedgerEmptyTicks !== undefined) {
+        emptyTicks++;
+        if (emptyTicks >= opts.exitWhenLedgerEmptyTicks) {
+          stopped = true;
+          clearInterval(timer);
+          logFn({ evt: "chrome_idle_reaper_idle_exit", empty_ticks: emptyTicks });
+          opts.onIdleExit?.();
+        }
+      }
+      return;
+    }
+    emptyTicks = 0;
     for (const rec of ledger) {
       // P1（v1.17.3，得到实战根因）：visible 档 Chrome 是**用户拥有的窗口**
       // （用户在里面登录/查看），永不 idle 收割——关闭出口只有显式 chrome-stop。
