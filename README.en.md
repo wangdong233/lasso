@@ -218,6 +218,8 @@ Restart Claude Code → `/mcp` → `lasso ✓ Connected`. **That's the one line 
 
 **macOS users wanting desktop control**: run `lasso doctor` once and tick `lasso-rust-helper` for "Accessibility" and "Screen Recording" as prompted — `doctor` walks you through it step by step.
 
+**Deterministic render browser for other AI tools (render tier)**: if you use rendering tools like media-gen-mcp that demand "same input → same pixels", one line after installing lasso — `npx -y lasso-mcp render-chrome --ensure` — brings up a deterministic headless Chrome on port 9224 (frozen flag snapshot + isolated temp profile) and prints the `wsEndpoint` for the consumer to attach to; **the browser keeps running even if the consumer process is SIGKILLed** (lifecycle owned by lasso), and it is idle-reaped after 10 minutes with its profile cleaned up (tunable via `LASSO_RENDER_IDLE_MS`). Companions: `render-chrome --status` introspection / `--stop` / `render-chrome doctor [--clean]` orphan & stale-profile sweep (dry-run by default).
+
 <details>
 <summary>📋 Changelog (v1.8 → v1.18.6 — click to see what each version changed)</summary>
 

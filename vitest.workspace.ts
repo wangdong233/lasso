@@ -27,6 +27,9 @@ const SLOW_SPECS = [
   // round2 W-3 顺手移桶：doctor proxy_config 用例全量并发下 5169ms 超 5s 默认
   // testTimeout、单文件 1648ms 通过（round2-arch 两次全量 + 两次单跑实测）
   "test/unit/proxy-egress.spec.ts",
+  // v1.19（渲染档设计决议 §8.1b）：render-guardian 进程级集成（真 spawn dist
+  // index.js + >1s 存活观察窗 + 自退等待——r2 否定反查的唯一真闸门）
+  "test/integration/render-guardian-process.spec.ts",
 ];
 
 export default defineWorkspace([

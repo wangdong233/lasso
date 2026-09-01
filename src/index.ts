@@ -178,6 +178,11 @@ import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-
 // P27（v1.18.3）：desiredHidden 粘滞复隐看门狗（chrome-hide 记账 → 每 1.5s 压回任意
 // 激活源掀出的窗口；闪现上限从引擎「章尾守卫」的秒级压到 tick 级）
 import { startDesiredHideWatchdog, type DesiredHideWatchdog } from "./launcher/desired-hide-watchdog.js";
+// v1.19（渲染档设计决议）：render-chrome CLI（--ensure/--status/--stop/doctor）+
+// render-guardian 执守进程主体（ensure 成功路径全分支自动拉起；INV-64 修订：
+// render/*.ts 只 node:* + ../launcher/*，路由经 index）
+import { runRenderChromeCli } from "./render/render-chrome.js";
+import { runRenderGuardianCli } from "./render/render-guardian.js";
 import { runReplayBaselineCli } from "./serp/replay-baseline.js";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -1440,9 +1445,22 @@ const CLI_USAGE = [
   "                                               Chrome alive from outside: `touch ~/.cache/lasso/",
   "                                               chrome-touch-<port>`)",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
-  "                                               on-disk ledger (pid ownership verified via cmdline)",
+  "                                               on-disk ledger (pid ownership verified via cmdline;",
+  "                                               --modes hidden|visible|render filters by launch",
+  "                                               mode; no --modes --all = stop everything incl.",
+  "                                               render tier — intentional full-stop escape hatch)",
   "  lasso-mcp hide-enforcer                     Desired-hide enforcer daemon (auto-spawned by",
   "                                               chrome-hide / launch-chrome hidden; empty ledger",
+  "                                               self-exits; manual run is idempotent)",
+  "  lasso-mcp render-chrome --ensure            Deterministic headless render Chrome (port 9224):",
+  "  lasso-mcp render-chrome --status | --stop   idempotent ensure → single-line JSON",
+  "                                               {wsEndpoint,port,startedAt,reused,touchPath};",
+  "                                               detached Chrome survives consumer SIGKILL,",
+  "                                               idle-reaped after LASSO_RENDER_IDLE_MS",
+  "                                               (default 10min) with profile cleanup;",
+  "                                               `render-chrome doctor [--clean]` sweeps orphans",
+  "  lasso-mcp render-guardian                   Render reaper guardian daemon (auto-spawned by",
+  "                                               render-chrome --ensure; empty render ledger",
   "                                               self-exits; manual run is idempotent)",
   "  lasso-mcp replay-baseline [--strict]         Re-run SERP extraction baseline regression",
   "  lasso-mcp --version | -v                     Print version",
@@ -1550,6 +1568,21 @@ async function main(): Promise<void> {
   // chrome-hide / launch-chrome hidden 自动拉起，用户无需手跑；手跑幂等）。
   if (process.argv[2] === "hide-enforcer") {
     await runHideEnforcerCli();
+    return;
+  }
+  // v1.19（渲染档设计决议 3.6/3.7/3.9）：`lasso render-chrome --ensure|--status|--stop|doctor`
+  // —— 确定性 headless 渲染档 Chrome 治理 CLI（消费方 media-gen-mcp 的唯一入口是
+  // --ensure；stdout 单行 JSON 纯净性 + 退出码 0/2/3/4/5 全集）。
+  if (process.argv[2] === "render-chrome") {
+    await runRenderChromeCli();
+    return;
+  }
+  // v1.19（渲染档设计决议 裁决一）：`lasso render-guardian` —— 渲染执守进程主体
+  //（chrome-idle-reaper 的 detached 宿主；台账 render 记录连续 2 tick 为空自退。
+  // 通常由 render-chrome --ensure 一切 exit 0 出口自动拉起；手跑幂等——并发双起
+  // 后到者入口自检让位）。
+  if (process.argv[2] === "render-guardian") {
+    await runRenderGuardianCli();
     return;
   }
   // v1.0 Phase C（parse11 §3.2 + §7.2）：`lasso replay-baseline [--strict]`

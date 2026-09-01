@@ -2644,28 +2644,41 @@ const assertions = [
   {
     id: "INV-64-launcher-no-new-npm-dep",
     desc:
-      "v1.0 Phase D：launcher/*.ts 不引新 npm dep（parse11 §3.3 + §7.2 Phase D + R-CI-02）：" +
-      "（a）src/launcher/*.ts 所有 import 只能来自 node:* 内置模块" +
-      "（child_process / fs / path / process / url；不引第三方包）；" +
-      "（b）src/launcher/*.ts 不 import Lasso 内部业务模块" +
-      "（除了 launcher 自身的 chrome-paths.ts；不 import channels/ / serp/ / desktop/ 等；" +
-      "守 launcher 是纯 Chrome 路径探测 + spawn，不渗业务）；" +
-      "（c）launcher 子命令路由经 index.ts（不在 launcher/*.ts 内 auto-execute；" +
-      "守单一 CLI 入口）",
+      "v1.19 修订（渲染档设计决议）：launcher 与 render 两目录不引新 npm dep：" +
+      "（a）src/launcher/*.ts 与 src/render/*.ts 所有 import 只能来自 node:* 内置模块" +
+      "或相对路径（裸 npm 包名违规——含 puppeteer/puppeteer-core/playwright 等" +
+      "浏览器驱动包，渲染档旗标面是冻结快照非运行时依赖，设计决议裁决二）；" +
+      "（b）不 import Lasso 内部业务模块——白名单：同目录互引；" +
+      "render/*.ts 可引 ../launcher/*（共享 chrome 生命周期原语）与" +
+      "../util/kill-tree.js（v1.9 豁免沿用）；launcher/*.ts 禁引 ../render/*" +
+      "（依赖方向单向 render→launcher，日常档不反向依赖渲染档）；" +
+      "两目录均禁 channels/serp/desktop/browse/logged-in/forest/runtime/fallback/" +
+      "tools/config/subprocess/search/observ/ssrf/util(除 kill-tree)/invariants/doctor；" +
+      "（c）两目录 *.ts 顶级禁裸调 run* 子命令入口（路由经 index.ts，沿用泛化扫法）；" +
+      "（d）launcher 至少含 launch-chrome.ts + chrome-paths.ts（沿用）；" +
+      "（e）render 至少含 render-chrome.ts（渲染档 CLI 落地证据）",
     check: () => {
-      // 收集 src/launcher/ 下所有 .ts 文件
+      // 收集 src/launcher/ 与 src/render/ 下所有 .ts 文件（v1.19：两目录版）
       const launcherFiles = SRC.filter((s) =>
         /^launcher\//.test(s.f.replace(/\\/g, "/")),
       );
+      const renderFiles = SRC.filter((s) =>
+        /^render\//.test(s.f.replace(/\\/g, "/")),
+      );
       if (launcherFiles.length === 0) return false; // launcher 模块必须存在（INV-64 落地）
 
-      for (const f of launcherFiles) {
+      // (b) 禁引内部业务模块的目录前缀（两目录共面；render 额外放行 ../launcher/*）
+      const forbiddenDirs =
+        /^(channels|serp|desktop|browse|logged-in|forest|runtime|fallback|tools|config|subprocess|search|observ|ssrf|util|invariants|doctor)\//;
+
+      for (const f of [...launcherFiles, ...renderFiles]) {
+        const isRender = /^render\//.test(f.f.replace(/\\/g, "/"));
         const code = stripComments(f.text);
 
-        // ----- (a) 所有 import 只能来自 node:* 内置模块（或本目录相对路径）-----
+        // ----- (a) 所有 import 只能来自 node:* 内置模块（或相对路径）-----
         //   找所有 import ... from "..." 语句，验证 module specifier：
         //     - "node:xxx" → 内置，合规
-        //     - "./xxx" 或 "../xxx" → 相对路径，合规（launcher 内部模块互引）
+        //     - "./xxx" 或 "../xxx" → 相对路径，合规（目录内部模块互引）
         //     - 其他（裸 npm 包名）→ 违规
         const importSpecs = [
           ...code.matchAll(/from\s+["']([^"']+)["']/g),
@@ -2673,43 +2686,32 @@ const assertions = [
         for (const spec of importSpecs) {
           if (spec.startsWith("node:")) continue;
           if (spec.startsWith("./") || spec.startsWith("../")) continue;
-          // 其他都算违规（裸 npm 包名；如 puppeteer / open / chrome-launcher 等）
+          // 其他都算违规（裸 npm 包名；如 puppeteer / puppeteer-core / playwright 等
+          // 浏览器驱动包——渲染档旗标面是冻结快照非运行时依赖）
           return false;
         }
 
         // ----- (b) 不 import Lasso 内部业务模块 -----
-        //   守 launcher 是纯 Chrome 路径探测 + spawn，不渗业务。
-        //   禁 channels/ / serp/ / desktop/ / browse/ / logged-in/ / forest/ / runtime/ / fallback/ 等
-        //   例外：launcher/ 自身（chrome-paths.ts）允许（./chrome-paths.js 相对路径已在 (a) 允许）
+        //   守 launcher/render 是纯 Chrome 生命周期原语，不渗业务。
+        //   同目录互引（./xxx）合规；跳出层 ../xxx 分目录校验：
+        //   launcher：禁一切业务目录 + 禁 ../render/*（依赖方向单向 render→launcher）
+        //   render：放行 ../launcher/*（共享 chrome 生命周期原语）；其余业务目录禁
         for (const spec of importSpecs) {
-          // 相对路径之外不会到这里（已在 (a) 过滤）；此处只验相对路径的内部业务模块禁引
           if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
-          // launcher 内部互引（./chrome-paths）合规；其他相对路径需检查
-          // （launcher/*.ts 同目录互引合规；跳出层 ../xxx 检查）
-          if (spec.startsWith("./")) continue; // 同目录互引（chrome-paths / launch-chrome / chrome-ledger / chrome-stop 互引）
-          // v1.9（parse17 §3.4/§3.5）显式豁免：chrome-stop 消费共享树杀原语
-          // util/kill-tree.ts（单一真源，禁第二套 pgrep 递归；INV-77a 守）。
+          if (spec.startsWith("./")) continue; // 同目录互引合规
+          // v1.9（parse17）豁免沿用：共享树杀原语（单一真源，禁第二套 pgrep 递归）
           if (spec === "../util/kill-tree.js") continue;
-          // ../xxx 跳出 launcher/ 目录 → 验是否进业务模块
-          if (/^\.\.\/(channels|serp|desktop|browse|logged-in|forest|runtime|fallback|tools|config|subprocess|search|observ|ssrf|util|invariants|doctor)\//.test(spec)) {
-            return false;
+          if (isRender && /^(\.\.\/launcher\/|(\.\.\/)?launcher\/)/.test(spec)) continue;
+          if (!isRender && /^(\.\.\/)?render\//.test(spec)) {
+            return false; // launcher 禁反向引 render（单向依赖）
           }
+          // 剥 ../ 前缀验业务目录（util 除 kill-tree 已在上面豁免 → 命中即违规）
+          const rest = spec.replace(/^(\.\.\/)+/, "");
+          if (forbiddenDirs.test(rest)) return false;
         }
 
-        // ----- (c) launcher/*.ts 不在底部 auto-execute -----
-        //   守单一 CLI 入口（index.ts 子命令路由）。
-        //   禁 import.meta.url === process.argv[1] 类 main-guard 模式 + 立即 invoke。
-        //   允许 export 函数让 index.ts 显式调（runLaunchChromeCli / runReplayBaselineCli）。
-        //   实现：禁 process.exit( 在模块顶级（不在函数体内的 process.exit）；
-        //   简化扫法：launcher/*.ts 的 process.exit 调用必须包在函数体内
-        //   （通过括号配对近似：本 check 用更直接的形式 ——
-        //    禁 launcher 模块顶级调用 runLaunchChromeCli / launchChrome）
-        //   此处用 grep：模块顶级（缩进 0）禁直接调 runLaunchChromeCli();
-        //   P2 处置轮（redundancy 路发现）：原只枚举 runLaunchChromeCli /
-        //   runReplayBaselineCli 两个旧入口——runChromeHideShowCli / runHideEnforcerCli
-        //   等新 CLI 入口不在枚举（潜伏缺口）。改为通用 run[A-Z]\w* 形态，
-        //   一次覆盖现在与未来的全部 run* 子命令入口（声明行为 `function runX(`
-        //   / `const runX =` 不匹配，只命中顶级裸调用）。
+        // ----- (c) launcher/*.ts 与 render/*.ts 不在底部 auto-execute -----
+        //   守单一 CLI 入口（index.ts 子命令路由）——泛化 run* 顶级裸调扫法（沿用）。
         const lines = f.text.split("\n");
         for (const ln of lines) {
           // 顶级调用（无缩进）且非注释行
@@ -2720,16 +2722,20 @@ const assertions = [
         }
       }
 
-      // ----- (d) launcher 模块至少含 launch-chrome.ts（INV-64 落地证据）-----
+      // ----- (d) launcher 模块至少含 launch-chrome.ts + chrome-paths.ts（沿用）-----
       const hasLaunchChrome = launcherFiles.some((s) =>
         /launcher\/launch-chrome\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
       if (!hasLaunchChrome) return false;
-      // ----- (e) chrome-paths.ts 必须存在（候选路径表单一真源）-----
       const hasChromePaths = launcherFiles.some((s) =>
         /launcher\/chrome-paths\.ts$/.test(s.f.replace(/\\/g, "/")),
       );
       if (!hasChromePaths) return false;
+      // ----- (e) render 模块至少含 render-chrome.ts（渲染档 CLI 落地证据）-----
+      const hasRenderChrome = renderFiles.some((s) =>
+        /render\/render-chrome\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!hasRenderChrome) return false;
 
       return true;
     },
