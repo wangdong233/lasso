@@ -21,6 +21,9 @@ const SLOW_SPECS = [
   "test/unit/launch-chrome.spec.ts",
   "test/unit/rust-bridge.spec.ts",
   "test/unit/subprocess-lifecycle.spec.ts",
+  // PERF-5（2026-09-02 perf/acc 轮 2）：MCP 握手预算真子进程测（真 spawn node
+  // + 超时等待 + 树杀轮询，>5s 窗口）
+  "test/unit/mcp-client-handshake.spec.ts",
   // doctor 冷启动 / 多 section 探测 + expect 轮询窗口（任务点名）
   "test/unit/doctor-v17-integration.spec.ts",
   "test/unit/expect-poll.spec.ts",

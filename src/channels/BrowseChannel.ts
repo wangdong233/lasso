@@ -59,6 +59,7 @@ import { BudgetTracker, DEFAULT_CHAIN_BUDGET_MS, clampChainBudgetMs } from "../f
 import { applyOutputEnvelope } from "../util/output-envelope.js";
 import {
   parseEvalResult,
+  evalFence,
   imageBlock,
   firstText,
 } from "../browse/upstream-response.js";
@@ -1256,6 +1257,25 @@ async function doEvaluate(
   // isError → throw eval_upstream_error → classifyBrowseError 落 unknown（可重试）。
   if (r.isError) {
     throw new Error(`eval_upstream_error:${(extractEvalPreview(r)).slice(0, 120)}`);
+  }
+  // PERF-4（2026-09-02 perf/acc 轮 2）：超限 object/array 免 parse+stringify 快路。
+  // 上游围栏文本 = 页内 JSON.stringify(返回值)（chrome-devtools-mcp performEvaluation
+  // 实读 + upstream-response.ts 2026-08-15 实测契约）——对 JSON-safe 的 object/array
+  // 值，JSON.stringify(JSON.parse(fence)) 与 fence 逐字节一致（V8 round-trip 稳定，
+  // 字符串键插入序保序）；preview 只需前 PREVIEW_MAX_CHARS 字符，直接切 fence 免去
+  // O(n) 全量 JSON.parse + O(n) 全量 JSON.stringify（真机基准 8MiB 围栏 58.5ms →
+  // 2.2ms ≈ 26×，输出 byte-identical）。string 值（fence 以 " 起头）不走快路——
+  // 双层解码语义需完整 parse；数字/布尔/null 天然短于上限不受影响。
+  const fence = evalFence(r);
+  if (
+    fence != null &&
+    fence.length > PREVIEW_MAX_CHARS &&
+    (fence[0] === "{" || fence[0] === "[")
+  ) {
+    // P5 兜底不在此跑：三组错误签名（protocolTimeout 短语 / ^Error: / ^No page
+    // selected）均非 {/[ 起头，进不了本快路；若对前缀跑签名，合法大对象**值里**
+    // 含 protocolTimeout 文案会被误抛（旧路径对 parse 成功的值从不查签名）。
+    return { preview: truncatePreview(fence.slice(0, PREVIEW_MAX_CHARS)) };
   }
   // 经 parseEvalResult 解围栏取脚本返回值；拿不到就退回原文展示
   const v = parseEvalResult(r);

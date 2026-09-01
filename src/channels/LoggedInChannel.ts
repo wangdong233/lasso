@@ -55,6 +55,11 @@ export class LoggedInChannel extends BrowseChannel {
   readonly name = "browse_logged_in";
   /** 上次 probe 后的 2FA 状态；status() 把它回写到 ChannelStatus.note。 */
   private twoFaPending = false;
+  /**
+   * PERF-3（2026-09-02 perf/acc 轮 2）：2FA 探测已按 client 实例幂等——记录上次
+   * 探测时的 McpClient 实例；实例变更（respawn / profile 切换）= 新会话态，重探。
+   */
+  private last2FaProbeClient: McpClient | null = null;
 
   /**
    * v0.8：当前已注册的 spec name（`logged_in:<profileName>`）；null = 尚未注册任何 spec。
@@ -199,7 +204,18 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({ evt: "tab_snapshot_error", error: String(e) });
     }
     // 首次拿到 client 后探一次 2FA（不阻塞太久；失败不影响 browse，只影响 status）。
-    await this._detect2FA(c);
+    // PERF-3（2026-09-02 perf/acc 轮 2）：探测幂等化——原实现每 getMcpClient 必探
+    // （= 每 action / 每 step / 每 expect 轮询各付一次全量 take_snapshot 往返；
+    // 真机实测重内容页 ~3.3s/次 + 1.49MB stdio 载荷，5 步链白付 ~16s）。改为每
+    // client 实例探一次（respawn / profile 切换产生新实例 → 自动重探），与注释
+    // 「首次拿到 client 后探一次」的原始意图对齐。
+    // 诚实边界：会话中途落到 2FA 页不再经本探测刷新 status note——但 browse 结果
+    // 自身（snapshot/extract 正文含验证码文案）对调用方可见，检测能力不丢失；
+    // status note 的价值窗口本就是附着时刻（「用户 Chrome 停在登录墙吗」）。
+    if (c !== this.last2FaProbeClient) {
+      this.last2FaProbeClient = c;
+      await this._detect2FA(c);
+    }
     // v1.17.2（doc/governance/08 S-7）：连「用户自开 Chrome」→ 把 lasso 操作面挪到自建后台 tab
     //（必须晚于 takeSnapshotIfAbsent：自建 tab 属快照后新增，会话收尾 TabSession.restore
     //  会关它 → 用户 tab 栏零残留；失败降级 = 维持 pages[0] 现状，永不阻断 browse）。

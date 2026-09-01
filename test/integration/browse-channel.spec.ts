@@ -355,3 +355,95 @@ describe("HeadlessChannel.browse — 写盘短指针", () => {
     expect(parsed.url).toBe("https://example.com/");
   });
 });
+
+// ============================================================
+// PERF-4（2026-09-02 perf/acc 轮 2）：evaluate 超限 object/array 截断快路
+// ============================================================
+// 白盒证据：旧路径对大返回值付 O(n) 全量 JSON.parse + O(n) 全量 JSON.stringify
+// 后只取前 4000 字符（真机基准 8MiB 围栏 58.5ms → 快路 2.2ms ≈ 26×）。快路前提
+// = 上游围栏文本恰为页内 JSON.stringify(返回值)（performEvaluation 实读 +
+// upstream-response.ts 实测契约）→ 对 {/[ 起头的超限围栏直接切片，与
+// JSON.stringify(JSON.parse(fence)).slice(0,4000) 逐字节一致。
+describe("HeadlessChannel.browse — evaluate 超限截断快路（PERF-4）", () => {
+  function mkBigObjectRows(sizeChars: number): { rows: unknown[]; count: number } {
+    const rows: unknown[] = [];
+    let total = 0;
+    for (let n = 0; total < sizeChars; n++) {
+      const row = { i: n, cls: `row-${n}`, text: "x".repeat(96), href: `https://example.com/item/${n}` };
+      rows.push(row);
+      total += JSON.stringify(row).length;
+    }
+    return { rows, count: rows.length };
+  }
+
+  it("E1 超限大对象 → preview 与旧路径（stringify(v).slice）逐字节一致", async () => {
+    const value = mkBigObjectRows(64 * 1024); // fence ≈ 64KiB ≫ 4000
+    const { channel, setClient } = makeHeadlessWithStub();
+    setClient({
+      ...stubInfo.client,
+      callTool: vi.fn(async () => mockEvalResponse(value)),
+    } as unknown as McpClient);
+    const r = await channel.browse("https://example.com/", "evaluate", {
+      js: "return 1",
+    });
+    expect(r.outcome).toBe("worked");
+    // 旧路径期望值（语义基线）：JSON.stringify(v).slice(0, PREVIEW_MAX_CHARS)
+    const expected = JSON.stringify(value).slice(0, 4000);
+    expect(r.data!.preview).toBe(expected);
+    expect(r.data!.preview.length).toBe(4000);
+  });
+
+  it("E2 超限大数组（[ 起头）→ 同样走快路且逐字节一致", async () => {
+    const arr = Array.from({ length: 300 }, (_, i) => ({ id: i, pad: "z".repeat(64) }));
+    const { channel, setClient } = makeHeadlessWithStub();
+    setClient({
+      ...stubInfo.client,
+      callTool: vi.fn(async () => mockEvalResponse(arr)),
+    } as unknown as McpClient);
+    const r = await channel.browse("https://example.com/", "evaluate", {
+      js: "return 1",
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.preview).toBe(JSON.stringify(arr).slice(0, 4000));
+  });
+
+  it("E3 超限字符串返回值 → 行为不变（完整字符串 → truncatePreview 标记）", async () => {
+    const bigString = "y".repeat(10_000);
+    const { channel, setClient } = makeHeadlessWithStub();
+    setClient({
+      ...stubInfo.client,
+      callTool: vi.fn(async () => mockEvalResponse(bigString)),
+    } as unknown as McpClient);
+    const r = await channel.browse("https://example.com/", "evaluate", {
+      js: "return 1",
+    });
+    expect(r.outcome).toBe("worked");
+    // 字符串值不走快路（双层解码语义需完整 parse）：v = 原串 → truncatePreview
+    expect(r.data!.preview.startsWith("yyyy")).toBe(true);
+    expect(r.data!.preview).toContain("[truncated by lasso]");
+  });
+
+  it("E4 小对象 → 既有路径不变（全量 JSON，无截断标记）", async () => {
+    const { channel } = makeHeadlessWithStub();
+    // 默认 stub evaluate_script 返回 mockEvalResponse(42)（数字，短于上限）
+    const r = await channel.browse("https://example.com/", "evaluate", {
+      js: "return 42",
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.preview).toBe("42");
+  });
+
+  it("E5 上限内对象（fence ≤ 4000）→ 不进快路，preview 为完整 JSON", async () => {
+    const small = mkBigObjectRows(2_000); // fence ≈ 2KiB < 4000
+    const { channel, setClient } = makeHeadlessWithStub();
+    setClient({
+      ...stubInfo.client,
+      callTool: vi.fn(async () => mockEvalResponse(small)),
+    } as unknown as McpClient);
+    const r = await channel.browse("https://example.com/", "evaluate", {
+      js: "return 1",
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.preview).toBe(JSON.stringify(small));
+  });
+});

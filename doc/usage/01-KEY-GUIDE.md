@@ -311,6 +311,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
 | `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
+| `LASSO_MCP_HANDSHAKE_TIMEOUT_MS` | 浏览器引擎子进程（chrome-devtools-mcp）冷启动握手预算；超时即树杀该次尝试并按退避重试 | `20000`（20 秒） | 网络极慢的首装环境若频繁报 `mcp_handshake_timeout` → 适当放宽（如 `60000`）。默认 20s 已覆盖实测首装极值 17.2s，一般不用动 |
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
 | `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 禁用（常驻到 `chrome-stop`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |

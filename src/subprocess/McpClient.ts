@@ -23,6 +23,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { IOType } from "node:child_process";
 import type { Stream } from "node:stream";
+import { killTreeSync } from "../util/kill-tree.js";
 
 // ============================================================
 // 公共类型
@@ -48,6 +49,42 @@ export interface StdioSpawnParams {
 }
 
 // ============================================================
+// PERF-5（2026-09-02 perf/acc 轮 2）：握手预算
+// ============================================================
+/** 健康冷启动实测 ~2.8-5.6s（PERF-1 后），首装极值 17.2s（perf 轮真机）——20s 默认。 */
+export const DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS = 20_000;
+
+/** env 覆盖（测试隔离 / 慢环境显式放宽）；非法值回默认。 */
+export function defaultHandshakeTimeoutMs(): number {
+  const raw = Number(process.env.LASSO_MCP_HANDSHAKE_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS;
+}
+
+/**
+ * 给 Promise 加截止时间。超时抛 makeError(timeoutMs)；原 Promise 的晚到
+ * reject 被 catch 吞掉（不产生 unhandledRejection）。resolve 晚到同理无害。
+ */
+function deadline<T>(
+  p: Promise<T>,
+  ms: number,
+  makeError: (ms: number) => Error,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(makeError(ms)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+// ============================================================
 // McpClient
 // ============================================================
 export class McpClient {
@@ -66,10 +103,23 @@ export class McpClient {
   /**
    * stdio 连接：让 SDK StdioClientTransport 自己 spawn 子进程。
    * 调用方（SubprocessManager）只负责传 spawn 规格和事后 lifecycle。
+   *
+   * PERF-5（2026-09-02 perf/acc 轮 2，冷启动挂起归因与修）：
+   *  - 归因：SDK 的 initialize 请求默认 60s 超时（protocol.js
+   *    DEFAULT_REQUEST_TIMEOUT_MSEC），此前 connect 无显式预算——spawn 卡死
+   *    （代理黑洞下 npx 首装/registry 解析悬置）时每次尝试挂 60s，叠加
+   *    _spawnWithBackoff 5 次 × 2/4/8/16s 退避 = 最坏 ~330s 挂起；且失败路径
+   *    只走 SDK close（对 npx shim 直子进程 stdin/SIGTERM/SIGKILL，G5 实证不
+   *    转发下层 node/Chromium 树）→ 每次超时尝试泄漏挂死的 npx 进程树。
+   *  - 修法：显式握手预算 handshakeTimeoutMs（默认 20s = 健康冷启动 ~2.8-5.6s
+   *    的 3.5×+，覆盖实测首装极值 17.2s；env LASSO_MCP_HANDSHAKE_TIMEOUT_MS
+   *    覆盖）；超时/失败即 SDK close + killTreeSync 树杀本次尝试的 pid 后抛错
+   *    （由 SubprocessManager 退避重试）。最坏挂起 5×20s+30s ≈ 130s，零泄漏。
    */
   static async connectStdio(
     opts: McpClientOptions,
     params: StdioSpawnParams,
+    handshakeTimeoutMs = defaultHandshakeTimeoutMs(),
   ): Promise<McpClient> {
     const c = new McpClient(opts);
     const transport = new StdioClientTransport({
@@ -80,7 +130,28 @@ export class McpClient {
       stderr: params.stderr ?? "pipe",
       cwd: params.cwd,
     });
-    await c.client.connect(transport);
+    try {
+      await deadline(c.client.connect(transport), handshakeTimeoutMs, (ms) =>
+        new Error(
+          `mcp_handshake_timeout: ${params.command} ${(params.args ?? []).join(" ")} 未在 ${ms}ms 内完成 initialize（spawn 卡死或网络悬置；env LASSO_MCP_HANDSHAKE_TIMEOUT_MS 可调）`,
+        ),
+      );
+    } catch (e) {
+      // 失败清理：SDK close（stdin/SIGTERM/SIGKILL 直子进程）+ 树杀本 pid
+      //（npx shim 下层 node/Chromium 不收 SDK 信号——G5 同款缺口，见
+      // SubprocessManager._kill 注释）。close 的 2s×2 等待不阻塞失败路径
+      //（树杀是确定性致死原语，close 是 fire-and-forget 收尾）。
+      const pid = transport.pid;
+      void c.client.close().catch(() => {});
+      if (pid !== null && pid !== undefined) {
+        try {
+          killTreeSync(pid, "mcp-connect-failed");
+        } catch {
+          // 树杀 best-effort（pid 已死等）——不掩盖原始错误
+        }
+      }
+      throw e;
+    }
     c.stdioTransport = transport;
     c.connected = true;
     return c;
