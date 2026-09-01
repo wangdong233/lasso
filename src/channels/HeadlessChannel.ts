@@ -71,6 +71,11 @@ export class HeadlessChannel extends BrowseChannel {
     subproc.registerSpec("headless", {
       command: "npx",
       args: [
+        // PERF-1（2026-09-02 性能轮）：--prefer-offline 前插——npx 每次冷启动对
+        // registry 做 packument 新鲜度校验（条件请求），代理拥塞时 3-17s；prefer-offline
+        // 有缓存即跳过网络（首装一次付税后缓存自持）。锚定测试 cdp-mcp-170-migration
+        // spec「含 --prefer-offline」。npx/npm exec 同体，flag 直通。
+        "--prefer-offline",
         "-y",
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
         "--headless",

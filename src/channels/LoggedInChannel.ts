@@ -165,6 +165,10 @@ export class LoggedInChannel extends BrowseChannel {
     this.subproc.registerSpec(specName, {
       command: "npx",
       args: [
+        // PERF-1（2026-09-02 性能轮）：同 HeadlessChannel——registry 新鲜度校验税
+        // （代理拥塞 3-17s 尾部）用 --prefer-offline 消除；锚定测试见
+        // cdp-mcp-170-migration spec。profile_switch（forgetSpec+respawn）不再重付。
+        "--prefer-offline",
         "-y",
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
         `--browser-url=http://localhost:${this.cdpPort}`,

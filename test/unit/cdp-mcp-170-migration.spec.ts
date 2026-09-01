@@ -85,6 +85,40 @@ describe("T1 — chrome-devtools-mcp 1.7.0 迁移（版本锁 + 全 spec 关遥�
     expect(spec.args).toContain("--no-usage-statistics");
   });
 
+  // PERF-1（2026-09-02 性能轮，doc/性能准确率优化裁决表.md §2）：npx 每次
+  // 冷启动付 registry packument 新鲜度校验税（真机 3-17s，warm 稳态 ~3.0s）；
+  // --prefer-offline 有缓存即跳过网络（同机实测 → ~2.3s，node+包加载地板）。
+  // 两处日常热路径（headless / logged_in）锚死不回退。
+  it("PERF-1：HeadlessChannel spec args 含 --prefer-offline（npx registry 税锚死）", () => {
+    const cap = new LockedInSpecCapture();
+    new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
+    const spec = cap.get("headless");
+    expect(spec.args).toContain("--prefer-offline");
+    // 前插位（旗标必须在包名之前——npm exec 旗标解析位序）
+    expect(spec.args.indexOf("--prefer-offline")).toBeLessThan(
+      spec.args.indexOf(`chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`),
+    );
+  });
+
+  it("PERF-1：LoggedInChannel spec args 含 --prefer-offline", async () => {
+    const cap = new LockedInSpecCapture();
+    const { LoggedInChannel } = await import(
+      "../../src/channels/LoggedInChannel.js"
+    );
+    const ch = new LoggedInChannel(
+      cap.subproc as unknown as SubprocessManager,
+      9222,
+      makeStubProfiles(),
+      () => ({}) as never,
+    );
+    await (ch as unknown as { getMcpClient(): Promise<unknown> }).getMcpClient();
+    const spec = cap.get("logged_in:default");
+    expect(spec.args).toContain("--prefer-offline");
+    expect(spec.args.indexOf("--prefer-offline")).toBeLessThan(
+      spec.args.indexOf(`chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`),
+    );
+  });
+
   it("LoggedInChannel spec：含 --no-usage-statistics", async () => {
     const cap = new LockedInSpecCapture();
     const { LoggedInChannel } = await import(
