@@ -58,6 +58,7 @@
   "devDependencies": {
     "@types/node": "^20.17.0",
     "@types/turndown": "^5.0.6",
+    "puppeteer-core": "^25.3.0",
     "typescript": "^5.9.0",
     "vitest": "^2.1.0"
   }
