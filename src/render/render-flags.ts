@@ -15,6 +15,13 @@
  *  - 实测勘误（对设计 §2.3 的精确化）：`--disable-dev-shm-usage` 在 25.3.0 的
  *    ChromeLauncher.js:168 **无平台守卫**（darwin 上同样注入）——冻结集无需按
  *    平台分支，快照更简单。
+ *  - 验收轮勘误（2026-09-02，对抗复审轮实锤复检）：初版快照漏录
+ *    `--disable-ipc-flooding-protection`（ChromeLauncher.js:171 **无条件默认项**，
+ *    初版导出转录遗漏）。补录依据 = 对 §一.4 导出脚本（media-gen-mcp node_modules
+ *    puppeteer-core 25.3.0，/tmp 一次性脚本）的静态源核对 + 真机 spawn 后
+ *    `ps -o command=` 全量 diff 双确认。仓内机械化钉子 = 本 fixture tripwire
+ *    （逐字同序）——仓内**无**自动重导出对照（消费方仓依赖不进本仓 CI）；
+ *    升级 puppeteer major 时必须人工重跑 §一.4 导出并更新本文件 + fixture。
  *  - 漂移终裁 = 消费方 golden（MEDIA_GEN_RENDER_MODE=attach npm test，含
  *    render-video-determinism byte-identical）；lasso 侧 CI 不跑消费方 golden，
  *    交付与升级时触发（对接说明 §一.3）。有意变更流程 = 重导出 + 更新
@@ -53,6 +60,7 @@ export const RENDER_DETERMINISTIC_FLAGS: readonly string[] = [
   "--disable-dev-shm-usage", // 25.3.0 无平台守卫（darwin 实测注入；provenance 见文件头）
   "--disable-hang-monitor",
   "--disable-infobars",
+  "--disable-ipc-flooding-protection", // 2026-09-02 验收轮重导出补漏：ChromeLauncher.js:171 无条件默认项，初版快照漏录（见文件头 provenance 验收勘误）
   "--disable-popup-blocking",
   "--disable-prompt-on-repost",
   "--disable-renderer-backgrounding",

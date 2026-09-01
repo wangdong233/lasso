@@ -11,6 +11,7 @@
 --disable-dev-shm-usage
 --disable-hang-monitor
 --disable-infobars
+--disable-ipc-flooding-protection
 --disable-popup-blocking
 --disable-prompt-on-repost
 --disable-renderer-backgrounding
