@@ -29,6 +29,11 @@ import * as path from "node:path";
 import os from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  startDesiredHideWatchdog,
+  type DesiredHideWatchdog,
+  type DesiredHideWatchdogOptions,
+} from "./desired-hide-watchdog.js";
 
 /** 执守进程 ps cmdline 标记（spawn argv 自带；复验用——pidfile 数字之外的结构证据）。 */
 export const HIDE_ENFORCER_CMDLINE_MARKER = "hide-enforcer";
@@ -133,6 +138,47 @@ export interface EnsureHideEnforcerResult {
 }
 
 /**
+ * PERF-2a（2026-09-02 性能轮，doc/性能准确率优化裁决表.md §2）：server 装配侧让位。
+ *
+ * 根因：server 进程内看门狗 + 独立 hide-enforcer 执守同时以 1.5s tick 各跑一轮
+ * osascript reassert——正确性幂等（reassert 是「可见才压回」先读后写，双执守最坏
+ * 一次重复 AX 读），但 CPU 成本双倍：perf 轮真机实测 reassert nomatch 纯枚举路径
+ * ~873ms/次（平凡 osascript 基线 288ms）→ 单宿主 ≈58% 单核，双宿主 >100% 单核
+ * 持续占用（System Events 进程）。
+ *
+ * 修法：probeHideEnforcer() 为 running 则 server 不自起（执守为权威宿主——
+ * chrome-hide / launch-chrome hidden 记账后 ensureHideEnforcerRunning 保证
+ * 「账非空 ⟹ 执守在世或即将被 respawn」）；probe not running 才自起兜底
+ * （server 内看门狗仍是「无执守」形态的主执守面，如 src 布局开发形态）。
+ *
+ * 零语义变化：闪现上限仍 1.5s（由执守承载）；server 侧本就是冗余 belt。
+ *
+ * @returns DesiredHideWatchdog | null（null = 让位给执守 / 非 darwin）
+ */
+export function startWatchdogUnlessEnforcerRunning(
+  opts: {
+    /** 测试注入：probe 结果（默认真调 probeHideEnforcer）。 */
+    probe?: HideEnforcerProbe;
+    /** 透传给 startDesiredHideWatchdog 的选项（logFn/readStateFn/platform 等）。 */
+    watchdogOpts?: DesiredHideWatchdogOptions;
+    /** 让位事件的日志出口（与 watchdog logFn 同形）。 */
+    logFn?: (p: Record<string, unknown>) => void;
+  } = {},
+): DesiredHideWatchdog | null {
+  const logFn = opts.logFn ?? (() => {});
+  const probe = opts.probe ?? probeHideEnforcer();
+  if (probe.running) {
+    logFn({
+      evt: "desired_hide_watchdog_deferred_to_enforcer",
+      pid: probe.pid,
+      note: "PERF-2a：执守进程为权威宿主，server 不自起看门狗（双宿主 = 每 1.5s 双倍 osascript AX 枚举）；闪现上限语义不变",
+    });
+    return null;
+  }
+  return startDesiredHideWatchdog(opts.watchdogOpts ?? {});
+}
+
+/**
  * 确保执守进程在世（chrome-hide 成功 / launch-chrome hidden 记账后调用）。
  * detached + stdio:ignore + unref——调用方（短命 CLI）退出后执守继续。
  * best-effort：spawn/写 pidfile 失败不抛（执守是增强面，永不阻断主流程）。
@@ -213,7 +259,8 @@ export async function runHideEnforcerCli(): Promise<void> {
   const cliLogFn = (p: Record<string, unknown>) =>
     process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`);
   writeEnforcerPidfile(process.pid, cliLogFn);
-  const { startDesiredHideWatchdog } = await import("./desired-hide-watchdog.js");
+  // PERF-2a 起改静态 import（同目录模块，INV-64 合规；
+  // startWatchdogUnlessEnforcerRunning 也需要同步引用）
   const watchdog = startDesiredHideWatchdog({
     exitWhenIdleTicks: 2,
     onIdleExit: () => {

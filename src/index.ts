@@ -167,7 +167,7 @@ import { runChromeHideShowCli } from "./launcher/chrome-hideshow-cli.js";
 // bug02：hide-enforcer 独立执守进程 CLI 主体（hide 成功/hidden 出生自动拉起）
 // 注：此处不带版本号字面量——inv-selftest INV-63 样本对 index.ts 首个 "x.y.z"
 // 字面量做单次 replace 注入，注释先于 LASSO_SERVER_VERSION 会让注入打到注释上（假绿）。
-import { runHideEnforcerCli } from "./launcher/desired-hide-enforcer.js";
+import { runHideEnforcerCli, startWatchdogUnlessEnforcerRunning } from "./launcher/desired-hide-enforcer.js";
 import {
   runChromeStopCli,
   stopLaunchedChromes,
@@ -176,8 +176,10 @@ import {
 // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper（15s 周期；kill 100% 经 chrome-stop）
 import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-idle-reaper.js";
 // P27（v1.18.3）：desiredHidden 粘滞复隐看门狗（chrome-hide 记账 → 每 1.5s 压回任意
-// 激活源掀出的窗口；闪现上限从引擎「章尾守卫」的秒级压到 tick 级）
-import { startDesiredHideWatchdog, type DesiredHideWatchdog } from "./launcher/desired-hide-watchdog.js";
+// 激活源掀出的窗口；闪现上限从引擎「章尾守卫」的秒级压到 tick 级）。
+// PERF-2a（2026-09-02 性能轮）：装配入口改经 desired-hide-enforcer 的
+// startWatchdogUnlessEnforcerRunning（执守在世 → server 让位），本文件不再直起。
+import type { DesiredHideWatchdog } from "./launcher/desired-hide-watchdog.js";
 // v1.19（渲染档设计决议）：render-chrome CLI（--ensure/--status/--stop/doctor）+
 // render-guardian 执守进程主体（ensure 成功路径全分支自动拉起；INV-64 修订：
 // render/*.ts 只 node:* + ../launcher/*，路由经 index）
@@ -512,7 +514,11 @@ async function runMcpServer(): Promise<void> {
   //（数据域正交：ledger vs desired-hidden；reaper 管「何时关」，本看门狗管「隐藏态
   // 保持」）。darwin 恒启动（粘滞账可能在 server 启动后才写入；空账 tick 只读一个
   // 小 JSON）；非 darwin 返 null。
-  const desiredHideWatchdog: DesiredHideWatchdog | null = startDesiredHideWatchdog({
+  // PERF-2a（2026-09-02 性能轮）：执守进程（hide-enforcer）在世时 server 让位
+  // 不自起——双宿主 = 每 1.5s 双倍 osascript AX 枚举（真机 ~873ms/tick ×2 宿主）。
+  // 执守为权威宿主；probe not running 才自起兜底。闪现上限语义零变化（仍 1.5s）。
+  const desiredHideWatchdog: DesiredHideWatchdog | null = startWatchdogUnlessEnforcerRunning({
+    watchdogOpts: { logFn: (p) => logger.info(p) },
     logFn: (p) => logger.info(p),
   });
   if (desiredHideWatchdog) {

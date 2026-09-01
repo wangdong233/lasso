@@ -21,6 +21,7 @@ import {
   ensureHideEnforcerRunning,
   hideEnforcerEntryPath,
   HIDE_ENFORCER_CMDLINE_MARKER,
+  startWatchdogUnlessEnforcerRunning,
 } from "../../src/launcher/desired-hide-enforcer.js";
 import { startDesiredHideWatchdog } from "../../src/launcher/desired-hide-watchdog.js";
 import type { DesiredHiddenRecord } from "../../src/launcher/desired-hide-state.js";
@@ -262,6 +263,59 @@ describe("startDesiredHideWatchdog · exitWhenIdleTicks —— 执守进程自�
     });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(exited).toBe(0);
+    wd!.stop();
+  });
+});
+
+// ============================================================
+// PERF-2a（2026-09-02 性能轮，doc/性能准确率优化裁决表.md §2）：
+// startWatchdogUnlessEnforcerRunning —— server 装配侧让位
+//  * 执守在世（probe.running=true）→ 返 null 且**零调度**（readStateFn 从不被调）
+//  * 执守不在（probe.running=false）→ 正常自起兜底（tick 真跑）
+//  * 让位事件流经 logFn（观测面）
+// ============================================================
+describe("startWatchdogUnlessEnforcerRunning —— PERF-2a server 装配让位", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("15. probe running=true → 返 null + readStateFn 零调用（不 schedule = 消双宿主）", async () => {
+    let reads = 0;
+    const events: Array<Record<string, unknown>> = [];
+    const wd = startWatchdogUnlessEnforcerRunning({
+      probe: { running: true, pid: 4242, reason: "ok" },
+      watchdogOpts: {
+        platform: "darwin",
+        intervalMs: 100,
+        readStateFn: () => {
+          reads++;
+          return [];
+        },
+      },
+      logFn: (p) => events.push(p),
+    });
+    expect(wd).toBeNull(); // 让位：执守为权威宿主
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(reads).toBe(0); // 零调度——server 侧不再有第二个 1.5s tick 宿主
+    expect(events.some((e) => e.evt === "desired_hide_watchdog_deferred_to_enforcer")).toBe(true);
+    expect(events.find((e) => e.evt === "desired_hide_watchdog_deferred_to_enforcer")?.pid).toBe(4242);
+  });
+
+  it("16. probe running=false → 自起兜底（tick 真跑，server 内看门狗仍是主执守面）", async () => {
+    let reads = 0;
+    const wd = startWatchdogUnlessEnforcerRunning({
+      probe: { running: false, reason: "no_pidfile" },
+      watchdogOpts: {
+        platform: "darwin",
+        intervalMs: 100,
+        readStateFn: () => {
+          reads++;
+          return [];
+        },
+      },
+    });
+    expect(wd).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(reads).toBeGreaterThan(0); // 真调度了
     wd!.stop();
   });
 });

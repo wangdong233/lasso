@@ -228,9 +228,12 @@ describe("desired-hide 接线", () => {
     expect(src).toMatch(/ensureHideEnforcerRunning\(\{\s*logFn:/);
   });
 
-  it("index.ts：server 启动 startDesiredHideWatchdog + shutdown 调 stop", () => {
+  it("index.ts：server 启动看门狗（PERF-2a 起经 startWatchdogUnlessEnforcerRunning 让位装配）+ shutdown 调 stop", () => {
     const src = readFileSync("src/index.ts", "utf8");
-    expect(src).toMatch(/startDesiredHideWatchdog\(\{/);
+    // PERF-2a（2026-09-02 性能轮）：装配改经让位包装（执守在世 → server 不自起，
+    // 消双宿主双倍 1.5s AX 枚举）；stop 接线不变
+    expect(src).toMatch(/startWatchdogUnlessEnforcerRunning\(\{/);
+    expect(src).not.toMatch(/startDesiredHideWatchdog\(/); // 禁绕过让位包装直起
     expect(src).toMatch(/desiredHideWatchdog\?\.stop\(\)/);
   });
 });
