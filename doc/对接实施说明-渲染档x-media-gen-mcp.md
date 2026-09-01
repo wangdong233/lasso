@@ -75,7 +75,8 @@ await b.close();
 
 ### 5. attach 侧集成契约(2026-09-01 补充;含最易翻车的 close() 陷阱)
 
-- 消费方 `puppeteer.connect({ webSocketDebuggerUrl: wsEndpoint, defaultViewport: null })`;页面级 `setViewport` 照旧由渲染方自管(多渲染会话互不污染)
+- 消费方 `puppeteer.connect({ browserWSEndpoint: wsEndpoint, defaultViewport: null })`;页面级 `setViewport` 照旧由渲染方自管(多渲染会话互不污染)
+  - 🔴【2026-09-02 勘误(lasso 对抗复审轮 2 真机实锤)】本行原文 `webSocketDebuggerUrl: wsEndpoint` 是 **CDP /json/version 的字段名,不是 puppeteer.connect 的选项名**——puppeteer-core 25.3.0 的 connect 断言 `Exactly one of browserWSEndpoint, browserURL, transport or channel must be passed`,照抄原文直接 throw。正确选项名 = `browserWSEndpoint`。已真机验证:`createRequire(消费方 package.json)` 加载其 puppeteer-core 25.3.0 + lasso 渲染档 ensure 的 wsEndpoint → connect/render×2/disconnect 全通,且同一 SVG 双渲 PNG byte-identical(9649B=9649B)、disconnect 后渲染档存活
 - 🔴 **归还 = `browser.disconnect()`,严禁 `browser.close()`**:对 connect() 得到的实例调 `close()` 会向 Chrome 下发 `Browser.close` CDP 指令,**直接杀掉共享渲染档**(后续 ensure 被迫重拉冷启 ~6s + 渲染会话全断)。消费方 browser-pool 的 attach 适配层必须把池语义的 `close()` 映射为 `disconnect()`
 - **attach 模式下 browser-pool 与 connect 的关系(明确"完全旁路什么、保留什么")**:
   - **完全旁路**:`launch`/exit 钩子杀/idle 定时器/SIGTERM 异步 close——全部不武装(SIGTERM 钩子仅断连后退出);`MEDIA_GEN_BROWSER_IDLE_MS` 在 attach 下不生效(idle 归 lasso)
