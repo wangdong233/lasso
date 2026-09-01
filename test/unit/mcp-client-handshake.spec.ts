@@ -15,7 +15,7 @@
  *  - H4 env LASSO_MCP_HANDSHAKE_TIMEOUT_MS 覆盖默认（非法值回默认）
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { McpClient } from "../../src/subprocess/McpClient.js";
 import {
   DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS,
@@ -44,11 +44,15 @@ async function waitExited(pid: number | undefined | null, waitMs = 3000): Promis
 
 /** pgrep 判 marker 进程是否残留（树杀验证——pid 从外部不可得时用 marker 兜底）。 */
 function markerAlive(marker: string): boolean {
+  // CI-Linux 假阳性修正（2026-09-02 真凶实锤）：execSync 走 /bin/sh -c，sh 自身
+  // cmdline 含 marker 字符串被 pgrep -f 匹配 → 探针恒真（ubuntu 实测 marker 持有者
+  // = "/bin/sh -c pgrep -af lasso-hs-orphan-probe || true"）。改 execFileSync 直调
+  // pgrep（无 shell 中间层，pgrep 自排除语义成立）——匹配即真孤儿。
   try {
-    const out = execSync(`pgrep -f ${marker} || true`).toString().trim();
+    const out = execFileSync("pgrep", ["-f", marker], { encoding: "utf8" }).trim();
     return out.length > 0;
   } catch {
-    return false;
+    return false; // pgrep 退出码 1 = 无匹配（execFileSync 非零退抛错）
   }
 }
 
