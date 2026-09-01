@@ -141,15 +141,35 @@ export class McpClient {
       //（npx shim 下层 node/Chromium 不收 SDK 信号——G5 同款缺口，见
       // SubprocessManager._kill 注释）。close 的 2s×2 等待不阻塞失败路径
       //（树杀是确定性致死原语，close 是 fire-and-forget 收尾）。
+      // CI-Linux 修正（迟到 spawn 竞态）：慢机上 handshake 预算可能在 SDK
+      // connect() 完成 spawn **之前**到期——此刻 transport.pid=null 树杀跳过，
+      // 子进程随后才被 spawn 出来成孤儿（实测 ubuntu CI H1 树杀验证 10s 窗
+      // 仍存活）。追杀带：catch 后异步轮询 pid 至 5s，出现即树杀（唯一入口
+      // 本就是失败路径，轮询 detached 不阻塞 throw）。
       const pid = transport.pid;
       void c.client.close().catch(() => {});
-      if (pid !== null && pid !== undefined) {
+      const killPidTreeBestEffort = (p: number | null | undefined, tag: string) => {
+        if (p === null || p === undefined) return;
         try {
-          killTreeSync(pid, "mcp-connect-failed");
+          killTreeSync(p, tag);
         } catch {
           // 树杀 best-effort（pid 已死等）——不掩盖原始错误
         }
-      }
+      };
+      killPidTreeBestEffort(pid, "mcp-connect-failed");
+      void (async () => {
+        const seen = new Set<number>();
+        for (let i = 0; i < 25; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const late = transport.pid;
+          if (late !== null && late !== undefined && !seen.has(late)) {
+            seen.add(late);
+            killPidTreeBestEffort(late, "mcp-connect-failed-late-spawn");
+          }
+          // spawn 已发生且已杀过一轮后即可早退（追杀带只为迟到 spawn 兜底）
+          if (seen.size > 0 && late === null) break;
+        }
+      })();
       throw e;
     }
     c.stdioTransport = transport;
