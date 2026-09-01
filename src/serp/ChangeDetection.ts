@@ -16,7 +16,7 @@
  * 借鉴：open-webSearch selector 级联；08 §3.8「SERP 是债不是资产」。
  */
 import * as crypto from "node:crypto";
-import { promises as fs } from "node:fs";
+import { promises as fs, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { logger } from "../util/logger.js";
 
@@ -118,6 +118,66 @@ export class ChangeDetection {
   baselinePath(engine: string, query: string): string {
     const h = sha1(`${engine}|${query}`);
     return path.join(this.baselineDir, h.slice(0, 2), `${h}.json`);
+  }
+
+  /**
+   * baseline 是否已存在（ACC-1② 2026-09-02 性能/准确率轮：SerpHealthMonitor 自动
+   * 首录的幂等门——「无既有 baseline 才写」的判据）。
+   */
+  async hasBaseline(engine: string, query: string): Promise<boolean> {
+    try {
+      await fs.access(this.baselinePath(engine, query));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * baseline 盘点（ACC-1②：doctor serp_health 的陈旧度可见面）。
+   * 同步 IO——仅 doctor 按需调用，不在抽取热路径。损坏/缺字段文件跳过（保守）。
+   * @returns per-engine { count, newest_captured_at }；baselineDir 不存在 → 空 Map
+   */
+  baselineStatsSync(): Map<string, { count: number; newest_captured_at: number }> {
+    const out = new Map<string, { count: number; newest_captured_at: number }>();
+    let shards: string[];
+    try {
+      shards = readdirSync(this.baselineDir);
+    } catch {
+      return out; // 目录不存在 = 零 baseline
+    }
+    for (const shard of shards) {
+      let files: string[];
+      try {
+        files = readdirSync(path.join(this.baselineDir, shard));
+      } catch {
+        continue; // 非目录分片等，跳过
+      }
+      for (const f of files) {
+        if (!f.endsWith(".json")) continue;
+        try {
+          const raw = readFileSync(path.join(this.baselineDir, shard, f), "utf8");
+          const snap = JSON.parse(raw) as Partial<SerpSnapshot>;
+          if (
+            typeof snap.engine !== "string" ||
+            typeof snap.captured_at !== "number" ||
+            !Number.isFinite(snap.captured_at)
+          ) {
+            continue;
+          }
+          const cur = out.get(snap.engine);
+          if (!cur) {
+            out.set(snap.engine, { count: 1, newest_captured_at: snap.captured_at });
+          } else {
+            cur.count++;
+            cur.newest_captured_at = Math.max(cur.newest_captured_at, snap.captured_at);
+          }
+        } catch {
+          /* 损坏文件跳过（保守盘点，不抛） */
+        }
+      }
+    }
+    return out;
   }
 }
 

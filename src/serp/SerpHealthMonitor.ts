@@ -13,11 +13,14 @@
  *   3. dom hash 变 → 确认改版：
  *      a) logger.warn（admin / doctor 可见）
  *      b) RecordingStore.save 落盘 fixture（v1.0 回归用）
- *      c) extract.ts 通过 onResult 返回值标记 retrieval_method（外层装配）
+ *
+ * ACC-1②（2026-09-02 性能/准确率轮）：hit 路径自动首录 baseline——生产环境此前
+ * 零 captureBaseline 调用点，detectChange 恒「无 baseline 不告警」，改版检测链
+ * 整体死路。命中路径（DOM 可信）且该 engine|query 无 baseline 时落一份（幂等）。
  *
  * **不做**（INV-45）：自动重写 selector 表（保守人工升级；selector 是低频高破坏事件）
  * **不做**：实时告警推送（仅进程内 + logger）
- * **不阻塞主路径**：onResult 内 detectChange 异步触发不 await extract 主流程
+ * **不阻塞主路径**：onResult 内 detectChange/baseline 首录均异步触发不 await extract 主流程
  */
 import type { SerpEngine } from "./selectors.js";
 import type { SelectorRegistry } from "./SelectorRegistry.js";
@@ -45,6 +48,12 @@ export interface SerpHealthSnapshot {
   recent_alerts: Array<{ key: string; hit: number; miss: number; rate: number; at: number }>;
   /** RecordingStore 录制数量（doctor 显示用；同步列略重，0 占位由外层按需调） */
   recordings_count: number;
+  /**
+   * ACC-1②（2026-09-02）：per-engine baseline 盘点（count + 最新一条 age_ms）——
+   * doctor serp_health 的 baseline 陈旧度可见面（自动首录后改版对比是否还「活着」）。
+   * 无 baseline 时为空数组。
+   */
+  baselines: Array<{ engine: string; count: number; newest_age_ms: number }>;
 }
 
 // ============================================================
@@ -69,8 +78,12 @@ export class SerpHealthMonitor {
    * @param query            用户查询词（ChangeDetection baseline 文件名组分）
    * @param dom              抽取时拿到的 a11y 树文本 / HTML（dom hash 源）
    * @param hit              true=抽到 ≥1 条结果；false=0 结果
-   * @returns                "serp_layout_changed" 改版确认（外层 extract 标 retrieval_method 用）；
-   *                          无改版或样本不足时返回 null
+   *
+   * ACC-1①（2026-09-02 性能/准确率轮）：返回 **void**——旧签名同步返
+   * "serp_layout_changed" | null 是死契约（内部 detectChange 是异步竞态，同步
+   * return 时 Promise 恒未决 → 恒 null；且五处调用点 extract.ts:157/:176、
+   * http-serp.ts:280/:345/:365 全为语句位置弃值）。改版确认通路 = logger.warn
+   * （serp_redesign_confirmed）+ RecordingStore.save；进程内状态查询走 snapshot()。
    */
   onResult(
     engine: SerpEngine,
@@ -78,25 +91,21 @@ export class SerpHealthMonitor {
     query: string,
     dom: string,
     hit: boolean,
-  ): "serp_layout_changed" | null {
+  ): void {
     const key = `${engine}:${selectorVersion}`;
     if (hit) {
       this.registry.recordHit(engine, selectorVersion);
       this.hitRate.recordHit(key);
+      // ACC-1②：命中路径自动首录（幂等：无既有 baseline 才写；失败保守吞错）
+      void this._maybeCaptureBaseline(engine, query, dom);
     } else {
       this.registry.recordMiss(engine, selectorVersion);
       this.hitRate.recordMiss(key);
     }
     // 异步验证（不阻 extract 主路径；保守吞错）
-    let redesignConfirmed: "serp_layout_changed" | null = null;
-    void this._maybeDetectRedesign(engine, query, dom)
-      .then((changed) => {
-        if (changed) redesignConfirmed = "serp_layout_changed";
-      })
-      .catch(() => {
-        /* 保守吞错：改版检测失败不影响主路径 */
-      });
-    return redesignConfirmed;
+    void this._maybeDetectRedesign(engine, query, dom).catch(() => {
+      /* 保守吞错：改版检测失败不影响主路径 */
+    });
   }
 
   /** doctor + admin serp_health 调 */
@@ -116,6 +125,9 @@ export class SerpHealthMonitor {
           rate.rate < this.threshold && rate.hit + rate.miss >= 5,
       };
     });
+    // ACC-1②：baseline 陈旧度（同步盘点——仅 doctor 按需，不在抽取热路径）
+    const now = Date.now();
+    const baselineStats = this.change.baselineStatsSync();
     return {
       engines,
       recent_alerts: alerts.map((a) => ({
@@ -126,7 +138,40 @@ export class SerpHealthMonitor {
         at: Date.now(),
       })),
       recordings_count: 0,
+      baselines: [...baselineStats.entries()].map(([engine, s]) => ({
+        engine,
+        count: s.count,
+        newest_age_ms: Math.max(0, now - s.newest_captured_at),
+      })),
     };
+  }
+
+  /**
+   * ACC-1②（2026-09-02 性能/准确率轮）：命中路径自动首录 baseline（幂等 + 保守吞错）。
+   *
+   * 根因：captureBaseline 此前全仓仅测试调用（生产零调用点）→ detectChange 恒走
+   * 「无 baseline → changed:false」分支 → 改版检测链在生产双重失效（①返回契约死、
+   * ②对比基线缺）。修法 = 命中（DOM 可信）且该 engine|query 无 baseline 时落一份。
+   *
+   * 诚实边界：首次运行即已改版的场景会把新布局录为基线（该场景现状本就永不告警，
+   * 不劣化）；落地后改版检出延迟 = 「改版发生 → 下次同 query 查询报警」≤1 次。
+   */
+  private async _maybeCaptureBaseline(
+    engine: SerpEngine,
+    query: string,
+    dom: string,
+  ): Promise<void> {
+    try {
+      if (await this.change.hasBaseline(engine, query)) return; // 幂等：不覆盖既有
+      await this.change.captureBaseline(engine, query, dom);
+      logger.info({
+        evt: "serp_baseline_auto_captured",
+        engine,
+        query_len: query.length,
+      });
+    } catch {
+      /* 保守吞错：首录失败不影响主路径 */
+    }
   }
 
   /**

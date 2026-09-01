@@ -138,3 +138,43 @@ describe("ChangeDetection — 健壮性", () => {
     await fs.stat(cd.baselinePath("baidu", "rust"));
   });
 });
+
+// ============================================================
+// ACC-1②（2026-09-02 性能/准确率轮，doc/性能准确率优化裁决表.md §2）：
+// hasBaseline（自动首录幂等门）+ baselineStatsSync（doctor 陈旧度盘点）
+// ============================================================
+describe("ChangeDetection — ACC-1② hasBaseline / baselineStatsSync", () => {
+  it("hasBaseline：无 → false；captureBaseline 后 → true；engine 维度独立", async () => {
+    const cd = new ChangeDetection(dir);
+    expect(await cd.hasBaseline("baidu", "rust")).toBe(false);
+    await cd.captureBaseline("baidu", "rust", DOM_A);
+    expect(await cd.hasBaseline("baidu", "rust")).toBe(true);
+    expect(await cd.hasBaseline("ddg", "rust")).toBe(false); // 同 query 不同 engine 不串
+  });
+
+  it("baselineStatsSync：per-engine count + newest_captured_at", async () => {
+    const cd = new ChangeDetection(dir);
+    await cd.captureBaseline("baidu", "rust", DOM_A);
+    await new Promise((r) => setTimeout(r, 5)); // 保证 captured_at 可分辨
+    await cd.captureBaseline("baidu", "go", DOM_B);
+    await cd.captureBaseline("ddg", "rust", DOM_A);
+    const stats = cd.baselineStatsSync();
+    expect(stats.get("baidu")?.count).toBe(2);
+    expect(stats.get("baidu")!.newest_captured_at).toBeLessThanOrEqual(Date.now());
+    expect(stats.get("ddg")?.count).toBe(1);
+  });
+
+  it("baselineStatsSync：损坏 JSON 跳过（保守盘点不抛）", async () => {
+    const cd = new ChangeDetection(dir);
+    await cd.captureBaseline("baidu", "rust", DOM_A);
+    const bad = path.join(dir, "zz", "bad.json");
+    await fs.mkdir(path.dirname(bad), { recursive: true });
+    writeFileSync(bad, "not-json-{{{");
+    expect(cd.baselineStatsSync().get("baidu")?.count).toBe(1); // 损坏不计不抛
+  });
+
+  it("baselineStatsSync：baselineDir 不存在 → 空 Map（零 baseline 诚实形态）", () => {
+    const cd = new ChangeDetection(path.join(dir, "nope"));
+    expect(cd.baselineStatsSync().size).toBe(0);
+  });
+});
