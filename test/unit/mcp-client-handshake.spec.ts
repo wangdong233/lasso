@@ -77,7 +77,9 @@ describe("McpClient.connectStdio —— 握手预算 + 失败树杀（PERF-5）"
     // 树杀验证：marker 进程不残留（旧实现只 SDK close——SIGTERM 直子进程，
     // 本例直子进程即唯一进程，但若只 close 不树杀且进程忽略 stdin 关闭则泄漏）
     const exited = await new Promise<boolean>((resolve) => {
-      const deadline = Date.now() + 3000;
+      // CI 修正：树杀（kill-tree 递归 + 进程退出）在慢 runner 上可超 3s 窗
+      // （本地 783ms / CI ubuntu 慢盘偶超）——10s 窗仍远小于 SDK 默认 60s 语义
+      const deadline = Date.now() + 10_000;
       const poll = () => {
         if (!markerAlive(marker)) return resolve(true);
         if (Date.now() > deadline) return resolve(false);
