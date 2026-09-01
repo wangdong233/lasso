@@ -87,7 +87,21 @@ describe("McpClient.connectStdio —— 握手预算 + 失败树杀（PERF-5）"
       };
       poll();
     });
-    expect(exited).toBe(true);
+    // CI 诊断（2026-09-02）：ubuntu 上 exited=false 时吐出持有 marker 的真凶
+    // 全 cmdline——本地全绿无法复现，需现场证据定位（pgrep -af 自身会被 pgrep 排除）
+    if (!exited) {
+      let who = "(pgrep -af 无输出或执行失败)";
+      try {
+        who = execSync(`pgrep -af ${marker} || true`).toString().trim() || "(无匹配进程——假阳性方向)";
+      } catch { /* 保底文案 */ }
+      let kids = "";
+      try {
+        kids = execSync(`ps -eo pid,ppid,etime,command | grep -i vitest | grep -v grep || true`).toString().trim().slice(0, 500);
+      } catch { /* ignore */ }
+      expect(exited, `marker 持有者:\n${who}\n--- vitest 进程族 ---\n${kids}`).toBe(true);
+    } else {
+      expect(exited).toBe(true);
+    }
   });
 
   it("H2 快速失败（进程立即 exit 3）→ 快速 reject，非超时错误（语义保持）", async () => {
