@@ -183,6 +183,12 @@ describe("renderCdpPortScope —— 提案 §6.1 三态 + 同谓词等价 tripwi
   // 得 0 / 越界 / 负 / 非数）+ 纯空白（unset）。裂脑机理：消费方 execFileAsync 全量
   // 继承 env，同一字符串同时到达 ensure（renderCdpPort）与 stop（scope）——谓词分叉
   // 即「ensure 在 9224 运行 / stop exit 1 拒收」。
+  // 🔴 对抗复审轮 2 补钉（2026-09-02，M4b 变异存活）：原语料 explicit 值全部 = 9224
+  // = RENDER_CDP_PORT_DEFAULT——「renderCdpPort 侧单独分叉成更严谓词（如 /^\d+$/
+  // 正则替代 parseInt）」时 explicit 值被降级默认仍得 9224，不变量对**该分叉类
+  // 全语料空转**（scope 侧不动 → toEqual 照过；renderCdpPort 分叉后值碰巧 = 默认 →
+  // 等价断言照过；legacy spec 的 "19224" 又匹配 /^\d+$/）。补 9324 族（≠默认口）
+  // 三值：正则分叉下 renderCdpPort("+9324") → 9224 ≠ scope.port 9324 → 不变量必红。
   it("等价语料 tripwire：renderCdpPort() ≡ (scope 显式 ? scope.port : 默认)——两函数接受集永不分叉", () => {
     const corpus: Array<[string, RenderCdpPortScope]> = [
       ["+9224", { scope: "explicit", port: 9224 }],
@@ -190,6 +196,10 @@ describe("renderCdpPortScope —— 提案 §6.1 三态 + 同谓词等价 tripwi
       ["09224", { scope: "explicit", port: 9224 }],
       ["9224.5", { scope: "explicit", port: 9224 }],
       ["9224 ", { scope: "explicit", port: 9224 }],
+      // 非默认口族（≠9224）——不变量非空转的关键（M4b 补钉，见上注）
+      ["+9324", { scope: "explicit", port: 9324 }],
+      ["9324 ", { scope: "explicit", port: 9324 }],
+      ["9324.5", { scope: "explicit", port: 9324 }],
       ["0x2406", { scope: "invalid", raw: "0x2406" }],
       ["65536", { scope: "invalid", raw: "65536" }],
       ["-1", { scope: "invalid", raw: "-1" }],
