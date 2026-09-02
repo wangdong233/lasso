@@ -478,8 +478,8 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.19.0");
-    expect(LASSO_VERSION).toBe("1.19.0");
+    expect(r.lasso_version).toBe("1.20.0");
+    expect(LASSO_VERSION).toBe("1.20.0");
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {

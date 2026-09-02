@@ -215,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.19.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.20.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -232,6 +232,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 <details>
 <summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>
 
+- **v1.20.0**：渲染档并行安全批（stop/doctor 端口作用域化）——① 🔴 **行为变更**：`render-chrome --stop` 此前无视 `LASSO_RENDER_PORT`、会收掉**全机**渲染档（同机多 agent 并行验收时互杀对方实例的第一入口）；现在**显式设了 `LASSO_RENDER_PORT` 只收该 port**（与 `--ensure`/`--status` 对称），未设=维持全收不变，非法值 exit 1 报用法错。设了 port 却想全收的旧脚本请改用 `chrome-stop --modes render`；`--stop` 输出形状不变（幂等 `{"stopped":[...]}`）。② `render-chrome doctor` 孤儿判定同样作用域化 + 双豁免：显式 port 只判该 port，他人命名空间实例不再被误判孤儿（范围外 port + touch 心跳 10 分钟内新鲜双重豁免，`--clean` 不再误杀在用实例）。③ 配套**同机多 agent 并行验收**三 env 隔离配方（`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`）真机验证：双终端并发各自清场，并行互不可见零互杀。media-gen-mcp 等消费方只调 `--ensure` 不受影响（已源码级实证）。
 - **v1.19.0**：确定性渲染档 + 性能/准确率批——① 新增 `lasso-mcp render-chrome`：给其它 AI 工具（如 media-gen-mcp）当**确定性渲染浏览器**——`--ensure` 一行拉起带冻结旗标快照的 headless Chrome（消费方进程被强杀浏览器照常存活，空闲 10 分钟自动回收并清理 profile），详见 README 渲染档节；② 性能：浏览器引擎冷启动握手加预算（卡死快速失败不再挂 60 秒，`LASSO_MCP_HANDSHAKE_TIMEOUT_MS` 可调）、首装 npx 下载税消除、2FA 探测幂等化、大求值截断快路；③ 准确率：搜索页改版检测链上线（选择器失效自动发现并记录基线）。工具接口零变化（纯新增子命令与旗标）。
 - **v1.18.8**：doctor 与 CLI 打磨——① `doctor` 不再因 **ad-hoc 签名**报「不健康」（此前 `ready:false` 误报：ad-hoc 是官方免费合法方案，功能正常，唯一代价是重编译后需重新系统授权；Developer ID 正签仍 pass）② `lasso launch-chrome --help` 修复（此前会误启动一个 Chrome，现在正确打印用法说明）③ 架构文档全量对齐 + 20 项历史遗留清理（测试增至 2471 / 不变量 84）。
 - **v1.18.7**：架构重审落地（03 清单五维+循环修复）——① browse 族接口面诚实化：`wait_until` / `timeout_ms` / `screenshot.element` / `stealth_profile` 四个**从未生效的死参数**从工具描述与 schema 移除（此前传入会被静默忽略，现在文档不再承诺不存在的行为；非破坏——传了也会被静默剥离）；② 「隐藏的 Chrome」文档中关于 CI 的四处失实描述改真；③ 内部：doctor 与 channels 解耦、firstText 单一定义、测试穿堂方法收敛（新增 2 条架构不变量，INV 总数 82→84；测试 2446→2455）。
