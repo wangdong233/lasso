@@ -97,7 +97,7 @@ export const RENDER_DETERMINISTIC_FLAGS: readonly string[] = [
 /**
  * 渲染档 CDP 端口默认（设计决议 3.2）。选值查证：9222 = lasso launch-chrome 默认档；
  * 9223 = media-gen Flow provider CDP 惯例；**9224 = 空闲**。
- * env `LASSO_RENDER_PORT` 覆盖（测试隔离用；单值覆盖不构成端口协商——冲突仍
+ * env `LASSO_RENDER_PORT` 覆盖（测试隔离 + 并行验收隔离用，配方见 doc/渲染档-并行验收隔离配方.md；单值覆盖不构成端口协商——冲突仍
  * exit 3，协商留 R7）。
  */
 export const RENDER_CDP_PORT_DEFAULT = 9224;

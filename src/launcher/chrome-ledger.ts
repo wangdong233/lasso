@@ -53,7 +53,7 @@ export interface LaunchedChromeRecord {
   idleMs?: number;
 }
 
-/** 台账路径（env LASSO_LAUNCHED_CHROMES_PATH 可覆盖；测试隔离用）。 */
+/** 台账路径（env LASSO_LAUNCHED_CHROMES_PATH 可覆盖；测试隔离 + 同机多 agent 并行验收隔离用，配方见 doc/渲染档-并行验收隔离配方.md）。 */
 export function launchedChromesPath(): string {
   const override = process.env.LASSO_LAUNCHED_CHROMES_PATH;
   if (override && override.trim().length > 0) return override;

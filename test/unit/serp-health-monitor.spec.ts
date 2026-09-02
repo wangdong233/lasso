@@ -181,11 +181,17 @@ describe("SerpHealthMonitor — 命中率 < threshold 触发验证", () => {
     for (let i = 0; i < 5; i++) {
       m.onResult("baidu", "v1", "q1", "<changed-dom/>", false);
     }
-    // 等 microtask 让异步 _maybeDetectRedesign 完成
-    await new Promise((r) => setTimeout(r, 50));
-    // RecordingStore 应落盘了 fixture
-    const recordingFile = path.join(recordingsDir, "tmp.html");
-    const list = await new RecordingStore(recordingsDir).list();
+    // onResult 内 _maybeDetectRedesign 是 fire-and-forget 异步（fs 落盘链），
+    // 固定 sleep 在满套件 CPU 争用下必 flaky（2026-09-02 G 审查实测：单跑 19/19 绿、
+    // 全套件跑本例 50ms 预算被击穿）。改轮询可观察效果（save 落盘）——确定性等待，
+    // 非加长 sleep。
+    const store = new RecordingStore(recordingsDir);
+    const deadline = Date.now() + 5_000;
+    let list = await store.list();
+    while (list.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 25));
+      list = await store.list();
+    }
     expect(list.length).toBeGreaterThan(0);
   });
 });

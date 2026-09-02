@@ -43,7 +43,7 @@ import { renderIdleDefaultMs } from "./render-flags.js";
 /** 执守进程 ps cmdline 标记（spawn argv 自带；复验防 pid 复用假阳性）。 */
 export const RENDER_GUARDIAN_CMDLINE_MARKER = "render-guardian";
 
-/** pidfile 路径（env LASSO_RENDER_GUARDIAN_PID_PATH 覆盖；测试隔离用）。 */
+/** pidfile 路径（env LASSO_RENDER_GUARDIAN_PID_PATH 覆盖；测试隔离 + 并行验收隔离用，配方见 doc/渲染档-并行验收隔离配方.md）。 */
 export function renderGuardianPidPath(): string {
   const override = process.env.LASSO_RENDER_GUARDIAN_PID_PATH;
   if (override && override.trim().length > 0) return override;

@@ -310,4 +310,23 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     expect(p.exits).toEqual([0]);
     expect(JSON.parse(p.out[0]!).stopped).toEqual([]);
   });
+
+  // 2026-09-02 tripwire：钉死设计决议 3.7 现状语义——--stop 收台账内全部 render 记录
+  // （跨 port），不认 LASSO_RENDER_PORT。该不对称是并行验收互杀第一入口；若要改成
+  // 「显式设 port env 时限定该 port」，必须先过 doc/提案-render-stop端口作用域化.md
+  // 的用户裁决，再改本用例（本用例存在即语义未变）。
+  it("stop 收台账内全部 render 记录（跨 port）——设计决议 3.7 现状钉死", async () => {
+    await recordLaunch(makeRec({ port: 9224, pid: 888001 })); // 本机默认口
+    await recordLaunch(makeRec({ port: 9324, pid: 888003 })); // 另一 agent 的并行命名空间口
+    const p = makePanels();
+    await runRenderChromeCli(["--stop"], p.opts);
+    expect(p.exits).toEqual([0]);
+    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
+    // 两 port 全收（含未设 LASSO_RENDER_PORT 时对非默认口的记录）——现状即全局收
+    expect(j.stopped).toEqual([
+      { port: 9224, pid: 888001, action: "already_dead" },
+      { port: 9324, pid: 888003, action: "already_dead" },
+    ]);
+    expect(readLedgerSync()).toEqual([]); // render 记录全清账
+  });
 });
