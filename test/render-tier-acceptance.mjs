@@ -66,6 +66,30 @@ const CONSUMER_FLAGS = [
 const consumerRepoArg = process.argv.find((a) => a.startsWith("--consumer-repo="));
 const CONSUMER_REPO = consumerRepoArg ? path.resolve(consumerRepoArg.slice("--consumer-repo=".length)) : null;
 
+// ---- 启动 fail-fast 守卫（提案 §6.4 item 7 / §6.5 暴露面注记，2026-09-02）----
+// 本脚本按车道 A 语义真跑（硬编码默认口 9224 + 真实全局台账/guardian pidfile），四处
+// 全局清场 stop（item 0 / item 3.0 / cleanup / item 5 收尾）按「未设 env = 全收」断言，
+// 且 runCli 全量继承调用 shell env。泄漏 `LASSO_RENDER_PORT` 会使清场静默收窄为 port
+// 限定（合法值 → item 0.2 指纹归零假红 + 收尾漏杀；非法值 → stop exit 1 → item 0.1
+// 假红——提案 §6.1 落地后的新暴露面）；泄漏分账/执守 env（LASSO_LAUNCHED_CHROMES_PATH
+// / LASSO_RENDER_GUARDIAN_PID_PATH）则是提案前既有暴露面（脚本硬编码全局台账/pidfile，
+// 与泄漏 env 指向的命名空间分叉）。三 env 一并启动即断言未设/空，静默降级转一句话硬错。
+const LEAKED_ENV_KEYS = [
+  "LASSO_RENDER_PORT",
+  "LASSO_LAUNCHED_CHROMES_PATH",
+  "LASSO_RENDER_GUARDIAN_PID_PATH",
+];
+const leakedEnvs = LEAKED_ENV_KEYS.filter((k) => (process.env[k] ?? "").trim() !== "");
+if (leakedEnvs.length > 0) {
+  console.error(
+    `[ENV-GUARD] 检测到渲染档命名空间 env 已设：${leakedEnvs.join(", ")}。` +
+      `本脚本是车道 A（默认口串行独占）验收——泄漏 env 会使全局清场静默收窄/假红（见 ` +
+      `doc/渲染档-并行验收隔离配方.md §3 例外条款）。并行验收走车道 B（三 env 配齐）；` +
+      `串行重跑请先清空上述 env。`,
+  );
+  process.exit(2);
+}
+
 // ============================================================
 // 证据收集
 // ============================================================

@@ -104,11 +104,46 @@ export const RENDER_CDP_PORT_DEFAULT = 9224;
 
 /** 渲染档 CDP 端口（env LASSO_RENDER_PORT 覆盖；非法/越界值降级默认并保持诚实）。 */
 export function renderCdpPort(): number {
-  const raw = process.env.LASSO_RENDER_PORT;
-  if (raw === undefined || raw.trim() === "") return RENDER_CDP_PORT_DEFAULT;
+  const s = parseRenderPortRaw(process.env.LASSO_RENDER_PORT);
+  return s.scope === "explicit" ? s.port : RENDER_CDP_PORT_DEFAULT;
+}
+
+/**
+ * `LASSO_RENDER_PORT` 作用域解析三态（提案 §6.1 实施决议，2026-09-02）：
+ *  - `unset`：未设/空串 → `--stop`/`doctor` 维持「全收/全扫」（设计决议 3.7 语义不变）；
+ *  - `explicit`：显式且合法 → 只作用该 port（与 ensure/status 对称）；
+ *  - `invalid`：显式但非法/越界 → CLI 层 exit 1 用法错（stderr 注明 env 名+原值），
+ *    不猜作用域、不动台账——「用户已表达作用域，因值写错被静默按全局删除」正是
+ *    kubectl #1272 的事故形态（提案 §6.1 裁决理由 a）。
+ *
+ * 🔴 同谓词硬约束（提案 §6.1 修订轮）：本函数与 `renderCdpPort()` 共享**同一接受集**
+ * （下方 `parseRenderPortRaw` 私有 helper，两函数同源调用）——消费方 media-gen-mcp
+ * runEnsure 的 execFileAsync 不传 env → process.env 全量继承，shell 泄漏的奇形合法值
+ * 同一字符串同时到达 ensure 与 stop，谓词分叉即「ensure 在 9224 运行 / stop exit 1
+ * 拒收」裂脑态。等价语料 tripwire 见 test/unit/render-flags.spec.ts。
+ */
+export type RenderCdpPortScope =
+  | { scope: "unset" }
+  | { scope: "explicit"; port: number }
+  | { scope: "invalid"; raw: string };
+
+/**
+ * 私有共享谓词（提案 §6.1 同谓词硬约束的落点）：raw undefined 或 `trim()===""` →
+ * unset；否则 `parseInt(raw,10)` + `Number.isInteger` + `0<n≤65535`（parseInt 语义
+ * 非 Number/正则语义："+9224"/" 9224"/"09224"/"9224.5"/"9224 " 均为 explicit:9224；
+ * "0x2406" → parseInt 停在 x 得 0 → invalid）。renderCdpPort 与 renderCdpPortScope
+ * 禁止各自实现更严/更宽的谓词。
+ */
+function parseRenderPortRaw(raw: string | undefined): RenderCdpPortScope {
+  if (raw === undefined || raw.trim() === "") return { scope: "unset" };
   const n = parseInt(raw, 10);
-  if (!Number.isInteger(n) || n <= 0 || n > 65535) return RENDER_CDP_PORT_DEFAULT;
-  return n;
+  if (!Number.isInteger(n) || n <= 0 || n > 65535) return { scope: "invalid", raw };
+  return { scope: "explicit", port: n };
+}
+
+/** `LASSO_RENDER_PORT` 作用域三态解析（供 --stop/doctor CLI 分支取 scope 与 exitFn）。 */
+export function renderCdpPortScope(): RenderCdpPortScope {
+  return parseRenderPortRaw(process.env.LASSO_RENDER_PORT);
 }
 
 /**

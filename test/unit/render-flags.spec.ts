@@ -21,6 +21,8 @@ import {
   RENDER_PROFILE_PREFIX,
   RENDER_IDLE_DEFAULT_MS,
   renderCdpPort,
+  renderCdpPortScope,
+  type RenderCdpPortScope,
   renderIdleDefaultMs,
   renderFingerprintMatch,
   RENDER_FINGERPRINT_FLAG_A,
@@ -151,5 +153,56 @@ describe("render-flags —— 常量与 env（设计决议 3.2/3.10/3.11）", ()
       "utf8",
     );
     expect(stopSrc).toContain(`"${RENDER_PROFILE_PREFIX}"`);
+  });
+});
+
+describe("renderCdpPortScope —— 提案 §6.1 三态 + 同谓词等价 tripwire（2026-09-02）", () => {
+  beforeEach(() => {
+    delete process.env.LASSO_RENDER_PORT;
+  });
+  afterEach(() => {
+    delete process.env.LASSO_RENDER_PORT;
+  });
+
+  it("四态：未设/空串 → unset；显式合法 → {explicit,port}；显式非法 → {invalid,raw}", () => {
+    delete process.env.LASSO_RENDER_PORT;
+    expect(renderCdpPortScope()).toEqual({ scope: "unset" });
+    process.env.LASSO_RENDER_PORT = "";
+    expect(renderCdpPortScope()).toEqual({ scope: "unset" });
+    process.env.LASSO_RENDER_PORT = "9234";
+    expect(renderCdpPortScope()).toEqual({ scope: "explicit", port: 9234 });
+    process.env.LASSO_RENDER_PORT = "not-a-port";
+    expect(renderCdpPortScope()).toEqual({ scope: "invalid", raw: "not-a-port" });
+  });
+
+  // 🔴 提案 §6.1 修订轮同谓词硬约束：renderCdpPort 与 renderCdpPortScope 必须共享
+  // 同一接受集（render-flags.ts 私有 parseRenderPortRaw 同源调用）。单一不变量钉死
+  // 两函数永不分叉：对任意 env 值，renderCdpPort() === (scope 显式合法 ? scope.port
+  // : 默认)。语料 = 提案 §6.1 真机 node 实证集：parseInt 语义边角（"+9224"/" 9224"/
+  // "09224"/"9224.5"/"9224 " 均 → explicit:9224）+ 非法族（"0x2406" parseInt 停在 x
+  // 得 0 / 越界 / 负 / 非数）+ 纯空白（unset）。裂脑机理：消费方 execFileAsync 全量
+  // 继承 env，同一字符串同时到达 ensure（renderCdpPort）与 stop（scope）——谓词分叉
+  // 即「ensure 在 9224 运行 / stop exit 1 拒收」。
+  it("等价语料 tripwire：renderCdpPort() ≡ (scope 显式 ? scope.port : 默认)——两函数接受集永不分叉", () => {
+    const corpus: Array<[string, RenderCdpPortScope]> = [
+      ["+9224", { scope: "explicit", port: 9224 }],
+      [" 9224", { scope: "explicit", port: 9224 }],
+      ["09224", { scope: "explicit", port: 9224 }],
+      ["9224.5", { scope: "explicit", port: 9224 }],
+      ["9224 ", { scope: "explicit", port: 9224 }],
+      ["0x2406", { scope: "invalid", raw: "0x2406" }],
+      ["65536", { scope: "invalid", raw: "65536" }],
+      ["-1", { scope: "invalid", raw: "-1" }],
+      ["not-a-port", { scope: "invalid", raw: "not-a-port" }],
+      ["\t", { scope: "unset" }],
+    ];
+    for (const [raw, expected] of corpus) {
+      process.env.LASSO_RENDER_PORT = raw;
+      const s = renderCdpPortScope();
+      expect(s, `raw=${JSON.stringify(raw)}`).toEqual(expected);
+      expect(renderCdpPort(), `raw=${JSON.stringify(raw)}`).toBe(
+        s.scope === "explicit" ? s.port : RENDER_CDP_PORT_DEFAULT,
+      );
+    }
   });
 });

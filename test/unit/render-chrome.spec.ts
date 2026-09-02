@@ -8,7 +8,8 @@
  *  - 🔴 r2：reused 分支也补拉 guardian（guardian probe pid_dead → 重新 spawn）
  *  - 退出码映射：2（chrome 缺）/ 3（陈账+端口被占）/ 4（超时）/ 5（内部错误）
  *  - status：running/idleMs/lastUseAt/renderSessions（/json/list 实时计数）/touchPath
- *  - stop：幂等 exit 0 + {"stopped":[{port,pid,action}]} + modes 只收 render
+ *  - stop：幂等 exit 0 + {"stopped":[{port,pid,action}]} + modes 只收 render +
+ *    提案 §6.1 三态（未设=跨 port 全收 / 显式合法=只收该 port / 非法=exit 1）
  *  - touchPath 字段 = chromeTouchPath(port)
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -311,22 +312,48 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     expect(JSON.parse(p.out[0]!).stopped).toEqual([]);
   });
 
-  // 2026-09-02 tripwire：钉死设计决议 3.7 现状语义——--stop 收台账内全部 render 记录
-  // （跨 port），不认 LASSO_RENDER_PORT。该不对称是并行验收互杀第一入口；若要改成
-  // 「显式设 port env 时限定该 port」，必须先过 doc/提案-render-stop端口作用域化.md
-  // 的用户裁决，再改本用例（本用例存在即语义未变）。
-  it("stop 收台账内全部 render 记录（跨 port）——设计决议 3.7 现状钉死", async () => {
+  // 2026-09-02 提案 §6.1 裁决落地：原「stop 收台账内全部 render 记录（跨 port）」
+  // 单用例 tripwire 拆为三态——
+  //  ① 未设 env → 跨 port 全收（设计决议 3.7 **未设分支**钉死保留——单用户维护窗零影响）；
+  //  ② env 显式合法 → 只收该 port（与 ensure/status 对称；他人 port 记录留存台账）；
+  //  ③ env 显式非法 → exit 1 用法错 + 台账零改动（kubectl #1272 教训：不猜作用域）。
+  it("① 未设 LASSO_RENDER_PORT → 跨 port 全收——设计决议 3.7 未设分支钉死", async () => {
     await recordLaunch(makeRec({ port: 9224, pid: 888001 })); // 本机默认口
     await recordLaunch(makeRec({ port: 9324, pid: 888003 })); // 另一 agent 的并行命名空间口
     const p = makePanels();
     await runRenderChromeCli(["--stop"], p.opts);
     expect(p.exits).toEqual([0]);
     const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
-    // 两 port 全收（含未设 LASSO_RENDER_PORT 时对非默认口的记录）——现状即全局收
+    // 两 port 全收（含未设 LASSO_RENDER_PORT 时对非默认口的记录）——未设即全局收
     expect(j.stopped).toEqual([
       { port: 9224, pid: 888001, action: "already_dead" },
       { port: 9324, pid: 888003, action: "already_dead" },
     ]);
     expect(readLedgerSync()).toEqual([]); // render 记录全清账
+  });
+
+  it("② LASSO_RENDER_PORT 显式合法 → 只收该 port；他人 port 的 render 记录留存台账", async () => {
+    process.env.LASSO_RENDER_PORT = "9224";
+    await recordLaunch(makeRec({ port: 9224, pid: 888001 })); // 自己（scope 内）
+    await recordLaunch(makeRec({ port: 9324, pid: 888003 })); // 他人（scope 外——不得互杀）
+    const p = makePanels();
+    await runRenderChromeCli(["--stop"], p.opts);
+    expect(p.exits).toEqual([0]);
+    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
+    expect(j.stopped).toEqual([{ port: 9224, pid: 888001, action: "already_dead" }]);
+    expect(readLedgerSync().map((r) => r.port)).toEqual([9324]); // 9324 留存台账（并行隔离）
+  });
+
+  it("③ LASSO_RENDER_PORT 显式非法 → exit 1 用法错（stderr 注明 env 名+原值）+ 台账零改动", async () => {
+    await recordLaunch(makeRec({ port: 9224, pid: 888001 }));
+    process.env.LASSO_RENDER_PORT = "not-a-port";
+    const p = makePanels();
+    await runRenderChromeCli(["--stop"], p.opts);
+    expect(p.exits).toEqual([1]); // 1 用法错（3.6 退出码全集内，零新增退出码）
+    expect(p.out).toEqual([]); // 不产 stopped 报告
+    const err = JSON.parse(p.err[p.err.length - 1]!) as Record<string, unknown>;
+    expect(err.env).toBe("LASSO_RENDER_PORT");
+    expect(err.raw).toBe("not-a-port");
+    expect(readLedgerSync().map((r) => r.port)).toEqual([9224]); // 不动台账
   });
 });

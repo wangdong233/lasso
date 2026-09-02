@@ -7,7 +7,9 @@
  *    强依赖——stdout 纯净性是硬约束，一切日志/警告走 stderr）
  *  - `--status`：自省（恒 exit 0）；`renderSessions` = 当前打开 page/target 数
  *    （CDP /json/list 实时计数——台账契约禁新字段下的诚实降级，设计决议 3.7）
- *  - `--stop`：幂等（不在运行也 exit 0），输出 {"stopped":[{port,pid,action}]}
+ *  - `--stop`：幂等（不在运行也 exit 0），输出 {"stopped":[{port,pid,action}]}；
+ *    认 `LASSO_RENDER_PORT`（提案 §6.1：显式合法 → 只收该 port；未设 → 全部 render
+ *    记录；显式非法 → exit 1 用法错）
  *  - `doctor [--clean]`：孤儿检测 + 陈年 profile 清理（默认 dry-run）
  *
  * 退出码全集（设计决议 3.6）：0 成功；2 Chrome 二进制不存在；3 端口被非渲染档
@@ -27,7 +29,7 @@ import {
   type RenderLaunchOptions,
 } from "./render-launcher.js";
 import { renderDoctor } from "./render-doctor.js";
-import { renderCdpPort, renderIdleDefaultMs } from "./render-flags.js";
+import { renderCdpPort, renderCdpPortScope, renderIdleDefaultMs } from "./render-flags.js";
 
 export type RenderChromeCommand = "ensure" | "status" | "stop" | "doctor";
 
@@ -70,14 +72,21 @@ Usage:
                                                detached, port 9224). Single-line JSON on
                                                stdout; logs go to stderr
   lasso-mcp render-chrome --status              Introspection (always exit 0)
-  lasso-mcp render-chrome --stop                Stop render-mode Chrome(s), idempotent
+  lasso-mcp render-chrome --stop                Stop render-mode Chrome(s), idempotent.
+                                               Honors LASSO_RENDER_PORT: explicit valid
+                                               port stops only that port (symmetric with
+                                               --ensure/--status); unset = all render
+                                               records (design 3.7); invalid value =
+                                               exit 1 usage error
   lasso-mcp render-chrome doctor [--clean]      Orphan render-Chrome scan + stale profile
                                                sweep (dry-run by default; --clean executes)
 
 Exit codes (--ensure): 0 ok; 2 chrome binary missing; 3 port occupied by non-render
 process / unhealthy render chrome and respawn failed; 4 launch timeout (>20s);
-5 internal error. Env: LASSO_RENDER_PORT (default 9224), LASSO_RENDER_IDLE_MS
-(default 600000; <=0 disables auto-reap), LASSO_RENDER_GUARDIAN_PID_PATH.`;
+5 internal error. Env: LASSO_RENDER_PORT (default 9224; --stop honors it — explicit
+valid port scopes the stop, unset = all render records, invalid = exit 1),
+LASSO_RENDER_IDLE_MS (default 600000; <=0 disables auto-reap),
+LASSO_RENDER_GUARDIAN_PID_PATH.`;
 
 /** stderr 单行 JSON 日志（stdout 纯净性——一切日志走 stderr）。 */
 function cliLog(payload: Record<string, unknown>): void {
@@ -141,10 +150,16 @@ async function runStatus(
   writeStdout(`${JSON.stringify(out)}\n`);
 }
 
-async function runStop(writeStdout: (s: string) => void): Promise<void> {
-  // 实现在 stopLaunchedChromes({modes:["render"]}) 之上（设计决议 3.7）：收全部
-  // render 记录（任意 port）；归属验证/树杀/删账/profile 清理 100% 走 chrome-stop。
-  const result = await stopLaunchedChromes({ modes: ["render"], logFn: cliLog as LedgerLogFn });
+async function runStop(writeStdout: (s: string) => void, port?: number): Promise<void> {
+  // 实现在 stopLaunchedChromes({modes:["render"]}) 之上（设计决议 3.7 + 提案 §6.1）：
+  // port 显式合法 → 只收该 port（与 ensure/status 对称）；未设 → 收全部 render 记录
+  // （任意 port，3.7 语义不变）。归属验证/树杀/删账/profile 清理 100% 走 chrome-stop。
+  // 非法 env 的 exit 1 在 CLI stop 分支（需 exitFn，见下）。
+  const result = await stopLaunchedChromes({
+    ...(port !== undefined ? { port } : {}),
+    modes: ["render"],
+    logFn: cliLog as LedgerLogFn,
+  });
   writeStdout(`${JSON.stringify(result)}\n`);
 }
 
@@ -187,7 +202,25 @@ export async function runRenderChromeCli(
       return;
     }
     if (parsed.command === "stop") {
-      await runStop(writeStdout);
+      // 提案 §6.1（2026-09-02）：scope 解析上移到 CLI 分支以便取 exitFn——
+      //  - 显式合法 → port 限定（与 ensure/status 对称）；
+      //  - 未设 → 全收（设计决议 3.7 语义不变）；
+      //  - 显式非法 → exit 1 用法错（stderr 单行 JSON 注明 env 名+原值，不猜作用域、
+      //    不动台账——kubectl #1272 教训：作用域旗标被静默忽略+广谱删除是同类事故）。
+      const scope = renderCdpPortScope();
+      if (scope.scope === "invalid") {
+        writeStderr(
+          `${JSON.stringify({
+            evt: "render_stop_invalid_port_env",
+            env: "LASSO_RENDER_PORT",
+            raw: scope.raw,
+            hint: "refusing to guess scope; unset the env for a global stop or fix the value",
+          })}\n`,
+        );
+        exitFn(1);
+        return;
+      }
+      await runStop(writeStdout, scope.scope === "explicit" ? scope.port : undefined);
       exitFn(0);
       return;
     }
