@@ -183,6 +183,6 @@ describeOrSkip("doctor CLI × config 文件机制（v1.3 Phase B 端到端）", 
     await fs.writeFile(configPath, "{}");
     const { stdout } = runDoctorCliViaDist(configPath);
     const report = JSON.parse(stdout);
-    expect(report.lasso_version).toBe("1.18.8");
+    expect(report.lasso_version).toBe("1.19.0");
   });
 });

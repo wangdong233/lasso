@@ -215,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.18.8**（更新日志见本节末尾折叠块）。
+**当前版本 v1.19.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -232,6 +232,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 <details>
 <summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>
 
+- **v1.19.0**：确定性渲染档 + 性能/准确率批——① 新增 `lasso-mcp render-chrome`：给其它 AI 工具（如 media-gen-mcp）当**确定性渲染浏览器**——`--ensure` 一行拉起带冻结旗标快照的 headless Chrome（消费方进程被强杀浏览器照常存活，空闲 10 分钟自动回收并清理 profile），详见 README 渲染档节；② 性能：浏览器引擎冷启动握手加预算（卡死快速失败不再挂 60 秒，`LASSO_MCP_HANDSHAKE_TIMEOUT_MS` 可调）、首装 npx 下载税消除、2FA 探测幂等化、大求值截断快路；③ 准确率：搜索页改版检测链上线（选择器失效自动发现并记录基线）。工具接口零变化（纯新增子命令与旗标）。
 - **v1.18.8**：doctor 与 CLI 打磨——① `doctor` 不再因 **ad-hoc 签名**报「不健康」（此前 `ready:false` 误报：ad-hoc 是官方免费合法方案，功能正常，唯一代价是重编译后需重新系统授权；Developer ID 正签仍 pass）② `lasso launch-chrome --help` 修复（此前会误启动一个 Chrome，现在正确打印用法说明）③ 架构文档全量对齐 + 20 项历史遗留清理（测试增至 2471 / 不变量 84）。
 - **v1.18.7**：架构重审落地（03 清单五维+循环修复）——① browse 族接口面诚实化：`wait_until` / `timeout_ms` / `screenshot.element` / `stealth_profile` 四个**从未生效的死参数**从工具描述与 schema 移除（此前传入会被静默忽略，现在文档不再承诺不存在的行为；非破坏——传了也会被静默剥离）；② 「隐藏的 Chrome」文档中关于 CI 的四处失实描述改真；③ 内部：doctor 与 channels 解耦、firstText 单一定义、测试穿堂方法收敛（新增 2 条架构不变量，INV 总数 82→84；测试 2446→2455）。
 - **v1.18.6**：外部消费与隐藏执守闭环——① 命令行拉起的 Chrome 默认**不再 60s 被后台静默回收**（外部 CDP 直连工具之前稳定 60-75s 被误杀，如自动化工作流）；外部消费者还可用 `touch ~/.cache/lasso/chrome-touch-<端口>` 一行续命；② 「隐藏的 Chrome 有时藏不住」根治——hidden 档出生即写粘滞账 + 独立执守进程兜底（server 不在也 ≤2s 压回，账空自退不留常驻进程）。
