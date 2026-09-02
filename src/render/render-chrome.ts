@@ -10,7 +10,8 @@
  *  - `--stop`：幂等（不在运行也 exit 0），输出 {"stopped":[{port,pid,action}]}；
  *    认 `LASSO_RENDER_PORT`（提案 §6.1：显式合法 → 只收该 port；未设 → 全部 render
  *    记录；显式非法 → exit 1 用法错）
- *  - `doctor [--clean]`：孤儿检测 + 陈年 profile 清理（默认 dry-run）
+ *  - `doctor [--clean]`：孤儿检测 + 陈年 profile 清理（默认 dry-run）；孤儿判定认
+ *    `LASSO_RENDER_PORT`（提案 §6.2：显式合法=只判该 port；未设=全扫；非法=exit 1）
  *
  * 退出码全集（设计决议 3.6）：0 成功；2 Chrome 二进制不存在；3 端口被非渲染档
  * 占用 / 既有渲染档不健康且重生失败；4 拉起超时（>20s）；5 内部错误；1 用法错。
@@ -79,7 +80,10 @@ Usage:
                                                records (design 3.7); invalid value =
                                                exit 1 usage error
   lasso-mcp render-chrome doctor [--clean]      Orphan render-Chrome scan + stale profile
-                                               sweep (dry-run by default; --clean executes)
+                                               sweep (dry-run by default; --clean executes).
+                                               Honors LASSO_RENDER_PORT same as --stop:
+                                               explicit valid port scopes the orphan scan,
+                                               unset = full scan, invalid = exit 1
 
 Exit codes (--ensure): 0 ok; 2 chrome binary missing; 3 port occupied by non-render
 process / unhealthy render chrome and respawn failed; 4 launch timeout (>20s);
@@ -191,7 +195,27 @@ export async function runRenderChromeCli(
   }
   try {
     if (parsed.command === "doctor") {
-      const report = renderDoctor({ clean: parsed.clean, logFn: cliLog as LedgerLogFn });
+      // 提案 §6.2（2026-09-02）：doctor 孤儿判定随 LASSO_RENDER_PORT 作用域化
+      // （与 --stop 同一原则/同一 env/同一 scope 函数）。非法 env → CLI 层 exit 1
+      // （stop 同规）；renderDoctor 本体恒不 throw——它收已解析的 scopePort。
+      const scope = renderCdpPortScope();
+      if (scope.scope === "invalid") {
+        writeStderr(
+          `${JSON.stringify({
+            evt: "render_doctor_invalid_port_env",
+            env: "LASSO_RENDER_PORT",
+            raw: scope.raw,
+            hint: "refusing to guess scope; unset the env for a global scan or fix the value",
+          })}\n`,
+        );
+        exitFn(1);
+        return;
+      }
+      const report = renderDoctor({
+        clean: parsed.clean,
+        ...(scope.scope === "explicit" ? { scopePort: scope.port } : {}),
+        logFn: cliLog as LedgerLogFn,
+      });
       writeStdout(`${JSON.stringify(report)}\n`);
       exitFn(0);
       return;

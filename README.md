@@ -227,7 +227,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 
 **macOS 想控桌面**：跑一次 `lasso doctor`，按提示给 `lasso-rust-helper` 勾上「辅助功能」和「屏幕录制」权限即可，doctor 会一步步引导。
 
-**给其它 AI 工具当确定性渲染浏览器（渲染档）**：如果你在用 media-gen-mcp 这类要求「同一输入必须产出同一像素」的渲染工具，装好 lasso 后只需一行 `npx -y lasso-mcp render-chrome --ensure`——它会在 9224 端口拉起一个确定性 headless Chrome（冻结旗标快照 + 独立临时 profile），输出消费方直连用的 `wsEndpoint`；**消费方进程被强杀浏览器也照常存活**（生命周期归属 lasso），空闲 10 分钟自动回收并连带清理 profile（`LASSO_RENDER_IDLE_MS` 可调）。配套：`render-chrome --status` 自省 / `--stop` 收尾（认 `LASSO_RENDER_PORT`：显式设 port 只收该 port，未设=全部 render 记录，非法值 exit 1；全局收口仍可用 `chrome-stop --modes render`）/ `render-chrome doctor [--clean]` 孤儿与陈年 profile 清理（默认只报告）。**同机多 agent 并行验收**（多个 agent 各自清场会互杀对方实例）需配三 env 契命名空间隔离：`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`，配齐后并行互不可见，配方与清场纪律见 [doc/渲染档-并行验收隔离配方.md](doc/渲染档-并行验收隔离配方.md)。
+**给其它 AI 工具当确定性渲染浏览器（渲染档）**：如果你在用 media-gen-mcp 这类要求「同一输入必须产出同一像素」的渲染工具，装好 lasso 后只需一行 `npx -y lasso-mcp render-chrome --ensure`——它会在 9224 端口拉起一个确定性 headless Chrome（冻结旗标快照 + 独立临时 profile），输出消费方直连用的 `wsEndpoint`；**消费方进程被强杀浏览器也照常存活**（生命周期归属 lasso），空闲 10 分钟自动回收并连带清理 profile（`LASSO_RENDER_IDLE_MS` 可调）。配套：`render-chrome --status` 自省 / `--stop` 收尾（认 `LASSO_RENDER_PORT`：显式设 port 只收该 port，未设=全部 render 记录，非法值 exit 1；全局收口仍可用 `chrome-stop --modes render`）/ `render-chrome doctor [--clean]` 孤儿与陈年 profile 清理（默认只报告；认 `LASSO_RENDER_PORT`，同 `--stop`：显式设 port 只判该 port，未设=全扫，非法值 exit 1；touch 心跳 10 分钟内的在用实例豁免不判孤儿）。**同机多 agent 并行验收**（多个 agent 各自清场会互杀对方实例）需配三 env 契命名空间隔离：`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`，配齐后并行互不可见，配方与清场纪律见 [doc/渲染档-并行验收隔离配方.md](doc/渲染档-并行验收隔离配方.md)。
 
 <details>
 <summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>

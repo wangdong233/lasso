@@ -13,7 +13,8 @@
  *  - touchPath 字段 = chromeTouchPath(port)
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { ChildProcess } from "node:child_process";
@@ -355,5 +356,32 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     expect(err.env).toBe("LASSO_RENDER_PORT");
     expect(err.raw).toBe("not-a-port");
     expect(readLedgerSync().map((r) => r.port)).toEqual([9224]); // 不动台账
+  });
+});
+
+describe("render-chrome doctor —— 提案 §6.2 非法 env exit 1（CLI 层硬错；renderDoctor 恒不 throw）", () => {
+  it("LASSO_RENDER_PORT 非法（越界）→ exit 1 + stderr 注明 env 名+原值 + stdout 空", async () => {
+    process.env.LASSO_RENDER_PORT = "65536";
+    const p = makePanels();
+    await runRenderChromeCli(["doctor", "--clean"], p.opts);
+    expect(p.exits).toEqual([1]);
+    expect(p.out).toEqual([]); // 不产 doctor 报告
+    const err = JSON.parse(p.err[p.err.length - 1]!) as Record<string, unknown>;
+    expect(err.env).toBe("LASSO_RENDER_PORT");
+    expect(err.raw).toBe("65536");
+  });
+
+  // 🔴 对抗复审轮 1 补钉（2026-09-02，M6 变异存活）：doctor 分支的 scopePort 传递
+  // （CLI 层 renderCdpPortScope 解析 → renderDoctor({scopePort})）无注入面——删掉该行
+  // 时套件照绿（render-doctor.spec 单测全部直接注入 scopePort，绕过 CLI 接线）。
+  // 源码契约 tripwire（镜像 render-flags.spec 跨文件 toContain 先例）钉死接线文本在位。
+  it("CLI 接线 tripwire：doctor 分支显式合法 scope 必传 scopePort 进 renderDoctor", async () => {
+    const cliSrc = readFileSync(
+      fileURLToPath(new URL("../../src/render/render-chrome.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(cliSrc).toContain('...(scope.scope === "explicit" ? { scopePort: scope.port } : {}),');
+    // stop 分支同款接线一并钉死（行为面已有三态用例，此为双保险源码锚）
+    expect(cliSrc).toContain('await runStop(writeStdout, scope.scope === "explicit" ? scope.port : undefined);');
   });
 });

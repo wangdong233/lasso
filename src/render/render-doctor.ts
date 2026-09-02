@@ -6,6 +6,22 @@
  * etime > 10min。🔴 不以 `puppeteer_dev_chrome_profile` 判定（puppeteer 通用名，
  * chrome-devtools-mcp 等他家用，会误伤——对接说明边界 3）。
  *
+ * 2026-09-02 提案 §6.2（doctor 端口作用域化 + touch 新鲜度豁免）：
+ *  - D 案：`scopePort`（CLI 层已解析的显式合法 `LASSO_RENDER_PORT`）生效时，候选
+ *    进程的 `--remote-debugging-port` 与其不匹配（或不可提取）→ 不判孤儿不计 clean，
+ *    入 `outOfScope`（reason `portMismatch`/`portUnknown`）——与 --stop 同一原则、
+ *    同一 env、同一 scope 函数，一次裁决两处对称落地；
+ *  - E 案：候选 port 的 touch 文件（chromeTouchMtimeSync——与 idle reaper 同一活性
+ *    真源，消费方心跳契约 ≤60s，600s 线 = 10× 裕量）距今 ≤600s → 有消费者续命，
+ *    不判孤儿不计 clean，入 `outOfScope`（reason `touchFresh`）——连未设 env 的全局
+ *    doctor 也受益（D 只保护显式设 env 场景，E 补齐在用保护）；只增豁免不扩大击杀
+ *    （失效方向 = 少杀，安全向）。touch 文件缺失/读失败 → 不豁免（无续命证据 =
+ *    与 reaper 同向，安全侧）。
+ *  - `outOfScope` = 被豁免不判孤儿的候选清单（诚实降级：作用域 doctor 报零孤儿
+ *    ≠ 全机干净，报告型 CLI 不得让用户误读）。
+ *  - CLI 层非法 env exit 1 与 stop 同规；本函数本体「恒不 throw」保持——它收已
+ *    解析的 scopePort。
+ *
  * --clean 才动手（默认 dry-run 只报告）。清理动作 = 指纹对 + `--user-data-dir` 含
  * render-chrome-profile- 前缀**双重证据**命中才树杀 + rmSync profile。这是全仓
  * **唯一**不经台账归属验证的杀路径——窄化为 R4 显式设计（孤儿定义即无台账），
@@ -23,6 +39,7 @@ import { readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import { readLedgerSync, type LaunchedChromeRecord, type LedgerLogFn } from "../launcher/chrome-ledger.js";
+import { chromeTouchMtimeSync } from "../launcher/chrome-touch.js";
 import { killTreeSync } from "../util/kill-tree.js";
 import {
   renderFingerprintMatch,
@@ -46,6 +63,14 @@ export interface RenderDoctorOrphan {
 
 export interface RenderDoctorReport {
   orphans: RenderDoctorOrphan[];
+  /**
+   * 被豁免不判孤儿的候选清单（提案 §6.2，2026-09-02 新增字段——既有字段零改动，
+   * 只追加）。reason：`portMismatch` = scope 不匹配（显式 LASSO_RENDER_PORT 生效
+   * 且候选 port ≠ scope）；`touchFresh` = touch 新鲜（≤600s，有消费者续命——含
+   * 未设 env 的全局 doctor 场景）；`portUnknown` = 候选命令行不可提取 port
+   * （render-launcher 每实例必带该旗标，不可提取即形态异常，保守不杀）。
+   */
+  outOfScope: Array<{ pid: number; port?: number; reason: "portMismatch" | "touchFresh" | "portUnknown" }>;
   staleProfiles: Array<{ dir: string; ageHours: number }>;
   /** --clean 实际执行结果（dry-run 恒 0）。 */
   cleaned: { orphansKilled: number; profilesRemoved: number };
@@ -55,6 +80,12 @@ export interface RenderDoctorReport {
 export interface RenderDoctorOptions {
   /** 执行清理（默认 false = dry-run 只报告）。 */
   clean?: boolean;
+  /**
+   * 显式合法的 `LASSO_RENDER_PORT`（提案 §6.2 D 案：doctor 孤儿判定作用域化）。
+   * CLI 层已解析传入（非法 env 在 CLI 层 exit 1，本函数恒不 throw）；undefined =
+   * 未设 env → 现状全扫（单用户维护窗不变）。
+   */
+  scopePort?: number;
   /** profile 基目录（默认 ~/.cache/lasso；测试隔离注入 tmp）。 */
   profileBaseDir?: string;
   /** 测试注入：全量进程表（默认 `ps -Axo pid=,etime=,command=`）。 */
@@ -63,6 +94,11 @@ export interface RenderDoctorOptions {
   readLedgerFn?: () => LaunchedChromeRecord[];
   /** 测试注入：时钟（默认 Date.now）。 */
   nowFn?: () => number;
+  /**
+   * 测试注入：touch mtime 读（默认 chromeTouchMtimeSync——镜像 chrome-idle-reaper
+   * 的 touchStatFn 注入模式；E 案豁免与 reaper 收割信任同一活性信号源）。
+   */
+  touchStatFn?: (port: number) => number | undefined;
   /** 测试注入：树杀原语（默认 util/kill-tree killTreeSync）。 */
   killTreeFn?: (pid: number, tag?: string) => void;
   logFn?: LedgerLogFn;
@@ -96,6 +132,15 @@ function extractUserDataDir(command: string): string | undefined {
   return m?.[1];
 }
 
+/**
+ * 命令行中提取 --remote-debugging-port=<n> 的值（镜像 extractUserDataDir；提案 §6.2
+ * D/E 共用同一提取正则。render-launcher 每实例必带该旗标——per-instance 项之一）。
+ */
+function extractDebugPort(command: string): number | undefined {
+  const m = command.match(/--remote-debugging-port=(\d+)/);
+  return m ? parseInt(m[1]!, 10) : undefined;
+}
+
 /** 默认全量进程表读取（macOS/Linux 同形）。 */
 function defaultPsAllFn(): string {
   try {
@@ -115,12 +160,14 @@ export function renderDoctor(opts: RenderDoctorOptions = {}): RenderDoctorReport
   const nowFn = opts.nowFn ?? (() => Date.now());
   const readLedgerFn = opts.readLedgerFn ?? readLedgerSync;
   const killTreeFn = opts.killTreeFn ?? ((pid: number, tag?: string) => killTreeSync(pid, tag));
+  const touchStatFn = opts.touchStatFn ?? ((port: number) => chromeTouchMtimeSync(port));
   const base = opts.profileBaseDir ?? path.join(os.homedir(), ".cache", "lasso");
 
-  // ---- 1. 孤儿扫描（指纹对 + 台账缺位 + 年龄线）----
+  // ---- 1. 孤儿扫描（指纹对 + 台账缺位 + 年龄线 + 提案 §6.2 第四重豁免）----
   const ledger = readLedgerFn();
   const ledgerPids = new Set(ledger.map((r) => r.pid));
   const orphans: RenderDoctorOrphan[] = [];
+  const outOfScope: RenderDoctorReport["outOfScope"] = [];
   const psAll = (opts.psAllFn ?? defaultPsAllFn)();
   for (const line of psAll.split("\n")) {
     const trimmed = line.trim();
@@ -136,6 +183,27 @@ export function renderDoctor(opts: RenderDoctorOptions = {}): RenderDoctorReport
     if (ledgerPids.has(pid)) continue;
     // 第三重：年龄线（刚拉起未记账的竞态窗口容忍）
     if (etimeSec <= RENDER_ORPHAN_MIN_AGE_SEC) continue;
+    // 第四重（提案 §6.2，2026-09-02）：D 端口作用域 + E touch 新鲜度豁免——
+    // 只增豁免不扩大击杀（失效方向 = 少杀，安全向）；豁免者入 outOfScope 诚实报告。
+    const candPort = extractDebugPort(command);
+    if (candPort === undefined) {
+      // port 不可提取：render-launcher 每实例必带该旗标，不可提取即形态异常——
+      // 保守不杀（scope 与否同规）
+      outOfScope.push({ pid, reason: "portUnknown" });
+      continue;
+    }
+    if (opts.scopePort !== undefined && candPort !== opts.scopePort) {
+      // D 案：显式 LASSO_RENDER_PORT 生效，候选在他人命名空间 → 不判孤儿不计 clean
+      outOfScope.push({ pid, port: candPort, reason: "portMismatch" });
+      continue;
+    }
+    // E 案：touch 新鲜（≤600s = 有消费者续命；心跳契约 ≤60s → 10× 裕量，与 reaper
+    // 收割包络同源对齐）。touch 缺失/读失败（undefined）→ 不豁免（安全侧）。
+    const touchMtime = touchStatFn(candPort);
+    if (touchMtime !== undefined && nowFn() - touchMtime <= RENDER_ORPHAN_MIN_AGE_SEC * 1000) {
+      outOfScope.push({ pid, port: candPort, reason: "touchFresh" });
+      continue;
+    }
     const profileDir = extractUserDataDir(command);
     const cleanable =
       profileDir !== undefined && path.basename(profileDir).startsWith(RENDER_PROFILE_PREFIX);
@@ -191,7 +259,7 @@ export function renderDoctor(opts: RenderDoctorOptions = {}): RenderDoctorReport
     }
   }
 
-  return { orphans, staleProfiles, cleaned, clean };
+  return { orphans, outOfScope, staleProfiles, cleaned, clean };
 }
 
 /** 读取 fixture/文本形状的进程表时复用的行解析（导出供测试对齐真实 ps 形状）。 */
