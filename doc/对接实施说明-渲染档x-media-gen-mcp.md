@@ -79,9 +79,9 @@ await b.close();
   - 🔴【2026-09-02 勘误(lasso 对抗复审轮 2 真机实锤)】本行原文 `webSocketDebuggerUrl: wsEndpoint` 是 **CDP /json/version 的字段名,不是 puppeteer.connect 的选项名**——puppeteer-core 25.3.0 的 connect 断言 `Exactly one of browserWSEndpoint, browserURL, transport or channel must be passed`,照抄原文直接 throw。正确选项名 = `browserWSEndpoint`。已真机验证:`createRequire(消费方 package.json)` 加载其 puppeteer-core 25.3.0 + lasso 渲染档 ensure 的 wsEndpoint → connect/render×2/disconnect 全通,且同一 SVG 双渲 PNG byte-identical(9649B=9649B)、disconnect 后渲染档存活
 - 🔴 **归还 = `browser.disconnect()`,严禁 `browser.close()`**:对 connect() 得到的实例调 `close()` 会向 Chrome 下发 `Browser.close` CDP 指令,**直接杀掉共享渲染档**(后续 ensure 被迫重拉冷启 ~6s + 渲染会话全断)。消费方 browser-pool 的 attach 适配层必须把池语义的 `close()` 映射为 `disconnect()`
 - **attach 模式下 browser-pool 与 connect 的关系(明确"完全旁路什么、保留什么")**:
-  - **完全旁路**:`launch`/exit 钩子杀/idle 定时器/SIGTERM 异步 close——全部不武装(SIGTERM 钩子仅断连后退出);`MEDIA_GEN_BROWSER_IDLE_MS` 在 attach 下不生效(idle 归 lasso)
+  - **完全旁路**:`launch`/exit 钩子杀/idle 定时器/SIGTERM 异步 close——全部不武装(SIGTERM 钩子仅断连后退出);`MEDIA_GEN_BROWSER_IDLE_MS` 在 attach 下不生效(idle 归 lasso)。【2026-09-03 注:legacy 提前退役后此条升格为物理事实——自管 launch/exit 钩子杀/idle 定时器代码已从消费方删除,`MEDIA_GEN_BROWSER_IDLE_MS` 不复存在】
   - **保留复用**:`acquire/release` 引用计数外壳——它同时驱动 §一.2 heartbeat 的启停与"渲染中不误判在用";`BrowserLike` 类型面(消费方三渲染文件零改动受益)
-  - **生命周期归属**:池的 legacy 路径(launch+exit 钩子)仅 `MEDIA_GEN_RENDER_MODE=legacy` 下可达,随 90 天逃生门一并退役删除
+  - **生命周期归属**:池的 legacy 路径(launch+exit 钩子)仅 `MEDIA_GEN_RENDER_MODE=legacy` 下可达,随 90 天逃生门一并退役删除。【2026-09-03 注:已执行——legacy 提前退役(原定 2026-12-01),自管池代码物理删除,方案=media-gen-mcp `doc/legacy清除-方案与判定.md`】
 - CDP 断连(connected 归零)不触发 lasso 回收(§一.2)——短渲染间隙频繁连断是常态,`disconnected` 事件只做消费方侧自清理
 
 ## 二、切换时序(谁先谁后)
@@ -97,7 +97,8 @@ await b.close();
      RENDER_BROWSER_UNAVAILABLE——自愈命令是 `render-chrome --ensure`,不再是 install-agent)——
      🔴 绝不静默回落自管 launch(泄漏路径复活)
   c. MEDIA_GEN_RENDER_MODE=legacy 环境变量保留旧自管池 90 天(逃生门/回退基线),默认 auto:
-     ensure 成功用 attach,失败报错(不静默)
+     ensure 成功用 attach,失败报错(不静默)。【2026-09-03 注:legacy 已提前退役(原定 2026-12-01),
+     本条与下表 legacy 行、模板句均为历史脉络,现行语义见 d 末尾的退役注记】
   d.【2026-09-01 补充】MEDIA_GEN_RENDER_MODE 三态精确语义与切换:
      | 值 | 行为 | 用途 |
      |---|---|---|
@@ -109,6 +110,11 @@ await b.close();
      - 失配降级的结构化错误模板(消费方返回,lasso 无需实现但验收时照此比对文案):
        code=`RENDER_BROWSER_UNAVAILABLE`,
        message="确定性渲染需 lasso 渲染档:先运行 `npx -y lasso-mcp render-chrome --ensure` 后重试(未装 lasso 见其 README);或临时设 MEDIA_GEN_RENDER_MODE=legacy 回退自管池(逃生门,<退役日> 移除)。ensure stderr: <原样透传>"
+     - 【2026-09-03 legacy 提前退役注记】上表 legacy 行与上条模板句中的逃生门半句均已作废:
+       * `MEDIA_GEN_RENDER_MODE` 现为二态(auto|attach);设 `legacy` → 专用 warn「已退役(自管池移除),按 auto 处理」后按 auto,`MEDIA_GEN_BROWSER_IDLE_MS` 已一并移除
+       * 降级模板已去 legacy 逃生门句与退役日,收敛为「自愈命令 + lasso README 指引 + ensure stderr 原样透传」
+       * lasso 验收比对文案以 media-gen-mcp 现版 `renderBrowserUnavailableMessage`(`src/browser-pool.ts`)为准,不再照抄本文历史模板句
+       * 实施全录 = media-gen-mcp `doc/legacy清除-方案与判定.md`(P8 跨仓协调项,本注记即其交付)
 阶段 3(2026-09-01 裁决改写):media-gen 侧看门狗体系随 attach 落地**直接退役,无移交过渡**——
   - `scripts/render-watchdog.mjs`(--clean 的 SIGKILL 清理)与《渲染看门狗-LaunchAgent安装指引.md》:SIGKILL 外置兜底体系已按用户裁决整体废弃,不再安装/不再维护,随 attach 落地 PR 移除或归档
   - `src/render-selfcheck.ts`(渲染调用侧孤儿检测告警):attach 模式下**必须显式禁用**(默认关)而非"自然失活"——🔴 其孤儿判定是"指纹旗标对 + PPID=1/spawner 已死",而 lasso CLI spawn 渲染档后即退出(detached Chrome PPID=1),lasso 拥有的健康渲染档会被**误判为孤儿**(其告警线=孤儿主进程 ≥3,单实例未必触发,但判定逻辑对 lasso 档整体失真,留着必积误报)
@@ -122,18 +128,18 @@ await b.close();
 | 1 | **SIGKILL 免疫是硬验收** | R2 的核心:消费方宿主被 `kill -9` 后渲染档照常存活、照常被 idle 回收 —— 验收命令:`kill -9 <消费方> && sleep <idle+30s> && pgrep -f <渲染档指纹> = 0` |
 | 2 | **chrome-stop mode 过滤需加 render** | 现有 `modes: hidden|visible` 扩为三值;`--modes hidden` 不得触碰渲染档,`--modes render` 可单独收 |
 | 3 | **指纹与通用名隔离** | 渲染档命令行保留 `--run-all-compositor-stages-before-draw` 等旗标作可识别指纹;🔴 不要用 `puppeteer_dev_chrome_profile` 作判定依据(puppeteer 通用名,chrome-devtools-mcp 等他家用,会误伤)—— 台账/PPID 归属优先 |
-| 4 | idle 默认 10min,env 可调 | `LASSO_RENDER_IDLE_MS`;与消费方 MEDIA_GEN_BROWSER_IDLE_MS 解耦(attach 后消费方不再自管,以 lasso 为准) |
+| 4 | idle 默认 10min,env 可调 | `LASSO_RENDER_IDLE_MS`;与消费方 MEDIA_GEN_BROWSER_IDLE_MS 解耦(attach 后消费方不再自管,以 lasso 为准)。【2026-09-03 注:消费方 `MEDIA_GEN_BROWSER_IDLE_MS` 已随 legacy 提前退役移除,idle 单一归 lasso】 |
 | 5 | 正常退出≠能等回收 | 短命脚本事件循环即退,收尾必须由 lasso(常驻归属方)负责 —— 消费方侧不再有 idle 定时器假设 |
 | 6 | headless 渲染档不进 lasso 日常档语义 | 不参与 chrome-show/hide、desired-hide 状态机(那是 headed 日常档的) |
 | 7 | 【2026-09-01 补充】stop/reap 必须删 render profile 目录 | 现 chrome-stop 只"杀进程+删台账"**不删 profile**(日常档持久 profile 是设计);渲染档是每实例临时 profile——stop/idle 收割/doctor 三条路径都必须连带 `rmSync(profileDir)`,否则重演"陈年 profile 积垃圾"(P0 附带伤害:tmp 积 114 目录 7.2GB) |
 | 8 | 【2026-09-01 补充】chrome-stop CLI 缺 `--modes` 旗标 | 现 CLI 仅 `--port N / --all`(modes 只是 API 选项,停机收尾路径用)——需求 R1 验收依赖 `chrome-stop --modes render`,**需补 CLI 旗标**;无 `--modes` 的 `--all` 语义 = 全停(含渲染档),属有意的"全停"出口,文档化即可 |
-| 9 | 【2026-09-01 补充】三套 idle 默认值 owner 对照,勿互抄 | 日常档 CLI 默认 `--idle-ms 0`(不回收,CLI_USAGE 明示)/ 渲染档默认 10min(`LASSO_RENDER_IDLE_MS`,需求 R1)/ 消费方自管池 5min(`MEDIA_GEN_BROWSER_IDLE_MS`,attach 下不生效、legacy-only)——三者归属不同生命周期,抄默认值 = 抄 bug |
+| 9 | 【2026-09-01 补充】三套 idle 默认值 owner 对照,勿互抄 | 日常档 CLI 默认 `--idle-ms 0`(不回收,CLI_USAGE 明示)/ 渲染档默认 10min(`LASSO_RENDER_IDLE_MS`,需求 R1)/ 消费方自管池 5min(`MEDIA_GEN_BROWSER_IDLE_MS`,attach 下不生效、legacy-only)——三者归属不同生命周期,抄默认值 = 抄 bug。【2026-09-03 注:第三套(消费方自管池)已随 legacy 提前退役删除,现仅剩前两套】 |
 
 ## 四、media-gen-mcp 侧承诺的配合改动(lasso 落地后一次性做)
 
 1. render 三处 acquire 切 `puppeteer.connect(wsEndpoint)`——【2026-09-01 补充】精确落点:`src/render-svg.ts:161`(withBrowser)/ `src/render-video.ts:223`(acquireBrowser)/ `src/interactive-html/export-png.ts:48`(withBrowser);实际改动集中在 browser-pool.ts 的 ensure/defaultLaunch 单点(attach 适配层:ensure 子进程 → connect;池语义 close → disconnect,见 §一.5),~50 行,三个渲染文件经 BrowserLike 类型面零改动受益
 2. 依赖声明:render 确定性档的 README/hint 增加"lasso 渲染档"为推荐路径(裸 Chrome attach 不再提供——确定性旗标必须由渲染档保证)
-3. `MEDIA_GEN_RENDER_MODE=legacy` 逃生门(90 天)与退役时间表
+3. `MEDIA_GEN_RENDER_MODE=legacy` 逃生门(90 天)与退役时间表。【2026-09-03 注:已执行——提前退役删除(原定 2026-12-01),设 legacy 现 warn+按 auto】
 4. watchdog 体系退役(见 §二阶段 3:【2026-09-01 裁决】直接废弃、无移交——`--clean` 清理与 LaunchAgent 指引移除,selfcheck 在 attach 下默认禁用以防 PPID=1 误报)
 5. E2E 批测(e2e-tools.mjs)加 L3' 档:attach 渲染 golden 对比
 
