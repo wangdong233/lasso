@@ -21,7 +21,7 @@
  * ——拉起独立执守进程兜「server 不在时无人压回」（见 desired-hide-enforcer.ts）。
  */
 import { hideChromeByPid, showChromeByPid } from "./chrome-hide.js";
-import { readLedgerSync } from "./chrome-ledger.js";
+import { readLedgerSync, markUserTakenByPid, clearUserTakenByPid } from "./chrome-ledger.js";
 import { verifyOwnership } from "./chrome-stop.js";
 import { addDesiredHidden, removeDesiredHidden } from "./desired-hide-state.js";
 import { ensureHideEnforcerRunning } from "./desired-hide-enforcer.js";
@@ -88,11 +88,16 @@ function defaultPs(pid: number): string {
 /**
  * CLI runner（index.ts 子命令路由调用）。
  * @param show true=chrome-show（恢复可见）；false=chrome-hide（转后台）
- * @param deps 测试注入（ensureEnforcer 注入后 chrome-hide spec 不真 spawn 执守进程）
+ * @param deps 测试注入（ensureEnforcer 注入后 chrome-hide spec 不真 spawn 执守进程；
+ * BUG-03 B1/F4：markUserTaken/clearUserTaken 注入后不触真实台账）
  */
 export async function runChromeHideShowCli(
   show: boolean,
-  deps: { ensureEnforcer?: () => Promise<unknown> } = {},
+  deps: {
+    ensureEnforcer?: () => Promise<unknown>;
+    markUserTaken?: (pid: number) => Promise<void>;
+    clearUserTaken?: (pid: number) => Promise<void>;
+  } = {},
 ): Promise<void> {
   // bug02（v1.18.5）：hide 成功记账后确保独立执守进程在世（server 不在时兜压回）
   // P2 处置轮（contract 路发现）：透传 logFn 写 stderr（chrome-ledger defaultLog 同款）——
@@ -106,6 +111,11 @@ export async function runChromeHideShowCli(
           process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`),
       });
     });
+  // BUG-03 B1/F4：show 成功 = 最强用户意图信号（显式操作 > 任何启发式）→ 同标
+  // userTakenAt（台账记录更新；--pid 无台账记录则 markUserTakenByPid 天然无操作）；
+  // hide 成功 = 重武装 → 清 userTakenAt（粘滞账/台账双账一致，不留混合态）。
+  const markUserTaken = deps.markUserTaken ?? ((pid: number) => markUserTakenByPid(pid));
+  const clearUserTaken = deps.clearUserTaken ?? ((pid: number) => clearUserTakenByPid(pid));
   const argv = process.argv.slice(3);
   const portArgIdx = argv.indexOf("--port");
   const port =
@@ -132,6 +142,7 @@ export async function runChromeHideShowCli(
       if (r.ok) {
         if (show) {
           await removeDesiredHidden(t.pid);
+          await markUserTaken(t.pid);
         } else {
           await addDesiredHidden({
             pid: t.pid,
@@ -139,6 +150,7 @@ export async function runChromeHideShowCli(
             profileDir: t.profileDir,
             hiddenAt: Date.now(),
           });
+          await clearUserTaken(t.pid);
           await ensureEnforcer();
         }
       }
@@ -169,9 +181,12 @@ export async function runChromeHideShowCli(
       // P27（v1.18.3）粘滞账：hide 成功 → desiredHidden 记账（server 看门狗每 1.5s
       // 复隐兜「任意激活源掀出」）；show 成功 → 清账（用户明示要看，看门狗不再压回）。
       // bug02（v1.18.5）：hide 记账后另起独立执守进程（server 不在时也有人压回）。
+      // BUG-03 B1/F4：show 再标 userTakenAt（idle/停机收割豁免——F4 倒挂修复：
+      // 显式操作的保护待遇不得低于 hidAge 启发式）；hide 清 userTakenAt（重武装）。
       if (r.ok) {
         if (show) {
           await removeDesiredHidden(rec.pid);
+          await markUserTaken(rec.pid);
         } else {
           await addDesiredHidden({
             pid: rec.pid,
@@ -179,6 +194,7 @@ export async function runChromeHideShowCli(
             profileDir: rec.profileDir,
             hiddenAt: Date.now(),
           });
+          await clearUserTaken(rec.pid);
           await ensureEnforcer();
         }
       }

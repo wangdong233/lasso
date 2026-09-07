@@ -218,3 +218,62 @@ export function removeLedgerEntriesSync(
     logFn({ evt: "chrome_ledger_remove_error", error: String(e), ports });
   }
 }
+
+// ============================================================
+// BUG-03 决议 B1/F4（doc/bugs/03 §4 B1）：userTakenAt 落写/清除
+// ============================================================
+/**
+ * 落 userTakenAt（按 pid）。**全库仅两条合法调用路径**（INV-85 账面突变禁令锚）：
+ *  1. desired-hide-watchdog 确认窗满（连续 USER_ACTIVATION_CONFIRM_TICKS tick
+ *     双判据门命中）；
+ *  2. chrome-show 成功（显式操作 > 任何启发式，§4.0-F4——B1 启发式拿到的保护
+ *     待遇不得高于显式操作）。
+ * 其余字段原样保留（同 pid 覆盖式 read-modify-write；best-effort 不抛）。
+ * 已认领记录的效果：粘滞执守退位 + idle 收割禁用 + 停机/exit 收割豁免
+ * （INV-86 exemptUserTaken）——唯一关闭出口 = 用户自己关或显式 chrome-stop。
+ */
+export async function markUserTakenByPid(
+  pid: number,
+  logFn: LedgerLogFn = defaultLog,
+): Promise<void> {
+  try {
+    const target = launchedChromesPath();
+    const next = readLedgerSync().map((r) =>
+      r.pid === pid && r.userTakenAt === undefined ? { ...r, userTakenAt: Date.now() } : r,
+    );
+    const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+    await fsp.mkdir(path.dirname(target), { recursive: true });
+    await fsp.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
+    await fsp.rename(tmp, target);
+    logFn({ evt: "chrome_ledger_user_taken", pid });
+  } catch (e) {
+    logFn({ evt: "chrome_ledger_user_taken_error", error: String(e), pid });
+  }
+}
+
+/**
+ * 清 userTakenAt（按 pid）——**唯一调用路径 = 显式 chrome-hide 成功**（重武装：
+ * 写粘滞账恢复执守 + 同步清台账认领标记——让位/武装两态与粘滞账/台账双账一致，
+ * 不留「已重武装但仍收割豁免」的混合态）。幂等（未认领记录零写）。
+ */
+export async function clearUserTakenByPid(
+  pid: number,
+  logFn: LedgerLogFn = defaultLog,
+): Promise<void> {
+  try {
+    const current = readLedgerSync();
+    if (!current.some((r) => r.pid === pid && r.userTakenAt !== undefined)) return;
+    const target = launchedChromesPath();
+    const next = current.map((r) => {
+      if (r.pid !== pid || r.userTakenAt === undefined) return r;
+      const { userTakenAt: _drop, ...rest } = r;
+      return rest;
+    });
+    const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+    await fsp.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
+    await fsp.rename(tmp, target);
+    logFn({ evt: "chrome_ledger_user_taken_cleared", pid });
+  } catch (e) {
+    logFn({ evt: "chrome_ledger_user_taken_clear_error", error: String(e), pid });
+  }
+}

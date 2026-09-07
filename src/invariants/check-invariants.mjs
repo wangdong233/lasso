@@ -4668,6 +4668,100 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // BUG-03（2026-09-07，doc/bugs/03）新增 —— 决议 B1/D：用户激活让位门
+  // ============================================================
+  // 事故形态（症状②，主病灶）：hidden 档 Chrome 复用用户 Google Chrome.app 的
+  // bundle id 注册 Foreground LS session——macOS 单应用槽位把用户 Dock 激活路由
+  // 进工具实例，执守 1.5s 无条件压回 =「打不开」。
+  // 守（双判据门 + 确认窗 + 账面突变禁令，§4.0-F1/F2 修订版）：
+  //  INV-85  用户激活让位（归因绑定版）：
+  //    (a) chrome-hide reassert 决策同时引用 hidAge（HIDIdleTime）与 frontmost
+  //        判定，且两者先于 `set visible of p to false`（脚本级顺序锚）
+  //    (b) 阈值与确认窗常量导出（USER_ACTIVATION_HID_THRESHOLD_MS=10_000 /
+  //        USER_ACTIVATION_CONFIRM_TICKS=20——真机 hid 年龄 CI 不可模拟，
+  //        判定函数与状态机用注入式 DI 测试钉死，常量导出供测试引用）
+  //    (c) watchdog 消费 userPending 信号 + 确认窗（连续 N tick 才 markUserTaken）
+  //    (d) userTakenAt 全库仅两条落写路径（watchdog 确认窗 + chrome-show），
+  //        唯一清除路径 = 显式 chrome-hide（重武装）
+  //    (e) 行为面由 test/unit/b1-user-activation-gate.spec.ts 四分支 +
+  //        账面快照断言钉死（放行/暂停/失败路径对粘滞账与台账零 mutation）
+  {
+    id: "INV-85-user-activation-yield-gate",
+    desc:
+      "BUG-03 B1/D：用户激活让位门——reassert 压回决策必须过双判据 AND 门（hidSystemState 年龄 < 10s AND 本 Chrome frontmost，判定先于压回；判据不可得整体跳过零副作用）；确认窗（连续 20 tick）满才落 userTakenAt；放行单 tick/暂停/失败路径对粘滞账与台账零 mutation；userTakenAt 仅经确认窗与 chrome-show 两路径落写、唯一清除路径 = 显式 chrome-hide",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const hideSrc = byPath(/^launcher\/chrome-hide\.ts$/)?.text ?? "";
+      const hideCode = stripComments(hideSrc);
+      const watchdogSrc = byPath(/^launcher\/desired-hide-watchdog\.ts$/)?.text ?? "";
+      const watchdogCode = stripComments(watchdogSrc);
+      const ledgerSrc = byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "";
+      const hideshowSrc = byPath(/^launcher\/chrome-hideshow-cli\.ts$/)?.text ?? "";
+
+      // ----- (a) 双判据先于压回（脚本级顺序锚） -----
+      const gatedScript = hideSrc.match(
+        /export function reassertGatedScript\([\s\S]*?\n\}/,
+      );
+      if (!gatedScript) return false;
+      const body = gatedScript[0];
+      const hidIdx = body.indexOf("HIDIdleTime");
+      const fmIdx = body.indexOf("frontmost of p");
+      const pressIdx = body.indexOf("set visible of p to false");
+      if (hidIdx === -1 || fmIdx === -1 || pressIdx === -1) return false;
+      if (!(hidIdx < pressIdx && fmIdx < pressIdx)) return false; // 双判据读取先于压回
+      // 判定（pending 分支）在压回之前
+      const pendingIdx = body.indexOf('"pending:"');
+      if (!(pendingIdx !== -1 && pendingIdx < pressIdx)) return false;
+      // 判据不可得 → AppleScript error（压回不会发生）
+      if (!body.includes('error "gate_unavailable"')) return false;
+      // E8 红线延续：PID 定向（unix id）仍在
+      if (!/unix id of p is \$\{pid\}/.test(body)) return false;
+
+      // ----- (b) 常量导出供测试 -----
+      if (!/USER_ACTIVATION_HID_THRESHOLD_MS = 10_000/.test(hideCode)) return false;
+      if (!/USER_ACTIVATION_CONFIRM_TICKS = 20/.test(hideCode)) return false;
+
+      // ----- (c) watchdog 确认窗状态机 -----
+      if (!/reassertChromeHiddenGatedAsync/.test(watchdogCode)) return false;
+      if (!/userPending/.test(watchdogCode)) return false;
+      if (!/USER_ACTIVATION_CONFIRM_TICKS/.test(watchdogCode)) return false;
+      if (!/user_activation_pending/.test(watchdogCode)) return false;
+      if (!/user_activation_taken/.test(watchdogCode)) return false;
+      // 已认领退位（userTakenAt 检查先于 reassert——认领后不再施压）
+      const takenCheck = watchdogCode.indexOf("takenPids.has(rec.pid)");
+      const reassertCall = watchdogCode.indexOf("await reassertFn(rec.pid)");
+      if (takenCheck === -1 || reassertCall === -1 || !(takenCheck < reassertCall)) return false;
+
+      // ----- (d) userTakenAt 写路径唯一性 -----
+      if (!/export async function markUserTakenByPid/.test(ledgerSrc)) return false;
+      if (!/export async function clearUserTakenByPid/.test(ledgerSrc)) return false;
+      // markUserTakenByPid 的调用点全库仅 watchdog 默认注入 + hideshow show 路径
+      const callers = SRC.filter((s) => {
+        const rel = s.f.replace(/\\/g, "/");
+        if (rel === "launcher/chrome-ledger.ts") return false; // 定义处
+        return /markUserTakenByPid/.test(stripComments(s.text));
+      }).map((s) => s.f.replace(/\\/g, "/"));
+      const allowedCallers = ["launcher/chrome-hideshow-cli.ts", "launcher/desired-hide-watchdog.ts"];
+      if (callers.length !== allowedCallers.length || !callers.every((c) => allowedCallers.includes(c))) {
+        return false;
+      }
+      // clear 的调用点仅 hideshow hide 路径
+      const clearCallers = SRC.filter((s) => {
+        const rel = s.f.replace(/\\/g, "/");
+        if (rel === "launcher/chrome-ledger.ts") return false;
+        return /clearUserTakenByPid/.test(stripComments(s.text));
+      }).map((s) => s.f.replace(/\\/g, "/"));
+      if (clearCallers.length !== 1 || clearCallers[0] !== "launcher/chrome-hideshow-cli.ts") {
+        return false;
+      }
+      // hideshow：show 成功标 / hide 成功清（源码锚）
+      if (!/await markUserTaken\(/.test(hideshowSrc)) return false;
+      if (!/await clearUserTaken\(/.test(hideshowSrc)) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

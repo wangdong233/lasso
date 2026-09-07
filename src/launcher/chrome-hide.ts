@@ -106,6 +106,174 @@ function reassertScript(pid: number): string {
   );
 }
 
+// ============================================================
+// BUG-03 决议 B1（doc/bugs/03 §4 B1 + §4.0-F1/F2 复审修订）：
+// 用户激活让位门（gated reassert 原语）——三判据 AND 的 (a)+(b) 在单次
+// osascript 内读取，判定先于压回
+// ============================================================
+/**
+ * (a) 判据阈值：hidSystemState 空闲年龄 < 10s 判「用户在机器某处活动」。
+ *
+ * §4.0-F1 修订：hidSystemState 是系统级空闲计时器，**无 per-window/per-app
+ * 归因**——「hid 年龄小」只证明用户在机器某处活动，不证明用户激活了这个
+ * Chrome（互动会话中恒真，故单判据 ≈ 恒放行，须与 (b) frontmost AND）。
+ * 真激活检出时 hid 年龄 ≤ tick 1.5s + AX 枚举延迟，10s 级足够；60s 只会
+ * 放大误开放窗（v1 草案 60s 阈值已废）。
+ */
+export const USER_ACTIVATION_HID_THRESHOLD_MS = 10_000;
+
+/**
+ * (c) 确认窗 tick 数：连续 N tick（默认 20 ≈ 30s @1.5s tick）双判据门全过
+ * 才落 userTakenAt。窗内任一 tick 失守（失 frontmost / hid 超阈值 / 判据不可得）
+ * → 计数清零恢复压回——v1.18.3「任何激活源掀出的窗口至多存活一个 tick」契约
+ * 在未确认归因期间保持武装（确认窗把上限有界放宽到 30s 换取归因确认）。
+ */
+export const USER_ACTIVATION_CONFIRM_TICKS = 20;
+
+/**
+ * gated reassert 结果（B1）：在既有 ChromeReassertResult 上增三个信号字段。
+ * userPending=true 时 **本 tick 未压回**（让位）——由 watchdog 确认窗状态机
+ * 消费；watchdog 之外的消费方不得据此做任何账面动作（§4.0-F2：放行零账面突变）。
+ */
+export interface ChromeReassertGatedResult {
+  ok: boolean;
+  /** true = 本次确实把可见压回了（一次闪现被纠正）。 */
+  wasVisible?: boolean;
+  /** true = 用户激活让位门命中（(a) hid 年龄 < 阈值 AND (b) frontmost）。 */
+  userPending?: boolean;
+  /** (b) 判据观测值：本 Chrome 进程是否 frontmost（诊断/测试回传）。 */
+  frontmost?: boolean;
+  /** (a) 判据观测值：hidSystemState 空闲年龄 ms（诊断/测试回传）。 */
+  hidIdleMs?: number;
+  reason?: string;
+}
+
+export interface ChromeReassertGatedOptions {
+  platform?: string;
+  /** (a) 判据阈值（默认 USER_ACTIVATION_HID_THRESHOLD_MS；测试注入）。 */
+  thresholdMs?: number;
+  /** 测试注入（返回 stdout 以解析 "pending:1:1500" / "hidden:0:90000" 信号）。 */
+  execFn?: (args: string[]) => { status: number | null; stdout?: string; stderr?: string };
+}
+
+/**
+ * B1 gated reassert 脚本体（导出供 INV-85 源码锚 + 真机人工验证单）。
+ *
+ * 结构红线（INV-85）：hidSystemState 年龄（ioreg HIDIdleTime，纳秒）与
+ * `frontmost of p` 的读取与判定**先于** `set visible of p to false`——
+ * 判据不可得（ioreg/TCC 失败 → AppleScript error）时整个 osascript 非零退，
+ * **压回不会发生**（宁失隐藏不失用户主权；失败路径零副作用）。
+ *
+ * hidIdleTime 读取放 System Events tell 块外：do shell script 是
+ * StandardAdditions 命令，tell 块内会路由到 System Events（宿主不支持则
+ * 脚本编译失败）。同为单次 osascript 调用（watchdog 侧零额外进程往返）。
+ * AppleScript integer 是 32 位——纳秒值溢出，解析走 `as real`。
+ */
+export function reassertGatedScript(pid: number, thresholdMs: number): string {
+  return (
+    "on readHidIdleMs()\n" +
+    "  try\n" +
+    '    set raw to do shell script "/usr/sbin/ioreg -c IOHIDSystem -w 0 | /usr/bin/grep -m 1 \\"HIDIdleTime\\""\n' +
+    "    set tid to AppleScript's text item delimiters\n" +
+    '    set AppleScript\'s text item delimiters to "= "\n' +
+    "    set nv to text item 2 of raw\n" +
+    "    set AppleScript's text item delimiters to tid\n" +
+    "    return (nv as real) / 1.0E+6\n" +
+    "  on error\n" +
+    '    error "gate_unavailable"\n' +
+    "  end try\n" +
+    "end readHidIdleMs\n" +
+    "set hidMs to readHidIdleMs()\n" +
+    // AppleScript integer 32 位上限防溢出（>23 天 idle 的钳制值仍远超 10s 阈值，
+    // 判定语义不变；不钳制则 as integer 抛错 → 整体判「判据不可得」）
+    "if hidMs > 2.0E+9 then set hidMs to 2.0E+9\n" +
+    'tell application "System Events"\n' +
+    "  repeat with p in (application processes whose name is \"Google Chrome\")\n" +
+    `    if unix id of p is ${pid} then\n` +
+    "      if visible of p is true then\n" +
+    "        set fm to frontmost of p\n" +
+    `        if fm is true and hidMs < ${thresholdMs} then\n` +
+    '          return "pending:" & (fm as integer) & ":" & (hidMs as integer)\n' +
+    "        end if\n" +
+    "        set visible of p to false\n" +
+    '        return "hidden:" & (fm as integer) & ":" & (hidMs as integer)\n' +
+    "      end if\n" +
+    '      return "already"\n' +
+    "    end if\n" +
+    "  end repeat\n" +
+    '  return "nomatch"\n' +
+    "end tell"
+  );
+}
+
+/** gated 信号解析（pending/hidden 携带 fm:hid 观测值；sync/async 共用）。 */
+function parseReassertGatedSignal(
+  status: number | null | undefined,
+  stdout: string | undefined,
+  stderr: string | undefined,
+): ChromeReassertGatedResult {
+  if (status !== 0) {
+    // 判据不可得（ioreg 失败 / TCC 瞬态）——识别 gate_unavailable 便于
+    // doctor/日志归类；其余按 osascript 退出码（与既有 parseReassertSignal 同形）
+    if ((stderr ?? "").includes("gate_unavailable")) {
+      return { ok: false, reason: "gate_unavailable" };
+    }
+    return { ok: false, reason: `osascript_exit_${status ?? "null"}` };
+  }
+  const sig = (stdout ?? "").trim();
+  if (sig === "already") return { ok: true, wasVisible: false };
+  if (sig === "nomatch") return { ok: false, reason: "process_not_found" };
+  const m = sig.match(/^(pending|hidden):([01]):(\d+)$/);
+  if (!m) return { ok: false, reason: `unexpected_signal:${sig.slice(0, 20)}` };
+  const frontmost = m[2] === "1";
+  const hidIdleMs = Number(m[3]);
+  return {
+    ok: true,
+    wasVisible: true,
+    userPending: m[1] === "pending",
+    frontmost,
+    hidIdleMs,
+  };
+}
+
+/**
+ * B1 gated reassert 异步原语（watchdog 默认 reassertFn，P27/P31 同款
+ * execFile 零事件循环阻塞形态）。返回信号供 watchdog 确认窗状态机消费；
+ * 本函数自身零账面副作用（§4.0-F2）。
+ */
+export function reassertChromeHiddenGatedAsync(
+  pid: number | undefined,
+  opts: ChromeReassertGatedOptions = {},
+): Promise<ChromeReassertGatedResult> {
+  const platform = opts.platform ?? process.platform;
+  if (platform !== "darwin") return Promise.resolve({ ok: false, reason: "non_mac_noop" });
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) {
+    return Promise.resolve({ ok: false, reason: "no_pid" });
+  }
+  const thresholdMs = opts.thresholdMs ?? USER_ACTIVATION_HID_THRESHOLD_MS;
+  if (opts.execFn) {
+    const r = opts.execFn(["-e", reassertGatedScript(pid, thresholdMs)]);
+    return Promise.resolve(parseReassertGatedSignal(r.status, r.stdout, r.stderr));
+  }
+  return new Promise((resolve) => {
+    execFile(
+      "osascript",
+      ["-e", reassertGatedScript(pid, thresholdMs)],
+      { encoding: "utf8", timeout: 4_000, killSignal: "SIGKILL" },
+      (err, stdout, stderr) => {
+        const status = err ? ((err as NodeJS.ErrnoException & { code?: number | string }).code ?? 1) : 0;
+        resolve(
+          parseReassertGatedSignal(
+            typeof status === "number" ? status : 1,
+            String(stdout ?? ""),
+            String(stderr ?? ""),
+          ),
+        );
+      },
+    );
+  });
+}
+
 /** osascript stdout 信号 → 结果（sync/async 共用解析）。 */
 function parseReassertSignal(
   status: number | null | undefined,
