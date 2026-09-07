@@ -34,7 +34,7 @@
  * mcp-chrome chrome_computer action-enum 折叠思想。
  */
 import { randomUUID } from "node:crypto";
-import { writeFile, stat, mkdir, open } from "node:fs/promises";
+import { writeFile, stat, mkdir, open, readFile } from "node:fs/promises";
 import * as pathMod from "node:path";
 import { UiChannel } from "./UiChannel.js";
 import type {
@@ -990,17 +990,40 @@ async function doScreenshot(
   //     + 落盘校验 + PNG magic 保留（W1-DEF-3 禁伪造路径）。
   //   路径 2（回退）：上游未兑现写盘（0.3.0 形态 / filePath 被忽略）→ 既有
   //     image-block base64 解码落盘路径。
+  // 对抗复审补丁（BUG-03 adversarial r1，2026-09-08 真机实锤）：上游 1.7.0 的
+  // filePath 带工作区根校验（McpContext.validatePath——"Access denied: path … is
+  // not within any of the configured workspace roots"）。lasso 从未与上游协商
+  // roots 能力、也未配 --allow-unrestricted-paths，**任何路径（含本函数的
+  // /tmp 管理路径）都会被上游拒绝**——原实现 isError 即抛，image-block 回退
+  // 永不执行，真机上 screenshot action 100% 失败（比修复前更糟：修复前小截图
+  // 走 image block 可用）。修复：isError 且文本含 "Access denied"（路径 1 被
+  // 拒）→ 不带 filePath 重试一次（落到路径 2 的两形态：image block 或上游
+  // 临时文件文本行）；其余 isError 维持原样如实抛。
   const target = opts.screenshot?.filePath ?? `/tmp/lasso-screenshot-${randomUUID()}.png`;
-  const r = (await c.callTool("take_screenshot", {
+  let r = (await c.callTool("take_screenshot", {
     format: "png",
     fullPage: opts.screenshot?.full ?? false,
     filePath: target,
   })) as ContentResult;
 
   if (r.isError) {
-    throw new Error(
-      `screenshot_write_failed:upstream_is_error:${firstText(r) ?? "unknown"}`,
-    );
+    const errText = firstText(r) ?? "unknown";
+    if (/Access denied/.test(errText)) {
+      // 路径 1 被上游工作区根校验拒绝 → 重试不带 filePath（路径 2）
+      r = (await c.callTool("take_screenshot", {
+        format: "png",
+        fullPage: opts.screenshot?.full ?? false,
+      })) as ContentResult;
+      if (r.isError) {
+        throw new Error(
+          `screenshot_write_failed:upstream_is_error:${firstText(r) ?? "unknown"}`,
+        );
+      }
+    } else {
+      throw new Error(
+        `screenshot_write_failed:upstream_is_error:${errText.slice(0, 120)}`,
+      );
+    }
   }
 
   // 用户指定路径的父目录 best-effort 创建（默认 /tmp 恒存在）
@@ -1025,6 +1048,34 @@ async function doScreenshot(
     // （实测契约见 browse/upstream-response.ts），不在 text block。
     const img = imageBlock(r);
     if (!img) {
+      // 对抗复审补丁（BUG-03 adversarial r1）：上游 ≥2MB 截图（无 filePath 时）
+      // 落**上游自己的临时文件**并回文本行 "Saved screenshot to <path>"（1.7.0
+      // take-screenshot.js ≥2_000_000 分支）——只认 image block 会把这类成功
+      // 当失败（消费方②原始事故形态）。解析该行 → 读上游临时文件 → PNG magic
+      // 校验 → 物化到本函数的 target。读不到/非 PNG 走既有 no_image_block 拒绝。
+      const m = String((r as { content?: Array<{ text?: string }> }).content?.map((b) => b.text ?? "").join("\n") ?? "")
+        .match(/Saved screenshot to (\S+)/);
+      const upstreamTmpPath = m?.[1]?.replace(/[.,;]+$/, ""); // 上游文本行尾句点剥除
+      if (upstreamTmpPath) {
+        let tmpBuf: Buffer | null = null;
+        try {
+          tmpBuf = await readFile(upstreamTmpPath);
+        } catch {
+          tmpBuf = null;
+        }
+        if (
+          tmpBuf !== null &&
+          tmpBuf.length >= 100 &&
+          tmpBuf[0] === 0x89 && tmpBuf[1] === 0x50 && tmpBuf[2] === 0x4e && tmpBuf[3] === 0x47
+        ) {
+          await writeFile(target, tmpBuf);
+          const st2 = await stat(target);
+          if (!st2.isFile() || st2.size !== tmpBuf.length) {
+            throw new Error(`empty_or_missing_file:${target}`);
+          }
+          return { preview: `screenshot saved to ${target}` };
+        }
+      }
       throw new Error("screenshot_write_failed:no_image_block_from_upstream");
     }
     const buf = Buffer.from(img.data, "base64");

@@ -192,4 +192,74 @@ describe("E② · doScreenshot 双路径", () => {
     const types = readFileSync("src/types.ts", "utf8");
     expect(types).toMatch(/filePath\?: string;/);
   });
+
+  // ---- 对抗复审补丁（BUG-03 adversarial r1，2026-09-08 真机实锤）----
+  // 上游 1.7.0 filePath 带工作区根校验：lasso 未协商 roots/未配
+  // --allow-unrestricted-paths 时任何路径（含 /tmp 管理路径）都被拒——
+  // "Access denied: path … not within any of the configured workspace roots"。
+  // isError 含 Access denied 必须降级重试（不带 filePath），不得整 action 硬失败。
+  it("8. 上游 Access denied（工作区根校验拒 filePath）→ 不带 filePath 重试 → image-block 落盘成功", async () => {
+    const target = path.join(shotDir, "denied-fallback.png");
+    const calls: Array<Record<string, unknown>> = [];
+    const ch = new TestBrowseChannel(
+      makeClient((args) => {
+        calls.push({ ...args });
+        if (args.filePath !== undefined) {
+          return textContent(
+            `Error: Access denied: path ${args.filePath} (canonical: /private${args.filePath}) is not within any of the configured workspace roots.`,
+            true,
+          );
+        }
+        return imageResult(pngBytes(400).toString("base64"));
+      }),
+    );
+    const r = await ch.browse("https://example.com/", "screenshot", {
+      screenshot: { filePath: target },
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    expect(calls).toHaveLength(2); // 恰一次重试
+    expect(calls[0]!.filePath).toBe(target);
+    expect(calls[1]!.filePath).toBeUndefined(); // 重试不带 filePath
+    expect(existsSync(target)).toBe(true);
+    expect(readFileSync(target).length).toBe(400);
+  });
+
+  it("9. 无 filePath 且上游 ≥2MB 落自己临时文件（'Saved screenshot to <path>' 文本行）→ 读上游临时文件物化到 target", async () => {
+    const target = path.join(shotDir, "big-materialized.png");
+    const upstreamTmp = path.join(shotDir, "upstream-own-tmp.png");
+    writeFileSync(upstreamTmp, pngBytes(800)); // 上游临时文件（合法 PNG）
+    const calls: Array<Record<string, unknown>> = [];
+    const ch = new TestBrowseChannel(
+      makeClient((args) => {
+        calls.push({ ...args });
+        return textContent(`# take_screenshot response\nSaved screenshot to ${upstreamTmp}.`);
+      }),
+    );
+    const r = await ch.browse("https://example.com/", "screenshot", {
+      screenshot: { filePath: target },
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    expect(existsSync(target)).toBe(true);
+    expect(readFileSync(target).length).toBe(800); // 物化完整
+    expect(readFileSync(target)[0]).toBe(0x89);
+  });
+
+  it("10. Access denied 且重试后仍 isError → 如实抛 upstream_is_error（不无限重试）", async () => {
+    let n = 0;
+    const ch = new TestBrowseChannel(
+      makeClient(() => {
+        n++;
+        return textContent(
+          n === 1
+            ? "Error: Access denied: path /tmp/x.png is not within any of the configured workspace roots."
+            : "Screenshot failed: page crashed",
+          true,
+        );
+      }),
+    );
+    const r = await ch.browse("https://example.com/", "screenshot", {} as BrowseOptions);
+    expect(r.outcome).toBe("didnt");
+    expect(n).toBe(2);
+    expect(r.error).toMatch(/screenshot_write_failed:upstream_is_error/);
+  });
 });
