@@ -1,11 +1,12 @@
 /**
  * b2-headless-mode.spec.ts（BUG-03 决议 B2，doc/bugs/03 §4 B2）
  *
- * headless 可选档（`launch-chrome --mode headless`）：headless 实例不注册
- * Foreground LS session，**结构性不占用户 Chrome 的 Dock 槽位**——同 bundle id
- * 单实例激活路由（症状②机理层）的根治形态。代价 = 无法 chrome-show（登录交互
- * 流破碎），故不切默认（hidden+B1 让位门仍默认）；文档明示「需登录态工作流用
- * hidden/visible」。
+ * headless 可选档（`launch-chrome --mode headless`）：零窗口/零 AX 面的纯抓取
+ * 形态。**对抗复审 r1（2026-09-08）真机证伪订正**：B2 原始声明「headless 不注册
+ * Foreground LS session、结构性不占 Dock 槽位」在 macOS 真机不成立——仅有
+ * headless 实例在世时 `open -a "Google Chrome"` 不另起新实例，激活被同 bundle id
+ * 单实例槽位吸收且零可见反馈（症状②的无窗变体）；有人用的机器仍应 hidden
+ * （+B1 让位门）。代价 = 无法 chrome-show（登录交互流破碎），故不切默认。
  *
  * 覆盖：
  *  1. parseLaunchChromeArgs 接受 --mode headless（CLI 显式可选）
@@ -14,6 +15,7 @@
  *  4. 台账 launchMode "headless" 写读往返 + readLedgerSync 守卫
  *  5. chrome-stop --modes headless 可单收；--modes hidden 精确匹配不动 headless
  *  6. config 层不扩（LASSO_LAUNCH_MODE 仍 hidden|visible——防误配切默认）
+ *  7. mac 平台 headless 拉起打 headless_dock_slot_caveat 观测点（r1 订正锚）
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync, promises as fs } from "node:fs";
@@ -109,6 +111,35 @@ describe("B2 · headless 行为面（探活序列注入）", () => {
     // 台账记 headless
     const ledger = readLedgerSync();
     expect(ledger.find((x) => x.port === 9222)?.launchMode).toBe("headless");
+  });
+
+  it("2d. mac 平台 headless 拉起打 headless_dock_slot_caveat（r1 真机证伪订正锚）；hidden 档不打", async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const logFn = (p: Record<string, unknown>) => events.push(p);
+    const mkBase = (pid: number) => ({
+      platform: "mac" as const,
+      probeExists: async () => true,
+      spawnFn: (() => ({ unref() {}, on() {}, pid })) as never,
+      // 每次拉起独立 fetchFn 序列（首探不 ok → spawn 后 ok；复用会把第二次
+      // 预探判成 port_in_use）
+      fetchFn: (() => {
+        let n = 0;
+        return async () => ({ ok: ++n >= 2 });
+      })(),
+      probeIntervalMs: 1,
+      probeAttempts: 2,
+      defaultProfileDir: "/tmp/b2-profile",
+      hideFn: () => ({ ok: true }),
+      ensureEnforcerFn: async () => {},
+      logFn,
+    });
+    const rHeadless = await launchChrome({ ...mkBase(77114), launchMode: "headless" });
+    expect(rHeadless.ok).toBe(true);
+    expect(events.some((e) => e.evt === "headless_dock_slot_caveat")).toBe(true);
+    events.length = 0;
+    const rHidden = await launchChrome({ ...mkBase(77115), launchMode: "hidden" });
+    expect(rHidden.ok).toBe(true);
+    expect(events.some((e) => e.evt === "headless_dock_slot_caveat")).toBe(false);
   });
 });
 

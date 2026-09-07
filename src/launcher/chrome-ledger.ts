@@ -44,9 +44,10 @@ export interface LaunchedChromeRecord {
    * 服务 media-gen-mcp 等外部消费方）。readLedgerSync 解析守卫同步三值
    * （🔴 守卫漏改则 render 记录被静默降级 undefined = 按 hidden 处理，表面能跑语义错）。
    * BUG-03 决议 B2（doc/bugs/03 §4 B2）：扩第四值 "headless"——日常档的可选无头
-   * 形态（--mode headless）：headless 实例不注册 Foreground LS session，结构性
-   * 不占用户 Chrome 的 Dock 槽位（激活劫持的根治形态）；无法 chrome-show（登录
-   * 交互流破碎），故不切默认，文档明示「需登录态工作流用 hidden/visible」。
+   * 形态（--mode headless）：零窗口/零 AX 面。🔴 对抗复审 r1（2026-09-08）真机
+   * 证伪 B2 原始声明「不占 Dock 槽位」——激活仍被同 bundle id 单实例吸收（见
+   * launch-chrome headless_dock_slot_caveat）；无法 chrome-show（登录交互流破碎），
+   * 故不切默认，有人用的机器用 hidden。
    */
   launchMode?: "hidden" | "visible" | "render" | "headless";
   /**

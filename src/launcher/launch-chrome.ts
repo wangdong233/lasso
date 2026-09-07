@@ -109,11 +109,14 @@ export interface LaunchChromeOptions {
    * hidden = `--no-startup-window`（mac/linux，E7 实证零打扰）+
    *          win 追加 `--start-minimized`；visible = v1.9 现状 + 恒加三件套。
    * BUG-03 决议 B2（doc/bugs/03 §4 B2）：扩 "headless"——`--headless=new` 可选档：
-   * headless 实例不注册 Foreground LS session，结构性不占用户 Chrome 的 Dock
-   * 槽位（激活劫持根治形态；复用 render 档 headless 经验）。代价 = 无法
-   * chrome-show（登录交互流破碎）——不切默认（hidden+B1 让位门仍默认），
-   * 仅 CLI `--mode headless` 显式可选；config 层 launchMode 不扩（LASSO_LAUNCH_MODE
-   * 仍 hidden|visible，防误配把登录工作流切到无头形态）。
+   * 零窗口/零 AX 面的纯抓取形态（复用 render 档 headless 经验）。
+   * 🔴 对抗复审 r1（2026-09-08）真机证伪：B2 原始声明「不注册 Foreground LS
+   * session、结构性不占 Dock 槽位」**不成立**——仅有 headless 实例在世时
+   * `open -a "Google Chrome"` 不另起新实例，激活仍被同 bundle id 单实例槽位吸收
+   * 且零可见反馈（症状②的无窗变体）。有人用的机器用 hidden（+B1 让位门）。
+   * 代价 = 无法 chrome-show（登录交互流破碎）——不切默认（hidden+B1 让位门
+   * 仍默认），仅 CLI `--mode headless` 显式可选；config 层 launchMode 不扩
+   * （LASSO_LAUNCH_MODE 仍 hidden|visible，防误配把登录工作流切到无头形态）。
    */
   launchMode?: "hidden" | "visible" | "headless";
   /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
@@ -453,11 +456,26 @@ export async function launchChrome(
     args.push("--no-startup-window");
   }
   if (mode === "headless") {
-    // BUG-03 B2：无头档——headless 实例不注册 Foreground LS session，不占用户
-    // Chrome 的 Dock 槽位（单 bundle id 单实例激活路由的结构性豁免）。
-    // flag 形态取 render 档冻结快照的 headless 经验（--headless=new；不 import
-    // render 模块守 INV-64——字面量本地 + render-flags provenance 注记）。
+    // BUG-03 B2：无头档——零窗口/零 AX 面（无隐藏保险丝、无粘滞账执守），
+    // 适合无人值守机器的纯抓取/外部 CDP 消费。flag 形态取 render 档冻结快照
+    // 的 headless 经验（--headless=new；不 import render 模块守 INV-64——字面量
+    // 本地 + render-flags provenance 注记）。
     args.push("--headless=new");
+    // 对抗复审补丁（BUG-03 adversarial r1，2026-09-08 真机证伪）：macOS 上
+    // `open -a "Google Chrome"` 在仅有 headless 实例在世时**不会**另起新实例——
+    // 激活被同 bundle id 的 headless 实例吸收（零窗口、用户看不到任何反馈），
+    // 症状②「点 Chrome 打不开」在 headless 形态下**依旧成立**（且比 hidden 更
+    // 静默：hidden 有 B1 让位门会掀出窗口，headless 无窗可掀）。B2 原始声明
+    // 「不占 Dock 槽位」不成立，文档已订正；此处打点让消费方可观测。
+    // （plat 两种 mac 值：生产 process.platform="darwin" / 测试注入别名 "mac"，
+    // 与 chrome-paths detectPlatformSimple 的归一别名同源。）
+    if (plat === "darwin" || plat === "mac") {
+      log({
+        evt: "headless_dock_slot_caveat",
+        port,
+        note: "B2 claim falsified on macOS real-machine (adversarial r1): headless instance still absorbs Dock/open -a activation of com.google.Chrome (single-instance slot) with zero visible feedback; prefer hidden (+B1 yield gate) on machines a human may use",
+      });
+    }
   }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
