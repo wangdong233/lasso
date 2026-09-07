@@ -232,6 +232,11 @@ export function startChromeIdleReaper(
         if (autoHideAfterLogin) await considerAutoHide(rec, now);
         continue;
       }
+      // BUG-03 决议 B1/A1（doc/bugs/03 §4 B1，§4.0-F4）：用户已认领（userTakenAt =
+      // B1 确认窗或 chrome-show 落写）——hidden 档发生状态迁移：事实上的用户窗口，
+      // idle 收割禁用（窗口在用户面前被关 = F4 倒挂修复面）；唯一关闭出口 = 用户
+      // 自己关或显式 chrome-stop。台账 launchMode 不变（chrome-hide 可重武装清此标记）。
+      if (rec.userTakenAt !== undefined) continue;
       const idleMs = rec.idleMs ?? defaultIdleMs;
       if (idleMs <= 0) continue; // record 级禁用（parse18 §2.5 per-launch 覆盖）
       // bug02（v1.18.5）：三源取 max——touchMap（lasso browse）/ 外部 touch 文件

@@ -936,11 +936,11 @@ describe("bug02 · hidden 档出生写粘滞账 + 自 touch + 执守启动（v1.
     expect(src.match(/await touchChromePort\(port, log\);/g)?.length).toBe(3);
   });
 
-  it("B7. 白盒：index.ts CLI 显式拉起默认 idleMs=0（无显式配置时不进 reaper 管辖）", () => {
+  it("B7. 白盒：index.ts CLI 显式拉起默认 idle=30min 单一真源（BUG-03 A1；显式配置仍优先）", () => {
     const src = readFileSync("src/index.ts", "utf8");
     // mergedEnv 读原始 key：显式配置（env/config.json）存在才透传 cliCfg.launchIdleMs
     expect(src).toMatch(/const rawIdle = mergedEnv\(\)\.LASSO_LAUNCH_IDLE_MS;/);
-    expect(src).toMatch(/\? cliCfg\.launchIdleMs\n\s*: 0;/);
+    expect(src).toMatch(/\? cliCfg\.launchIdleMs\n\s*: CLI_LAUNCH_IDLE_DEFAULT_MS;/);
   });
 });
 

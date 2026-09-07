@@ -56,6 +56,21 @@ export interface ChromeStopOptions {
    * `--modes render` 可单独收渲染档；`--modes hidden` 因精确匹配不动渲染档。
    */
   modes?: Array<"hidden" | "visible" | "render">;
+  /**
+   * BUG-03 决议 A1（doc/bugs/03 §4 A1，消费方③连坐死根治）：归属限定——只收
+   * `ownerPid === 本值` 的记录。**任何进程退出只许收自己拉起的 Chrome**：
+   * 他 owner 的记录与旧台账无 owner 字段的陈留记录（归「无人」）都不选、
+   * 台账条目保留——永不因他人退出被杀（失败方向安全：只会少杀不会多杀）。
+   * chrome-stop CLI **不传**（用户显式 = 最高权限，无归属过滤）。
+   */
+  ownerPid?: number;
+  /**
+   * BUG-03 决议 A1 第三维（§4.0-F3）：userTakenAt 豁免——用户已认领的记录
+   * （B1 确认窗 / chrome-show 落写）等同 visible 豁免：停机/exit 两路径不杀、
+   * 台账条目保留（「server 退出把用户正在用的窗口砸掉」同一事故型）。
+   * chrome-stop CLI **不传**（显式 chrome-stop 仍是用户认领实例的合法关闭出口）。
+   */
+  exemptUserTaken?: boolean;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -203,6 +218,15 @@ export async function stopLaunchedChromes(
   if (opts.modes) {
     targets = targets.filter((r) => opts.modes!.includes(r.launchMode ?? "hidden"));
   }
+  // BUG-03 决议 A1（doc/bugs/03 §4 A1）：三维收割谓词的后两维——owner 归属 +
+  // userTakenAt 豁免（modes 是第一维）。ownerPid 传入时只有「自己拉起的」记录入
+  // 选；无 owner 字段的陈留记录归「无人」不入选（永不因他人退出被杀）。
+  if (opts.ownerPid !== undefined) {
+    targets = targets.filter((r) => r.ownerPid === opts.ownerPid);
+  }
+  if (opts.exemptUserTaken) {
+    targets = targets.filter((r) => r.userTakenAt === undefined);
+  }
 
   const stopped: ChromeStopResult["stopped"] = [];
   for (const rec of targets) {
@@ -269,6 +293,10 @@ export interface ChromeStopSyncOptions {
    * P1（v1.17.3）只修了优雅停机路径；本参数把同一裁决补到 exit 钩子。
    */
   modes?: Array<"hidden" | "visible" | "render">;
+  /** BUG-03 A1：归属限定（与 async 版同款；index.ts exit 钩子传 process.pid）。 */
+  ownerPid?: number;
+  /** BUG-03 A1 第三维：userTakenAt 豁免（与 async 版同款）。 */
+  exemptUserTaken?: boolean;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -297,6 +325,14 @@ export function stopLaunchedChromesSync(
   // D-5（v1.18）：mode 过滤（P1 裁决补全到 exit 钩子路径；缺省 launchMode 按 hidden）
   if (opts.modes) {
     targets = targets.filter((r) => opts.modes!.includes(r.launchMode ?? "hidden"));
+  }
+  // BUG-03 决议 A1：三维谓词后两维（与 async 版同款；exit 钩子 = 停机路径的兜底，
+  // 谓词必须一致——否则优雅停机不连坐、exit 钩子连坐，同一事故换个路径复发）
+  if (opts.ownerPid !== undefined) {
+    targets = targets.filter((r) => r.ownerPid === opts.ownerPid);
+  }
+  if (opts.exemptUserTaken) {
+    targets = targets.filter((r) => r.userTakenAt === undefined);
   }
   const stopped: ChromeStopResult["stopped"] = [];
   for (const rec of targets) {

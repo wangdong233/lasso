@@ -155,6 +155,10 @@ describe("chrome-idle-reaper —— 台账 Chrome idle 用完即关（parse18 §
           throw new Error("stop_boom");
         }
       },
+      // BUG-03 A1 顺手修（hermeticity）：本用例自建 reaper 未注入 touchStatFn——
+      // 默认读真实 ~/.cache/lasso/chrome-touch-9222（真机残留 mtime）会让 9222
+      // 永不 idle → 机器状态依赖性假红。注入「无外部信号」与其余用例对齐。
+      touchStatFn: () => undefined,
       logFn: (p) => logs.push(p),
     });
     await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);

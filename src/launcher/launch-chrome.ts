@@ -109,6 +109,14 @@ export interface LaunchChromeOptions {
   launchMode?: "hidden" | "visible";
   /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
   idleMs?: number;
+  /**
+   * BUG-03 决议 A1（doc/bugs/03 §4 A1）：拉起者身份（落台账 ownerKind/ownerPid——
+   * 停机不连坐的归属主键）。缺省 "cli"（launchChrome 现网唯一在世入口 =
+   * runLaunchChromeCli 短命进程，spawn 后即 process.exit 且不注册 exit 收割钩子，
+   * 其 ownerPid 天然不在任何 server 的收割范围 = CLI 起的 Chrome 不被 server 退出
+   * 连坐）。MCP chrome-launch 工具若复活（P31 历史在案）传 "server"。
+   */
+  ownerKind?: "server" | "cli";
   /** 测试注入：mock 隐藏保险丝（生产走 chrome-hide.ts hideChromeByPidAsync——
    *  P31 起异步；返回 Promise 或裸结果均可，调用点统一 await）。 */
   hideFn?: (pid: number | undefined) => ChromeHideResult | Promise<ChromeHideResult>;
@@ -485,6 +493,11 @@ export async function launchChrome(
       error: primary.error,
     };
   }
+  // BUG-03 A1：归属字段（每次 recordLaunch 共用；见 LaunchChromeOptions.ownerKind 注）
+  const ownerRec = {
+    ownerKind: opts.ownerKind ?? "cli",
+    ownerPid: process.pid,
+  };
   if (primary.outcome === "ok") {
     // v1.9（parse17 §3.3 机制二）：ok=true 返回前落盘台账（chrome-stop /
     // server 停机 / v1.10 idle reaper 按记录收尾）。pid undefined（spawn 竞态）
@@ -498,6 +511,7 @@ export async function launchChrome(
         status: "ready",
         launchMode: mode,
         idleMs: opts.idleMs,
+        ...ownerRec,
       });
       // bug02（v1.18.5）：launch 事件本身是一次活动信号（自 touch 确立约定文件）
       await touchChromePort(port, log);
@@ -529,6 +543,7 @@ export async function launchChrome(
           status: "ready",
           launchMode: mode,
           idleMs: opts.idleMs,
+          ...ownerRec,
         });
         await touchChromePort(port, log);
       }
@@ -573,6 +588,7 @@ export async function launchChrome(
       status: "cdp_not_ready",
       launchMode: mode,
       idleMs: opts.idleMs,
+      ...ownerRec,
     });
     await touchChromePort(port, log);
   }

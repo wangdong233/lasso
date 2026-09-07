@@ -16,6 +16,8 @@
  *    ——只看 pid 活会误判「执守在世」；E8 误伤红线的 pidfile 侧同源纪律）
  *  - 执守体 = `node <dist|src>/index.js hide-enforcer`（复用 startDesiredHideWatchdog
  *    单一调度真源 + exitWhenIdleTicks 自退——账空 2 tick 即退，不留常驻 node）
+ *  - BUG-03 决议 A1（doc/bugs/03）：执守体扩双职责——粘滞复隐 + hidden 档 idle
+ *    收割（startEnforcerIdleReaper，见下）；双职责都账空自退才 exit
  *  - 幂等：执守存活即跳过 spawn；并发双起时后到者在入口自检发现前者即 exit
  *
  * 与 server 内看门狗并发安全：reassert 原语是「可见才压回」幂等（先读后写），
@@ -34,6 +36,19 @@ import {
   type DesiredHideWatchdog,
   type DesiredHideWatchdogOptions,
 } from "./desired-hide-watchdog.js";
+// BUG-03 决议 A1（doc/bugs/03 §4 A1）：执守进程语义扩为「粘滞复隐 + hidden 档
+// idle 收割」双职责——复用既有 hide-enforcer 单例（零新守护进程，守用户红线
+// 「不出现新的项目之外的组件」；render 档不动，render-guardian 自管）。
+import {
+  startChromeIdleReaper,
+  type ChromeIdleReaper,
+} from "./chrome-idle-reaper.js";
+import {
+  readLedgerSync,
+  CLI_LAUNCH_IDLE_DEFAULT_MS,
+  type LaunchedChromeRecord,
+  type LedgerLogFn,
+} from "./chrome-ledger.js";
 
 /** 执守进程 ps cmdline 标记（spawn argv 自带；复验用——pidfile 数字之外的结构证据）。 */
 export const HIDE_ENFORCER_CMDLINE_MARKER = "hide-enforcer";
@@ -237,6 +252,55 @@ function writeEnforcerPidfile(pid: number | undefined, logFn: (p: Record<string,
 }
 
 /**
+ * BUG-03 决议 A1（doc/bugs/03 §4 A1）：执守进程第二职责——hidden 档 idle 收割。
+ *
+ * CLI 显式拉起默认 idleMs:0 时代（bug02 §9.1），CLI 起的 Chrome 无任何收割宿主
+ * （reaper 只活在 server 进程）——「用完即关」出口被拆掉，8.5h 级常驻是激活
+ * 劫持可达性的放大器。A1 把 CLI 默认翻为有限值（CLI_LAUNCH_IDLE_DEFAULT_MS
+ * 30min）后，需要一个「server 不在时也活着」的收割宿主：复用本执守进程
+ * （pidfile 单例 / 账空自退既有机制零改动）装配 startChromeIdleReaper——
+ * readLedgerFn 过滤 launchMode==="hidden"（不动 render：render-guardian 自管；
+ * visible 由 reaper 内部既有豁免）。touch 续命契约不变
+ * （~/.cache/lasso/chrome-touch-<port>，bug02 §6 建议 3 跨仓库契约）。
+ *
+ * @returns ChromeIdleReaper | null（null = defaultIdleMs ≤ 0（显式 env/config 禁用
+ *          收割 = 用户裁决，执守只保留粘滞复隐职责））
+ */
+export function startEnforcerIdleReaper(
+  opts: {
+    /** 全局 idle 阈值（= config.launchIdleMs；缺省 CLI_LAUNCH_IDLE_DEFAULT_MS）。 */
+    defaultIdleMs?: number;
+    /** 测试注入：读台账（默认 readLedgerSync 过滤 hidden 档）。 */
+    readLedgerFn?: () => LaunchedChromeRecord[];
+    /** 测试注入：时钟。 */
+    nowFn?: () => number;
+    /** 测试注入：收割出口。 */
+    stopFn?: (o: { port: number }) => Promise<unknown>;
+    /** 测试注入：touch 文件 mtime。 */
+    touchStatFn?: (port: number) => number | undefined;
+    /** 账空自退 tick 数（缺省 2，与执守粘滞账自退同款）。 */
+    exitWhenLedgerEmptyTicks?: number;
+    /** 账空自退回调（执守进程在此参与双职责退出闩）。 */
+    onIdleExit?: () => void;
+    /** 结构化日志注入。 */
+    logFn?: LedgerLogFn;
+  } = {},
+): ChromeIdleReaper | null {
+  return startChromeIdleReaper({
+    defaultIdleMs: opts.defaultIdleMs ?? CLI_LAUNCH_IDLE_DEFAULT_MS,
+    readLedgerFn:
+      opts.readLedgerFn ??
+      (() => readLedgerSync().filter((r) => r.launchMode === "hidden")),
+    nowFn: opts.nowFn,
+    stopFn: opts.stopFn,
+    touchStatFn: opts.touchStatFn,
+    exitWhenLedgerEmptyTicks: opts.exitWhenLedgerEmptyTicks ?? 2,
+    onIdleExit: opts.onIdleExit,
+    logFn: opts.logFn,
+  });
+}
+
+/**
  * CLI 入口（index.ts 子命令 `hide-enforcer` 路由）——执守进程主体。
  *
  * 行为：
@@ -245,9 +309,17 @@ function writeEnforcerPidfile(pid: number | undefined, logFn: (p: Record<string,
  *  2. 自写 pidfile（父进程可能没写成 / 已被覆盖——自己 pid 是唯一权威）
  *  3. startDesiredHideWatchdog({ exitWhenIdleTicks: 2 })——粘滞账连续 2 tick
  *     为空自退；watchdog timer 是 unref 的，另持一个 ref'd keep-alive 维持进程
- *  4. SIGTERM/SIGINT → 干净退出（不挣扎）
+ *  4. BUG-03 A1：startEnforcerIdleReaper 双职责第二职责（hidden 档 idle 收割）；
+ *     两职责各配独立自退——**双职责都自退才 process.exit**（单职责退出不杀另一
+ *     职责：粘滞账空但 hidden 台账仍活跃时执守必须留下收割；反之亦然）
+ *  5. SIGTERM/SIGINT → 干净退出（不挣扎）
+ *
+ * @param opts.defaultIdleMs 收割阈值（index.ts 路由传 config.launchIdleMs——
+ *        显式 env/config 禁用收割（0）时执守只保留粘滞复隐职责，尊重用户裁决）
  */
-export async function runHideEnforcerCli(): Promise<void> {
+export async function runHideEnforcerCli(
+  opts: { defaultIdleMs?: number } = {},
+): Promise<void> {
   const probe = probeHideEnforcer();
   if (probe.running && probe.pid !== process.pid) {
     // 并发双起收敛：已在世的执守继续，本进程让位
@@ -259,13 +331,19 @@ export async function runHideEnforcerCli(): Promise<void> {
   const cliLogFn = (p: Record<string, unknown>) =>
     process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`);
   writeEnforcerPidfile(process.pid, cliLogFn);
+  // BUG-03 A1：双职责自退闩——两职责都 idle 自退才 exit（单职责退出只标记）。
+  let stickyIdleExited = false;
+  let reapIdleExited = false;
+  const tryExit = (): void => {
+    if (stickyIdleExited && reapIdleExited) process.exit(0);
+  };
   // PERF-2a 起改静态 import（同目录模块，INV-64 合规；
   // startWatchdogUnlessEnforcerRunning 也需要同步引用）
   const watchdog = startDesiredHideWatchdog({
     exitWhenIdleTicks: 2,
     onIdleExit: () => {
-      clearInterval(keepAlive);
-      process.exit(0);
+      stickyIdleExited = true;
+      tryExit();
     },
     logFn: cliLogFn,
   });
@@ -273,14 +351,26 @@ export async function runHideEnforcerCli(): Promise<void> {
     // 非 darwin：无执守对象（reassert 原语 darwin-only），立即退
     process.exit(0);
   }
+  // BUG-03 A1 第二职责：hidden 档 idle 收割（defaultIdleMs ≤ 0 = 显式禁用收割，
+  // 返回 null 只标记该职责已空，不阻粘滞复隐职责）
+  const reaper = startEnforcerIdleReaper({
+    defaultIdleMs: opts.defaultIdleMs,
+    logFn: (p) => cliLogFn({ ...p, scope: "enforcer_reaper" }),
+    onIdleExit: () => {
+      reapIdleExited = true;
+      tryExit();
+    },
+  });
+  if (!reaper) reapIdleExited = true;
   // watchdog timer unref（不阻 server 退出）——独立进程需显式持活
   const keepAlive = setInterval(() => {}, 60_000);
   const bye = () => {
     clearInterval(keepAlive);
     watchdog.stop();
+    reaper?.stop();
     process.exit(0);
   };
   process.once("SIGTERM", bye);
   process.once("SIGINT", bye);
-  // 不 process.exit——keep-alive 持活，等 onIdleExit / 信号
+  // 不 process.exit——keep-alive 持活，等双职责自退闩 / 信号
 }

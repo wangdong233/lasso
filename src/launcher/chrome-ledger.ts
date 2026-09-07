@@ -51,7 +51,37 @@ export interface LaunchedChromeRecord {
    * 用途：某次 launch 明确是「长会话抓取」时单独放行，不污染全局默认。
    */
   idleMs?: number;
+  /**
+   * BUG-03 决议 A1（2026-09-07，doc/bugs/03 §4 A1）：拉起者归属——停机不连坐的
+   * 主键。spawn 进程记录自己的 pid；任何进程退出只许收 `ownerPid === 自己` 的
+   * Chrome。旧台账无此字段的陈留记录 = 归「无人」——永不因他人退出被杀（失败
+   * 方向安全：只会少杀不会多杀），只走 idle 超时收割或显式 chrome-stop。
+   */
+  ownerKind?: "server" | "cli";
+  /** 见 ownerKind（typeof 守卫解析，前向兼容同 launchMode/idleMs）。 */
+  ownerPid?: number;
+  /**
+   * BUG-03 决议 B1/F4（doc/bugs/03 §4 B1）：用户认领时刻（epoch ms）。
+   * 两条落写路径：B1 用户激活确认窗（连续 N tick 双判据门）+ chrome-show 成功
+   * （显式操作 > 任何启发式）。落写后：粘滞执守对本 pid 退位、idle 收割禁用、
+   * 停机/exit 收割豁免（等同 visible 红线）——唯一关闭出口 = 用户自己关或显式
+   * chrome-stop。显式 chrome-hide 重武装时清除（双向可逆）。
+   */
+  userTakenAt?: number;
 }
+
+/**
+ * BUG-03 决议 A1 单一真源常量：CLI 显式拉起的默认 idle（30min）。
+ *
+ * 语义：「有活动（touch 续命）就活，无消费者到期自动收」——hidden 档获得自己的
+ * 退场默认（bug02 §9.1 的 idleMs:0 拆掉了「用完即关」出口，8.5h 级常驻是激活
+ * 劫持可达性的放大器）。显式 `--idle-ms 0` 与显式 env/config 配置仍最高优先
+ * （既有消费者零破坏）；外部 CDP 消费者一行 `touch ~/.cache/lasso/chrome-touch-<port>`
+ * 即续命（承诺口径修订为 "stay alive while in use"）。
+ * 放本文件（chrome-ledger 零依赖）：launch-chrome / desired-hide-enforcer / index.ts
+ * 三方共用，避免 launcher 目录内循环 import。
+ */
+export const CLI_LAUNCH_IDLE_DEFAULT_MS = 30 * 60 * 1000;
 
 /** 台账路径（env LASSO_LAUNCHED_CHROMES_PATH 可覆盖；测试隔离 + 同机多 agent 并行验收隔离用，配方见 doc/渲染档-并行验收隔离配方.md）。 */
 export function launchedChromesPath(): string {
@@ -116,6 +146,16 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
           ? r.launchMode
           : undefined,
       idleMs: typeof r.idleMs === "number" && Number.isFinite(r.idleMs) ? r.idleMs : undefined,
+      // BUG-03 A1/B1：归属三字段同款 typeof 守卫（前向兼容；非法形态降级 undefined =
+      // 无人归属 / 未认领——两个降级方向都偏「不杀」侧，失败方向安全）
+      ownerKind:
+        typeof r.ownerKind === "string" && (r.ownerKind === "server" || r.ownerKind === "cli")
+          ? r.ownerKind
+          : undefined,
+      ownerPid:
+        typeof r.ownerPid === "number" && Number.isInteger(r.ownerPid) ? r.ownerPid : undefined,
+      userTakenAt:
+        typeof r.userTakenAt === "number" && Number.isFinite(r.userTakenAt) ? r.userTakenAt : undefined,
     });
   }
   return out;

@@ -337,10 +337,10 @@ describe("runHideEnforcerCli —— 执守主体接线（白盒）", () => {
     expect(src).toMatch(/const keepAlive = setInterval/);
   });
 
-  it("13. index.ts 子命令路由 hide-enforcer（CLI 入口存在）", () => {
+  it("13. index.ts 子命令路由 hide-enforcer（CLI 入口存在；BUG-03 A1 传 config 收割阈值）", () => {
     const src = readFileSync("src/index.ts", "utf8");
     expect(src).toMatch(/process\.argv\[2\] === "hide-enforcer"/);
-    expect(src).toMatch(/await runHideEnforcerCli\(\)/);
+    expect(src).toMatch(/await runHideEnforcerCli\(\{ defaultIdleMs: enforcerCfg\.launchIdleMs \}\)/);
   });
 
   it("14. chrome-hideshow-cli：hide 成功记账后 ensureEnforcer（执守与 CLI 解耦）", () => {

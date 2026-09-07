@@ -173,6 +173,9 @@ import {
   stopLaunchedChromes,
   stopLaunchedChromesSync,
 } from "./launcher/chrome-stop.js";
+// BUG-03 决议 A1（doc/bugs/03）：CLI 显式拉起的默认 idle 单一真源（30min——
+// 「有活动就活，无消费者到期自动收」；显式 --idle-ms 0 / env / config 仍最高优先）
+import { CLI_LAUNCH_IDLE_DEFAULT_MS } from "./launcher/chrome-ledger.js";
 // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper（15s 周期；kill 100% 经 chrome-stop）
 import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-idle-reaper.js";
 // P27（v1.18.3）：desiredHidden 粘滞复隐看门狗（chrome-hide 记账 → 每 1.5s 压回任意
@@ -1362,9 +1365,14 @@ async function runMcpServer(): Promise<void> {
     // 只杀台账在案且 cmdline 验证 --user-data-dir 归属的 pid（chrome-stop 红线）。
     // P1（v1.17.3，得到实战根因）：modes:["hidden"]——visible 档是用户拥有的窗口
     // （登录/查看中），短命 server 退出无权关闭；关闭出口只有显式 chrome-stop。
+    // BUG-03 决议 A1（doc/bugs/03 §4 A1，消费方③连坐死根治）：收割谓词升级三维——
+    // modes × ownerPid（任何进程退出只许收自己拉起的 Chrome；他 owner 与无 owner
+    // 陈留记录不杀、台账保留）× exemptUserTaken（用户认领记录等同 visible 豁免，
+    // §4.0-F3：B1 让位语义必须在停机路径兑现）。
     try {
       await Promise.race([
-        stopLaunchedChromes({ modes: ["hidden"], logFn: (p) => logger.info(p) }),
+        // 单行形态保持 INV-82(a) / P1 spec 源码锚（modes: ["hidden"] 前缀锚定）
+        stopLaunchedChromes({ modes: ["hidden"], ownerPid: process.pid, exemptUserTaken: true, logFn: (p) => logger.info(p) }),
         new Promise<void>((resolve) => setTimeout(() => resolve(), 3_000)),
       ]);
     } catch (e) {
@@ -1422,8 +1430,11 @@ async function runMcpServer(): Promise<void> {
     // modes:["hidden"]——P1（v1.17.3）只修了优雅 shutdown 路径，本兜底路径曾把
     // 用户 visible 登录窗口整树 SIGKILL（stdin EOF 即触发）。visible 档关闭出口
     // 只有显式 chrome-stop；台账条目保留（进程还活着，不能清账孤儿化）。
+    // BUG-03 决议 A1：三维谓词补到 exit 钩子（与优雅停机一致——否则同一事故换
+    // 路径复发）；process.pid 在 exit 时点仍为本进程 pid（钩子内未 fork）。
     try {
-      stopLaunchedChromesSync({ modes: ["hidden"], logFn: (p) => logger.info(p) });
+      // 单行形态保持 INV-82(a) / D-5 spec 源码锚（modes: ["hidden"] 前缀锚定）
+      stopLaunchedChromesSync({ modes: ["hidden"], ownerPid: process.pid, exemptUserTaken: true, logFn: (p) => logger.info(p) });
     } catch {
       // best-effort：exit 钩子绝不能抛
     }
@@ -1446,18 +1457,20 @@ const CLI_USAGE = [
   "                                               [--mode hidden|visible] [--idle-ms N]",
   "                                               Launch a debug-enabled Chrome for logged_in channel",
   "                                               (default hidden: zero window, no focus steal;",
-  "                                               CLI launches default to --idle-ms 0 = no auto-",
-  "                                               reap; external CDP consumers stay alive; keep a",
-  "                                               Chrome alive from outside: `touch ~/.cache/lasso/",
-  "                                               chrome-touch-<port>`)",
+  "                                               CLI launches default to --idle-ms 1800000 = 30min",
+  "                                               auto-reap; external CDP consumers stay alive while",
+  "                                               in use: `touch ~/.cache/lasso/chrome-touch-<port>`",
+  "                                               to keep alive; explicit --idle-ms 0 = never reap)",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
   "                                               on-disk ledger (pid ownership verified via cmdline;",
   "                                               --modes hidden|visible|render filters by launch",
   "                                               mode; no --modes --all = stop everything incl.",
   "                                               render tier — intentional full-stop escape hatch)",
   "  lasso-mcp hide-enforcer                     Desired-hide enforcer daemon (auto-spawned by",
-  "                                               chrome-hide / launch-chrome hidden; empty ledger",
-  "                                               self-exits; manual run is idempotent)",
+  "                                               chrome-hide / launch-chrome hidden; dual duty:",
+  "                                               sticky re-hide + hidden-tier idle reaping;",
+  "                                               both ledgers empty → self-exit; manual run is",
+  "                                               idempotent)",
   "  lasso-mcp render-chrome --ensure            Deterministic headless render Chrome (port 9224):",
   "  lasso-mcp render-chrome --status | --stop   idempotent ensure → single-line JSON",
   "                                               {wsEndpoint,port,startedAt,reused,touchPath};",
@@ -1538,13 +1551,18 @@ async function main(): Promise<void> {
   // （误杀外部 CDP 消费者的根因）；显式配置（env / config.json LASSO_LAUNCH_IDLE_MS）
   // 与 argv --idle-ms 仍最高优先。lasso 无 server 自动拉起路径（LoggedInChannel 只
   // 读台账预建 tab 不 spawn），故「用完即关」语义的入口收敛到显式配置层。
+  // BUG-03 决议 A1（doc/bugs/03 §4 A1，bug02 §6 建议 2 的精化而非推翻）：显式
+  // 拉起的默认 idle 从 0 翻为有限值 30min——0 防的是「被 server 静默杀」（A1
+  // owner 过滤已根治），但把「用完即关」的出口也拆了：无消费者常驻 8.5h 级 =
+  // 激活劫持可达性的放大器。新语义「有活动（touch 续命）就活，无消费者到期自动
+  // 收」；收割宿主 = hide-enforcer 执守第二职责（server 不在也活着）。
   if (process.argv[2] === "launch-chrome") {
     const cliCfg = loadConfig({ runId: "launch-chrome-cli" });
     const rawIdle = mergedEnv().LASSO_LAUNCH_IDLE_MS;
     const idleDefault =
       rawIdle !== undefined && String(rawIdle).trim() !== ""
         ? cliCfg.launchIdleMs
-        : 0;
+        : CLI_LAUNCH_IDLE_DEFAULT_MS;
     await runLaunchChromeCli(process.argv.slice(3), {
       launchMode: cliCfg.launchMode,
       idleMs: idleDefault,
@@ -1572,8 +1590,11 @@ async function main(): Promise<void> {
   // bug02 隐藏全生命周期（v1.18.5）：`lasso hide-enforcer` —— 独立执守进程主体
   //（desired-hide-watchdog 的 detached 宿主；粘滞账连续 2 tick 为空自退。通常由
   // chrome-hide / launch-chrome hidden 自动拉起，用户无需手跑；手跑幂等）。
+  // BUG-03 A1：执守双职责（+hidden 档 idle 收割）——收割阈值传 config 层
+  //（显式 env/config 0 = 用户裁决禁用收割，执守只保留粘滞复隐）。
   if (process.argv[2] === "hide-enforcer") {
-    await runHideEnforcerCli();
+    const enforcerCfg = loadConfig({ runId: "hide-enforcer-cli" });
+    await runHideEnforcerCli({ defaultIdleMs: enforcerCfg.launchIdleMs });
     return;
   }
   // v1.19（渲染档设计决议 3.6/3.7/3.9）：`lasso render-chrome --ensure|--status|--stop|doctor`

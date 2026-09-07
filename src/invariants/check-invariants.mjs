@@ -4581,6 +4581,93 @@ const assertions = [
       });
     },
   },
+  // ============================================================
+  // BUG-03（2026-09-07，doc/bugs/03）新增 —— 决议 A1/D：停机不连坐三维谓词
+  // ============================================================
+  // 事故形态（消费方③，cc-control 实战真机复现）：任意 lasso server 进程退出按
+  // 机器级全局台账扫杀全部 hidden Chrome——直接违背 CLI idleMs:0「external CDP
+  // consumers stay alive」承诺。F3 复审升级：owner===self 且 userTakenAt 的记录
+  // 也必须豁免（B1 让位语义在停机路径兑现，等同 visible 红线）。
+  // 守（三维谓词机械化，双路径 × 三面）：
+  //  INV-86  停机不连坐：
+  //    (a) index.ts 停机两路径（优雅 shutdown / exit 钩子）的 stopLaunchedChromes
+  //        调用都带 ownerPid: process.pid + exemptUserTaken: true
+  //    (b) chrome-stop.ts async+sync 两实现的 targets 过滤都含 ownerPid 谓词与
+  //        userTakenAt 豁免谓词（与 modes 过滤同款三连）
+  //    (c) 台账 schema 三字段（ownerKind/ownerPid/userTakenAt）+ readLedgerSync
+  //        typeof 守卫解析（前向兼容）
+  //    (d) chrome-idle-reaper tick 对 userTakenAt 记录 continue（idle 收割禁用）
+  //    (e) CLI 默认 idle 单一真源常量存在且 index.ts launch-chrome 路由消费
+  //    (f) 行为面由 test/unit/a1-owner-scoped-shutdown.spec.ts 三面钉死（他 owner
+  //        不收 / 旧无 owner 不收 / owner===self 且 userTakenAt 不收且台账保留）
+  {
+    id: "INV-86-owner-scoped-shutdown",
+    desc:
+      "BUG-03 A1/D：停机不连坐——任何进程退出只许收 ownerPid===自己 拉起的 Chrome；userTakenAt 记录等同 visible 豁免（两路径不杀+台账保留）；CLI 默认 idle 30min 单一真源 + reaper 对 userTakenAt 禁收；chrome-stop CLI 显式操作无 owner 过滤（用户=最高权限）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const indexCode = stripComments(byPath(/^index\.ts$/)?.text ?? "");
+      const stopSrc = byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "";
+      const stopCode = stripComments(stopSrc);
+      const ledgerSrc = byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "";
+      const reaperCode = stripComments(
+        byPath(/^launcher\/chrome-idle-reaper\.ts$/)?.text ?? "",
+      );
+
+      // ----- (a) index.ts 两路径 owner 限定 + userTakenAt 豁免 -----
+      const graceCall = indexCode.match(
+        /stopLaunchedChromes\(\{[^}]*modes: \["hidden"\][^}]*\}\)/,
+      );
+      if (!graceCall) return false;
+      if (!/ownerPid: process\.pid/.test(graceCall[0])) return false;
+      if (!/exemptUserTaken: true/.test(graceCall[0])) return false;
+      const exitCall = indexCode.match(
+        /stopLaunchedChromesSync\(\{[^}]*modes: \["hidden"\][^}]*\}\)/,
+      );
+      if (!exitCall) return false;
+      if (!/ownerPid: process\.pid/.test(exitCall[0])) return false;
+      if (!/exemptUserTaken: true/.test(exitCall[0])) return false;
+
+      // ----- (b) chrome-stop async+sync 双实现三维过滤 -----
+      const asyncBody = stopSrc.match(
+        /export async function stopLaunchedChromes[\s\S]*?\n\}/,
+      );
+      if (!asyncBody) return false;
+      if (!/opts\.ownerPid !== undefined[\s\S]{0,120}r\.ownerPid === opts\.ownerPid/.test(asyncBody[0])) return false;
+      if (!/opts\.exemptUserTaken[\s\S]{0,120}r\.userTakenAt === undefined/.test(asyncBody[0])) return false;
+      const syncBody = stopSrc.match(
+        /export function stopLaunchedChromesSync[\s\S]*?\n\}/,
+      );
+      if (!syncBody) return false;
+      if (!/opts\.ownerPid !== undefined[\s\S]{0,120}r\.ownerPid === opts\.ownerPid/.test(syncBody[0])) return false;
+      if (!/opts\.exemptUserTaken[\s\S]{0,120}r\.userTakenAt === undefined/.test(syncBody[0])) return false;
+      if (/\bawait\b/.test(syncBody[0])) return false; // exit 钩子零 await 纪律（INV-82a 同款）
+
+      // ----- (c) 台账 schema 三字段 + typeof 守卫 -----
+      const recBlock = ledgerSrc.match(
+        /export interface LaunchedChromeRecord \{[\s\S]*?\n\}/,
+      );
+      if (!recBlock) return false;
+      for (const f of ["ownerKind", "ownerPid", "userTakenAt"]) {
+        if (!new RegExp(`${f}\\??:`).test(recBlock[0])) return false;
+      }
+      const readBody = ledgerSrc.match(
+        /export function readLedgerSync\(\)[\s\S]*?\n\}/,
+      );
+      if (!readBody) return false;
+      if (!/typeof r\.ownerPid === "number"/.test(readBody[0])) return false;
+      if (!/typeof r\.userTakenAt === "number"/.test(readBody[0])) return false;
+
+      // ----- (d) reaper 对 userTakenAt 禁收 -----
+      if (!/rec\.userTakenAt !== undefined\) continue/.test(reaperCode)) return false;
+
+      // ----- (e) CLI 默认 idle 单一真源 + 消费 -----
+      if (!/CLI_LAUNCH_IDLE_DEFAULT_MS = 30 \* 60 \* 1000/.test(ledgerSrc)) return false;
+      if (!/CLI_LAUNCH_IDLE_DEFAULT_MS/.test(indexCode)) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）
