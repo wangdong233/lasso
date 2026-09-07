@@ -201,6 +201,10 @@ describe("B1 · reassertGatedScript 双判据门源码锚", () => {
     expect(body).toContain('error "gate_unavailable"');
     expect(body).toContain("unix id of p is 55111"); // E8 PID 定向红线延续
     expect(body).toContain(`hidMs < ${USER_ACTIVATION_HID_THRESHOLD_MS}`); // 阈值插值单点
+    // 对抗复审补丁（BUG-03 adversarial r1，变异 M1 存活）：双判据必须是 **AND 合取**
+    // ——删掉 frontmost 半边（退回 §4.0-F1 归因谬误的单判据形态）时本断言必须红。
+    // （顺序锚只证明两 token 都在压回之前出现，锚不住「同时满足才 pending」的合取语义。）
+    expect(body).toContain(`if fm is true and hidMs < ${USER_ACTIVATION_HID_THRESHOLD_MS} then`);
   });
 
   it("2b. 常量单一真源：阈值 10s（F1 修订 60s→10s）+ 确认窗 20 tick（≈30s）", () => {

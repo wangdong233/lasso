@@ -4724,6 +4724,11 @@ const assertions = [
       if (!body.includes('error "gate_unavailable"')) return false;
       // E8 红线延续：PID 定向（unix id）仍在
       if (!/unix id of p is \$\{pid\}/.test(body)) return false;
+      // 对抗复审补丁（BUG-03 adversarial r1，变异 M1 存活）：pending 分支必须是
+      // 双判据 **AND 合取**（`fm is true and hidMs < N`）——只锚两 token 的出现
+      // 顺序锚不住「同时满足才让位」的语义；删掉 frontmost 半边（§4.0-F1 归因
+      // 谬误回潮）时本锚必须红。
+      if (!/if fm is true and hidMs < \$\{thresholdMs\} then/.test(body)) return false;
 
       // ----- (b) 常量导出供测试 -----
       if (!/USER_ACTIVATION_HID_THRESHOLD_MS = 10_000/.test(hideCode)) return false;
