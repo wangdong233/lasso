@@ -90,7 +90,7 @@
  *      parse5 §3.4 v0.4 M0.4a 4 项 forest 扩展；
  *      parse5 §3.4 + §3.3 v0.4 M0.4c 1 项 stealth + #21 HEAD 探测升级。
  */
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import {
   promises as fs,
@@ -137,6 +137,10 @@ import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 // v1.3 Phase A：config 文件机制（#35 config_file doctor check）
 // 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
 import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
+// BUG-03 决议 A2/E①/C（doc/bugs/03）：checkCdp9222 端口占用三分类归因——
+// 台账读 + cmdline 归属验证（chrome-stop 同源红线，纯读绝不 kill）。
+import { readLedgerSync, type LaunchedChromeRecord } from "../launcher/chrome-ledger.js";
+import { verifyOwnership } from "../launcher/chrome-stop.js";
 // v1.4 Phase B（parse-v1.4 §Phase B）：#36 machine_search_mcp doctor check
 // 守 INV-72：doctor 经 detectMachineSearchMcp() 只读探测 ~/.claude.json；永不 log Authorization 值；
 //            detail 只报 hostname（open.bigmodel.cn），不报完整 url（path 可含 token 片段）。
@@ -964,7 +968,63 @@ async function checkChromeBinary(): Promise<DoctorCheck> {
 }
 
 /** 6. 本机 :9222 CDP 已开 + 至少 1 个 tab。 */
-async function checkCdp9222(port: number): Promise<DoctorCheck> {
+/**
+ * BUG-03 决议 A2/E①/C（doc/bugs/03 §4 A2 + §4 C）：端口不可达时的占用者三分类
+ * 归因（纯读：台账 + pid 探活 + cmdline 归属验证——与 chrome-stop 同源红线，
+ * 绝不 kill）。返回 next_step 文案：
+ *  - 自家僵尸（台账在案 + pid 活 + 归属通过）→ `chrome-stop --port N` 清僵尸后重拉
+ *  - 用户资产 / 未知占用 → 如实报告「lasso 不会动它，请用户裁决」（never_kill_
+ *    user_asset 指引 token，INV-87 tripwire）或换口
+ *  - 真空闲 → launch-chrome
+ * 🔴 `open` 另起新实例的建议已删（BUG-03 实测逃不出同 bundle id 单实例槽位，
+ * 徒增混乱——INV-87 grep 禁令：doctor 源码禁该 open 形态字面量）。
+ */
+function classifyPortOccupierNextStep(
+  port: number,
+  deps: {
+    readLedgerFn?: () => LaunchedChromeRecord[];
+    psFn?: (pid: number) => string;
+    aliveFn?: (pid: number) => boolean;
+  } = {},
+): string {
+  const readLedgerFn = deps.readLedgerFn ?? readLedgerSync;
+  const aliveFn =
+    deps.aliveFn ??
+    ((pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  const psFn =
+    deps.psFn ??
+    ((pid: number) => {
+      try {
+        return spawnSync("ps", ["-p", String(pid), "-o", "command="], {
+          encoding: "utf8",
+          timeout: 1_000,
+        }).stdout as string;
+      } catch {
+        return "";
+      }
+    });
+  const rec = readLedgerFn().find((r) => r.port === port);
+  if (rec && aliveFn(rec.pid) && verifyOwnership(rec.pid, rec.profileDir, psFn)) {
+    return `端口 ${port} 被 lasso 台账在案的自家 Chrome（pid ${rec.pid}，疑似 CDP 挂死）占用：先 \`lasso-mcp chrome-stop --port ${port}\` 清僵尸，再 \`lasso-mcp launch-chrome --port ${port}\`（A2 后 launch-chrome 会自动收尸重拉）`;
+  }
+  if (rec) {
+    return `端口 ${port} 台账有陈留记录但 pid 不在/归属不符（陈旧条目，不影响）：\`lasso-mcp chrome-stop --port ${port}\` 清账后重拉`;
+  }
+  return `端口 ${port} 被外部进程占用（可能是您自己的 Chrome——用户资产，lasso 任何机制都不会 kill 它：never_kill_user_asset）：请用户裁决（手动关闭该进程）或换口 launch-chrome --port N`;
+}
+export { classifyPortOccupierNextStep };
+
+async function checkCdp9222(
+  port: number,
+  deps: Parameters<typeof classifyPortOccupierNextStep>[1] = {},
+): Promise<DoctorCheck> {
   try {
     const versionResp = await fetch(`http://127.0.0.1:${port}/json/version`, {
       signal: AbortSignal.timeout(2000),
@@ -974,7 +1034,7 @@ async function checkCdp9222(port: number): Promise<DoctorCheck> {
         name: "cdp_9222_logged_in",
         status: "fail",
         detail: `CDP /json/version returned HTTP ${versionResp.status}`,
-        next_step: `重启 Chrome with --remote-debugging-port=${port}（lasso launch-chrome；若约 60-75s 后死 = idle reaper，外部消费场景加 --idle-ms 0 或 touch ~/.cache/lasso/chrome-touch-${port}）`,
+        next_step: classifyPortOccupierNextStep(port, deps),
       };
     }
     const tabsResp = await fetch(`http://127.0.0.1:${port}/json`, {
@@ -995,7 +1055,7 @@ async function checkCdp9222(port: number): Promise<DoctorCheck> {
       name: "cdp_9222_logged_in",
       status: "warn",
       detail: String(e),
-      next_step: `open -na 'Google Chrome' --args --remote-debugging-port=${port}`,
+      next_step: classifyPortOccupierNextStep(port, deps),
     };
   }
 }
@@ -2871,8 +2931,10 @@ async function checkStealthCreepjsRegression(opts: {
       status: "warn",
       detail:
         "stealthCheckClientProvider 返 null（9222 未开 / HeadlessChannel 未就绪；启动本机 Chrome --remote-debugging-port=9222 后重试）",
+      // BUG-03 C：open 另起新实例建议已删（逃不出同 bundle id 单实例槽位——
+      // INV-87 grep 禁令：doctor 源码禁该 open 形态字面量）
       next_step:
-        "open -na 'Google Chrome' --args --remote-debugging-port=9222（macOS）；或 lasso doctor --stealth-check 在 HeadlessChannel 就绪时跑",
+        "`lasso-mcp launch-chrome`（隐档零打扰拉起调试 Chrome）；或 lasso doctor --stealth-check 在 HeadlessChannel 就绪时跑",
     };
   }
 

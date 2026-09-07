@@ -32,7 +32,7 @@
  *
  * 借鉴：parse11 §3.3；puppeteer.launch({ executablePath }) 范式（不引 puppeteer）。
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { promises as fs, constants as fsConstants } from "node:fs";
 import * as Net from "node:net";
 import os from "node:os";
@@ -43,7 +43,10 @@ import {
   chromeCandidatesForPlatform,
   type ChromePathCandidate,
 } from "./chrome-paths.js";
-import { recordLaunch, type LedgerLogFn } from "./chrome-ledger.js";
+import { recordLaunch, readLedgerSync, type LedgerLogFn, type LaunchedChromeRecord } from "./chrome-ledger.js";
+// BUG-03 决议 A2/E①（doc/bugs/03 §4 A2）：port_in_use_non_cdp 前的台账归因——
+// 自家挂死 Chrome（CDP 死进程活）收尸重拉（render 档 ensure 四条件门同语义）。
+import { verifyOwnership, stopLaunchedChromes } from "./chrome-stop.js";
 // v1.10（parse18 §3.3 机制二）：macOS 隐藏保险丝（PID 定向；非 mac no-op）
 // P31（v1.18.3 同类横扫 S4）：默认走异步 hideChromeByPidAsync（execFile）——
 // 本函数经 MCP chrome-launch 工具进 server 进程，spawnSync osascript（2s 上限）
@@ -137,6 +140,18 @@ export interface LaunchChromeOptions {
    * （既有测试 preCheckOk:false 语义不破），CLI 装配层传真实实现。
    */
   tcpProbeFn?: (port: number) => Promise<boolean>;
+  /**
+   * BUG-03 决议 A2/E①（doc/bugs/03 §4 A2）测试注入：TCP 占用归因用的台账读
+   * （默认 readLedgerSync）。占用者 == 台账在案 pid 且归属验证通过 → 判自家
+   * 挂死 Chrome → 收尸重拉（stopZombieFn）。
+   */
+  readLedgerFn?: () => LaunchedChromeRecord[];
+  /** A2 测试注入：僵尸收尸出口（默认 stopLaunchedChromes({port})——验证杀路径）。 */
+  stopZombieFn?: (o: { port: number }) => Promise<unknown>;
+  /** A2 测试注入：pid 探活（默认 process.kill(pid,0)）。 */
+  aliveFn?: (pid: number) => boolean;
+  /** A2 测试注入：ps cmdline（归属验证；默认 spawnSync ps）。 */
+  psFn?: (pid: number) => string;
   /** 结构化日志注入（默认 stderr 单行 JSON；index.ts 侧可用 logger 包）。 */
   logFn?: LedgerLogFn;
 }
@@ -340,6 +355,8 @@ export async function launchChrome(
   // 3. 端口占用预检（W1-DEF-7）：spawn 前探一次 /json/version——
   //    已有响应说明端口被既有 Chrome 占住（wave1 实锤：旧 Chrome pid 占 9222，
   //    新 Chrome 立即退出但占口者代答，曾误报 ok:true）。拒绝启动。
+  //    （BUG-03 A2 起结构化日志在此步前可用——僵尸归因分支需要打点）
+  const log = opts.logFn ?? defaultLaunchLog;
   try {
     const pre = await fetchFn(cdpVersionUrl(port));
     if (pre.ok) {
@@ -358,21 +375,58 @@ export async function launchChrome(
   // P3（v1.17.3）：/json/version 非 ok / 抛错，但 TCP 层可连 → 非 CDP 进程占口。
   // 继续spawn 会让 Chrome 绑定静默失败（cdp_not_ready 假象）。诚实拒绝并建议换口。
   if (opts.tcpProbeFn && (await opts.tcpProbeFn(port))) {
-    return {
-      ok: false,
-      binaryPath: found.path,
-      port,
-      profileDir,
-      candidateSources,
-      error: `port_in_use_non_cdp:port ${port} is TCP-occupied by a non-CDP process (Chrome bind would silently fail); launch with a different --port`,
-    };
+    // BUG-03 决议 A2/E①（doc/bugs/03 §4 A2，消费方①僵尸占位根治）：占用者归因——
+    // 台账在案 + pid 活 + cmdline 归属验证通过 = **自家挂死 Chrome**（CDP 死进程活，
+    // 曾被误归因「非 CDP 进程」建议换口 → doctor 死循环）→ 收尸重拉（render 档
+    // ensure 的 stale_record_collected 同语义：stopLaunchedChromes 验证路径收尸后
+    // 走下方正常 spawn，不提前 return）；归因不成立 = 用户资产/外部进程占口 →
+    // 三分类出口（决议 C：永不代杀用户资产——禁 kill 指引进错误契约）。
+    const readLedgerFn = opts.readLedgerFn ?? readLedgerSync;
+    const zombieStopFn =
+      opts.stopZombieFn ?? (async (o: { port: number }) => stopLaunchedChromes({ port: o.port }));
+    const aliveFn =
+      opts.aliveFn ??
+      ((pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    const psFn = opts.psFn ?? ((pid: number) => psCommandlineForZombie(pid));
+    const zombie = readLedgerFn().find((r) => r.port === port);
+    if (zombie && aliveFn(zombie.pid) && verifyOwnership(zombie.pid, zombie.profileDir, psFn)) {
+      log({
+        evt: "ledger_zombie_collected",
+        port,
+        pid: zombie.pid,
+        note: "self-owned dead-CDP chrome detected at port_in_use_non_cdp gate; collecting via verified stop path then relaunching",
+      });
+      await zombieStopFn({ port });
+      // 收尸后端口已释放 → 落入正常 spawn 流程（primary attempt）
+    } else {
+      return {
+        ok: false,
+        binaryPath: found.path,
+        port,
+        profileDir,
+        candidateSources,
+        error:
+          `port_in_use_non_cdp:port ${port} is TCP-occupied by a non-CDP process (Chrome bind would silently fail). ` +
+          `Options: (1) retry with a different --port; (2) a lasso ledger zombie is self-healed automatically ` +
+          `(ledger_zombie_collected event); (3) if the occupier is YOUR own Chrome or another user asset: ` +
+          `lasso will NEVER kill it (never_kill_user_asset) — report to the user to decide (close it manually ` +
+          `or pick another port). lasso provides no kill escape hatch for non-ledger assets by design`,
+      };
+    }
   }
 
   // 4. 构造 args（W1-DEF-7：始终带 --user-data-dir，默认隔离 profile；
   //    v1.10 parse18 §3.2：launchMode 分档 + 反节流三件套/mute 两档恒加 + 去重）
   const mode = mode0; // P8：解析上移至函数头（探活窗口分档需先知 mode）
   const plat = opts.platform ?? process.platform;
-  const log = opts.logFn ?? defaultLaunchLog;
+  // log 定义已上移至步骤 3 前（BUG-03 A2 僵尸归因分支打点需要）
   const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
   const ensureEnforcerFn = opts.ensureEnforcerFn ?? (async () => { await ensureHideEnforcerRunning({ logFn: (p) => log(p) }); });
   const args: string[] = [
@@ -783,6 +837,22 @@ function defaultSpawn(
   opts: { detached: boolean; stdio: "ignore" | "pipe" },
 ): ChildProcess {
   return spawn(cmd, args, opts);
+}
+
+/**
+ * BUG-03 A2：僵尸归因的 ps cmdline 读取（chrome-stop defaultPsFn 同形：
+ * `ps -p PID -o command=`；verifyOwnership 归属验证消费）。
+ */
+function psCommandlineForZombie(pid: number): string {
+  try {
+    const r = spawnSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+      timeout: 1_000,
+    });
+    return r.stdout ?? "";
+  } catch {
+    return "";
+  }
 }
 
 // ============================================================
