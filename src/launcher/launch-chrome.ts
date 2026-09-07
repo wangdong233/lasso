@@ -43,7 +43,7 @@ import {
   chromeCandidatesForPlatform,
   type ChromePathCandidate,
 } from "./chrome-paths.js";
-import { recordLaunch, readLedgerSync, type LedgerLogFn, type LaunchedChromeRecord } from "./chrome-ledger.js";
+import { recordLaunch, readLedgerSync, isUserOwnedRecord, type LedgerLogFn, type LaunchedChromeRecord } from "./chrome-ledger.js";
 // BUG-03 决议 A2/E①（doc/bugs/03 §4 A2）：port_in_use_non_cdp 前的台账归因——
 // 自家挂死 Chrome（CDP 死进程活）收尸重拉（render 档 ensure 四条件门同语义）。
 import { verifyOwnership, stopLaunchedChromes } from "./chrome-stop.js";
@@ -405,7 +405,22 @@ export async function launchChrome(
       });
     const psFn = opts.psFn ?? ((pid: number) => psCommandlineForZombie(pid));
     const zombie = readLedgerFn().find((r) => r.port === port);
-    if (zombie && aliveFn(zombie.pid) && verifyOwnership(zombie.pid, zombie.profileDir, psFn)) {
+    // BUG-03 adversarial r2 F1（2026-09-08）：僵尸可收面收窄——**用户拥有记录
+    // （isUserOwnedRecord：userTakenAt 已认领 / visible 登录窗）永不进程序化收尸**。
+    // r1 事故型真机复现：chrome-show 认领（userTakenAt 落账）+ SIGSTOP 模拟 CDP
+    // 死 → relaunch 同口 → A2 门整窗杀掉已认领 Chrome——违反 markUserTakenByPid
+    // 契约「唯一关闭出口 = 用户自己关或显式 chrome-stop」（v1.17.3 P1 同型）。
+    // render 档记录同样不收（render-guardian 自管，日常档入口不越权）。
+    const zombieOwnedAlive =
+      zombie !== undefined &&
+      aliveFn(zombie.pid) &&
+      verifyOwnership(zombie.pid, zombie.profileDir, psFn);
+    const zombieCollectible =
+      zombieOwnedAlive &&
+      zombie !== undefined &&
+      !isUserOwnedRecord(zombie) &&
+      zombie.launchMode !== "render";
+    if (zombieCollectible && zombie) {
       log({
         evt: "ledger_zombie_collected",
         port,
@@ -414,6 +429,33 @@ export async function launchChrome(
       });
       await zombieStopFn({ port });
       // 收尸后端口已释放 → 落入正常 spawn 流程（primary attempt）
+    } else if (zombieOwnedAlive && zombie) {
+      // BUG-03 adversarial r2 F1：占用者 = 台账在案且归属验证通过、但**用户拥有**
+      // （isUserOwnedRecord）或非本门管辖（render）→ 永不自动收尸，如实拒绝。
+      // 这是 r1 事故型（已认领窗口被 relaunch 整窗杀掉）的根治分支。
+      log({
+        evt: "ledger_user_owned_not_collected",
+        port,
+        pid: zombie.pid,
+        userTakenAt: zombie.userTakenAt,
+        launchMode: zombie.launchMode,
+        note: "occupier is ledger-recorded but user-owned (claimed/visible) or guardian-managed (render); never auto-killed; only exits are the user closing it or an explicit chrome-stop",
+      });
+      return {
+        ok: false,
+        binaryPath: found.path,
+        port,
+        profileDir,
+        candidateSources,
+        error:
+          `port_in_use_non_cdp:port ${port} is TCP-occupied by a lasso-launched Chrome that is currently ` +
+          `USER-OWNED (user_taken_asset:${zombie.userTakenAt !== undefined ? "claimed via user activation or explicit chrome-show" : `launchMode=${zombie.launchMode}`})` +
+          `${zombie.launchMode === "render" ? " or guardian-managed (render)" : ""}. ` +
+          `lasso will NEVER auto-kill it (never_kill_user_asset) — its ONLY exits are the user closing the window ` +
+          `themselves or the user explicitly running chrome-stop --port ${port}. ` +
+          `Options: (1) retry with a different --port; (2) report to the user to decide (they close it or run ` +
+          `chrome-stop themselves). Agents must not run chrome-stop against a user_taken_asset on their own`,
+      };
     } else {
       return {
         ok: false,

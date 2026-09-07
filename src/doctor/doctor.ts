@@ -139,7 +139,7 @@ import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
 // BUG-03 决议 A2/E①/C（doc/bugs/03）：checkCdp9222 端口占用三分类归因——
 // 台账读 + cmdline 归属验证（chrome-stop 同源红线，纯读绝不 kill）。
-import { readLedgerSync, type LaunchedChromeRecord } from "../launcher/chrome-ledger.js";
+import { readLedgerSync, isUserOwnedRecord, type LaunchedChromeRecord } from "../launcher/chrome-ledger.js";
 import { verifyOwnership } from "../launcher/chrome-stop.js";
 // v1.4 Phase B（parse-v1.4 §Phase B）：#36 machine_search_mcp doctor check
 // 守 INV-72：doctor 经 detectMachineSearchMcp() 只读探测 ~/.claude.json；永不 log Authorization 值；
@@ -1012,6 +1012,14 @@ function classifyPortOccupierNextStep(
     });
   const rec = readLedgerFn().find((r) => r.port === port);
   if (rec && aliveFn(rec.pid) && verifyOwnership(rec.pid, rec.profileDir, psFn)) {
+    // BUG-03 adversarial r2 F1：用户拥有记录（已认领/visible）≠ 僵尸——不得向
+    // agent 输出「chrome-stop 清僵尸」指引（那是把用户级权限塞给 agent 的
+    // 变相代杀出口）；归入用户资产分支，唯一出口=用户自行关或用户本人跑。
+    if (isUserOwnedRecord(rec)) {
+      return `端口 ${port} 被 lasso 台账在案但**已被用户拥有**的 Chrome（pid ${rec.pid}，user_taken_asset：${
+        rec.userTakenAt !== undefined ? "userTakenAt 已认领（用户激活/显式 chrome-show）" : "visible 登录窗"
+      }）占用：lasso 任何机制都不会自动清理（never_kill_user_asset）——唯一出口 = 用户自行关闭或**用户本人**运行 \`lasso-mcp chrome-stop --port ${port}\`；agent 请换口 launch-chrome --port N 并报告用户裁决`;
+    }
     return `端口 ${port} 被 lasso 台账在案的自家 Chrome（pid ${rec.pid}，疑似 CDP 挂死）占用：先 \`lasso-mcp chrome-stop --port ${port}\` 清僵尸，再 \`lasso-mcp launch-chrome --port ${port}\`（A2 后 launch-chrome 会自动收尸重拉）`;
   }
   if (rec) {

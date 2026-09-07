@@ -258,6 +258,20 @@ export async function markUserTakenByPid(
 }
 
 /**
+ * 记录是否「用户拥有」（BUG-03 adversarial r2 F1，2026-09-08）——**一切程序化
+ * 收割/自愈门不得触碰**的记录面（A2 僵尸门 / doctor 归因共用）：
+ *  - `userTakenAt` 已落（B1 确认窗或显式 chrome-show 认领）——契约见
+ *    markUserTakenByPid 头注：「唯一关闭出口 = 用户自己关或显式 chrome-stop」；
+ *  - `launchMode === "visible"`——v1.17.3 P1 红线（用户登录窗口永不后台杀）。
+ * r1 实锤事故型：A2 自愈门曾把 userTakenAt 已认领的 Chrome（真机 chrome-show
+ * 认领 + SIGSTOP 模拟 CDP 死）在 relaunch 时整窗杀掉——「唯一关闭出口」契约
+ * 被 third kill path 逃逸（doc/bugs/03 §9 r2-F1）。本谓词是该契约的机械锚。
+ */
+export function isUserOwnedRecord(rec: LaunchedChromeRecord): boolean {
+  return rec.userTakenAt !== undefined || rec.launchMode === "visible";
+}
+
+/**
  * 清 userTakenAt（按 pid）——**唯一调用路径 = 显式 chrome-hide 成功**（重武装：
  * 写粘滞账恢复执守 + 同步清台账认领标记——让位/武装两态与粘滞账/台账双账一致，
  * 不留「已重武装但仍收割豁免」的混合态）。幂等（未认领记录零写）。

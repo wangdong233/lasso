@@ -4793,20 +4793,26 @@ const assertions = [
   {
     id: "INV-87-never-kill-user-assets",
     desc:
-      "BUG-03 C/D：永不代杀用户资产——launch-chrome/doctor 端口占用错误面必含 never_kill_user_asset 指引 token（agent 的下一步从「自己想办法」引到合法出口）；doctor 源码禁 open 另起新实例形态（逃不出单实例槽位）；僵尸自愈只经 chrome-stop 验证杀路径；与 verifyOwnership 锚（chrome-ledger.spec）构成杀路径+出口面双面钉死",
+      "BUG-03 C/D：永不代杀用户资产——launch-chrome/doctor 端口占用错误面必含 never_kill_user_asset 指引 token（agent 的下一步从「自己想办法」引到合法出口）；doctor 源码禁 open 另起新实例形态（逃不出单实例槽位）；僵尸自愈只经 chrome-stop 验证杀路径；（r2-F1）A2 僵尸门与 doctor 归因对「用户拥有记录」（isUserOwnedRecord：userTakenAt 已认领 / visible 登录窗）永不收尸、不给 agent 代杀指引（唯一出口=用户关闭或用户本人显式 chrome-stop）；与 verifyOwnership 锚（chrome-ledger.spec）构成杀路径+出口面双面钉死",
     check: () => {
       const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
       const launchSrc = byPath(/^launcher\/launch-chrome\.ts$/)?.text ?? "";
       const doctorSrc = byPath(/^doctor\/doctor\.ts$/)?.text ?? "";
 
       // ----- (a) launch-chrome 错误面指引 token -----
-      // 错误串是多段模板拼接——锚「port_in_use_non_cdp: 起 1200 字符窗口」内必含
-      // 两 token（never_kill_user_asset 指引 + ledger_zombie_collected 三分类自述）
-      const idx = launchSrc.indexOf("port_in_use_non_cdp:");
-      if (idx === -1) return false;
-      const errWindow = launchSrc.slice(idx, idx + 1200);
-      if (!errWindow.includes("never_kill_user_asset")) return false;
-      if (!errWindow.includes("ledger_zombie_collected")) return false;
+      // 错误串是多段模板拼接——锚「port_in_use_non_cdp: 起 1200 字符窗口」。
+      // r2-F1 后该错误前缀有两个出口面（三分类拒绝 + 用户拥有拒绝）——锚升级为
+      // 全窗口扫描：**每个**出口窗口必含 never_kill_user_asset（r2-F1 强化：用户
+      // 拥有分支同样携带），且至少一个窗口含 ledger_zombie_collected 三分类自述。
+      const errWindows = [];
+      let scanIdx = launchSrc.indexOf("port_in_use_non_cdp:");
+      while (scanIdx !== -1) {
+        errWindows.push(launchSrc.slice(scanIdx, scanIdx + 1200));
+        scanIdx = launchSrc.indexOf("port_in_use_non_cdp:", scanIdx + 5);
+      }
+      if (errWindows.length === 0) return false;
+      if (!errWindows.every((w) => w.includes("never_kill_user_asset"))) return false;
+      if (!errWindows.some((w) => w.includes("ledger_zombie_collected"))) return false;
 
       // ----- (b) doctor 出口面同 token -----
       const classifier = doctorSrc.match(
@@ -4826,6 +4832,22 @@ const assertions = [
         /opts\.stopZombieFn \?\?[\s\S]{0,120}stopLaunchedChromes/,
       );
       if (!zombieDefault) return false;
+
+      // ----- (e) r2-F1：A2 僵尸门「用户拥有记录」排除面 -----
+      // 可收谓词必须引用 isUserOwnedRecord（userTakenAt/visible 排除）——r1 事故型
+      // （已认领 Chrome 被 relaunch 整窗杀掉）的机械锚；拒绝分支错误面必含双 token。
+      const collectible = launchSrc.match(
+        /zombieCollectible[\s\S]{0,240}?isUserOwnedRecord/,
+      );
+      if (!collectible) return false;
+      const uoIdx = launchSrc.indexOf("ledger_user_owned_not_collected");
+      if (uoIdx === -1) return false;
+      const uoWindow = launchSrc.slice(uoIdx, uoIdx + 1600);
+      if (!uoWindow.includes("user_taken_asset")) return false;
+      if (!uoWindow.includes("never_kill_user_asset")) return false;
+      // doctor 归因：用户拥有记录不得给「清僵尸」代杀指引
+      const uoDoctor = doctorSrc.match(/isUserOwnedRecord\(rec\)[\s\S]{0,600}?user_taken_asset/);
+      if (!uoDoctor) return false;
 
       return true;
     },

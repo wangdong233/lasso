@@ -149,6 +149,95 @@ describe("A2 · launch-chrome 僵尸占位自愈", () => {
     expect(r.ok).toBe(false);
     expect(stopCalls).toHaveLength(0);
   });
+
+  // ---- BUG-03 adversarial r2 F1（2026-09-08）：用户拥有记录永不进程序化收尸 ----
+  // r1 事故型真机复现：chrome-show 认领（userTakenAt）+ SIGSTOP 模拟 CDP 死 →
+  // relaunch 同口 → A2 门把已认领窗口整窗杀掉。修复后该面必须如实拒绝。
+
+  it("1e. userTakenAt 已认领记录 → 永不收尸：user_taken_asset 拒绝 + 零 stopZombieFn 零 spawn + ledger_user_owned_not_collected 打点", async () => {
+    await recordLaunch(makeRec({ userTakenAt: Date.now() }));
+    let spawnCalled = false;
+    const stopCalls: number[] = [];
+    const logs: Array<Record<string, unknown>> = [];
+    const r = await launchChrome(
+      makeLaunchOpts({
+        spawnFn: (() => {
+          spawnCalled = true;
+          return { unref() {}, on() {}, pid: 42 };
+        }) as never,
+        stopZombieFn: async (o) => {
+          stopCalls.push(o.port);
+        },
+        aliveFn: () => true,
+        psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+        logFn: (p: Record<string, unknown>) => logs.push(p),
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port_in_use_non_cdp/);
+    expect(r.error).toMatch(/user_taken_asset/); // 机器可读 token（agent 区分自愈 vs 用户拥有）
+    expect(r.error).toMatch(/never_kill_user_asset/); // INV-87 指引 token 同面保留
+    expect(r.error).toMatch(/chrome-stop --port 9222/); // 唯一出口=用户显式 chrome-stop
+    expect(stopCalls).toHaveLength(0); // 已认领窗口零程序化杀
+    expect(spawnCalled).toBe(false);
+    expect(logs.some((p) => p.evt === "ledger_user_owned_not_collected")).toBe(true);
+  });
+
+  it("1f. visible 档记录（登录窗，v1.17.3 P1 红线）→ 同面拒绝：不收尸 + user_taken_asset", async () => {
+    await recordLaunch(makeRec({ launchMode: "visible" }));
+    const stopCalls: number[] = [];
+    const r = await launchChrome(
+      makeLaunchOpts({
+        stopZombieFn: async (o) => {
+          stopCalls.push(o.port);
+        },
+        aliveFn: () => true,
+        psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/user_taken_asset/);
+    expect(r.error).toMatch(/launchMode=visible/);
+    expect(stopCalls).toHaveLength(0);
+  });
+
+  it("1g. headless 档未认领记录 → 仍收尸（修复不过度：无人值守形态无用户面）", async () => {
+    await recordLaunch(makeRec({ launchMode: "headless" }));
+    const stopCalls: number[] = [];
+    const logs: Array<Record<string, unknown>> = [];
+    let fetchCalls = 0;
+    const r = await launchChrome(
+      makeLaunchOpts({
+        fetchFn: async () => ({ ok: ++fetchCalls >= 2 }),
+        stopZombieFn: async (o) => {
+          stopCalls.push(o.port);
+        },
+        aliveFn: () => true,
+        psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+        logFn: (p: Record<string, unknown>) => logs.push(p),
+      }),
+    );
+    expect(stopCalls).toEqual([9222]);
+    expect(logs.some((p) => p.evt === "ledger_zombie_collected")).toBe(true);
+    expect(r.ok).toBe(true);
+  });
+
+  it("1h. render 档记录（guardian 自管域）→ 日常档入口不越权收尸", async () => {
+    await recordLaunch(makeRec({ launchMode: "render" }));
+    const stopCalls: number[] = [];
+    const r = await launchChrome(
+      makeLaunchOpts({
+        stopZombieFn: async (o) => {
+          stopCalls.push(o.port);
+        },
+        aliveFn: () => true,
+        psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(stopCalls).toHaveLength(0);
+    expect(r.error).toMatch(/guardian-managed|user_taken_asset/);
+  });
 });
 
 // ============================================================
@@ -195,5 +284,29 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
       aliveFn: () => false, // already_dead 快路径
     });
     expect(r.stopped[0]!.launchMode).toBe("hidden");
+  });
+
+  // ---- r2 F1：doctor 归因对用户拥有记录不给「清僵尸」代杀指引 ----
+
+  it("2f. doctor：userTakenAt 已认领占用 → 用户拥有分类（user_taken_asset），不给 chrome-stop 清僵尸指引", async () => {
+    await recordLaunch(makeRec({ userTakenAt: Date.now() }));
+    const step = classifyPortOccupierNextStep(9222, {
+      aliveFn: () => true,
+      psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+    });
+    expect(step).toMatch(/user_taken_asset/);
+    expect(step).toMatch(/never_kill_user_asset/);
+    expect(step).toMatch(/用户本人/); // 唯一出口=用户本人跑 chrome-stop（非 agent）
+    expect(step).not.toMatch(/清僵尸/); // 不得把用户级权限塞给 agent
+  });
+
+  it("2g. doctor：visible 档占用 → 同面用户拥有分类", async () => {
+    await recordLaunch(makeRec({ launchMode: "visible" }));
+    const step = classifyPortOccupierNextStep(9222, {
+      aliveFn: () => true,
+      psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+    });
+    expect(step).toMatch(/user_taken_asset/);
+    expect(step).not.toMatch(/清僵尸/);
   });
 });

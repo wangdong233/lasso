@@ -233,3 +233,37 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 - **复核通过项**：①E② 降级重试/临时文件物化 diff 与 e2 spec 10/10 ✓；②M1 补锚**变异复杀实证**——删 `fm is true and` 后 b1 spec 2a 红 + INV-85 FAIL（双杀，与 r1 声称一致），还原 md5 核对 ✓；采样 M2（确认窗 20→1 tick）4 红（2b/3c/3d/3e）复杀 ✓，还原 ✓；③④文档诚实化（§2.1 再订正注/§4 B1 残余追加段/§9 全记录）逐段核对 ✓。门禁：build ✓ / vitest 163 files 2662+1skip ✓ / invariants 87 ✓ / readme-sync ✓。机器残留：desired-hidden=[]、chrome-ledger 空、无 lasso Chrome 主进程、launchctl 无 lasso 项、/tmp/adv-bug03-r1 已清、/Applications 无项目外新组件。
 - **🔴 r2 新发现（当场收口）**：B2 证伪订正漏了 **CLI `--help` 面**——`src/index.ts` CLI_USAGE 仍残留被证伪声明「headless: no Dock slot takeover」（dca8135 只订正了源码注释/README 双语/ARCHITECTURE/§4 B2）。该面是用户/agent 选档的直接决策入口，残留即「读 help → 有人机器选 headless → 劫持回潮」的活口。处置：help 文案订正为「unattended-only; still absorbs Dock activation on macOS; no chrome-show login flow」+ cli-conventions.spec 补锚（`not.toContain("no Dock slot")` 反回潮 + 订正语义 toContain 双锚）。commit 见 r2 处置。
 
+---
+
+## 10. 对抗否定复审记录（2026-09-08 adversarial r2，复审员第 2 轮）
+
+**方法**：门禁基线复跑（build ✓ / vitest 163 files 2663+1skip ✓ / INV 87 ✓）+ 变异验证 8 发（含 r1/r2 处置面 3 发新锚：E② Access-denied 重试拆除 / CLI help 回填被证伪声明 / headless caveat 拆除）+ 用户主权真机攻击（隔离 env 四覆盖 `/tmp/adv-bug03-r2`，用户全程离席 HID 1800s+，原生 Chrome 零运行，4 个预存在旧字节码 server 见 O-1）+ 消费方 4 条真机重跑 + 文档零漂移 + find 零新组件。
+
+### 10.1 变异验证：8 发 8 杀（全部还原 md5 核对）
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 复杀 | reassertGatedScript 删 `fm is true and` | 杀（b1 2a 红 + INV-85 FAIL 双杀） |
+| M2 复杀 | 确认窗 20→1 | 杀（2b/3c/3d/3e 4 红 + 1 INV 红） |
+| M3' 复杀 | index.ts 停机两路径删 ownerPid/exemptUserTaken | 杀（a1 1 红 + INV-86 FAIL 双杀） |
+| M-C（r1 处置面） | E② Access-denied 重试拆除（`if (false &&`） | 杀（e2 case 8+10 双红） |
+| M-F（r1 处置面） | 上游临时文件行尾句点剥除拆除 | 杀（e2 case 9 红） |
+| M-D（r2 处置面） | CLI --help 回填「no Dock slot takeover」 | 杀（cli-conventions 1 红；**锚打在 dist**——须含 build 的门禁序，见 O-2） |
+| M-E（r1 处置面） | headless_dock_slot_caveat 发射拆除 | 杀（b2 2d 红） |
+| M-R2F1（本轮修复面） | 新 A2 用户拥有排除拆除 | 杀（a2 1e+1f 红 + INV-87 FAIL 三杀） |
+
+### 10.2 真机裁定
+
+- **劫持场景 + v1.18.3 压窗回归（PASS）**：hidden 档 9397（台账 ownerKind:"cli"/ownerPid/enforcer 在世）+ `open -a "Google Chrome"`（HID 2458s 用户离席）→ 激活路由进 54988（visible=true,frontmost=true）→ **~1.9s 内自动压回**（门未过零放行）；AX 程序掀出 → tick 内压回（采样窗零可见存活）；两路径账面零突变（userTakenAt 未落、粘滞账原样）。
+- **F4 状态机全环（PASS）**：chrome-show → userTakenAt 落账 + 粘滞账清 + 窗口可见；**认领后 idle 免疫**（idleMs 5000 实例 + chrome-show + 12s 等待 → 存活）；chrome-hide → userTakenAt 清 + 重武装 → **idle 收割恢复**（12s 后被收、台账清）。
+- **消费方③连坐免疫（PASS）**：CLI-owned（ownerPid=死 CLI）记录，独立 server stdin_eof 停机链真跑（`lasso_shutdown sig:stdin_eof` 日志实证）→ Chrome 存活 + CDP 健康。
+- **消费方②screenshot（PASS）**：MCP stdio e2e（LASSO_CDP_PORT=9397 + 上游锁定 chrome-devtools-mcp@1.7.0 真实走 Access-denied→重试链）：默认路径落 `/tmp/lasso-screenshot-<uuid>.png`（PNG magic + file 实证 1600x958）+ 用户指定 filePath 落 `/tmp/adv-bug03-r2/shot-user.png`（同 PNG 实证）。
+- **消费方④evaluate（PASS）**：函数表达式 `() => "fnexpr-" + typeof 42` → `fnexpr-number`（非恒 undefined）；语句体 `return 6*7` → 42；值内围栏 `a```b```c TAIL` 不截断。
+- **🔴 r2-F1（新发现，CRITICAL，当场修复）**：**A2 僵尸自愈门是第三条逃逸杀路径**——门条件 `台账在案 + pid 活 + 归属通过` 既不排除 `userTakenAt` 已认领记录，也不排除 `visible` 档记录，且 `stopLaunchedChromes({port})` 不带 `exemptUserTaken`。真机定罪：chrome-show 认领（userTakenAt 落账）→ SIGSTOP 模拟 CDP 死（curl exit 28 + TCP 可连）→ relaunch 同口 → **已认领窗口被整窗杀掉**（pid 54988 死、新实例顶替）——直接违反 markUserTakenByPid 头注契约「唯一关闭出口 = 用户自己关或显式 chrome-stop」与 §4 B1 决议文本；对 visible 档同理违反 v1.17.3 P1 红线（源码级证实：门无 launchMode 过滤；doctor `classifyPortOccupierNextStep` 同病——向 agent 输出「chrome-stop 清僵尸」= 把用户级权限塞给 agent 的变相代杀出口）。**修复（单主题 commit）**：`chrome-ledger.ts` 新增单一真源谓词 `isUserOwnedRecord`（userTakenAt!==undefined ∥ launchMode==="visible"）；launch-chrome A2 门可收面收窄（`zombieCollectible = ownedAlive && !isUserOwnedRecord && launchMode!=="render"`）+ 用户拥有分支如实拒绝（token `user_taken_asset` + `never_kill_user_asset` + 唯一出口声明 + `ledger_user_owned_not_collected` 打点）；doctor 归因同谓词接入（用户拥有记录归用户资产分支，不给清僵尸指引）；a2 spec +6 用例（1e 认领不收/1f visible 不收/1g headless 仍收/1h render 不越权/2f 2g doctor 两面）；INV-87 扩 (e) 锚（collectible 必引 isUserOwnedRecord + 拒绝窗口双 token + doctor 排除）+ (a) 锚升级全窗口扫描（每个 port_in_use_non_cdp 出口必含 never_kill_user_asset）；README 双语 A2 口径同步。变异 M-R2F1 三杀 ✓，门禁全绿（163 files 2669+1skip / 87 INV）。
+- **find 零新组件 ✓**：/Applications 与 ~/Applications 无 Chrome 副本/LassoE4/Chromium/Canary；launchctl 无 lasso 项；/tmp/adv-bug03-r2 实验产物全清（stop+两账+进程复核）。
+
+### 10.3 观察与残留（非缺陷登记）
+
+- **O-1（预存在，非本轮引入）**：4 个 lasso MCP server（pid 3311/4673/5276/20990，09-07 20:03-20:16 启动）仍跑**修复前旧字节码**（dist 在 commit 前构建）——若任何 agent 经其拉起 hidden Chrome，劫持行为回潮（其 watchdog 无 B1 门）。本轮实验以 env 四覆盖与其隔离。**建议用户重启 MCP 会话/服务器**以加载新 dist（属用户操作，复审员不代杀用户会话进程）。
+- **O-2（锚工艺）**：cli-conventions.spec 经 `spawnSync node dist/index.js` 断言 help 面——src 变异不经 build 不触发该锚。既有门禁序（build && vitest）覆盖此缺口，但单跑 vitest 会漏；已在 §10.1 M-D 注记。
+
