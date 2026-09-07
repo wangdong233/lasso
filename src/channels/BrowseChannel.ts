@@ -1291,19 +1291,30 @@ async function doEvaluate(
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
   if (!opts.js) throw new Error("evaluate: opts.js required");
-  // W1-DEF-1b（v1.8）：MCP 侧 js 是语句体（`return ...` / 裸表达式两种都支持）——
-  // 包进函数体交上游调用；直接透传 `return ...` 会被当函数表达式语法错
-  // （wave2 smoke 实证 "Unexpected token 'return'"）。
+  // E④（BUG-03 决议 E④，doc/bugs/03 §4 E，消费方④根治）：wrapper 形态探测归一——
+  // 既有实现把 opts.js 无条件包进 `() => {\n${js}\n}`，调用方按 lasso 工具描述传
+  // **函数表达式**（`() => document.title`，与上游 evaluate_script 契约一致）时被
+  // 包成「函数体内的函数表达式语句」——求值不 return → **恒 undefined（静默错值）**。
+  // 修复：函数表达式形态原样透传（上游自调用）；语句体形态维持包裹。双兼容，
+  // 工具描述同步双例（descriptions.ts evaluate action）。
   const r = (await c.callTool("evaluate_script", {
-    function: `() => {\n${opts.js}\n}`,
+    function: evaluateFunctionArg(opts.js),
   })) as EvaluateResult;
   // P5（v1.18.1，得到实战问题集 P5）：上游错误假成功治理——与 doWait
   // （W-DEF-R11-1 v1.17.1 同病同修）同范式：McpClient.callTool 对 is_error 不
   // throw，此前不检 → 协议超时（"Network.enable timed out"）/ 无页面
   // （"No page selected"）/ 脚本异常堆栈全部被当 preview 返回，outcome 恒 worked。
-  // isError → throw eval_upstream_error → classifyBrowseError 落 unknown（可重试）。
+  // isError → throw → classifyBrowseError 落 unknown（可重试）。
+  // E④（BUG-03 决议 E④）：会话轮换（"No page selected"）在此路径也归类
+  // session_rotated（透明化：可重试语义 + 提示重 snapshot），不再落泛 unknown 文案。
   if (r.isError) {
-    throw new Error(`eval_upstream_error:${(extractEvalPreview(r)).slice(0, 120)}`);
+    const errText = extractEvalPreview(r);
+    if (/^No page selected$/.test(errText.trim())) {
+      throw new Error(
+        "session_rotated:No page selected — the session page was rotated/cleared; take a fresh snapshot then retry (retryable)",
+      );
+    }
+    throw new Error(`eval_upstream_error:${errText.slice(0, 120)}`);
   }
   // PERF-4（2026-09-02 perf/acc 轮 2）：超限 object/array 免 parse+stringify 快路。
   // 上游围栏文本 = 页内 JSON.stringify(返回值)（chrome-devtools-mcp performEvaluation
@@ -1336,6 +1347,14 @@ async function doEvaluate(
   // 把 evaluateHandle 异常序列化进 content 的形态；签名窄匹配防误伤正常返回值）。
   // 仅在 v==null（未解析出脚本值 = 响应非 ```json 围栏形态）时检查。
   if (v == null && UPSTREAM_EVAL_ERROR_SIGNATURES.some((re) => re.test(preview))) {
+    // E④（BUG-03 决议 E④）：会话轮换错误归类 session_rotated（透明化——不再落
+    // 泛 unknown 文案）："No page selected" = 会话页已被轮换/清空（McpContext 整串
+    // 恰为此）；语义可重试（outcome=unknown），提示先重 snapshot 重建会话页。
+    if (/^No page selected$/.test(preview.trim())) {
+      throw new Error(
+        "session_rotated:No page selected — the session page was rotated/cleared; take a fresh snapshot then retry (retryable)",
+      );
+    }
     throw new Error(`eval_upstream_error:${preview.slice(0, 120)}`);
   }
   return { preview: truncatePreview(preview) };
@@ -1353,6 +1372,27 @@ const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
   /^Error:[\s\S]*\bpptr:/,
   /^No page selected$/,
 ];
+
+/**
+ * E④（BUG-03 决议 E④）：evaluate 的 js 入参 → 上游 function 参数归一（导出供测试）。
+ *
+ * 双形态兼容：
+ *  - **函数表达式**（起手 `(` / `function` / `async`，或单标识符箭头 `x => x`）
+ *    → 原样透传——上游 evaluate_script 契约本就吃函数表达式并自调用；旧 wrapper
+ *    会把它包成「函数体内的函数表达式语句」（求值不 return → 恒 undefined 静默
+ *    错值——消费方④实战毒点）。
+ *  - **语句体**（`return ...` / 声明 / 多语句 / 裸表达式）→ 维持包裹
+ *    `() => { ... }`（W1-DEF-1b：直接透传 `return` 会被当函数表达式语法错，
+ *    wave2 smoke 实证 "Unexpected token 'return'"）。
+ * 判定规则刻意保守（起手 token 白名单）：误判方向 = 语句体被透传（上游报语法
+ * 错，响亮可修），优于函数表达式被包裹（静默 undefined，毒中之毒）。
+ */
+export function evaluateFunctionArg(js: string): string {
+  const t = js.trim();
+  if (/^(?:async\b|function\b|\()/.test(t)) return t; // 函数表达式起手 token
+  if (/^[A-Za-z_$][\w$]*\s*=>/.test(t)) return t; // 单标识符箭头 x => x
+  return `() => {\n${js}\n}`; // 语句体维持包裹
+}
 
 // ============================================================
 // SDK 返回结构解析
@@ -1467,6 +1507,10 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   if (m.includes("enotfound") || m.includes("nxdomain")) return "unknown";
   // v1.8（W1-DEF-3 / W1-DEF-5）：screenshot 落盘失败是明确「本地交付不可得」→ didnt
   if (m.includes("screenshot_write_failed")) return "didnt";
+  // E④（BUG-03 决议 E④）：会话轮换（"No page selected" 类）是**瞬态可重试**信号
+  //（页面被轮换/清空，重 snapshot 即恢复）——显式归 unknown（可重试档）+
+  // session_rotated 前缀供 agent 透明识别下一步（重 snapshot），不再落泛 unknown
+  if (m.includes("session_rotated")) return "unknown";
   if (m.includes("dns_or_nav_error")) return "unknown";
   if (m.includes("http_404")) return "didnt";
   // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt

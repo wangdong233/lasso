@@ -32,13 +32,23 @@ export function firstText(
 /**
  * 提取 evaluate_script 响应里 ``` 围栏内的文本（去掉 ```json 语言标）。
  * 无围栏（上游形状漂移）返回 undefined。
+ *
+ * E④（BUG-03 决议 E④，doc/bugs/03 §4 E）：贪婪围栏——非贪婪 `[\s\S]*?` 会在
+ * **返回值内部含 ``` 的字符串**（如页面源码片段）处提前截断（实测形态：脚本
+ * 返回含三反引号的文本 → 围栏在值内部提前闭合 → parseEvalResult 拿到半截）。
+ * 上游契约是单围栏形态（"# evaluate_script response\n...\n```json\n<值>\n```"），
+ * 惰性组 + 负向前瞻 `(?![\s\S]*```)` 把闭合锚定到**最后一个**围栏——值内部的
+ * ``` 不再截断，且不把闭合围栏前的换行并入值尾。
  */
 export function evalFence(
   r: UpstreamContentResult | undefined,
 ): string | undefined {
   const text = firstText(r);
   if (!text) return undefined;
-  const m = text.match(/```(?:json)?\s*\n([\s\S]*?)\n?```/);
+  // 贪婪语义经「惰性组 + 负向前瞻锚定最后一个围栏」实现：惰性组照常最短匹配，
+  // 但闭合围栏后不允许再出现 ``` ——若值内部还有 ```，引擎回溯到真正的闭合围栏。
+  // （纯贪婪 `[\s\S]*` 也能匹配到最后围栏，但会把闭合围栏前的换行并入值尾。）
+  const m = text.match(/```(?:json)?\s*\n([\s\S]*?)\n?```(?![\s\S]*```)/);
   return m?.[1];
 }
 

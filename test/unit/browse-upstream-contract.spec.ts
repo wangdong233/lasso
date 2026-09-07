@@ -353,7 +353,7 @@ describe("P5 — evaluate 上游错误不再假 worked（isError + 错误签名�
     expect(r.error).toContain("eval_upstream_error");
   });
 
-  it("③ 零页面（整串恰为 No page selected，无围栏）→ 不再 worked", async () => {
+  it("③ 零页面（整串恰为 No page selected，无围栏）→ 不再 worked（E④ 起归类 session_rotated）", async () => {
     const { client } = makeUpstreamClient({
       evalOverride: () => textContent("No page selected"),
     });
@@ -362,7 +362,9 @@ describe("P5 — evaluate 上游错误不再假 worked（isError + 错误签名�
       js: "return 1",
     } as BrowseOptions);
     expect(r.outcome).not.toBe("worked");
-    expect(r.error).toContain("eval_upstream_error");
+    // E④（BUG-03 决议 E④）：会话轮换从泛 eval_upstream_error 透明化为
+    // session_rotated（可重试语义 + 重 snapshot 提示）
+    expect(r.error).toContain("session_rotated");
   });
 
   it("④ 防误伤：脚本合法返回的字符串值恰含错误样式文案（围栏内）→ 仍 worked", async () => {

@@ -3650,7 +3650,8 @@ const assertions = [
   //   wait_for.text 要 string / evaluate_script 要函数表达式 / 无 pdf 工具。
   //   v1.11（round1 T1）0.3.0 → 1.7.0 迁移复核（tarball build 逐文件白盒）：
   //   evaluate_script function:string 保持；take_screenshot format/fullPage 保持
-  //   （filePath 新有，Lasso 维持自落盘+stat）；**wait_for.text 翻转为
+  //   （**E④/BUG-03 修订：filePath 已传**——上游直写优先 + image-block 回退双
+  //   路径，禁伪造校验全保留）；**wait_for.text 翻转为
   //   array(string).min(1)**（McpPage.waitForTextOnPage 对 text.flatMap）；pdf 工具
   //   仍不存在（doPdf tri-state 降级路径不变）；1.7.0 默认采集使用统计 → 全 spec
   //   加 --no-usage-statistics。
@@ -3659,7 +3660,7 @@ const assertions = [
   //    (a) evaluate_script 调用点全部函数表达式（W1-DEF-1；StealthEngine 对语句串脚本
   //        必经 toFnExpression 包装）
   //    (b) wait_for.text 传 非空 string 数组（1.7.0 契约；0.3.0 单条 string 翻转）
-  //    (c) doScreenshot 不传 filePath + 自落盘后 stat 校验存在且非空（W1-DEF-3 禁伪造路径）
+  //    (c) doScreenshot 必传 filePath（E② 直写优先）+ image-block 回退 + 双路径 stat/PNG 校验（W1-DEF-3 禁伪造路径）
   //    (d) StealthEngine 记 stealth_injected 前必有 isError 检查（W1-DEF-1 后半：禁误报）
   //    (e) CdpClient 用 Storage.getCookies/setCookies（W1-DEF-4；Chrome 150 移除 Network 域）
   //    (f) launch-chrome /json/version 探活 + port_in_use/chrome_exited/cdp_not_ready
