@@ -86,7 +86,17 @@ export interface ChromeStopOptions {
 export type ChromeStopAction = "killed" | "already_dead" | "pid_reused_skipped";
 
 export interface ChromeStopResult {
-  stopped: Array<{ port: number; pid: number; action: ChromeStopAction }>;
+  /**
+   * BUG-03 决议 C：行携带 launchMode（有则附）——chrome-stop CLI 无参 = --all 的
+   * 「有意全停」输出面强化：用户显式操作前能看清将停/已停记录的档位构成
+   * （hidden/visible/render/headless）。旧记录无 launchMode 时不附键（输出兼容）。
+   */
+  stopped: Array<{
+    port: number;
+    pid: number;
+    action: ChromeStopAction;
+    launchMode?: "hidden" | "visible" | "render" | "headless";
+  }>;
 }
 
 // ============================================================
@@ -198,6 +208,19 @@ async function defaultSleep(ms: number): Promise<void> {
 const GRACE_POLL_MS = 200;
 const GRACE_TOTAL_MS = 2_000;
 
+/** BUG-03 C：结果行构造（launchMode 有则附——CLI 全停输出面强化）。 */
+function stopRow(
+  rec: LaunchedChromeRecord,
+  action: ChromeStopAction,
+): { port: number; pid: number; action: ChromeStopAction; launchMode?: "hidden" | "visible" | "render" | "headless" } {
+  return {
+    port: rec.port,
+    pid: rec.pid,
+    action,
+    ...(rec.launchMode ? { launchMode: rec.launchMode } : {}),
+  };
+}
+
 // ============================================================
 // 主入口（async 路径：CLI / server 优雅停机）
 // ============================================================
@@ -232,7 +255,7 @@ export async function stopLaunchedChromes(
   for (const rec of targets) {
     // 1. 探活
     if (!aliveFn(rec.pid)) {
-      stopped.push({ port: rec.port, pid: rec.pid, action: "already_dead" });
+      stopped.push(stopRow(rec, "already_dead"));
       // v1.19（渲染档设计决议 3.6 收尸）：render 记录 pid 已死 = 渲染档 Chrome
       // 确已不在，临时 profile 即垃圾 → 连带清理（best-effort）。
       cleanupRenderProfile(rec, log, "stop_already_dead");
@@ -246,7 +269,7 @@ export async function stopLaunchedChromes(
         pid: rec.pid,
         note: "cmdline lacks --user-data-dir marker; stale ledger entry removed without kill",
       });
-      stopped.push({ port: rec.port, pid: rec.pid, action: "pid_reused_skipped" });
+      stopped.push(stopRow(rec, "pid_reused_skipped"));
       continue;
     }
     // 3. SIGTERM 优雅 + 轮询 ≤2s
@@ -265,7 +288,7 @@ export async function stopLaunchedChromes(
     }
     // 4. 仍活 → 树杀（共享原语；收 Chrome helper 子进程）
     if (!dead) killTreeFn(rec.pid);
-    stopped.push({ port: rec.port, pid: rec.pid, action: "killed" });
+    stopped.push(stopRow(rec, "killed"));
     log({ evt: "chrome_stop_result", port: rec.port, pid: rec.pid, action: "killed", tree_kill: !dead });
     // v1.19（渲染档设计决议 3.4）：render 记录归属验证通过并收割后，
     // 连带清理临时 profile（在杀进程之后；best-effort）。
@@ -337,19 +360,19 @@ export function stopLaunchedChromesSync(
   const stopped: ChromeStopResult["stopped"] = [];
   for (const rec of targets) {
     if (!aliveFn(rec.pid)) {
-      stopped.push({ port: rec.port, pid: rec.pid, action: "already_dead" });
+      stopped.push(stopRow(rec, "already_dead"));
       // v1.19（渲染档设计决议 3.4/3.6）：sync 路径（exit 钩子）同款 render
       // profile 连带清理——already_dead = 渲染档 Chrome 确已不在。
       cleanupRenderProfile(rec, log, "stop_sync_already_dead");
       continue;
     }
     if (!verifyOwnership(rec.pid, rec.profileDir, psFn)) {
-      stopped.push({ port: rec.port, pid: rec.pid, action: "pid_reused_skipped" });
+      stopped.push(stopRow(rec, "pid_reused_skipped"));
       continue;
     }
     if (killTreeFn) killTreeFn(rec.pid);
     else killTreeSync(rec.pid, "chrome-stop-exit");
-    stopped.push({ port: rec.port, pid: rec.pid, action: "killed" });
+    stopped.push(stopRow(rec, "killed"));
     // v1.19（渲染档设计决议 3.4）：归属验证通过并收割后连带清理临时 profile。
     cleanupRenderProfile(rec, log, "stop_sync_killed");
   }

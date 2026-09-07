@@ -300,8 +300,8 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     const p = makePanels();
     await runRenderChromeCli(["--stop"], p.opts);
     expect(p.exits).toEqual([0]);
-    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
-    expect(j.stopped).toEqual([{ port: 9224, pid: 888001, action: "already_dead" }]);
+    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string; launchMode?: string }> };
+    expect(j.stopped).toEqual([{ port: 9224, pid: 888001, action: "already_dead", launchMode: "render" }]); // BUG-03 C：行携带 launchMode（全停输出面强化）
     // hidden 记录不动
     expect(readLedgerSync().map((r) => r.port)).toEqual([9225]);
   });
@@ -324,11 +324,12 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     const p = makePanels();
     await runRenderChromeCli(["--stop"], p.opts);
     expect(p.exits).toEqual([0]);
-    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
+    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string; launchMode?: string }> };
     // 两 port 全收（含未设 LASSO_RENDER_PORT 时对非默认口的记录）——未设即全局收
+    //（BUG-03 C：行携带 launchMode）
     expect(j.stopped).toEqual([
-      { port: 9224, pid: 888001, action: "already_dead" },
-      { port: 9324, pid: 888003, action: "already_dead" },
+      { port: 9224, pid: 888001, action: "already_dead", launchMode: "render" },
+      { port: 9324, pid: 888003, action: "already_dead", launchMode: "render" },
     ]);
     expect(readLedgerSync()).toEqual([]); // render 记录全清账
   });
@@ -340,8 +341,8 @@ describe("render-chrome --stop（幂等 exit 0 + modes 只收 render）", () => 
     const p = makePanels();
     await runRenderChromeCli(["--stop"], p.opts);
     expect(p.exits).toEqual([0]);
-    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string }> };
-    expect(j.stopped).toEqual([{ port: 9224, pid: 888001, action: "already_dead" }]);
+    const j = JSON.parse(p.out[0]!) as { stopped: Array<{ port: number; pid: number; action: string; launchMode?: string }> };
+    expect(j.stopped).toEqual([{ port: 9224, pid: 888001, action: "already_dead", launchMode: "render" }]); // BUG-03 C：行携带 launchMode（全停输出面强化）
     expect(readLedgerSync().map((r) => r.port)).toEqual([9324]); // 9324 留存台账（并行隔离）
   });
 

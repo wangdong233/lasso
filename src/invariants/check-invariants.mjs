@@ -4769,6 +4769,62 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // BUG-03（2026-09-07，doc/bugs/03）新增 —— 决议 C/D：永不代杀用户资产
+  // ============================================================
+  // 症状①（原生 Chrome 被关）：agent 在 port_in_use_non_cdp 后选择裸 shell kill
+  // 用户 Chrome——直接责任在 agent，架构共担是「端口被用户 Chrome 占用是
+  // 一等场景，却无一等出口」：错误面只建议换口，没有把「用户资产禁 kill」
+  // 声明为可编程契约，agent 用裸 shell 填补了 lasso 没提供的决策。
+  // 守（杀路径 + 出口面双面钉死，与 verifyOwnership 锚构成闭环）：
+  //  INV-87  永不代杀用户资产：
+  //    (a) launch-chrome port_in_use_non_cdp 错误面含 never_kill_user_asset
+  //        指引 token（机器可读；agent 下一步被引到「报告用户裁决/换口」合法出口）
+  //    (b) doctor 端口占用出口面（classifyPortOccupierNextStep）同 token
+  //    (c) doctor 源码禁 open 另起新实例形态（grep 禁令——实测逃不出同 bundle id
+  //        单实例槽位，徒增混乱）
+  //    (d) 台账僵尸自愈只经 chrome-stop 验证路径（stopZombieFn 默认
+  //        stopLaunchedChromes——杀路径单一真源，非第二套 kill）
+  {
+    id: "INV-87-never-kill-user-assets",
+    desc:
+      "BUG-03 C/D：永不代杀用户资产——launch-chrome/doctor 端口占用错误面必含 never_kill_user_asset 指引 token（agent 的下一步从「自己想办法」引到合法出口）；doctor 源码禁 open 另起新实例形态（逃不出单实例槽位）；僵尸自愈只经 chrome-stop 验证杀路径；与 verifyOwnership 锚（chrome-ledger.spec）构成杀路径+出口面双面钉死",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const launchSrc = byPath(/^launcher\/launch-chrome\.ts$/)?.text ?? "";
+      const doctorSrc = byPath(/^doctor\/doctor\.ts$/)?.text ?? "";
+
+      // ----- (a) launch-chrome 错误面指引 token -----
+      // 错误串是多段模板拼接——锚「port_in_use_non_cdp: 起 1200 字符窗口」内必含
+      // 两 token（never_kill_user_asset 指引 + ledger_zombie_collected 三分类自述）
+      const idx = launchSrc.indexOf("port_in_use_non_cdp:");
+      if (idx === -1) return false;
+      const errWindow = launchSrc.slice(idx, idx + 1200);
+      if (!errWindow.includes("never_kill_user_asset")) return false;
+      if (!errWindow.includes("ledger_zombie_collected")) return false;
+
+      // ----- (b) doctor 出口面同 token -----
+      const classifier = doctorSrc.match(
+        /function classifyPortOccupierNextStep[\s\S]*?\n\}/,
+      );
+      if (!classifier) return false;
+      if (!classifier[0].includes("never_kill_user_asset")) return false;
+      if (!classifier[0].includes("chrome-stop --port")) return false; // 自家僵尸→清僵尸出口
+
+      // ----- (c) doctor 源码禁 open 另起新实例形态 -----
+      if (/open -na/.test(doctorSrc)) return false;
+
+      // ----- (d) 僵尸自愈只经 chrome-stop 验证路径 -----
+      const zombieGate = launchSrc.match(/ledger_zombie_collected[\s\S]{0,300}?zombieStopFn/);
+      if (!zombieGate) return false;
+      const zombieDefault = launchSrc.match(
+        /opts\.stopZombieFn \?\?[\s\S]{0,120}stopLaunchedChromes/,
+      );
+      if (!zombieDefault) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

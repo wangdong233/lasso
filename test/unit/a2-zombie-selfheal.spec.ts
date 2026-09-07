@@ -19,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { recordLaunch, type LaunchedChromeRecord } from "../../src/launcher/chrome-ledger.js";
 import { launchChrome } from "../../src/launcher/launch-chrome.js";
+import { stopLaunchedChromes } from "../../src/launcher/chrome-stop.js";
 import { classifyPortOccupierNextStep } from "../../src/doctor/doctor.js";
 
 let tmpDir: string;
@@ -186,5 +187,13 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
     // catch 与 !ok 两分支都走归因（三分类接线）
     const occurrences = src.match(/classifyPortOccupierNextStep\(port, deps\)/g) ?? [];
     expect(occurrences.length).toBe(2);
+  });
+
+  it("2e. 决议 C：chrome-stop 结果行携带 launchMode（--all 全停输出面强化）", async () => {
+    await recordLaunch(makeRec({ launchMode: "hidden" }));
+    const r = await stopLaunchedChromes({
+      aliveFn: () => false, // already_dead 快路径
+    });
+    expect(r.stopped[0]!.launchMode).toBe("hidden");
   });
 });
