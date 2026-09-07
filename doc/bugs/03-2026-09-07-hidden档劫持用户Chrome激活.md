@@ -267,3 +267,36 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 - **O-1（预存在，非本轮引入）**：4 个 lasso MCP server（pid 3311/4673/5276/20990，09-07 20:03-20:16 启动）仍跑**修复前旧字节码**（dist 在 commit 前构建）——若任何 agent 经其拉起 hidden Chrome，劫持行为回潮（其 watchdog 无 B1 门）。本轮实验以 env 四覆盖与其隔离。**建议用户重启 MCP 会话/服务器**以加载新 dist（属用户操作，复审员不代杀用户会话进程）。
 - **O-2（锚工艺）**：cli-conventions.spec 经 `spawnSync node dist/index.js` 断言 help 面——src 变异不经 build 不触发该锚。既有门禁序（build && vitest）覆盖此缺口，但单跑 vitest 会漏；已在 §10.1 M-D 注记。
 
+---
+
+## 11. 对抗否定复审记录（2026-09-08 adversarial r3，复审员第 3 轮）
+
+**方法**：门禁基线复跑（build ✓ / vitest 163 files 2669+1skip ✓ / INV 87 ✓）+ 变异验证 10 发 10 杀（M1 A2 排除 / M2 chrome-stop exemptUserTaken / M3 确认窗 20→1 / M4 双判据 AND / M5 isUserOwnedRecord visible 分支 / M6 doctor 用户拥有分支 / M7 E② Access-denied 重试 / M8 E④ 双形态 / M9 reaper userTakenAt 禁收 / M10 evalFence 贪婪围栏——全部还原 md5 核对）+ 用户主权真机攻击（隔离 env 四覆盖 `/tmp/lasso-r3`，用户全程离席 HID 68min+，原生 Chrome 零运行）+ 消费方 4 条真机重跑 + 文档零漂移 + find 零新组件。
+
+### 11.1 真机裁定（r2 修复面全数独立复真）
+
+- **B1 端到端（症状②原场景，PASS）**：合成键重置 HID + `open -a` Dock 等价激活 → 窗口持续可见（28 次采样 0 压回）→ ~20 tick（≈30s）后 userTakenAt 落账 → 此后 HID 陈旧 34s 窗口仍不被压（认领退位成真）；粘滞账记录全程保留（零突变）。
+- **v1.18.3 压窗回归（PASS）**：程序化掀出（AX set visible，无 HID 活动）→ 立即可见 → ≤2.5s 压回；两账零突变。
+- **r2-F1 第三杀路径（PASS）**：chrome-show 级认领（userTakenAt）+ SIGSTOP 模拟 CDP 死 + relaunch 同口 → `ok:false` + `user_taken_asset`/`never_kill_user_asset` 双 token + `ledger_user_owned_not_collected` 打点，进程 Ts 存活、认领保留。
+- **连坐免疫（PASS）**：认领实例对停机三形态（owner 匹配+豁免 / 他 owner / sync exit 钩子）全部存活、台账条目保留；显式 chrome-stop（设计出口）正常收割。
+- **A2 僵尸自愈（PASS）**：SIGSTOP → relaunch 同口 → `ledger_zombie_collected` → 旧进程收、新 Chrome ready（/json/version 应答）。
+- **消费方②screenshot（PASS）**：新字节码 LoggedInChannel attach 9333 真机——视口截图（用户指定 filePath，PNG 1600×958）+ 88.3MB fullPage（3800×10400，SVG 噪声页）落管理路径，远超 2MB 上游限制证明 ≥2MB 直写/物化路径端到端；诚实失败面（99k 单元格 fullPage 压崩渲染器，Chrome 自身 SIGTRAP 崩溃——crash report byProc=exc handler 实证非 lasso 杀路径，`screenshot_write_failed:upstream_is_error` 如实报错零伪造文件）。
+- **消费方④evaluate（PASS）**：语句体 `return 1+41`→42；值内围栏 `a```b```c` 完整；函数表达式 `() => document.getElementById('h').textContent` 导航后取回 `hello-r3`（真执行非恒 undefined）。
+- **文档零漂移（PASS）**：README 双语/ARCHITECTURE/CLI help（dist 实测）/源码注释四面与 r2-F1 口径一致；readme-sync 全绿；INV-87 (a) 全窗口扫描 + (e) isUserOwnedRecord 接线锚在位。
+- **find 零新组件（PASS）**：全盘唯一 com.google.Chrome（mdfind 单路径）；/Applications 与 ~/Applications 无副本/LassoE4/Chromium/Canary；launchctl 零 lasso 项；LaunchAgents/Daemons 无新 plist。
+
+### 11.2 🔴 r3-F1（新发现，当场修复）：执守双职责死窗——职责自杀终态 × 进程持活 = 新 launch 永无执守
+
+- **真机定罪（复现链）**：stop A → 8s 后 relaunch B（隐藏档，粘滞账在案，执守进程存活被 probe 判 already_running 跳过重生）→ 程序化掀出 B → **8s+ 零压回**（对照健康执守 ≤2.5s 压回）；同会话另观察到 3 条死 pid 粘滞记录滞留 11 分钟无清账。
+- **机理（源码锚）**：runHideEnforcerCli 双职责闩原实现中 startDesiredHideWatchdog / startChromeIdleReaper 各自「账空 2 tick 自杀」且自杀为终态（stopped+clearInterval 无复活路径）。粘滞看门狗先死（两账清后 ~4.5s）而收割职责仍在计数（15s×2=30s 死窗）或台账仍有他记录（无限期）时，执守**进程**活着但粘滞执守已死——死窗内任何新 hidden launch 的 ensureHideEnforcerRunning probe 判 already_running → 新 Chrome 永无压回（v1.18.3 P27 防闪契约静默失效，bug02「server 不在也有人压回」承诺失效）+ 粘滞账死 pid 永不清账。**stop→数秒内 relaunch 恰是 A2 自愈与常规工作流的节拍**，非边缘序列。失败方向为「失去压制」（反劫持安全侧），无用户资产被杀——定 P1 非P0。
+- **修复（单主题 commit）**：desired-hide-enforcer 新增 `startDualDutyEnforcer` 自愈监护——职责自杀后其账面重填（死窗内新 launch）→ 复活该职责（重建调度器+重置闩旗）；退出判定升级为「两职责都自杀且**退出前新鲜读**两账皆空」（check-then-exit 竞态收窄到 ms 级）；收割显式禁用（reapDone）时台账非空不阻退出（a1 spec 5c 语义保持）。runHideEnforcerCli 全量接线；r3-dual-duty-revival.spec 7 用例（死窗复活/退出新鲜读/正常自退/对称面/禁用终态/复活再自杀幂等/白盒锚）；变异 M-R3F1（拆复活分支）3 红。门禁全绿（163+1 files 2676+1skip / INV 87）。
+- **修复真机复验（PASS）**：同一死窗序列（stop A → 8s → relaunch B）→ 掀出 B → **≤2s 压回**（复活执守生效）；受控单发 launch 执守恰 1 个（单例保持）。
+
+### 11.3 观察与残留（非缺陷登记）
+
+- **O-R3-1**：上轮（r2 验收/回炉）残留陈旧执守 pidfile（~/.cache/lasso/desired-hide-enforcer.json 指向已死 pid 73043，03:42 写入）——probe 判 pid_dead 功能上无害，本轮已随清理删除；「环境全清」口径建议把 pidfile 一并纳入。
+- **O-R3-2（低危加固建议，未实施）**：idle reaper 与 A2 僵尸门的 stopFn 均为 `stopLaunchedChromes({port})` 不带 `exemptUserTaken`（靠调用方前置过滤）——存在 ms 级 TOCTOU（读账判定→stop 内二次读账之间用户恰好 chrome-show 认领）。窗口毫秒级且需 30min idle 同时命中，登记为后续防御纵深（stopFn 传 exemptUserTaken:true 可闭）。
+- **O-R3-3**：死窗复验期间观察到 2 个瞬时 hide-enforcer 进程（93637/93640，04:14）自行退场（入口让位收敛）；受控单发复测执守恰 1 个、单 `hide_enforcer_spawned` 事件——未复现双拉根因（可能为旧执守退出窗口与新 launch 的 probe 竞态），单例不变量全程保持（恰一存活）。登记待观察。
+- **O-R3-4**：headless 档记录不进停机 modes:["hidden"] 收割域（`r.launchMode ?? "hidden"` 精确匹配不含 headless）——失败方向安全（少杀），由 idle reaper（含 headless）/显式 chrome-stop 兜底；与执守收割域（hidden+headless）口径不一致，登记为后续统一项。
+
+

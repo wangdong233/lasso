@@ -17,7 +17,8 @@
  *  - 执守体 = `node <dist|src>/index.js hide-enforcer`（复用 startDesiredHideWatchdog
  *    单一调度真源 + exitWhenIdleTicks 自退——账空 2 tick 即退，不留常驻 node）
  *  - BUG-03 决议 A1（doc/bugs/03）：执守体扩双职责——粘滞复隐 + hidden 档 idle
- *    收割（startEnforcerIdleReaper，见下）；双职责都账空自退才 exit
+ *    收割（startEnforcerIdleReaper，见下）；双职责都自退且两账皆空才 exit
+ *    （BUG-03 adversarial r3 F1：死窗内账面重填 → 自愈监护复活对应职责）
  *  - 幂等：执守存活即跳过 spawn；并发双起时后到者在入口自检发现前者即 exit
  *
  * 与 server 内看门狗并发安全：reassert 原语是「可见才压回」幂等（先读后写），
@@ -31,6 +32,9 @@ import * as path from "node:path";
 import os from "node:os";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  readDesiredHiddenSync,
+} from "./desired-hide-state.js";
 import {
   startDesiredHideWatchdog,
   type DesiredHideWatchdog,
@@ -308,18 +312,137 @@ export function startEnforcerIdleReaper(
 }
 
 /**
+ * BUG-03 adversarial r3 F1（2026-09-08 真机定罪修复）：双职责自愈监护。
+ *
+ * 事故型：runHideEnforcerCli 的双职责闩原实现里，两个调度器各自「账空 2 tick
+ * 即自杀」且**自杀是终态**（startDesiredHideWatchdog/startChromeIdleReaper 的
+ * stopped+clearInterval 无复活路径）。当粘滞看门狗先自杀（如 chrome-stop 清两账
+ * 后 ~4.5s）而 idle 收割职责仍在计数（15s × 2 = 30s 死窗）或台账仍有他记录
+ * （无限期）时，执守**进程**活着但粘滞执守已死——死窗内任何新 hidden launch 的
+ * ensureHideEnforcerRunning probe 判 already_running 跳过重生 → 新 Chrome 的
+ * 粘滞账记录**永无执守压回**（v1.18.3 P27 防闪契约静默失效）、**永不清账**
+ * （死 pid 记录堆积）。真机复现（r3）：stop A → 8s 后 relaunch B → 掀出 B
+ * 8s+ 零压回；本会话更早一段 3 条死 pid 粘滞记录滞留 11 分钟。
+ *
+ * 修法：自愈监护（reconcile）——职责自杀后若其账面重新非空（死窗内新 launch）
+ * 则**复活该职责**（重建调度器 + 重置闩旗）；退出判定改为「两职责都自杀且
+ * **此刻**两账都空」（退出时新鲜读双账，读非空即复活不退出——check-then-exit
+ * 竞态收窄到 ms 级）。reconcile 由周期 timer（默认 3s）与每个 onIdleExit 双驱动。
+ */
+export interface DualDutyEnforcerOptions {
+  /** 粘滞执守职责工厂（null = 非 darwin 无对象；runHideEnforcerCli 预检后不会为 null）。 */
+  stickyDutyFn: (onIdleExit: () => void) => DesiredHideWatchdog | null;
+  /** idle 收割职责工厂（null = 显式禁用收割——终态不复活）。 */
+  reapDutyFn: (onIdleExit: () => void) => ChromeIdleReaper | null;
+  /** 粘滞账此刻非空？（复活判定 + 退出前新鲜读）。 */
+  stickyNonEmptyFn: () => boolean;
+  /** 收割域（hidden/headless 台账）此刻非空？ */
+  reapNonEmptyFn: () => boolean;
+  /** 两职责都自杀且两账皆空 → 进程退出回调。 */
+  onBothIdle: () => void;
+  /** 监护周期（默认 3s = 2× 粘滞 tick；测试注入）。 */
+  reconcileIntervalMs?: number;
+  /** 结构化日志注入。 */
+  logFn?: (p: Record<string, unknown>) => void;
+}
+
+export interface DualDutyEnforcer {
+  /** 立即跑一轮监护（timer 之外；测试与 onIdleExit 双驱动共用）。 */
+  reconcile(): void;
+  /** 停监护（信号退出路径；不再触发 onBothIdle）。 */
+  stop(): void;
+}
+
+export function startDualDutyEnforcer(
+  opts: DualDutyEnforcerOptions,
+): DualDutyEnforcer {
+  const logFn = opts.logFn ?? (() => {});
+  const reconcileIntervalMs = opts.reconcileIntervalMs ?? 3_000;
+  let stickyIdleExited = false;
+  let reapIdleExited = false;
+  /** 收割工厂返 null（显式禁用）——终态：永不复活、也不阻退出。 */
+  let reapDone = false;
+  let stopped = false;
+
+  const reviveSticky = (): void => {
+    const w = opts.stickyDutyFn(() => {
+      stickyIdleExited = true;
+      reconcile();
+    });
+    stickyIdleExited = w === null; // 非 darwin 防御（runHideEnforcerCli 已预检）
+  };
+
+  const reviveReap = (): void => {
+    const r = opts.reapDutyFn(() => {
+      reapIdleExited = true;
+      reconcile();
+    });
+    if (r === null) {
+      reapIdleExited = true;
+      reapDone = true;
+    } else {
+      reapIdleExited = false;
+    }
+  };
+
+  function reconcile(): void {
+    if (stopped) return;
+    if (stickyIdleExited && opts.stickyNonEmptyFn()) {
+      logFn({
+        evt: "hide_enforcer_duty_revived",
+        duty: "sticky",
+        note: "R3-F1: sticky account refilled after watchdog idle-exit (dead-window relaunch); re-arming reassert host",
+      });
+      reviveSticky();
+    }
+    if (!reapDone && reapIdleExited && opts.reapNonEmptyFn()) {
+      logFn({
+        evt: "hide_enforcer_duty_revived",
+        duty: "idle_reaper",
+        note: "R3-F1: ledger refilled after reaper idle-exit; re-arming idle reaper",
+      });
+      reviveReap();
+    }
+    const bothIdleExited = stickyIdleExited && reapIdleExited;
+    // 收割显式禁用（reapDone）时台账非空不阻退出（a1 spec 5c 语义：禁用收割
+    // = 用户裁决，执守只保留粘滞复隐职责——台账内容由 chrome-stop/停机收尾）。
+    const reapSideClear = reapDone || !opts.reapNonEmptyFn();
+    if (bothIdleExited && !opts.stickyNonEmptyFn() && reapSideClear) {
+      // 退出前新鲜读双账（任一非空已被上方复活分支拦截）——check-then-exit
+      // 的竞态窗收窄到本函数内 ms 级。
+      stopped = true;
+      clearInterval(timer);
+      opts.onBothIdle();
+    }
+  }
+
+  const timer = setInterval(reconcile, reconcileIntervalMs);
+  timer.unref();
+  // 首启经同一 revive 入口（首启与复活同路径，无第二套装配）
+  reviveSticky();
+  reviveReap();
+  return {
+    reconcile,
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
+}
+
+/**
  * CLI 入口（index.ts 子命令 `hide-enforcer` 路由）——执守进程主体。
  *
  * 行为：
  *  1. 入口自检：probe 发现「别的执守在世」（pid ≠ 自己）→ 立即 exit 0 让位
  *     （并发双起的收敛出口）
  *  2. 自写 pidfile（父进程可能没写成 / 已被覆盖——自己 pid 是唯一权威）
- *  3. startDesiredHideWatchdog({ exitWhenIdleTicks: 2 })——粘滞账连续 2 tick
- *     为空自退；watchdog timer 是 unref 的，另持一个 ref'd keep-alive 维持进程
- *  4. BUG-03 A1：startEnforcerIdleReaper 双职责第二职责（hidden 档 idle 收割）；
- *     两职责各配独立自退——**双职责都自退才 process.exit**（单职责退出不杀另一
- *     职责：粘滞账空但 hidden 台账仍活跃时执守必须留下收割；反之亦然）
- *  5. SIGTERM/SIGINT → 干净退出（不挣扎）
+ *  3. startDualDutyEnforcer 双职责自愈监护（R3-F1）：
+ *     - 粘滞复隐职责：startDesiredHideWatchdog({ exitWhenIdleTicks: 2 })
+ *     - idle 收割职责：startEnforcerIdleReaper（BUG-03 A1 第二职责）
+ *     - 职责自杀后账面重新非空 → 复活（死窗内新 launch 重新获得执守）
+ *     - 两职责都自杀且两账皆空（退出前新鲜读）→ process.exit
+ *  4. SIGTERM/SIGINT → 干净退出（不挣扎）
  *
  * @param opts.defaultIdleMs 收割阈值（index.ts 路由传 config.launchIdleMs——
  *        显式 env/config 禁用收割（0）时执守只保留粘滞复隐职责，尊重用户裁决）
@@ -332,49 +455,47 @@ export async function runHideEnforcerCli(
     // 并发双起收敛：已在世的执守继续，本进程让位
     process.exit(0);
   }
+  // 非 darwin：reassert 原语 darwin-only（startDesiredHideWatchdog 唯一返 null
+  // 条件），无执守对象立即退（既有语义）
+  if (process.platform !== "darwin") {
+    process.exit(0);
+  }
   // P2 处置轮：CLI 主体统一 stderr 结构化日志（与 watchdog logFn 同款）——
   // 自写 pidfile 失败不再被默认 no-op logFn 吞掉（hide_enforcer_pidfile_error
   // 事件此前全库不可达）。
   const cliLogFn = (p: Record<string, unknown>) =>
     process.stderr.write(`${JSON.stringify({ ts: Date.now(), ...p })}\n`);
   writeEnforcerPidfile(process.pid, cliLogFn);
-  // BUG-03 A1：双职责自退闩——两职责都 idle 自退才 exit（单职责退出只标记）。
-  let stickyIdleExited = false;
-  let reapIdleExited = false;
-  const tryExit = (): void => {
-    if (stickyIdleExited && reapIdleExited) process.exit(0);
-  };
   // PERF-2a 起改静态 import（同目录模块，INV-64 合规；
   // startWatchdogUnlessEnforcerRunning 也需要同步引用）
-  const watchdog = startDesiredHideWatchdog({
-    exitWhenIdleTicks: 2,
-    onIdleExit: () => {
-      stickyIdleExited = true;
-      tryExit();
-    },
+  const dual = startDualDutyEnforcer({
+    stickyDutyFn: (onIdleExit) =>
+      startDesiredHideWatchdog({
+        exitWhenIdleTicks: 2,
+        onIdleExit,
+        logFn: cliLogFn,
+      }),
+    reapDutyFn: (onIdleExit) =>
+      startEnforcerIdleReaper({
+        defaultIdleMs: opts.defaultIdleMs,
+        logFn: (p) => cliLogFn({ ...p, scope: "enforcer_reaper" }),
+        onIdleExit,
+      }),
+    stickyNonEmptyFn: () => readDesiredHiddenSync().length > 0,
+    reapNonEmptyFn: () =>
+      readLedgerSync().some((r) =>
+        // 与 startEnforcerIdleReaper 缺省 readLedgerFn 同款过滤（日常档两形态；
+        // 单一真源常量无法直接复用——此处是谓词非全量读，注释锚定同源语义）
+        ["hidden", "headless"].includes(r.launchMode ?? "hidden"),
+      ),
+    onBothIdle: () => process.exit(0),
     logFn: cliLogFn,
   });
-  if (!watchdog) {
-    // 非 darwin：无执守对象（reassert 原语 darwin-only），立即退
-    process.exit(0);
-  }
-  // BUG-03 A1 第二职责：hidden 档 idle 收割（defaultIdleMs ≤ 0 = 显式禁用收割，
-  // 返回 null 只标记该职责已空，不阻粘滞复隐职责）
-  const reaper = startEnforcerIdleReaper({
-    defaultIdleMs: opts.defaultIdleMs,
-    logFn: (p) => cliLogFn({ ...p, scope: "enforcer_reaper" }),
-    onIdleExit: () => {
-      reapIdleExited = true;
-      tryExit();
-    },
-  });
-  if (!reaper) reapIdleExited = true;
   // watchdog timer unref（不阻 server 退出）——独立进程需显式持活
   const keepAlive = setInterval(() => {}, 60_000);
   const bye = () => {
     clearInterval(keepAlive);
-    watchdog.stop();
-    reaper?.stop();
+    dual.stop();
     process.exit(0);
   };
   process.once("SIGTERM", bye);
