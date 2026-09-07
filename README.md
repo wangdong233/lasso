@@ -320,7 +320,7 @@ lasso launch-chrome
 以后对 Claude 说「打开我已登录的 Jira」就行。想再看窗口随时 `lasso chrome-show`（可逆，登录态不动）。
 
 - 默认**零窗口静默**干活、不抢焦点、永远静音；想看着它干加 `--mode visible`
-- 命令行拉起的 Chrome **默认不再自动关**（v1.18.5——手敲命令要的 Chrome 不被后台 60s 静默回收）；想要「用完即关」在 config 配 `LASSO_LAUNCH_IDLE_MS`，手动关随时 `lasso chrome-stop`
+- 命令行拉起的 Chrome **默认 30 分钟无活动自动收**（BUG-03 A1——「有活动就活，无消费者到期自动收」；外部工具 `touch ~/.cache/lasso/chrome-touch-<端口>` 一行续命；长会话显式 `--idle-ms 0` 永不自动收），手动关随时 `lasso chrome-stop`
 - 它在你 Chrome 里开的 tab，任务后说 `admin {action:"tab_restore", reason:"完成"}` 恢复原列表（server 退出也会自动做）
 
 > 🔴 **红线**：2FA / 验证码 / CAPTCHA——Lasso 不替你解，你在窗口里手动过一次。
@@ -330,14 +330,17 @@ lasso launch-chrome
 
 - v1.8 起默认用 Lasso 独立 profile（Chrome 136+ 禁止对默认 profile 开调试端口，老办法会秒退）；复用已有 profile 用 `lasso launch-chrome --profile <目录>`。
 - 启动后自动探活调试端口，Chrome 没起来 / 端口被占会明确报错，不假报成功。
-- 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。v1.18.5 起**命令行显式拉起默认 `--idle-ms 0`**（不进 reaper 管辖；显式配置 env / config.json 仍最高优先）。
-- **外部 CDP 消费者续命**（v1.18.5）：其他工具（chrome-devtools-mcp、自动化脚本等）直连这条 Chrome 的调试端口时，一行 `touch ~/.cache/lasso/chrome-touch-<端口>` 即视为「刚用过」，lasso 的 idle 回收不会误杀它；不需要常驻（hidden 档冷启动实测 1.5s 内 CDP 可用），一整段会话要用就拉起时配 `--idle-ms 1800000`（半小时到点自动收）。
+- 自动关阈值：`LASSO_LAUNCH_IDLE_MS`（默认 60000；`300000` 回退 5 分钟；`0` 禁用）。单次长任务放行：`--idle-ms 3600000`。BUG-03 轮起**命令行显式拉起默认 `--idle-ms 1800000`（30 分钟）**——server 退出不再连坐任何 CLI 拉起的 Chrome（归属过滤），执守进程（server 不在也活着）负责到期收割；显式配置 env / config.json 仍最高优先。
+- **外部 CDP 消费者续命**（v1.18.5，BUG-03 口径修订）：其他工具（chrome-devtools-mcp、自动化脚本等）直连这条 Chrome 的调试端口时，一行 `touch ~/.cache/lasso/chrome-touch-<端口>` 即视为「刚用过」（承诺口径 = **在用就一直活**，无信号才到期收）；不需要常驻（hidden 档冷启动实测 1.5s 内 CDP 可用），一整段会话要用就拉起时配 `--idle-ms 0`（显式退出自动收）或定期 touch。
 - 登录后自动收窗：`LASSO_AUTO_HIDE_AFTER_LOGIN`（默认 false；开启后只在「见过登录页 → 登录页消失 → 等 10 秒 → Claude 没在用」四关全过时才收，收错方向保守——拿不准就不收）。等待时长 `LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS`（默认 10000）。只在 server 会话运行期间生效（CLI 单独 `launch-chrome` 没有调度器，仍走手动 `chrome-hide`）。
 - 无头浏览器空闲 5 分钟自动回收（`LASSO_HEADLESS_IDLE_MS` 可调/禁用）。
 - 诚实边界：单独跑 `lasso launch-chrome`（不经 server）没有 idle 自动关，出口是 `chrome-stop`；它起的 Chrome 在 Dock / 任务栏会多一个图标（浏览器有头进程的注册行为，lasso 控制不了），要零图标用 `browse_headless`；`browse_logged_in` 连**你自己开的可见 Chrome** 时会在你的 Chrome 里临时开一个后台 tab 干活（不抢焦点不发声，结束自动关，v1.17.2 起你的 tab 一律不被改写）——但你的 Chrome 本身不静音（lasso 不改写你的浏览器参数），浏览到自动播放页面会真出声；`desktop` 模拟真人键鼠，设计上就占用物理键鼠，没有静默形态。
 - chrome-stop 只关 Lasso 自己起的、验证过归属的 Chrome，不会误伤你手动开的浏览器。
 - `chrome-hide` / `chrome-show` 同样只动台账在案的 Chrome（按 pid 定向，永不碰你手动开的浏览器）；hide 只隐藏窗口，进程/登录态/CDP 全保留。台账缺条目时按 `--pid N` 直达（见上文；归属不满足会明确拒绝）。
 - hide 是**粘滞**的（v1.18.3，v1.18.5 补全生命周期）：已 hide 的窗口无论被什么来源掀出（上游页面自己弹的、外部工具开的 tab、系统焦点切换），约 1.5 秒内自动压回后台；想看窗口用 `chrome-show`（明示解除，不再压回）。粘滞状态跨重启保留；v1.18.5 起 hidden 档**出生即受保护**（拉起落账即写粘滞），且由独立执守进程兜底——**即使 Claude 会话/server 不在，隐藏的 Chrome 被掀出也会被压回**（执守是账空自退的短命进程，不留常驻开销）。
+- **你亲手点开它时，执守会让位**（BUG-03 B1）：压回决策带「用户激活让位门」——Dock 点击 / 你手动点开的激活（判定 = 本 Chrome 处于前台 + 键鼠刚有输入，连续约 30 秒确认）会被认领：不再压回、不再自动收，关它只剩你自己关或显式 `chrome-stop`。程序掀出（页面自己弹的）照常压回。误认领可用 `lasso chrome-hide` 重新武装。
+- **端口被你自己的 Chrome 占了？lasso 永不动它**（BUG-03 C）：报 `port_in_use_non_cdp` 时，自家挂死的实例会自动清掉重拉（`ledger_zombie_collected`）；是你手开的 Chrome / 其他程序占用则明确说「用户资产，不会 kill，请自行裁决或换口」——lasso 不提供任何针对非自家资产的 kill 出口。
+- 纯抓取不需要登录态时可用 `--mode headless`（BUG-03 B2）：无头实例不占 Dock 的 Chrome 槽位（点 Chrome 图标不会被路由进工具实例）；代价是没有窗口、`chrome-show` 无效，登录流用 hidden/visible。
 
 </details>
 

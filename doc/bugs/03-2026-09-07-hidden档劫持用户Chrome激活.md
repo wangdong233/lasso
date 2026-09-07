@@ -143,3 +143,47 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 - src/launcher/{launch-chrome,chrome-stop,chrome-idle-reaper,desired-hide-enforcer,desired-hide-watchdog,chrome-hide,chrome-ledger,chrome-touch}.ts;src/render/{render-launcher,render-guardian}.ts(成熟模式源);src/index.ts:1331-1427(停机链);src/doctor/doctor.ts:967-1005;src/channels/BrowseChannel.ts:979-1005/1241-1258;src/browse/upstream-response.ts
 - 既有红线:INV-82(P1/D-5/C2)、E8(永不按名 hide)、verifyOwnership、INV-78(浏览器静默启动与 idle 回收安全,决议 A/B 需同步其断言面)
 - 外部同构:Chromium flavors 文档(同 bundle id 不可并行)/Chrome for Testing(distinct bundle id,按红线作废)/Playwright 自带 Chromium(同前)
+
+---
+
+## 8. 实施记录（2026-09-08 实施员落地，全部决议闭环）
+
+### 8.1 commit 清单（单主题单 commit，不 push 不发版）
+
+| commit | 决议 | 摘要 |
+|---|---|---|
+| `9633dd6` | A1（含消费方③） | 台账 ownerKind/ownerPid/userTakenAt 三字段 + stopLaunchedChromes/Sync 三维谓词（modes × owner × userTakenAt 豁免）+ index.ts 停机两路径接线 + reaper 对 userTakenAt 禁收 + 执守双职责（startEnforcerIdleReaper + 双职责自退闩）+ CLI 默认 idle 30min（CLI_LAUNCH_IDLE_DEFAULT_MS 单一真源）+ INV-86 + a1-owner-scoped-shutdown.spec 13 用例 |
+| `08fffa1` | B1 | reassertChromeHiddenGatedAsync（HIDIdleTime+frontmost 双判据单 osascript 内判定且先于压回；gate_unavailable 零副作用）+ 看门狗确认窗状态机（20 tick）+ 认领退位 + markUserTakenByPid/clearUserTakenByPid（写路径唯一性）+ chrome-show 同标/chrome-hide 重武装（F4 对齐）+ INV-85 + b1-user-activation-gate.spec 17 用例 |
+| `bf89348` | A2/E① + C 前半 | launch-chrome port_in_use_non_cdp 门前台账归因收尸重拉（ledger_zombie_collected）+ 三分类出口（never_kill_user_asset）+ doctor checkCdp9222 catch/!ok 两分支 classifyPortOccupierNextStep 三分类 + 删 open 另起新实例建议 + a2-zombie-selfheal.spec 8 用例 |
+| `2a1ceba` | E② | doScreenshot 双路径（filePath 直写优先 + image-block 回退；两路径同 stat+PNG magic 终验）+ BrowseOptions.screenshot.filePath/schema 透传 + INV-76(c) 修订（禁传→必传+双路径同校验）+ e2-screenshot-dual-path.spec 7 用例 |
+| `8973b2a` | E④ | evaluateFunctionArg 双形态（函数表达式透传/语句体包裹，判定方向保守）+ evalFence 惰性组+负向前瞻锚定最后围栏（值内 ``` 不截断）+ session_rotated 归类（isError 与 P5 文本本体两路径）+ e4-evaluate-dual-form.spec 10 用例 |
+| `310e04c` | B2 | --mode headless 可选档（--headless=new；零 AX 面；台账第四值；chrome-stop --modes 值域扩；config 层不扩）+ enforcer 收割域扩日常档两形态 + b2-headless-mode.spec 7 用例 |
+| `e28bada` | C/D 收口 | descriptions.ts 出口指引 + idle 段落新口径 + chrome-stop 结果行携带 launchMode + INV-87（never-kill-user-assets：token 双面 + doctor open 形态 grep 禁令 + 僵尸自愈只经验证杀路径） |
+| docs commit | 本节 | 本实施记录 + README.md/README.en.md 受影响节 + ARCHITECTURE.md §3.6 |
+
+门禁：每 commit `npm run build && npx vitest run && npm run check-invariants` 全绿（终态 163 files / 2658+ tests / 87 invariants，基线 84→87）。
+
+### 8.2 真机验证记录（2026-09-08，隔离端口 9399，实验后全清）
+
+- **A1 归属与双职责**：`launch-chrome --port 9399 --idle-ms 120000` → 台账落 `ownerKind:"cli", ownerPid:<CLI pid>`；粘滞账落 pid；hide-enforcer 执守进程在世（pidfile + ps 确认）。
+- **B1 门原语**：生产 dist `reassertChromeHiddenGatedAsync(pid)` 真机返回 `{ok:true, wasVisible:false}`（"already" 信号——hidSystemState 读取（ioreg HIDIdleTime，实测 hid_ms=5696922）→ System Events AX 枚举 → pid 匹配 → visible=false → 不压回，全脚本链路真机贯通；pending 分支需真用户激活，判定逻辑经 DI 单测四分支钉死 + 脚本顺序锚 INV-85）。
+- **A2 僵尸自愈**：`kill -STOP <chrome pid>` 模拟 CDP 死进程活（curl 超时 exit 28 + TCP connectable）→ 重跑 launch-chrome → `ledger_zombie_collected` 事件 → chrome-stop 验证路径收割（SIGSTOP 进程经 2s 优雅窗升级 SIGKILL 树杀，日志实证）→ fresh spawn ok:true（新 pid）。
+- **C 输出强化**：chrome-stop 结果行携带 `launchMode`。
+- **清理证据**：`chrome-stop --port 9399` → 台账 9399 记录清、粘滞账 9399 清、`pgrep -f "chrome.*9399"` 空；执守双职责自退（粘滞账 2 tick + reaper 2 tick 后 process.exit，进程复核 0 行）；陈旧 pidfile 已删；临时脚本全删；`node scripts/check-readme-sync.mjs` 全绿。
+
+### 8.3 消费方（cc-control）4 条修复实况与回写答复要点
+
+| # | 修复 commit | 回写口径（对 cc-control 台账） |
+|---|---|---|
+| ③ 连坐死 | `9633dd6`（A1） | 已根治：任何 lasso server 退出只收自己拉起的 Chrome（ownerPid 过滤 + 旧无 owner 记录归「无人」永不连坐）。过渡期长会话外部消费仍建议显式 `--idle-ms 0`；**修后口径：touch 续命即可**（默认 30min，`touch ~/.cache/lasso/chrome-touch-<port>` 即「在用」；执守进程负责收割，server 不在也活着） |
+| ① 僵尸占位 | `bf89348`（A2/E①） | 已根治：`port_in_use_non_cdp` 时 launch-chrome 自动归因——自家挂死实例自动收尸重拉（机器可读事件 `ledger_zombie_collected`）；doctor 三分类（自家僵尸→`chrome-stop --port N` 清后重拉；陈留→清账；用户资产→如实报告永不动）。过渡期手动 `chrome-stop --port N` 清僵尸后重拉仍有效 |
+| ② screenshot | `2a1ceba`（E②） | 已根治：doScreenshot 双路径——优先传 filePath（上游 1.7.0 直写盘，≥2MB 截图不再依赖 image block）；上游忽略时回退 base64 解码落盘（两路径同 PNG magic 校验）。会话内截图通路：`options.screenshot.filePath` 可指定输出路径。过渡期顶层 screenshot 工具/缩小截图面不再必要 |
+| ④ evaluate | `8973b2a`（E④） | 已根治：js 入参双形态兼容——函数表达式（`() => document.title`）原样透传（不再恒 undefined 静默错值）；语句体（`return ...`）维持包裹；工具描述双例已同步。围栏解析修值内 ``` 截断；会话轮换错误透明化为 `session_rotated:`（可重试 + 提示重 snapshot），不再落泛 unknown 文案 |
+
+### 8.4 教训（新增，区别于既有档案）
+
+1. **「防误杀」与「用完即关」是两个正交面**：bug02 把 CLI 默认 idle 归 0 防住了「被 server 静默杀」，却拆掉了「无消费者退场」——8.5h 级常驻把激活劫持的可达性放大到事故级。生命周期能力必须成对设计（谁杀 + 何时死），单面修补会把风险转移到另一面。
+2. **错误出口是安全边界的一部分**：症状①的直接责任在 agent 裸 kill，但架构共担是「端口被用户资产占用」这个一等场景没有一等出口——错误面只说「换口」，agent 就会用 shell 填补你没提供的决策。`never_kill_user_asset` 进错误契约（INV-87 token 锚）后，合法下一步变成机器可读。
+3. **同 bundle id 单实例是 macOS 平台级契约，绕不开只能让位或退出有头形态**：外部调研的 distinct-bundle-id 路线（Chrome for Testing 式）被用户红线作废后，仓库内解 = 让位门（B1，用户激活检测）+ 结构性豁免（B2 headless）+ 退场默认（A1）三层叠加——每层单独都不足以根治。
+4. **单信号归因在互动环境中恒失效**（§4.0-F1）：hidSystemState 无 per-app 归因，「hid 年龄小」在用户在场时段恒真——判定必须 AND 归因绑定信号（frontmost）+ 确认窗（时间维），并诚实声明残余（CDP activateTarget 类夺焦在用户在场期仍可被误认领，按用户主权方向校准接受）。
+5. **账面突变与判定解耦**（§4.0-F2）：让位/暂停/失败路径对粘滞账与台账零 mutation 是防「一次误判永久 disarm」的结构保证——v1 草案的清账方案在 TCC 瞬态时会把执守永久缴械，账本快照断言（INV-85）钉死这类回潮。
