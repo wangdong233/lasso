@@ -108,8 +108,14 @@ export interface LaunchChromeOptions {
    * "hidden" 由 CLI/config 层传入（config 默认层 LASSO_LAUNCH_MODE=hidden）。
    * hidden = `--no-startup-window`（mac/linux，E7 实证零打扰）+
    *          win 追加 `--start-minimized`；visible = v1.9 现状 + 恒加三件套。
+   * BUG-03 决议 B2（doc/bugs/03 §4 B2）：扩 "headless"——`--headless=new` 可选档：
+   * headless 实例不注册 Foreground LS session，结构性不占用户 Chrome 的 Dock
+   * 槽位（激活劫持根治形态；复用 render 档 headless 经验）。代价 = 无法
+   * chrome-show（登录交互流破碎）——不切默认（hidden+B1 让位门仍默认），
+   * 仅 CLI `--mode headless` 显式可选；config 层 launchMode 不扩（LASSO_LAUNCH_MODE
+   * 仍 hidden|visible，防误配把登录工作流切到无头形态）。
    */
-  launchMode?: "hidden" | "visible";
+  launchMode?: "hidden" | "visible" | "headless";
   /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
   idleMs?: number;
   /**
@@ -445,6 +451,13 @@ export async function launchChrome(
     if (plat === "win") args.push("--start-minimized");
     // win 同加 --no-startup-window：--start-minimized 对部分 Chrome 版本被忽略
     args.push("--no-startup-window");
+  }
+  if (mode === "headless") {
+    // BUG-03 B2：无头档——headless 实例不注册 Foreground LS session，不占用户
+    // Chrome 的 Dock 槽位（单 bundle id 单实例激活路由的结构性豁免）。
+    // flag 形态取 render 档冻结快照的 headless 经验（--headless=new；不 import
+    // render 模块守 INV-64——字面量本地 + render-flags provenance 注记）。
+    args.push("--headless=new");
   }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
@@ -786,7 +799,8 @@ export function parseLaunchChromeArgs(
       i++;
     } else if (a === "--mode") {
       const v = argv[i + 1];
-      if (v === "hidden" || v === "visible") opts.launchMode = v;
+      // BUG-03 B2：扩 headless（CLI 显式可选；config 层不扩——防误配切默认）
+      if (v === "hidden" || v === "visible" || v === "headless") opts.launchMode = v;
       i++;
     } else if (a === "--idle-ms") {
       const v = argv[i + 1];

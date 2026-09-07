@@ -43,8 +43,12 @@ export interface LaunchedChromeRecord {
    * v1.19（渲染档设计决议 3.1 落点 1）：扩第三值 "render"——渲染档（确定性 headless，
    * 服务 media-gen-mcp 等外部消费方）。readLedgerSync 解析守卫同步三值
    * （🔴 守卫漏改则 render 记录被静默降级 undefined = 按 hidden 处理，表面能跑语义错）。
+   * BUG-03 决议 B2（doc/bugs/03 §4 B2）：扩第四值 "headless"——日常档的可选无头
+   * 形态（--mode headless）：headless 实例不注册 Foreground LS session，结构性
+   * 不占用户 Chrome 的 Dock 槽位（激活劫持的根治形态）；无法 chrome-show（登录
+   * 交互流破碎），故不切默认，文档明示「需登录态工作流用 hidden/visible」。
    */
-  launchMode?: "hidden" | "visible" | "render";
+  launchMode?: "hidden" | "visible" | "render" | "headless";
   /**
    * v1.10（parse18 §2.5）：per-launch idle 覆盖（CLI --idle-ms 传入）。
    * undefined = 用全局默认（config.launchIdleMs）；显式 0 = 该记录禁用回收。
@@ -140,9 +144,10 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
       // v1.19（渲染档设计决议 3.1 落点 1）：launchMode 扩第三值 "render"（守卫
       // 同步三值——漏改则 render 记录被静默读成 undefined，chrome-ledger.spec
       // 「render 写读往返」用例钉死）
+      // BUG-03 B2：扩第四值 "headless"（守卫同步——同上漏改风险）
       launchMode:
         typeof r.launchMode === "string" &&
-        (r.launchMode === "hidden" || r.launchMode === "visible" || r.launchMode === "render")
+        (r.launchMode === "hidden" || r.launchMode === "visible" || r.launchMode === "render" || r.launchMode === "headless")
           ? r.launchMode
           : undefined,
       idleMs: typeof r.idleMs === "number" && Number.isFinite(r.idleMs) ? r.idleMs : undefined,

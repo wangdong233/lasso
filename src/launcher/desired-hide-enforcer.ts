@@ -36,9 +36,10 @@ import {
   type DesiredHideWatchdog,
   type DesiredHideWatchdogOptions,
 } from "./desired-hide-watchdog.js";
-// BUG-03 决议 A1（doc/bugs/03 §4 A1）：执守进程语义扩为「粘滞复隐 + hidden 档
-// idle 收割」双职责——复用既有 hide-enforcer 单例（零新守护进程，守用户红线
-// 「不出现新的项目之外的组件」；render 档不动，render-guardian 自管）。
+// BUG-03 决议 A1（doc/bugs/03 §4 A1）：执守进程语义扩为「粘滞复隐 + 日常档
+// （hidden/headless）idle 收割」双职责——复用既有 hide-enforcer 单例（零新守护
+// 进程，守用户红线「不出现新的项目之外的组件」；render 档不动，render-guardian
+// 自管）。
 import {
   startChromeIdleReaper,
   type ChromeIdleReaper,
@@ -259,8 +260,8 @@ function writeEnforcerPidfile(pid: number | undefined, logFn: (p: Record<string,
  * 劫持可达性的放大器。A1 把 CLI 默认翻为有限值（CLI_LAUNCH_IDLE_DEFAULT_MS
  * 30min）后，需要一个「server 不在时也活着」的收割宿主：复用本执守进程
  * （pidfile 单例 / 账空自退既有机制零改动）装配 startChromeIdleReaper——
- * readLedgerFn 过滤 launchMode==="hidden"（不动 render：render-guardian 自管；
- * visible 由 reaper 内部既有豁免）。touch 续命契约不变
+ * readLedgerFn 过滤日常档（hidden + B2 headless；不动 render：render-guardian
+ * 自管；visible 由 reaper 内部既有豁免）。touch 续命契约不变
  * （~/.cache/lasso/chrome-touch-<port>，bug02 §6 建议 3 跨仓库契约）。
  *
  * @returns ChromeIdleReaper | null（null = defaultIdleMs ≤ 0（显式 env/config 禁用
@@ -290,7 +291,13 @@ export function startEnforcerIdleReaper(
     defaultIdleMs: opts.defaultIdleMs ?? CLI_LAUNCH_IDLE_DEFAULT_MS,
     readLedgerFn:
       opts.readLedgerFn ??
-      (() => readLedgerSync().filter((r) => r.launchMode === "hidden")),
+      (() =>
+        readLedgerSync().filter((r) =>
+          // 日常档两形态（hidden + B2 headless）进收割域；缺省 launchMode 按
+          // hidden（与 chrome-stop modes 过滤同款前向兼容）；render 不动
+          // （render-guardian 自管）；visible 由 reaper 内部既有豁免
+          ["hidden", "headless"].includes(r.launchMode ?? "hidden"),
+        )),
     nowFn: opts.nowFn,
     stopFn: opts.stopFn,
     touchStatFn: opts.touchStatFn,

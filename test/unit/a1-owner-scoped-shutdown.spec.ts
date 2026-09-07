@@ -222,10 +222,11 @@ describe("A1 · idle reaper userTakenAt 禁收（F4 倒挂修复面）", () => {
 // 5. enforcer 双职责第二职责
 // ============================================================
 describe("A1 · startEnforcerIdleReaper（执守 idle 收割职责）", () => {
-  it("5a. 默认 readLedgerFn 过滤 hidden：render/visible 不进收割域（render-guardian 自管）", async () => {
+  it("5a. 默认 readLedgerFn 过滤日常档（B2 后 hidden+headless）：render/visible 不进收割域（render-guardian 自管）", async () => {
     vi.useFakeTimers();
     try {
       await recordLaunch(makeRec({ port: 9222, pid: 111, launchMode: "hidden", launchedAt: 0 }));
+      await recordLaunch(makeRec({ port: 9227, pid: 115, launchMode: "headless", launchedAt: 0 }));
       await recordLaunch(makeRec({ port: 9224, pid: 113, launchMode: "render", launchedAt: 0 }));
       await recordLaunch(makeRec({ port: 9225, pid: 114, launchMode: "visible", launchedAt: 0 }));
       const stopCalls: Array<{ port: number }> = [];
@@ -238,7 +239,7 @@ describe("A1 · startEnforcerIdleReaper（执守 idle 收割职责）", () => {
         logFn: () => {},
       });
       await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS);
-      expect(stopCalls.map((s) => s.port)).toEqual([9222]); // 只收 hidden
+      expect(stopCalls.map((s) => s.port).sort()).toEqual([9222, 9227]); // 只收日常档两形态
     } finally {
       vi.useRealTimers();
     }
