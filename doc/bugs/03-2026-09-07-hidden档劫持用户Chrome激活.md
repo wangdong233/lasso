@@ -225,3 +225,11 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 2. test(b1)/invariants: 双判据 AND 合取锚（M1 存活补锚，P1）
 3. fix(launcher): headless_dock_slot_caveat 观测点 + b2 spec 2d（P1）
 4. docs(bugs/README/ARCHITECTURE): B2 证伪订正 + B1 判据 (a) 伪造残余 + §2.1 CGEventSource 语义澄清（P1）
+
+### 9.4 回炉复核记录（2026-09-08 r2，回炉修复员）
+
+**复核范围**：四裁定项逐一 diff 比对 + 门禁四件套复跑 + 变异复杀 + 真机 smoke。
+
+- **复核通过项**：①E② 降级重试/临时文件物化 diff 与 e2 spec 10/10 ✓；②M1 补锚**变异复杀实证**——删 `fm is true and` 后 b1 spec 2a 红 + INV-85 FAIL（双杀，与 r1 声称一致），还原 md5 核对 ✓；采样 M2（确认窗 20→1 tick）4 红（2b/3c/3d/3e）复杀 ✓，还原 ✓；③④文档诚实化（§2.1 再订正注/§4 B1 残余追加段/§9 全记录）逐段核对 ✓。门禁：build ✓ / vitest 163 files 2662+1skip ✓ / invariants 87 ✓ / readme-sync ✓。机器残留：desired-hidden=[]、chrome-ledger 空、无 lasso Chrome 主进程、launchctl 无 lasso 项、/tmp/adv-bug03-r1 已清、/Applications 无项目外新组件。
+- **🔴 r2 新发现（当场收口）**：B2 证伪订正漏了 **CLI `--help` 面**——`src/index.ts` CLI_USAGE 仍残留被证伪声明「headless: no Dock slot takeover」（dca8135 只订正了源码注释/README 双语/ARCHITECTURE/§4 B2）。该面是用户/agent 选档的直接决策入口，残留即「读 help → 有人机器选 headless → 劫持回潮」的活口。处置：help 文案订正为「unattended-only; still absorbs Dock activation on macOS; no chrome-show login flow」+ cli-conventions.spec 补锚（`not.toContain("no Dock slot")` 反回潮 + 订正语义 toContain 双锚）。commit 见 r2 处置。
+

@@ -78,6 +78,18 @@ describeOrSkip("CLI 惯例（F-CLI-01：--version / --help / 未知子命令）"
     expect(r.stdout).toContain("Usage");
   });
 
+  it("--help headless 文案 = BUG-03 r1 订正后口径（无人值守专用；不再声明不占 Dock 槽位）", () => {
+    const r = runCli(["--help"]);
+    expect(r.status).toBe(0);
+    // 🔴 被真机证伪的原声明（dca8135 订正前形态）不得回潮：headless 并不释放
+    // Dock 槽位——macOS 上激活仍被同 bundle id 吸收（症状②无窗变体）。
+    expect(r.stdout).not.toContain("no Dock slot");
+    // 订正后语义必须在场：无人值守专用 + 仍吸收 Dock 激活（与 README 双语/
+    // ARCHITECTURE §3.6/BUG-03 §4 B2 同口径，见 dca8135+55873af）。
+    expect(r.stdout).toContain("unattended-only");
+    expect(r.stdout).toContain("absorbs Dock activation");
+  });
+
   it("未知子命令 → usage 到 stderr + exit 1（不静默进 MCP server 挂起）", () => {
     const r = runCli(["frobnicate"]);
     expect(r.status).toBe(1);
