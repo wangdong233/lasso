@@ -17,7 +17,7 @@
 
 1. **LaunchServices 单应用槽位路由(macOS 机制层)**:macOS 对同 bundle id 应用执行单实例激活——Dock 点击/`open -a`/外链打开全部路由到已运行实例,不分 profile;多实例并存时「先注册者赢」(3/3 实测)。lasso hidden 档复用用户 Google Chrome.app(com.google.Chrome,`--user-data-dir` 只隔离数据不隔离身份)注册成 Foreground LS session 后,用户一切 Chrome 手势被路由进工具实例。业界同构:Chromium 官方 flavors 文档明确「同 bundle id 不可与 Stable 并行」;Google/Playwright 的根治=distinct bundle id(**被红线作废,见决议 B 仓库内路线**)。
 2. **hidden 档无退场默认(生命周期层)**:CLI 显式拉起默认 `idleMs:0`(v1.18.5 bug02 §9.1 裁决,index.ts:1536-1551)——防 reaper 误杀外部消费者的同时,把「用完即关」的出口也拆了:实例常驻到显式 chrome-stop,8.5h 级暴露窗口 = 劫持可达性的放大器。
-3. **执守无条件压回(判定层)**:desired-hide-watchdog 1.5s tick 的 reassert 原语(chrome-hide.ts reassertScript)只做「可见→压回」,不问**谁掀出来的**。macOS 调研实证唯一可编程因果判据:CGEventSource hidSystemState 输入年龄——真实用户激活 hid 年龄 1.66-22s(3 样本)vs 程序激活 380-1229s(8 样本),**零重叠**(真实硬件事件只进 hidSystemState,合成事件只进 combinedSessionState)。【2026-09-08 §4.0-F1 修订注:该零重叠结论**限定于机器闲置时段**(程序样本采自用户离席时);hidSystemState 为系统级信号无 per-app 归因,互动会话中恒小——B1 据此升级为三判据 AND+确认窗,见 §4 B1。】
+3. **执守无条件压回(判定层)**:desired-hide-watchdog 1.5s tick 的 reassert 原语(chrome-hide.ts reassertScript)只做「可见→压回」,不问**谁掀出来的**。macOS 调研实证唯一可编程因果判据:CGEventSource hidSystemState 输入年龄——真实用户激活 hid 年龄 1.66-22s(3 样本)vs 程序激活 380-1229s(8 样本),**零重叠**(真实硬件事件只进 hidSystemState,合成事件只进 combinedSessionState)。【2026-09-08 §4.0-F1 修订注:该零重叠结论**限定于机器闲置时段**(程序样本采自用户离席时);hidSystemState 为系统级信号无 per-app 归因,互动会话中恒小——B1 据此升级为三判据 AND+确认窗,见 §4 B1。】【🔴 2026-09-08 对抗复审 r1 再订正:「合成事件只进 combinedSessionState」只对 **CGEventSource state 查询 API** 成立;B1 实现读的是 **ioreg IOHIDSystem HIDIdleTime**,System Events 合成 CGEvent(key code)实测同样将其归零——ioreg 路径的判据 (a) 可被 shell 程序伪造(真机合成输入+open -a 走满确认窗落 userTakenAt 实证),详见 §4 B1 残余风险追加段。】
 
 ### 2.2 症状①:agent 越权裸 kill + lasso 出口缺位
 
@@ -83,13 +83,14 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 - **放行(单 tick)绝不 mutate 粘滞账/台账**:不删 desired-hidden 记录、不落 userTakenAt。粘滞账唯一清账路径保持 chrome-show(既有);唯一重挂路径 = 显式 chrome-hide(既有 addDesiredHidden)——双向可逆。v1 草案「一次门通过即清粘滞账+禁 idle」= 对 v1.18.3 防闪契约的实例级永久回退(其后页面弹窗无人压),且失败路径按 v1 文案同样放行(JXA 常量漂移/TCC 瞬态即永久 disarm),均废除。
 - **userTakenAt 仅在确认窗通过后落**:台账该记录标 `userTakenAt`(epoch ms);此后粘滞执守对本 pid 退位(等效 chrome-show 的让位语义,但台账留痕),idle 收割禁用,停机/exit 收割豁免(A1 第三维)——唯一关闭出口=用户自己关或显式 chrome-stop,与 visible 档红线(P1/D-5)语义对齐(hidden 档的状态迁移补全)。**显式 chrome-hide 可重武装:写粘滞账恢复执守,并同步清 userTakenAt(台账回写)**——让位/武装两态与粘滞账/台账双账一致,不留「已重武装但仍收割豁免」的混合态。
 - **判据不可得(非 darwin / TCC 瞬态 / JXA 常量漂移):跳过本 tick,零账面突变**——不压回、不确认、不落账(宁失隐藏不失用户主权,与 E8「宁可不压回,绝不误伤」同向;**失败路径禁账面突变**)。
-- **残余风险(诚实声明)**:(a)+(b) 仍无法区分「用户 Dock 激活」与「用户在场期间的 CDP activateTarget / 弹窗夺焦」(后者同样产生 frontmost)。确认窗 30s 把误认领成本从「瞬时永久 disarm」升为「持续 30s 夺焦存活才被认领」,且 chrome-hide 可逆重武装;此残余按用户主权方向校准,接受并记录。
+- **残余风险(诚实声明)**:(a)+(b) 仍无法区分「用户 Dock 激活」与「用户在场期间的 CDP activateTarget / 弹窗夺焦」(后者同样产生 frontmost)。确认窗 30s 把误认领成本从「瞬时永久 disarm」升为「持续 30s 夺焦存活才被认领」,且 chrome-hide 可逆重武装;此残余按用户主权方向校准,接受并记录。**🔴 对抗复审 r1(2026-09-08)追加:判据 (a) 可被任何 shell 能力程序伪造**——`osascript 'tell application "System Events" to key code 63'`(空键/合成键)实测将 ioreg HIDIdleTime 归零(0.23s),配合 `open -a` 激活(frontmost 可编程达成),(a)+(b) 在**用户完全离席**时也可全真持续满足:真机实测合成输入循环 20+ tick 后 userTakenAt 被完整落账(粘滞执守永久退位+收割全豁免)。§2.1 的「真实硬件事件只进 hidSystemState」结论限定于 **CGEventSource state 语义**(合成事件确实只进 combinedSessionState);**实现读的是 ioreg IOHIDSystem 计时器,该计时器被 System Events 合成 CGEvent 一并重置**——原 §2.1 表述对实现路径不成立,已订正。威胁面评估:shell 能力 agent 本就可直接调 chrome-show CLI 获得同等认领(显式出口,B1 门未新增特权上限);真实新增风险=**无恶意自动化工作流的自伤**(如 agent 用 lasso desktop act type 合成键入 + CDP activateTarget 在用户离席期意外走满 30s 确认窗→工具 Chrome 永久可见化+收割豁免,BUG-03 A1 要消除的「常驻放大器」借尸还魂)。缓解现状:chrome-hide 重武装可逆 + 真机已验证;进一步收紧(如认领前要求 CGEventSource hidSystemState 与 combinedSessionState 差分)留作后续决议。
 - **chrome-show 对齐(§4.0-F4)**:chrome-show 成功 = 最强用户意图信号(显式操作 > 任何启发式)→ **同标 userTakenAt**(台账记录更新,复用 recordLaunch 同 port 覆盖;--pid 无台账记录则仅清粘滞账、无操作);粘滞账清账既有语义不变。B1 启发式拿到的保护待遇不得高于显式操作——v1 草案给 hidAge 启发式 userTakenAt,而 chrome-show 后实例仍按 hidden+idleMs 被 A1 新默认 30min 收割(窗口在用户面前被关),倒挂废除。
 - 测试:hidAgeFn/frontmostFn DI 注入(真机 hid 年龄不可单测)+ 确认窗状态机四分支(真激活确认窗满→userTakenAt;frontmost=false 程序掀出→压回;窗内失守→复压+零 userTakenAt;判据不可得→零账面突变)+ **账面突变禁令锚**(放行/暂停/失败路径对粘滞账与台账零 mutation,账本快照断言)+ chrome-show 后 idle 不收 + 真机验证记录。
 - 实施面:中(reassert 原语双判据扩展 + watchdog 确认窗状态机 + 粘滞账/台账联动解耦 + chrome-show 台账更新 + 测试 ≈8+)。
 
-**B2 headless 可选档(P1,评估后采纳为可选、不切默认)**
-- `launch-chrome --mode headless`(复用 render 档 RENDER_DETERMINISTIC_FLAGS 的 headless 经验):headless 实例不注册 Foreground LS session,**结构性不占用户 Chrome 的 Dock 槽位**——纯抓取/外部 CDP 消费场景的根治形态。代价=无法 chrome-show(登录交互流破碎),故不切默认(hidden+B1 门仍是默认),文档明示「需登录态工作流用 hidden/visible」。
+**B2 headless 可选档(P1,评估后采纳为可选、不切默认)——🔴 对抗复审 r1(2026-09-08)真机证伪其核心声明,保留为无人值守形态**
+- `launch-chrome --mode headless`(复用 render 档 RENDER_DETERMINISTIC_FLAGS 的 headless 经验):零窗口/零 AX 面的纯抓取形态。**原声明「headless 实例不注册 Foreground LS session,结构性不占用户 Chrome 的 Dock 槽位」经真机证伪不成立**:仅有 headless 实例在世时 `open -a "Google Chrome"`(Dock 等价)**不会**另起新实例——激活仍被同 bundle id 单实例槽位吸收,且零窗口零可见反馈(症状②的无窗变体,比 hidden 更静默:hidden 有 B1 让位门会掀出窗口,headless 无窗可掀)。实测:Chrome 150.0.7871.182 / macOS 12.x,headless 实例 pid 在世 + open -a exit 0 + 无新进程 + AX windows=0。
+- 保留价值:无人值守机器(无人会点 Dock)的纯抓取/外部 CDP 消费;拉起时打 `headless_dock_slot_caveat` 观测点(darwin)。**有人使用的机器禁用此档**,用 hidden+B1(修订后口径:README/ARCHITECTURE/§8 已同步订正)。
 - hidden 档整体改 headless=**否决**(登录态/可见性工作流依赖有头形态)。
 - 零基重设计视角的诚实结论:若今天重设计,被红线约束下的零基最优=「headless 为默认、hidden 为登录态特例、B1 门兜底」;因向后兼容(browse_logged_in 既有习惯+文档)与登录流依赖,采渐进路线(B1 先堵劫持 → B2 给出口 → 远期版本再议默认翻转)。
 
@@ -187,3 +188,40 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 3. **同 bundle id 单实例是 macOS 平台级契约，绕不开只能让位或退出有头形态**：外部调研的 distinct-bundle-id 路线（Chrome for Testing 式）被用户红线作废后，仓库内解 = 让位门（B1，用户激活检测）+ 结构性豁免（B2 headless）+ 退场默认（A1）三层叠加——每层单独都不足以根治。
 4. **单信号归因在互动环境中恒失效**（§4.0-F1）：hidSystemState 无 per-app 归因，「hid 年龄小」在用户在场时段恒真——判定必须 AND 归因绑定信号（frontmost）+ 确认窗（时间维），并诚实声明残余（CDP activateTarget 类夺焦在用户在场期仍可被误认领，按用户主权方向校准接受）。
 5. **账面突变与判定解耦**（§4.0-F2）：让位/暂停/失败路径对粘滞账与台账零 mutation 是防「一次误判永久 disarm」的结构保证——v1 草案的清账方案在 TCC 瞬态时会把执守永久缴械，账本快照断言（INV-85）钉死这类回潮。
+
+---
+
+## 9. 对抗否定复审记录（2026-09-08 adversarial r1，复审员第 1 轮）
+
+**方法**：变异验证 7 发（改坏接线→测试/INV 红→还原→md5 核对）+ 用户主权真机攻击（隔离 env 四覆盖 `/tmp/adv-bug03-r1`，用户全程离席 HIDIdleTime 1400s+，零接触用户 Chrome）+ 消费方 4 条真机重跑 + 文档零漂移 + 项目外零新组件 find 复核。
+
+### 9.1 变异验证：7 发 6 杀 1 存活（存活项当场补锚）
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | reassertGatedScript 删 `fm is true and`（AND→单判据，§4.0-F1 归因谬误回潮） | **🔴 存活**——b1 spec 17/17 绿 + INV-85 绿（两 token 顺序锚锚不住合取语义）；当场补锚：b1 spec 2a 增 `if fm is true and hidMs < N then` 整串断言 + INV-85 同锚；补锚后复测 M1 双红 ✓ |
+| M2 | 确认窗 `n >= 20` → `n >= 1`（瞬时认领） | 杀（b1 spec 3 red） |
+| M3 | index.ts 停机两路径删 ownerPid/exemptUserTaken | 杀（INV-86 FAIL + a1 spec 1 red） |
+| M4 | reaper 删 userTakenAt continue | 杀（INV-86 FAIL） |
+| M5 | A2 僵尸门删 verifyOwnership | 杀（a2 spec 1 red） |
+| M6 | E④ evaluate 双形态判定禁用（恒包裹） | 杀（e4 spec 2 red） |
+| M7 | E② screenshot 删 filePath 上传参 | 杀（INV-76 FAIL + e2 spec red） |
+
+### 9.2 真机攻击裁定
+
+- **劫持场景-修复对照（PASS）**：hidden 档 + `open -a`（用户离席 hid 1479s）→ 掀出至多 1 tick 压回（0.2s 可见→0.4s 已压回）；程序掀出（AX set visible）0.88s 压回——v1.18.3 契约保持。
+- **🔴 判据 (a) 可伪造（确认为验收员同源发现，实证补全）**：`osascript key code 63` 实测将 ioreg HIDIdleTime 归零；合成输入循环 + open -a 真机走满确认窗，**userTakenAt 被完整落账**（台账实证）——用户零参与下程序获得用户级认领（执守退位+收割豁免）。特权上限未变（chrome-show 显式出口本就等权），新增真实风险=无恶意自动化自伤（desktop act type 合成键 + CDP activate 意外走满 30s）。处置：文档诚实化（§2.1/§4 B1 残余风险订正）+ 收紧方案留后续决议；chrome-hide 重武装真机验证 ✓（清 userTakenAt+复压回）。
+- **🔴 B2 headless 核心声明真机证伪**：仅有 headless 实例在世时 `open -a "Google Chrome"` 不另起新实例——激活被吸收、零可见反馈（AX windows=0、无新进程）。症状②以无窗变体复存。处置：headless_dock_slot_caveat 观测点（darwin 拉起即打，b2 spec 2d 钉死）+ README 双语/ARCHITECTURE/§4 B2/源码注释全量订正为「无人值守专用」。
+- **chrome-show 同标 userTakenAt（F4）真机 ✓**；**chrome-hide 重武装真机 ✓**。
+- **消费方③连坐免疫真机 ✓**：CLI-owned（ownerPid=死 CLI）+ 无 userTakenAt 记录，独立 server stdin_eof 停机收割链真跑——Chrome 存活。
+- **消费方①僵尸自愈真机 ✓**：SIGSTOP（CDP 超时 exit 28 + TCP 可连）→ `ledger_zombie_collected` → 2s 优雅窗升级 SIGKILL 树杀 → fresh spawn ok（新 pid）。
+- **🔴 消费方②screenshot 真机 FAIL（当场修复）**：上游 1.7.0 filePath 带工作区根校验（McpContext.validatePath），lasso 未协商 roots/未配 `--allow-unrestricted-paths` → **任何路径（含 /tmp 管理路径）被拒**，原实现 isError 即抛、image-block 回退永不执行 → screenshot action 真机 100% 失败（比修复前更糟）。修复：Access denied → 不带 filePath 重试一次（路径 2）+ ≥2MB 上游临时文件文本行（`Saved screenshot to <path>`）读取物化到 target；e2 spec 补 3 用例（8/9/10），10/10 绿；真机复测 screenshot worked（file 落盘 PNG magic ✓）。
+- **消费方④evaluate 真机 ✓**：函数表达式 `() => 'fnexpr-' + (typeof 41)` → `fnexpr-number`（非恒 undefined）；语句体 `return 6*7` → 42；值内 ``` 围栏不截断（`a\`\`\`b\`\`\`c TAIL`）。
+- **find 复核 ✓ 零新组件**：/Applications 与 ~/Applications 无 Chrome 副本/LassoE4/Chromium/Canary；launchctl 无 lasso 项；Downloads 的 chrome 相关文件均为 2026-07 以前旧物。
+
+### 9.3 r1 处置清单（commit 化）
+
+1. fix(channels): E② Access-denied 降级重试 + ≥2MB 上游临时文件物化 + e2 spec 3 用例（P0）
+2. test(b1)/invariants: 双判据 AND 合取锚（M1 存活补锚，P1）
+3. fix(launcher): headless_dock_slot_caveat 观测点 + b2 spec 2d（P1）
+4. docs(bugs/README/ARCHITECTURE): B2 证伪订正 + B1 判据 (a) 伪造残余 + §2.1 CGEventSource 语义澄清（P1）
