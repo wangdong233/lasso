@@ -34,7 +34,8 @@
  * mcp-chrome chrome_computer action-enum 折叠思想。
  */
 import { randomUUID } from "node:crypto";
-import { writeFile, stat } from "node:fs/promises";
+import { writeFile, stat, mkdir, open } from "node:fs/promises";
+import * as pathMod from "node:path";
 import { UiChannel } from "./UiChannel.js";
 import type {
   BrowseOptions,
@@ -981,12 +982,19 @@ async function doScreenshot(
   _url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  // W1-DEF-3（v1.8）：chrome-devtools-mcp@0.3.0 take_screenshot 无 filePath 参数
-  // （被 zod strip），返回 base64 —— Lasso 自行落盘 + fs 校验后才把 path 放进返回，
-  // 禁伪造路径。写失败 throw screenshot_write_failed（classifyBrowseError → didnt）。
+  // E②（BUG-03 决议 E②，doc/bugs/03 §4 E，消费方②screenshot 根治）双路径：
+  //   路径 1（优先）：传 filePath 给上游（chrome-devtools-mcp@1.7.0 已支持——
+  //     0.3.0 时代被 zod strip 的参数未跟进是当日两次大截图失败的根因：上游
+  //     ≥2MB 截图只落上游临时文件不回 image block）。上游直写盘绕过 image-block
+  //     大小限制；lasso 管理路径（用户指定优先，否则 /tmp/lasso-screenshot-<uuid>）
+  //     + 落盘校验 + PNG magic 保留（W1-DEF-3 禁伪造路径）。
+  //   路径 2（回退）：上游未兑现写盘（0.3.0 形态 / filePath 被忽略）→ 既有
+  //     image-block base64 解码落盘路径。
+  const target = opts.screenshot?.filePath ?? `/tmp/lasso-screenshot-${randomUUID()}.png`;
   const r = (await c.callTool("take_screenshot", {
     format: "png",
     fullPage: opts.screenshot?.full ?? false,
+    filePath: target,
   })) as ContentResult;
 
   if (r.isError) {
@@ -995,32 +1003,71 @@ async function doScreenshot(
     );
   }
 
-  // W1-DEF-1b（v1.8）：base64 在 type:"image" content block 的 data 字段
-  // （实测契约见 browse/upstream-response.ts），不在 text block。
-  const img = imageBlock(r);
-  if (!img) {
-    throw new Error("screenshot_write_failed:no_image_block_from_upstream");
-  }
-  const buf = Buffer.from(img.data, "base64");
-
-  // PNG magic 校验（上游返回错误占位串时 base64 解出非 PNG——47 字节垃圾文件的教训）
-  if (buf.length < 100 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
-    throw new Error("screenshot_write_failed:not_a_valid_png");
-  }
-
-  const filePath = `/tmp/lasso-screenshot-${randomUUID()}.png`;
+  // 用户指定路径的父目录 best-effort 创建（默认 /tmp 恒存在）
   try {
-    await writeFile(filePath, buf);
-    // 落盘后校验：文件存在且大小与解码后一致才返路径（禁伪造）
-    const st = await stat(filePath);
-    if (!st.isFile() || st.size !== buf.length) {
-      throw new Error(`empty_or_missing_file:${filePath}`);
+    await mkdir(pathMod.dirname(target), { recursive: true });
+  } catch {
+    /* best-effort；写失败由下方落盘校验如实报 */
+  }
+
+  // ---- 路径 1 验证：上游兑现 filePath 直写 ----
+  let upstreamWrote = false;
+  try {
+    const st = await stat(target);
+    upstreamWrote = st.isFile() && st.size > 0;
+  } catch {
+    /* 未写 → 走回退路径 */
+  }
+
+  if (!upstreamWrote) {
+    // ---- 路径 2 回退：image-block（0.3.0 契约形态）解码落盘 ----
+    // W1-DEF-1b（v1.8）：base64 在 type:"image" content block 的 data 字段
+    // （实测契约见 browse/upstream-response.ts），不在 text block。
+    const img = imageBlock(r);
+    if (!img) {
+      throw new Error("screenshot_write_failed:no_image_block_from_upstream");
+    }
+    const buf = Buffer.from(img.data, "base64");
+
+    // PNG magic 校验（上游返回错误占位串时 base64 解出非 PNG——47 字节垃圾文件的教训）
+    if (buf.length < 100 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+      throw new Error("screenshot_write_failed:not_a_valid_png");
+    }
+
+    try {
+      await writeFile(target, buf);
+      // 落盘后校验：文件存在且大小与解码后一致才返路径（禁伪造）
+      const st = await stat(target);
+      if (!st.isFile() || st.size !== buf.length) {
+        throw new Error(`empty_or_missing_file:${target}`);
+      }
+    } catch (e) {
+      throw new Error(`screenshot_write_failed:${String(e).slice(0, 200)}`);
+    }
+  }
+
+  // ---- 终验（两路径共用）：磁盘文件头 8 字节 PNG magic（上游直写路径同样
+  //      禁伪造——上游可能对超限/失败静默写错误占位文件）----
+  try {
+    const fh = await open(target, "r");
+    try {
+      const head = Buffer.alloc(8);
+      const { bytesRead } = await fh.read(head, 0, 8, 0);
+      if (
+        bytesRead < 8 ||
+        head[0] !== 0x89 || head[1] !== 0x50 || head[2] !== 0x4e || head[3] !== 0x47
+      ) {
+        throw new Error("screenshot_write_failed:not_a_valid_png");
+      }
+    } finally {
+      await fh.close();
     }
   } catch (e) {
+    if (e instanceof Error && e.message.startsWith("screenshot_write_failed:")) throw e;
     throw new Error(`screenshot_write_failed:${String(e).slice(0, 200)}`);
   }
 
-  return { preview: `screenshot saved to ${filePath}` };
+  return { preview: `screenshot saved to ${target}` };
 }
 
 async function doExtract(

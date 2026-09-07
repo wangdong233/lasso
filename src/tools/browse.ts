@@ -57,6 +57,10 @@ const browseSchema = {
       screenshot: z
         .object({
           full: z.boolean().optional(),
+          // E②（BUG-03 决议 E②）：指定截图落盘路径（上游 1.7.0 take_screenshot
+          // filePath 直写；缺省 /tmp/lasso-screenshot-<uuid>.png；上游未兑现回退
+          // image-block 路径——两路径同校验）。schema 与 doScreenshot 消费面同 commit。
+          filePath: z.string().min(1).optional(),
         })
         .optional(),
       no_cache: z.boolean().optional(),

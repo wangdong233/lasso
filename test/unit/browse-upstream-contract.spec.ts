@@ -223,7 +223,7 @@ describe("W1-DEF-2 — wait action 传非空 string 数组（1.7.0 契约）", (
 // W1-DEF-3：screenshot base64 落盘 + fs 校验
 // ============================================================
 describe("W1-DEF-3 — screenshot 落盘真实文件（禁伪造路径）", () => {
-  it("不传 filePath；上游 base64 → Lasso 落盘 /tmp/lasso-screenshot-*.png 且文件非空", async () => {
+  it("传 filePath（E② 双路径）；上游忽略（0.3.0 形态返 base64）→ 回退落盘 /tmp/lasso-screenshot-*.png 且文件非空", async () => {
     const { client, calls } = makeUpstreamClient();
     const ch = new TestBrowseChannel(client);
     const r: InteractResult<BrowseResult> = await ch.browse(
@@ -233,7 +233,9 @@ describe("W1-DEF-3 — screenshot 落盘真实文件（禁伪造路径）", () =
     );
     const shotCall = calls.find((c) => c.name === "take_screenshot");
     expect(shotCall).toBeTruthy();
-    expect(shotCall!.args.filePath).toBeUndefined(); // 0.3.0 无此参数
+    // E②（BUG-03 决议 E②，INV-76(c) 修订）：filePath 必传（1.7.0 直写盘路径；
+    // mock 上游忽略它 → 回退 image-block 解码落盘，两路径同校验）
+    expect(shotCall!.args.filePath).toMatch(/^\/tmp\/lasso-screenshot-.*\.png$/);
     expect(r.outcome).toBe("worked");
     const m = r.data!.preview!.match(/(\/tmp\/lasso-screenshot-[^\s]+\.png)/);
     expect(m).toBeTruthy();

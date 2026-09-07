@@ -162,6 +162,15 @@ export interface ExpectCondition {
 
 export interface ScreenshotSpec {
   full?: boolean;
+  /**
+   * E②（BUG-03 决议 E②，doc/bugs/03 §4 E）：指定截图落盘路径（绝对路径建议）。
+   * 缺省 = /tmp/lasso-screenshot-<uuid>.png（lasso 管理）。上游 1.7.0 支持
+   * take_screenshot filePath 直写盘——大截图（≥2MB image block 上限）经此路径
+   * 稳定交付；上游未兑现时回退 image-block 解码落盘（两路径同校验 PNG magic）。
+   * 补会话内截图通路：browse_headless/browse_logged_in 的 screenshot action
+   * 现可控输出位置（此前仅顶层 screenshot 工具另起新实例可指定）。
+   */
+  filePath?: string;
   // review-r2 裁决留档的 element? 死字段已于 P2 处置轮删除（零写入零读取；
   // zod wire 面早在 r2 已删，此处是内部类型残留——上游 0.3.0 只接 fullPage）。
 }

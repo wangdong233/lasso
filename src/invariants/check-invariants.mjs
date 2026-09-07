@@ -3714,7 +3714,7 @@ const assertions = [
         if (!/text:\s*\[/.test(stripComments(f.text))) return false;
       }
 
-      // ----- (c) doScreenshot 落盘校验（W1-DEF-3）-----
+      // ----- (c) doScreenshot 落盘校验（W1-DEF-3；BUG-03 决议 E② 修订）-----
       const browse = byPath(/^channels\/BrowseChannel\.ts$/);
       if (!browse) return false;
       const browseCode = stripComments(browse.text);
@@ -3722,13 +3722,19 @@ const assertions = [
         browseCode.match(/callTool\("take_screenshot"[\s\S]{0,300}?\}\)\)/)?.[0] ??
         "";
       if (!shotRegion) return false;
-      // 1.7.0 有 filePath 参数，但 Lasso 维持自落盘 + stat 校验（禁伪造路径语义更强，
-      // 0.3.0/1.7.0 双契约下同形）——仍禁传 filePath
-      if (/filePath\s*:/.test(shotRegion)) return false;
-      // 自落盘 + stat 校验（存在且非空才返路径；W1-DEF-1b 后升级为 size 与解码长度精确一致）
+      // E②（doc/bugs/03 §4 E②）：**必须**传 filePath（上游 1.7.0 直写盘，绕过
+      // image-block ≥2MB 截图只落上游临时文件不回传的失败形态）；上游未兑现时
+      // 回退 image-block 解码落盘。禁伪造路径语义不变（双路径同校验）：stat
+      // 存在性 + size 与解码长度精确一致 + 两路径共用 PNG magic 终验。
+      if (!/filePath:\s*target/.test(shotRegion)) return false;
+      // 回退路径（0.3.0 image-block 形态）存在
+      if (!/imageBlock\(r\)/.test(browseCode)) return false;
+      // 自落盘 + stat 校验（存在且非空才返路径；size 与解码长度精确一致）
       if (!/await writeFile\(/.test(browseCode)) return false;
       if (!/await stat\(/.test(browseCode)) return false;
       if (!/\.size !== buf\.length/.test(browseCode)) return false;
+      // PNG magic 终验（两路径共用——上游直写的错误占位文件同样拒绝）
+      if (!/not_a_valid_png/.test(browseCode)) return false;
       if (!/screenshot_write_failed/.test(browseCode)) return false;
 
       // ----- (d) stealth_injected 前置 isError 检查（W1-DEF-1 后半）-----
