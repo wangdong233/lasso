@@ -320,7 +320,8 @@ describe("W1-DEF-1 — evaluate_script 传函数表达式（mock 按真实契约
 //  ③ 零页面（无围栏）："No page selected"（上游 McpContext.js:250）
 // 此前 doEvaluate 不检 isError / 不识错误签名 → 三形态全报 outcome=worked，
 // 错误文本被塞进 data.preview。修复 = doWait（W-DEF-R11-1）同范式：
-// isError / 签名命中 → throw eval_upstream_error → classifyBrowseError 落 unknown。
+// isError / 签名命中 → throw eval_upstream_error → classifyBrowseError 落 didnt
+// （BUG-04 决议 C2：调用方坏 JS 确定性不可得——换通道救不了，不拉响 fallback）。
 // ============================================================
 describe("P5 — evaluate 上游错误不再假 worked（isError + 错误签名）", () => {
   it("① isError（Network.enable timed out 形态）→ outcome=unknown + eval_upstream_error", async () => {
@@ -335,7 +336,8 @@ describe("P5 — evaluate 上游错误不再假 worked（isError + 错误签名�
     const r = await ch.browse("https://example.com/", "evaluate", {
       js: "return document.title",
     } as BrowseOptions);
-    expect(r.outcome).toBe("unknown"); // classifyBrowseError 未识别 → unknown（可重试）
+    // BUG-04 决议 C2：eval_upstream_error → didnt（确定性不可得，不 fallback）
+    expect(r.outcome).toBe("didnt");
     expect(r.error).toContain("eval_upstream_error");
     expect(r.error).toContain("Network.enable timed out");
   });

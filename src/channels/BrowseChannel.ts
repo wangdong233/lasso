@@ -1678,6 +1678,12 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   // 重试/fallback 都无济于事）→ didnt。此前落 unknown 假可重试——steps 链里
   // pdf step 死后整链 unknown（extract-batch1.mjs 实测 chain_failed:unknown:*）。
   if (m.includes("upstream_unsupported:")) return "didnt";
+  // BUG-04 决议 C2（doc/bugs/04 §7，报告 §9-②b）：调用方坏 JS（脚本语法/执行错、
+  // 协议超时类 evaluate 上游错）是**确定性不可得**——换通道救不了坏 JS，fallback
+  // 只会拉响备用通道空转（复验报告实测「主通道因调用方坏 JS 失败也拉响 headless」）。
+  // 同 P10 upstream_unsupported 先例 → didnt（直达错误，不 fallback）。
+  // 区分：upstream_wedge_*（决议 B）维持 unknown——那是通道错，fallback 正确。
+  if (m.includes("eval_upstream_error")) return "didnt";
   if (/tool \S+ not found/.test(m) || m.includes("unknown tool")) return "didnt";
   return "unknown";
 }

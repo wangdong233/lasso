@@ -19,6 +19,7 @@ import { promises as fs, mkdtempSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { BrowseChannel, evaluateFunctionArg, isIifeString } from "../../src/channels/BrowseChannel.js";
+import { isFallbackWorthy } from "../../src/fallback/outcome.js";
 import { evalFence, parseEvalResult } from "../../src/browse/upstream-response.js";
 import { setStateStoreContext } from "../../src/util/state-store.js";
 import { _resetRunIdForTests, newRunId } from "../../src/util/run-id.js";
@@ -201,7 +202,7 @@ describe("E④ · 会话轮换错误归类 session_rotated", () => {
     expect(r.error).toContain("session_rotated:");
   });
 
-  it("4c. 其余上游错误签名维持 eval_upstream_error（不误伤）", async () => {
+  it("4c. 其余上游错误签名维持 eval_upstream_error——C2 起归 didnt（换通道救不了坏 JS，不拉响 fallback）", async () => {
     const { client } = makeClient({
       evaluate_script: () =>
         textContent(
@@ -213,8 +214,10 @@ describe("E④ · 会话轮换错误归类 session_rotated", () => {
     const r = await ch.browse("https://example.com/", "evaluate", {
       js: "return 1",
     } as BrowseOptions);
-    expect(r.outcome).toBe("unknown");
+    // BUG-04 决议 C2（报告 §9-②b）：脚本错从 unknown+fallback 变 didnt+直达错误
+    expect(r.outcome).toBe("didnt");
     expect(r.error).toContain("eval_upstream_error:");
+    expect(isFallbackWorthy(r.outcome, r.error)).toBe(false); // didnt 永不 fallback
   });
 });
 
