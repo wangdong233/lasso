@@ -31,6 +31,8 @@
  */
 import type { McpClient } from "../subprocess/McpClient.js";
 import { logger } from "../util/logger.js";
+// BUG-04 决议 B（doc/bugs/04 §5 主动接入点）：上游选中页死锁签名（单一真源）
+import { isUpstreamWedgeError, UPSTREAM_WEDGE_SIGNAL_PREFIX } from "../browse/upstream-wedge.js";
 
 // ============================================================
 // 常量
@@ -184,6 +186,14 @@ export class TabRegistry {
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join("\n");
+    // BUG-04 决议 B（doc/bugs/04 §5 主动接入点）：list_pages 响应命中上游选中页
+    // 死锁签名 → **类型化信号** throw（不再吞成 tab_reconcile_unparseable_list
+    // warn——该吞法是主通道楔死零检测零自愈的放大因）。唯一消费方
+    // LoggedInChannel.getMcpClient 捕获本前缀后在返回 client 前触发 heal，
+    // 下一个 action 永远看不到楔死态。
+    if (isUpstreamWedgeError(text)) {
+      throw new Error(`${UPSTREAM_WEDGE_SIGNAL_PREFIX}${text.slice(0, 120)}`);
+    }
     const entries = parseUpstreamPageEntries(text);
     if (entries === null) {
       // 空响应 / 上游格式漂移 → 保守 no-op（宁可不淘汰；失败方向良性）

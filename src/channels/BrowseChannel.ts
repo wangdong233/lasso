@@ -58,6 +58,8 @@ import {
 import { StepEngine, type HighRiskGateLike } from "../browse/StepEngine.js";
 import { BudgetTracker, DEFAULT_CHAIN_BUDGET_MS, clampChainBudgetMs } from "../fallback/BudgetTracker.js";
 import { applyOutputEnvelope } from "../util/output-envelope.js";
+// BUG-04 决议 B（doc/bugs/04 §5）：上游选中页死锁签名单一真源（INV-89 锚）
+import { isUpstreamWedgeError } from "../browse/upstream-wedge.js";
 import {
   parseEvalResult,
   evalFence,
@@ -377,6 +379,23 @@ export abstract class BrowseChannel extends UiChannel {
   }
 
   /**
+   * BUG-04 决议 B（doc/bugs/04 §5）：上游选中页死锁（"The selected page has
+   * been closed"——上游 ToolHandler.js:189 结构性死锁，通道级）自愈钩子。
+   * 默认 null（HeadlessChannel 同样可能楔死但通过 spec 自管 respawn 兜底，
+   * 行为零变化）；LoggedInChannel override 两层：
+   *   层 1 `new_page {background:true}`——上游 pages.js handler 内
+   *        `context.newPage → selectPage`（McpContext.js:212）先于 :189 执行，
+   *        结构性逃逸口；成功返回**原 client**（选中页已重置）。
+   *   层 2 respawn upstream spec（SubprocessManager.restart——只杀 npx 上游
+   *        子进程，**永不触碰 Chrome**）；成功返回**新 client**。
+   * 返 null = 自愈失败 → 调用方走 `upstream_wedge_selected_page_closed`
+   * 透明错误（unknown：通道错，fallback 语义正确）。
+   */
+  protected async healUpstreamWedge(_c: McpClient): Promise<McpClient | null> {
+    return null;
+  }
+
+  /**
    * P10（v1.18.1）：上游工具缺失探测（带 per-client 缓存——同一上游子进程
    * 生命周期内工具集不变；listTools 抛错 → false 放行，让真实调用浮出错误）。
    */
@@ -449,13 +468,31 @@ export abstract class BrowseChannel extends UiChannel {
       try {
         partial = await this.dispatchAction(c, action, url, options, handler);
       } catch (e) {
-        // P6（v1.18.1，得到实战问题集 P6）：上游 chrome-devtools-mcp 在 0 page
-        // target 状态（--no-startup-window 起的 Chrome；台账被上一代 server 停机
-        // 清空的遗留 Chrome——precreate 判定门跳过 + ensureOwnPageSelected 零页
-        // silent bail）下所有页级调用抛 "No page selected"（getSelectedMcpPage）。
-        // 自愈钩子（LoggedInChannel：CDP 预建 background tab + select_page）成功 →
-        // 原样重试一次；失败/不支持 → 原错误路径（classify 落 unknown）。
-        if (
+        // BUG-04 决议 B（doc/bugs/04 §5，被动接入点）：上游选中页死锁签名 →
+        // heal 一次 + 原样重试一次（P6 自愈重试先例）。楔死是通道级瞬态
+        // （选中页句柄失效，new_page/respawn 可解），不是页面语义否定。
+        // 失败方向：heal 失败 → `upstream_wedge_selected_page_closed` 透明前缀
+        // （unknown）；heal 成功但重试仍失败 → `upstream_wedge_unhealed`（同
+        // unknown——fallback 到 headless 语义正确）。
+        if (isUpstreamWedgeError(String(e))) {
+          const healed = await this.healUpstreamWedge(c);
+          if (healed === null) {
+            throw new Error(
+              `upstream_wedge_selected_page_closed:${String(e).slice(0, 200)}`,
+            );
+          }
+          try {
+            partial = await this.dispatchAction(healed, action, url, options, handler);
+          } catch (e2) {
+            throw new Error(`upstream_wedge_unhealed:${String(e2).slice(0, 200)}`);
+          }
+        } else if (
+          // P6（v1.18.1，得到实战问题集 P6）：上游 chrome-devtools-mcp 在 0 page
+          // target 状态（--no-startup-window 起的 Chrome；台账被上一代 server 停机
+          // 清空的遗留 Chrome——precreate 判定门跳过 + ensureOwnPageSelected 零页
+          // silent bail）下所有页级调用抛 "No page selected"（getSelectedMcpPage）。
+          // 自愈钩子（LoggedInChannel：CDP 预建 background tab + select_page）成功 →
+          // 原样重试一次；失败/不支持 → 原错误路径（classify 落 unknown）。
           NO_PAGE_SELECTED_RE.test(String(e)) &&
           (await this.recoverNoPageSelected(c))
         ) {
@@ -1562,6 +1599,11 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   //（页面被轮换/清空，重 snapshot 即恢复）——显式归 unknown（可重试档）+
   // session_rotated 前缀供 agent 透明识别下一步（重 snapshot），不再落泛 unknown
   if (m.includes("session_rotated")) return "unknown";
+  // BUG-04 决议 B（doc/bugs/04 §5）：上游选中页死锁（upstream_wedge_* 前缀：
+  // selected_page_closed / unhealed）是**通道级瞬态**（选中页句柄失效，
+  // heal/fallback 换通道可解）——unknown（可重试 + fallback-worthy），区别于
+  // C2 的 eval_upstream_error（调用方坏 JS，didnt）。
+  if (m.includes("upstream_wedge")) return "unknown";
   if (m.includes("dns_or_nav_error")) return "unknown";
   if (m.includes("http_404")) return "didnt";
   // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt

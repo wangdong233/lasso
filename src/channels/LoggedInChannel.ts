@@ -39,6 +39,8 @@ import { TabRegistry, parseUpstreamPageEntries, type UpstreamPageEntry } from ".
 import { TabSession, type TabRestoreResult } from "../logged-in/TabSession.js";
 // v1.10（parse18 §4.3 机制三）：台账读取（判定本 port 绑定的 Chrome 是否 hidden 档）
 import { readLedgerSync } from "../launcher/chrome-ledger.js";
+// BUG-04 决议 B（doc/bugs/04 §5）：楔死类型化信号判定（单一真源）
+import { isUpstreamWedgeTypedSignal } from "../browse/upstream-wedge.js";
 
 /** 2FA / 登录表单关键词集（粗筛，v0.3 升级 selector-based 探测）。 */
 const TWOFA_KEYWORDS = [
@@ -223,10 +225,27 @@ export class LoggedInChannel extends BrowseChannel {
     // v0.8：tab LRU reconcile（parse9 §3.3 + INV-50）。
     // INV-52 守护：reconcile 内部走 list_pages / close_page，不落盘 cookie；自动路径合规。
     // 失败不算致命（list_pages 偶发空响应；tab 管理是 best-effort）。
+    // BUG-04 决议 B（doc/bugs/04 §5 主动接入点）：reconcile 抛类型化楔死信号
+    //（upstream_wedge: 前缀）= 主通道选中页已死锁——返回 client 前先 heal，
+    // 下一个 action 永远看不到楔死态；heal 失败仍返回 client（如实暴露给
+    // 被动路径：browseSingle catch 再试一次 heal，双失败落透明 unknown）。
     try {
       await this.tabs.reconcile(c);
     } catch (e) {
-      logger.warn({ evt: "logged_in_tab_reconcile_failed", error: String(e) });
+      // String(Error) 形如 "Error: upstream_wedge:…"——取 message 判前缀（裸
+      // startsWith(String(e)) 会漏掉全部真实 throw 形态）。
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isUpstreamWedgeTypedSignal(msg)) {
+        const healed = await this.healUpstreamWedge(c);
+        if (healed !== null) return healed;
+        logger.warn({
+          evt: "upstream_wedge_proactive_heal_failed",
+          error: String(e),
+          cdp_port: this.cdpPort,
+        });
+      } else {
+        logger.warn({ evt: "logged_in_tab_reconcile_failed", error: String(e) });
+      }
     }
     return c;
   }
@@ -462,6 +481,80 @@ export class LoggedInChannel extends BrowseChannel {
         cdp_port: this.cdpPort,
       });
       return false;
+    }
+  }
+
+  /**
+   * BUG-04 决议 B（doc/bugs/04 §5）：上游选中页死锁自愈（LoggedInChannel 实装）。
+   *
+   * 层 1 `new_page {url:"about:blank", background:true}`——零抢焦（background
+   * 实证）单往返；上游 pages.js 的 newPage handler 内 `context.newPage →
+   * selectPage`（McpContext.js:212）**先于** ToolHandler.js:189 的
+   * getSelectedMcpPage() 执行 = 结构性逃逸口（核查员真机 /json/close 复现配方
+   * 验证 new_page 可解楔死）。成功后从响应页列表归因 [selected] 页登记 own
+   * page（S-10：TabRegistry 淘汰候选的唯一来源——close_page 只可能落在 lasso
+   * 自己开的 tab 上；解析不出仅跳过登记，heal 仍成立）。
+   *
+   * 层 2（层 1 失败才走）respawn upstream spec（SubprocessManager.restart =
+   * kill + _spawnWithBackoff）——**只杀 npx 上游子进程，永不触碰 Chrome 进程**
+   *（INV-89 机械锚：本函数体禁任何 kill/stopLaunchedChromes/Chrome 生命周期
+   * 调用）。respawn 后 client 实例变更 → own 页归因/登记集合同步重置
+   *（与 ensureOwnPageSelected 的 respawn 检测同款联动）。
+   *
+   * 永不 throw（heal 失败返 null，调用方走透明错误路径）。
+   */
+  protected override async healUpstreamWedge(c: McpClient): Promise<McpClient | null> {
+    // ---- 层 1：new_page 重置上游选中页 ----
+    try {
+      const r = (await c.callTool("new_page", {
+        url: "about:blank",
+        background: true,
+      })) as { content?: Array<{ type: string; text?: string }>; isError?: boolean };
+      const text = (r.content ?? [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("\n");
+      if (!r.isError) {
+        const entries = parseUpstreamPageEntries(text);
+        const sel = entries?.find((p) => p.selected);
+        if (sel) {
+          this.ownPageId = sel.pageId;
+          this.tabs.noteOwnPage(sel.pageId);
+        }
+        logger.info({
+          evt: "upstream_wedge_healed_new_page",
+          pageId: sel?.pageId,
+          cdp_port: this.cdpPort,
+        });
+        return c; // 选中页已重置——原 client 即已解楔
+      }
+      logger.warn({
+        evt: "upstream_wedge_heal_layer1_is_error",
+        detail: text.slice(0, 120),
+        cdp_port: this.cdpPort,
+      });
+    } catch (e) {
+      logger.warn({
+        evt: "upstream_wedge_heal_layer1_error",
+        error: String(e),
+        cdp_port: this.cdpPort,
+      });
+    }
+    // ---- 层 2：respawn upstream spec（只杀 npx 子进程，永不触碰 Chrome）----
+    try {
+      const c2 = await this.subproc.restart(this.lastSpecName!);
+      this.lastClient = c2;
+      this.ownPageId = null;
+      this.tabs.resetOwnPages();
+      logger.info({ evt: "upstream_wedge_healed_respawn", cdp_port: this.cdpPort });
+      return c2;
+    } catch (e) {
+      logger.warn({
+        evt: "upstream_wedge_heal_failed",
+        error: String(e),
+        cdp_port: this.cdpPort,
+      });
+      return null;
     }
   }
 

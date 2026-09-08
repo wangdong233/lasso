@@ -4021,7 +4021,7 @@ const assertions = [
       "（a）hidden 档 flag 集不漂移（no-startup-window/start-minimized/反节流三件套/mute-audio）；" +
       "（b）config 配置面 LASSO_LAUNCH_MODE/LASSO_LAUNCH_IDLE_MS + 默认值不回退 + index.ts reaper 接线；" +
       "（c）chrome-idle-reaper 零第二 kill 原语（杀经 chrome-stop）+ 0=禁用；" +
-      "（d）激活路径禁令（bringToFront/new_page/PUT /json/new 零命中；select_page 唯一合法形态=不带" +
+      "（d）激活路径禁令（bringToFront/PUT /json/new 零命中；new_page 唯一例外 = BUG-04 决议 B heal 层 1 的 background:true 零抢焦形态；select_page 唯一合法形态=不带" +
       " bringToFront 的纯上下文切换，v1.17.2 S-7 修复实装锚）+ background:true 建塔；" +
       "（e）chrome-hide PID 定向（unix id）永不按名裸 hide + 非 mac no-op；" +
       "（f）台账 schema launchMode/idleMs 前向兼容",
@@ -4107,8 +4107,15 @@ const assertions = [
       for (const f of activationScope) {
         const code = stripComments(f.text);
         if (/bringToFront/.test(code)) return false; // 激活开关 token 级禁令（S-7 修复的安全锚）
-        if (/"new_page"/.test(code)) return false; // 前台开页工具（1.7.0 默认 background:false）
         if (/\/json\/new/.test(code)) return false; // HTTP 开 tab 激活路径
+        // new_page（quoted 工具名）：默认 background:false = 前台开页，禁——唯一
+        // 例外 = BUG-04 决议 B heal 层 1 的零抢焦形态（恒带 background:true，
+        // 真机实证不抢焦；INV-89 (d) 对 heal 函数体双锚）。出现即必须带 background:true。
+        let npIdx = code.indexOf('"new_page"');
+        while (npIdx !== -1) {
+          if (!/background:\s*true/.test(code.slice(npIdx, npIdx + 200))) return false;
+          npIdx = code.indexOf('"new_page"', npIdx + 5);
+        }
       }
       if (!/"select_page"/.test(stripComments(byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? ""))) {
         return false; // S-7 修复实装锚（ensureOwnPageSelected 的 select_page 调用）
@@ -4848,6 +4855,95 @@ const assertions = [
       // doctor 归因：用户拥有记录不得给「清僵尸」代杀指引
       const uoDoctor = doctorSrc.match(/isUserOwnedRecord\(rec\)[\s\S]{0,600}?user_taken_asset/);
       if (!uoDoctor) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // BUG-04（2026-09-08，doc/bugs/04 §5 决议 B）新增 —— 上游选中页死锁自愈
+  // ============================================================
+  // 症状（cc-control 复验报告 §9-①，P1 通道级）：browse_logged_in 选中页被关后
+  // （用户手关/会话收尾 restore/页面 window.close），后续一切 action（含
+  // list_pages）报 "The selected page has been closed"——上游 ToolHandler.js:189
+  // 结构性死锁（自愈点 createPagesSnapshot 被绕过），MCP 重启才解；lasso 侧
+  // 放大因 = TabRegistry.reconcile 把该签名吞成 unparseable warn（零检测零自愈）。
+  // 守（检测/自愈/边界三面钉死）：
+  //  INV-89  上游选中页死锁自愈：
+  //    (a) 签名常量单一真源（src/browse/upstream-wedge.ts 导出
+  //        UPSTREAM_WEDGE_SIGNATURE + isUpstreamWedgeError；BrowseChannel 与
+  //        TabRegistry 都从该叶子 import——签名定义禁第二处漂移）
+  //    (b) reconcile 不吞：TabRegistry.reconcile 命中签名 → throw 类型化信号
+  //        upstream_wedge:（不再落 tab_reconcile_unparseable_list）
+  //    (c) 被动重试路径存在：browseSingle catch 识别签名 → healUpstreamWedge
+  //        钩子 + 原样重试一次 + 双失败透明前缀（selected_page_closed/unhealed）
+  //    (d) heal 永不触碰 Chrome 进程：LoggedInChannel.healUpstreamWedge 函数体
+  //        内只有 new_page callTool + subproc.restart（respawn npx 上游子进程）——
+  //        禁 kill/killTree/stopLaunchedChromes/process.kill 任何形态
+  //    (e) classifyBrowseError 对 upstream_wedge 前缀归 unknown（通道级瞬态，
+  //        fallback-worthy——与调用方坏 JS 的 didnt 语义分流）
+  {
+    id: "INV-89-upstream-wedge-selfheal",
+    desc:
+      "BUG-04 决议 B：上游选中页死锁（chrome-devtools-mcp@1.7.0 ToolHandler:189 结构缺陷）仓库内补偿——签名常量单一真源（upstream-wedge.ts）；reconcile 不再吞签名（类型化信号 upstream_wedge:）；browseSingle 被动检测+heal+单次重试+双失败透明前缀；heal 两层只动上游 npx 子进程（new_page 逃逸口 / subproc.restart），永不触碰 Chrome 进程；classifyBrowseError 归 unknown（fallback-worthy 通道错）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const wedgeSrc = byPath(/^browse\/upstream-wedge\.ts$/)?.text ?? "";
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+      const tabSrc = byPath(/^logged-in\/TabRegistry\.ts$/)?.text ?? "";
+      const loggedInSrc = byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? "";
+
+      // ----- (a) 签名常量单一真源 -----
+      if (!/export const UPSTREAM_WEDGE_SIGNATURE = \/The selected page has been closed\//.test(wedgeSrc))
+        return false;
+      if (!/export function isUpstreamWedgeError/.test(wedgeSrc)) return false;
+      // BrowseChannel / TabRegistry 都从叶子 import（禁本地重定义正则字面量）
+      const bcImports = /from "\.\.\/browse\/upstream-wedge\.js"/.test(browseSrc);
+      const tabImports = /from "\.\.\/browse\/upstream-wedge\.js"/.test(tabSrc);
+      if (!bcImports || !tabImports) return false;
+      if (/selected page has been closed/.test(stripComments(browseSrc).replace(/isUpstreamWedgeError/g, ""))) {
+        // 除 import 名外 BrowseChannel 源码不得再出现该短语字面量（单一真源）
+        return false;
+      }
+      if (/selected page has been closed/.test(stripComments(tabSrc).replace(/isUpstreamWedgeError/g, ""))) {
+        return false;
+      }
+
+      // ----- (b) reconcile 不吞（楔死签名先于 parse 判定；非楔死的格式漂移
+      //           仍走保守 no-op warn——合法保留，与楔死信号分流）-----
+      const reconcileBody = tabSrc.match(/async reconcile\(client: McpClient\)[\s\S]*?\n  }/);
+      if (!reconcileBody) return false;
+      if (!/isUpstreamWedgeError\(text\)/.test(reconcileBody[0])) return false;
+      if (!/UPSTREAM_WEDGE_SIGNAL_PREFIX/.test(reconcileBody[0])) return false;
+      // 顺序锚：楔死签名检测必须先于 parseUpstreamPageEntries（否则签名响应先进
+      // parse → null → 被吞成 unparseable no-op——BUG-04 修复前的放大因形态）
+      if (
+        reconcileBody[0].indexOf("isUpstreamWedgeError") >
+        reconcileBody[0].indexOf("parseUpstreamPageEntries")
+      ) {
+        return false;
+      }
+
+      // ----- (c) 被动检测 + heal + 重试 + 透明前缀 -----
+      if (!/isUpstreamWedgeError\(String\(e\)\)/.test(browseSrc)) return false;
+      if (!/healUpstreamWedge\(c\)/.test(browseSrc)) return false;
+      if (!/upstream_wedge_selected_page_closed/.test(browseSrc)) return false;
+      if (!/upstream_wedge_unhealed/.test(browseSrc)) return false;
+
+      // ----- (d) heal 永不触碰 Chrome 进程 -----
+      const healBody = loggedInSrc.match(
+        /protected override async healUpstreamWedge\([\s\S]*?\n  \}/,
+      );
+      if (!healBody) return false;
+      const healNoComments = stripComments(healBody[0]);
+      if (/killTree|stopLaunchedChromes|process\.kill|chrome-stop|chrome_hide|hideChrome/i.test(healNoComments))
+        return false;
+      if (!/new_page/.test(healNoComments)) return false;
+      if (!/subproc\.restart/.test(healNoComments)) return false;
+
+      // ----- (e) classifyBrowseError → unknown -----
+      const classifyBody = browseSrc.match(/function classifyBrowseError[\s\S]*?\n\}/);
+      if (!classifyBody) return false;
+      if (!/m\.includes\("upstream_wedge"\)\) return "unknown"/.test(classifyBody[0])) return false;
 
       return true;
     },
