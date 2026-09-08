@@ -19,7 +19,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { promises as fs, existsSync, mkdtempSync } from "node:fs";
+import { promises as fs, existsSync, mkdtempSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -178,11 +178,16 @@ describeOrSkip("doctor CLI × config 文件机制（v1.3 Phase B 端到端）", 
     expect(bingCheck.detail).toContain("BING_API_KEYS");
   });
 
-  it("lasso_version 反映 1.18.3（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
+  it("lasso_version 与 package.json 对齐（INV-63 三处对齐：package.json + index.ts + doctor.ts）", async () => {
+    // 09-09 泛化：断言读 package.json 单一真源，标题不再写死版本号——
+    // 标题版本=每发版手改的静默腐烂点（09-08 复检实锤：标题 1.18.3 断言已 1.22.0）。
+    const pkgVersion = (
+      JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")) as { version: string }
+    ).version;
     const configPath = path.join(tempDir, "config.json");
     await fs.writeFile(configPath, "{}");
     const { stdout } = runDoctorCliViaDist(configPath);
     const report = JSON.parse(stdout);
-    expect(report.lasso_version).toBe("1.22.0");
+    expect(report.lasso_version).toBe(pkgVersion);
   });
 });

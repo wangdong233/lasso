@@ -33,9 +33,11 @@
  *  - baseline 用临时文件（stealthCheckBaselinePath 注入），不碰真实 fixture
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 import {
   runDoctor,
   LASSO_VERSION,
@@ -473,13 +475,18 @@ describe("runDoctor —— v1.7 结构对齐（parse15 §5.2）", () => {
     expect(names).toContain("stagehand_rest_contract_probe");
   });
 
-  it("lasso_version === 1.18.3（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+  it("lasso_version 与 package.json 对齐（INV-63 三处对齐验证：doctor.ts 侧）", async () => {
+    // 09-09 泛化：断言读 package.json 单一真源，标题不再写死版本号——
+    // 标题版本=每发版手改的静默腐烂点（09-08 复检实锤：标题 1.18.3 断言已 1.22.0）。
+    const pkgVersion = (
+      JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")) as { version: string }
+    ).version;
     const r = await runDoctor({
       skipNetwork: true,
       skipInvariants: true,
     });
-    expect(r.lasso_version).toBe("1.22.0");
-    expect(LASSO_VERSION).toBe("1.22.0");
+    expect(r.lasso_version).toBe(pkgVersion);
+    expect(LASSO_VERSION).toBe(pkgVersion);
   });
 
   it("skipNetwork=true 时 #38 和 #39 均 warn-skip（零回归：不触网）", async () => {

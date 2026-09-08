@@ -12,7 +12,7 @@
 //  D. changelog 对称：两份的 vX.Y.Z 条目集合完全一致（多语漂移的主形态）
 //  E. 相对链接/图片：两份 README 内全部相对路径引用实存（doc 重整/资产移动即红）
 //  F. npm 包名/安装命令与 package.json name 一致（改名忘同步即红）
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 
@@ -74,6 +74,36 @@ checkLinks(en, "英文");
 // F. 包名一致
 if (zh.includes(pkg.name) || /lasso-mcp/.test(zh)) ok(`F 包名引用一致（${pkg.name}）`);
 else bad("F README 未出现包名（改名忘同步？）");
+
+// G. 版本对齐测试标题防回潮（09-09，cc-control 09-08 复检回告项②）
+// 背景：lasso_version/INV-63 对齐测试的标题写死版本号（"lasso_version === 1.18.3"）
+// 而断言随手发版更新——标题成了唯一不会红的静默腐烂点（复检实锤：标题 1.18.3 /
+// 断言 1.22.0）。泛化后标题无版本、断言读 package.json 单一真源；本守卫拦「再写死」：
+// 凡 it/describe 标题含 lasso_version 或 INV-63，不得内嵌任何 semver 字面量。
+//（历史语境引用如 "v1.14.0 契约"、"1.7.0 契约"（上游版本）不受影响——只圈版本对齐面。）
+{
+  const files = [];
+  const walk = (d) => {
+    for (const f of readdirSync(d)) {
+      const p = path.join(d, f);
+      if (statSync(p).isDirectory()) { walk(p); continue; }
+      if (/\.(ts|mjs)$/.test(f)) files.push(p);
+    }
+  };
+  walk(path.join(ROOT, "test"));
+  const rotten = [];
+  for (const f of files) {
+    const lines = readFileSync(f, "utf8").split(/\r?\n/);
+    lines.forEach((line, i) => {
+      const m = line.match(/(?:it|describe|test)\(\s*["'`]([^"'`]*(?:lasso_version|INV-63)[^"'`]*)["'`]/);
+      if (m && /\d+\.\d+\.\d+/.test(m[1])) {
+        rotten.push(`${path.relative(ROOT, f)}:${i + 1} "${m[1].trim()}"`);
+      }
+    });
+  }
+  if (!rotten.length) ok(`G 版本对齐测试标题零版本字面量（test/ 全扫 ${files.length} 文件）`);
+  else bad(`G 版本对齐测试标题写死版本号（${rotten.join("；")}）——标题不得内嵌 semver（断言读 package.json，标题写「与 package.json 对齐」）`);
+}
 
 console.log(errors.length ? `\nREADME 漂移 ${errors.length} 项（上列 ✗）——修 README 或同步 package.json 后重跑` : "\nREADME 同步检查全绿（中英双语 / 版本 / changelog / 引用 / 包名）");
 process.exit(errors.length ? 1 : 0);
