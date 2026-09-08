@@ -86,7 +86,15 @@ const htmlDoc = (svg: string) =>
 // ============================================================
 // 门控后的主体
 // ============================================================
-const describeOrSkip = CHROME_BIN ? describe : describe.skip;
+// 🔴 CI 守卫收紧（2026-09-08）：GitHub ubuntu runner 现已预装 google-chrome
+// （/usr/bin/google-chrome 在位），「二进制存在」探测在 CI 上不再构成 skip——
+// 但 linux runner 无 GPU、软渲染下双渲超 30s 用例预算（实测 2×timeout 红，
+// v1.22.0 CI run 34240159778 gate(20)）。按本文件头注设计意图「lasso CI 不赌
+// Chrome」（需求 §8.2）：CI 且非 darwin 一律 skip；darwin 本机真跑不受影响；
+// linux 真机要跑可显式 LASSO_RENDER_GOLDEN_FORCE=1 解锁。
+const CI_LINUX =
+  process.env.CI === "true" && process.platform !== "darwin" && process.env.LASSO_RENDER_GOLDEN_FORCE !== "1";
+const describeOrSkip = CHROME_BIN && !CI_LINUX ? describe : describe.skip;
 
 describeOrSkip("R6 golden —— 渲染档 attach 双渲 byte-identical（真 Chrome）", () => {
   let tmpDir: string;
