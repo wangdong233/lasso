@@ -304,9 +304,11 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
   it("2d. INV-87 测试面镜像：doctor 源码零 open -na + checkCdp9222 归因接线", () => {
     const src = readFileSync("src/doctor/doctor.ts", "utf8");
     expect(src).not.toMatch(/open -na/); // grep 禁令（实测逃不出单实例槽位）
-    // BUG-04 C3 起三分支都走归因（!ok / 空 body / catch——三分类接线）
+    // BUG-04 C3 起三分支都走归因（!ok / 空 body / catch——三分类接线）；
+    // C3-r1（09-09）补 /json（tabs）面四分支（!ok / 坏 body / 非 array / 请求失败）→ 7
+    //（锚随生成点演化同批更新）
     const occurrences = src.match(/classifyPortOccupierNextStep\(port, deps\)/g) ?? [];
-    expect(occurrences.length).toBe(3);
+    expect(occurrences.length).toBe(7);
   });
 
   it("2e. 决议 C：chrome-stop 结果行携带 launchMode（--all 全停输出面强化）", async () => {
@@ -346,12 +348,16 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
     tcpFn: async () => false,
   });
 
-  it("3a. HTTP 非 2xx → `returned HTTP <status>`（既有形态保留）", async () => {
+  it("3a. HTTP 非 2xx → `returned HTTP <status>` + 形态解读（r1：非裸状态码）", async () => {
     const r = await checkCdp9222(
       9222,
       fastDeps(async () => new Response("nope", { status: 503 })),
     );
-    expect(r.detail).toBe("CDP /json/version returned HTTP 503");
+    expect(r.detail).toBe(
+      "CDP /json/version returned HTTP 503 — HTTP answered but not a healthy CDP endpoint " +
+        "(a wedged DevTools endpoint or a non-CDP HTTP server can answer like this); " +
+        "ownership/pid evidence: see next_step",
+    );
     expect(r.status).toBe("fail");
   });
 
@@ -387,5 +393,52 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
     });
     expect(r.status).toBe("pass");
     expect(r.detail).toBe("2 tabs on CDP port 9222");
+  });
+
+  // ---- C3-r1（09-09 回告收口）：/json（tabs）探测面同规 ----
+  // 初版该面无 !ok/坏 body 分支：错误落进外层 catch 被误标成 /json/version 形态
+  //（生成点漏改——cdp_9222 探测链 detail 生成点全量清点的产出）。
+  const versionOk = () =>
+    new Response(JSON.stringify({ Browser: "Chrome/150" }), { status: 200 });
+
+  it("3f. /json 非 2xx → `CDP /json (tabs) returned HTTP <status>`（不再误标 version 面）", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async (url: string) =>
+        url.includes("/json/version") ? versionOk() : new Response("nope", { status: 503 }),
+      ),
+    );
+    expect(r.detail).toBe(
+      "CDP /json (tabs) returned HTTP 503 — /json/version was healthy but the tab list is not; " +
+        "ownership/pid evidence: see next_step",
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).not.toMatch(/\/json\/version returned/);
+  });
+
+  it("3g. /json 200 但 body 坏 → `CDP /json (tabs): empty/invalid body`", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async (url: string) =>
+        url.includes("/json/version") ? versionOk() : new Response("<html>not json</html>", { status: 200 }),
+      ),
+    );
+    expect(r.detail).toBe(
+      "CDP /json (tabs): connection accepted, empty/invalid body — /json/version was healthy",
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("3h. /json 200 + 非 array body → 同 empty/invalid body 形态（non-array 标注）", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async (url: string) =>
+        url.includes("/json/version") ? versionOk() : new Response(JSON.stringify({ err: 1 }), { status: 200 }),
+      ),
+    );
+    expect(r.detail).toBe(
+      "CDP /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy",
+    );
+    expect(r.status).toBe("fail");
   });
 });

@@ -1032,14 +1032,23 @@ function nextStepTextForClassification(res: ChromeStatusResult): string {
 }
 
 /**
- * BUG-04 决议 C3（doc/bugs/04 §7，报告 §9-③a）：checkCdp9222 的 detail 如实区分
- * 实测形态——不再把一切笼统写成 HTTP 404 / 裸 String(e)（事故现场实测是
- * 「连接接受但空响应」，误导排查方向）。四种形态（fetchFn DI 注入断言）：
- *  - `CDP /json/version returned HTTP <status>`（有 HTTP 应答但非 2xx）
+ * BUG-04 决议 C3（doc/bugs/04 §7，报告 §9-③a）+ C3-r1（09-09 回告收口，doc/governance/12）：
+ * checkCdp9222 的 detail 如实区分实测形态——不再把一切笼统写成 HTTP 404 / 裸 String(e)
+ * （事故现场实测是「连接接受但空响应」，误导排查方向）。
+ *
+ * /json/version 面四形态（fetchFn DI 注入断言）：
+ *  - `CDP /json/version returned HTTP <status> — ...`（有 HTTP 应答但非 2xx；r1 起
+ *    附实测形态解读：HTTP 有人应答≠健康 CDP——坏死 DevTools 端点/非 CDP HTTP 服务
+ *    都长这样，归属/pid 证据指向 next_step——「文案未跟上」回告的收口）
  *  - `connection accepted, empty/invalid body`（200 但 body 空/坏——不引入
  *    「僵尸」暗示性叙事：空响应≠CDP 坏≠僵尸，归属判定交给 chrome-status 分类器）
  *  - `fetch aborted (timeout)`
  *  - `connection refused`
+ *
+ * /json（tabs）面同规（r1 补漏——初版该探测面无 !ok/坏 body 分支，错误落进外层
+ * catch 被误标成 /json/version 形态，生成点漏改）：
+ *  - `CDP /json (tabs) returned HTTP <status>` / `empty/invalid body` / `request failed`
+ *
  * next_step 走 chrome-status 分类器（决议 A4——补齐真实 pid 证据面）。
  */
 async function checkCdp9222(
@@ -1058,7 +1067,11 @@ async function checkCdp9222(
       return {
         name: "cdp_9222_logged_in",
         status: "fail",
-        detail: `CDP /json/version returned HTTP ${versionResp.status}`,
+        // C3-r1：非 2xx 不写裸状态码——附形态解读与证据去向（回告「文案未跟上」收口）
+        detail:
+          `CDP /json/version returned HTTP ${versionResp.status} — ` +
+          "HTTP answered but not a healthy CDP endpoint (a wedged DevTools endpoint or a " +
+          "non-CDP HTTP server can answer like this); ownership/pid evidence: see next_step",
         next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
@@ -1073,8 +1086,48 @@ async function checkCdp9222(
         next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
-    const tabsResp = await fetchFn(`http://127.0.0.1:${port}/json`);
-    const tabs = (await tabsResp.json()) as unknown[];
+    // C3-r1：/json（tabs）面同规——不落外层 catch 被误标成 /json/version 形态
+    let tabs: unknown[];
+    try {
+      const tabsResp = await fetchFn(`http://127.0.0.1:${port}/json`);
+      if (!tabsResp.ok) {
+        return {
+          name: "cdp_9222_logged_in",
+          status: "fail",
+          detail:
+            `CDP /json (tabs) returned HTTP ${tabsResp.status} — ` +
+            "/json/version was healthy but the tab list is not; ownership/pid evidence: see next_step",
+          next_step: await classifyPortOccupierNextStep(port, deps),
+        };
+      }
+      try {
+        tabs = (await tabsResp.json()) as unknown[];
+      } catch {
+        return {
+          name: "cdp_9222_logged_in",
+          status: "fail",
+          detail:
+            "CDP /json (tabs): connection accepted, empty/invalid body — /json/version was healthy",
+          next_step: await classifyPortOccupierNextStep(port, deps),
+        };
+      }
+      if (!Array.isArray(tabs)) {
+        return {
+          name: "cdp_9222_logged_in",
+          status: "fail",
+          detail:
+            "CDP /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy",
+          next_step: await classifyPortOccupierNextStep(port, deps),
+        };
+      }
+    } catch (e) {
+      return {
+        name: "cdp_9222_logged_in",
+        status: "warn",
+        detail: `CDP /json (tabs) request failed: ${String(e).slice(0, 100)} — /json/version was healthy`,
+        next_step: await classifyPortOccupierNextStep(port, deps),
+      };
+    }
     return {
       name: "cdp_9222_logged_in",
       status: tabs.length > 0 ? "pass" : "warn",
