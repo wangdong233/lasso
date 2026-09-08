@@ -215,13 +215,15 @@ const VIOLATION_SAMPLES = [
   {
     // v1.18（doc/governance/09 fix-2）：INV-82 (a)——exit 钩子丢 modes 过滤（D-5 事故形态
     // 复刻：P1 只修优雅路径、exit 兜底回潮无条件杀全台账）→ 红。
+    // 锚随 BUG-04 演进更新：真实调用新增 ownerPid/exemptUserTaken（zombie-gate kill 时刻重估），
+    // 突变只摘 modes:['hidden']，其余保持——锚漂移会让样本注不进、pin 可证伪性失效（2026-09-08 实锤）。
     inv: "INV-82",
     desc: "exit 钩子 stopLaunchedChromesSync 丢 modes:['hidden']（D-5 回潮）",
     file: "index.ts",
     mutation: {
       replace: [
-        'stopLaunchedChromesSync({ modes: ["hidden"], logFn: (p) => logger.info(p) })',
-        "stopLaunchedChromesSync({ logFn: (p) => logger.info(p) })",
+        'stopLaunchedChromesSync({ modes: ["hidden"], ownerPid: process.pid, exemptUserTaken: true, logFn: (p) => logger.info(p) })',
+        "stopLaunchedChromesSync({ ownerPid: process.pid, exemptUserTaken: true, logFn: (p) => logger.info(p) })",
       ],
     },
   },
