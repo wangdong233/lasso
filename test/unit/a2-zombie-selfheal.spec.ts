@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { recordLaunch, LAUNCH_GRACE_MS, type LaunchedChromeRecord } from "../../src/launcher/chrome-ledger.js";
 import { launchChrome } from "../../src/launcher/launch-chrome.js";
 import { stopLaunchedChromes } from "../../src/launcher/chrome-stop.js";
-import { classifyPortOccupierNextStep } from "../../src/doctor/doctor.js";
+import { classifyPortOccupierNextStep, checkCdp9222 } from "../../src/doctor/doctor.js";
 
 let tmpDir: string;
 const PROFILE = "/tmp/lasso-a2-profile";
@@ -304,9 +304,9 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
   it("2d. INV-87 测试面镜像：doctor 源码零 open -na + checkCdp9222 归因接线", () => {
     const src = readFileSync("src/doctor/doctor.ts", "utf8");
     expect(src).not.toMatch(/open -na/); // grep 禁令（实测逃不出单实例槽位）
-    // catch 与 !ok 两分支都走归因（三分类接线）
+    // BUG-04 C3 起三分支都走归因（!ok / 空 body / catch——三分类接线）
     const occurrences = src.match(/classifyPortOccupierNextStep\(port, deps\)/g) ?? [];
-    expect(occurrences.length).toBe(2);
+    expect(occurrences.length).toBe(3);
   });
 
   it("2e. 决议 C：chrome-stop 结果行携带 launchMode（--all 全停输出面强化）", async () => {
@@ -333,5 +333,59 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
     const step = await classifyPortOccupierNextStep(9222, doctorDeps());
     expect(step).toMatch(/user_taken_asset/);
     expect(step).not.toMatch(/清僵尸/);
+  });
+});
+
+// ============================================================
+// BUG-04 决议 C3：checkCdp9222 detail 措辞如实（四种实测形态，fetchFn DI）
+// ============================================================
+describe("C3 · doctor checkCdp9222 detail 四形态", () => {
+  // next_step 探针全注入拒连（快速 free 面，不触真机）
+  const fastDeps = (fetchFn: (url: string) => Promise<Response>) => ({
+    fetchFn,
+    tcpFn: async () => false,
+  });
+
+  it("3a. HTTP 非 2xx → `returned HTTP <status>`（既有形态保留）", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async () => new Response("nope", { status: 503 })),
+    );
+    expect(r.detail).toBe("CDP /json/version returned HTTP 503");
+    expect(r.status).toBe("fail");
+  });
+
+  it("3b. 200 但 body 空/坏 → `connection accepted, empty/invalid body`（事故实测形态——不再笼统 404/裸异常）", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async () => new Response("", { status: 200 })),
+    );
+    expect(r.detail).toBe("CDP /json/version: connection accepted, empty/invalid body");
+    expect(r.status).toBe("fail");
+  });
+
+  it("3c. 超时 → `fetch aborted (timeout)`", async () => {
+    const r = await checkCdp9222(9222, fastDeps(async () => {
+      throw new Error("This operation was aborted due to timeout");
+    }));
+    expect(r.detail).toBe("CDP /json/version: fetch aborted (timeout)");
+  });
+
+  it("3d. 拒连 → `connection refused`（空闲端口形态）", async () => {
+    const r = await checkCdp9222(9222, fastDeps(async () => {
+      throw new Error("fetch failed: Error: connect ECONNREFUSED 127.0.0.1:9222");
+    }));
+    expect(r.detail).toBe("CDP /json/version: connection refused");
+  });
+
+  it("3e. 健康路径（200 + 合法 body + tabs>0）→ pass（措辞变更零回归）", async () => {
+    const r = await checkCdp9222(9222, {
+      fetchFn: async (url: string) =>
+        url.includes("/json/version")
+          ? new Response(JSON.stringify({ Browser: "Chrome/150" }), { status: 200 })
+          : new Response(JSON.stringify([{ id: "t1" }, { id: "t2" }]), { status: 200 }),
+    });
+    expect(r.status).toBe("pass");
+    expect(r.detail).toBe("2 tabs on CDP port 9222");
   });
 });

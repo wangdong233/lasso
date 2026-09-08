@@ -992,6 +992,8 @@ async function classifyPortOccupierNextStep(
   return nextStepTextForClassification(res);
 }
 export { classifyPortOccupierNextStep };
+// BUG-04 决议 C3：导出供单测（fetchFn DI 断言四种 detail 文本）。
+export { checkCdp9222 };
 
 /**
  * BUG-04 决议 A4：分类 → doctor next_step 人话（单一渲染真源；chrome-status
@@ -1029,14 +1031,29 @@ function nextStepTextForClassification(res: ChromeStatusResult): string {
   }
 }
 
+/**
+ * BUG-04 决议 C3（doc/bugs/04 §7，报告 §9-③a）：checkCdp9222 的 detail 如实区分
+ * 实测形态——不再把一切笼统写成 HTTP 404 / 裸 String(e)（事故现场实测是
+ * 「连接接受但空响应」，误导排查方向）。四种形态（fetchFn DI 注入断言）：
+ *  - `CDP /json/version returned HTTP <status>`（有 HTTP 应答但非 2xx）
+ *  - `connection accepted, empty/invalid body`（200 但 body 空/坏——不引入
+ *    「僵尸」暗示性叙事：空响应≠CDP 坏≠僵尸，归属判定交给 chrome-status 分类器）
+ *  - `fetch aborted (timeout)`
+ *  - `connection refused`
+ * next_step 走 chrome-status 分类器（决议 A4——补齐真实 pid 证据面）。
+ */
 async function checkCdp9222(
   port: number,
-  deps: Parameters<typeof classifyPortOccupierNextStep>[1] = {},
+  deps: Parameters<typeof classifyPortOccupierNextStep>[1] & {
+    /** C3 测试注入：/json/version 与 /json 的 fetch（默认 global fetch + 2s 超时）。 */
+    fetchFn?: (url: string) => Promise<Response>;
+  } = {},
 ): Promise<DoctorCheck> {
+  const fetchFn =
+    deps.fetchFn ??
+    ((url: string) => fetch(url, { signal: AbortSignal.timeout(2000) }));
   try {
-    const versionResp = await fetch(`http://127.0.0.1:${port}/json/version`, {
-      signal: AbortSignal.timeout(2000),
-    });
+    const versionResp = await fetchFn(`http://127.0.0.1:${port}/json/version`);
     if (!versionResp.ok) {
       return {
         name: "cdp_9222_logged_in",
@@ -1045,9 +1062,18 @@ async function checkCdp9222(
         next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
-    const tabsResp = await fetch(`http://127.0.0.1:${port}/json`, {
-      signal: AbortSignal.timeout(2000),
-    });
+    // C3：200 ≠ 健康——body 必须可解析（实测形态：连接接受但空响应）
+    try {
+      await versionResp.json();
+    } catch {
+      return {
+        name: "cdp_9222_logged_in",
+        status: "fail",
+        detail: "CDP /json/version: connection accepted, empty/invalid body",
+        next_step: await classifyPortOccupierNextStep(port, deps),
+      };
+    }
+    const tabsResp = await fetchFn(`http://127.0.0.1:${port}/json`);
     const tabs = (await tabsResp.json()) as unknown[];
     return {
       name: "cdp_9222_logged_in",
@@ -1059,10 +1085,17 @@ async function checkCdp9222(
           : `在 Chrome 里打开任意页面后再调用 browse_logged_in`,
     };
   } catch (e) {
+    // C3：错误形态如实分类（timeout 与拒连是不同排查方向；其余原样）
+    const msg = String(e);
+    const detail = /abort.*timeout|timeout.*abort|aborted/i.test(msg)
+      ? "CDP /json/version: fetch aborted (timeout)"
+      : /ECONNREFUSED|connection refused/i.test(msg)
+        ? "CDP /json/version: connection refused"
+        : `CDP /json/version fetch failed: ${msg.slice(0, 120)}`;
     return {
       name: "cdp_9222_logged_in",
       status: "warn",
-      detail: String(e),
+      detail,
       next_step: await classifyPortOccupierNextStep(port, deps),
     };
   }
