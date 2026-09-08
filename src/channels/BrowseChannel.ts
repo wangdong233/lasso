@@ -1462,24 +1462,88 @@ const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
 ];
 
 /**
- * E④（BUG-03 决议 E④）：evaluate 的 js 入参 → 上游 function 参数归一（导出供测试）。
+ * E④（BUG-03 决议 E④）+ BUG-04 决议 C1（doc/bugs/04 §7）：evaluate 的 js 入参 →
+ * 上游 function 参数归一（导出供测试）。
  *
- * 双形态兼容：
+ * 三形态兼容：
  *  - **函数表达式**（起手 `(` / `function` / `async`，或单标识符箭头 `x => x`）
  *    → 原样透传——上游 evaluate_script 契约本就吃函数表达式并自调用；旧 wrapper
  *    会把它包成「函数体内的函数表达式语句」（求值不 return → 恒 undefined 静默
  *    错值——消费方④实战毒点）。
+ *  - **IIFE 立即执行式**（`(async () => {...})()` / `(() => {...})()` /
+ *    `(function () { ... })()`）→ 包成表达式体箭头 `() => (\n${t}\n)`——上游
+ *    performEvaluation（script.js:158-165）= `evaluateHandle('(' + fnString + ')')`
+ *    后 `fn(...args)`：IIFE 串求值成**结果**而非函数 → `fn is not a function`
+ *    （报告 §9-②a）。包裹成 `() => (iife)` 后外层箭头求值即得 IIFE 结果
+ *    （Promise 由上游 await fn() 解开，语义不变）。
  *  - **语句体**（`return ...` / 声明 / 多语句 / 裸表达式）→ 维持包裹
  *    `() => { ... }`（W1-DEF-1b：直接透传 `return` 会被当函数表达式语法错，
  *    wave2 smoke 实证 "Unexpected token 'return'"）。
- * 判定规则刻意保守（起手 token 白名单）：误判方向 = 语句体被透传（上游报语法
- * 错，响亮可修），优于函数表达式被包裹（静默 undefined，毒中之毒）。
+ *
+ * IIFE 判定（C1 结构化规则，防误伤尾调用箭头）：起手函数表达式 token + 剥尾 `;`
+ * 后以 `()` 收尾 + 其前一字符属于平衡的 `)`/`}` 组。反例锚：
+ *  - `() => document.getElementById('x').click()`（箭头尾调用）——末尾 `()` 前是
+ *    标识符 → 透传（上游直接自调用该箭头，语义正确）；
+ *  - `() => (foo)(x)` —— 尾参非空括号组（`(x)` 而非 `()`）→ 维持透传
+ *    （文档化取向：静默变更风险大于响亮报错——若真是 IIFE 形态，调用方改写
+ *    起手 `(` 形态即可）。
+ * 判定规则刻意保守：误判方向 = 语句体被透传（上游报语法错，响亮可修），优于
+ * 函数表达式被包裹（静默 undefined，毒中之毒）。IIFE 误包裹方向同样安全——
+ * 表达式位置包 `() => (expr)` 求值不变。
  */
 export function evaluateFunctionArg(js: string): string {
   const t = js.trim();
-  if (/^(?:async\b|function\b|\()/.test(t)) return t; // 函数表达式起手 token
+  if (/^(?:async\b|function\b|\()/.test(t)) {
+    // 函数表达式起手 token；IIFE 形态（结构化尾部调用判定）包成表达式体箭头
+    //（剥尾 `;`——表达式体内 `expr;` 是语法错；其余 byte 保留）
+    return isIifeString(t) ? `() => (\n${t.replace(/;\s*$/, "")}\n)` : t;
+  }
   if (/^[A-Za-z_$][\w$]*\s*=>/.test(t)) return t; // 单标识符箭头 x => x
   return `() => {\n${js}\n}`; // 语句体维持包裹
+}
+
+/**
+ * BUG-04 决议 C1：IIFE 立即执行式结构化判定（导出供测试）。
+ *
+ * 规则（三条全中才判 IIFE）：
+ *  1. 剥尾 `;`（含尾随空白）后以空参调用 `()` 收尾；
+ *  2. 其前一字符是 `)` 或 `}`（闭合的函数体/括号组——排除 `fn()` / `.click()`
+ *     等标识符尾调用）；
+ *  3. 全串括号/花括号平衡（排除截断/畸形输入——畸形按响亮上游错误处理）。
+ */
+export function isIifeString(t: string): boolean {
+  const s = t.replace(/;\s*$/, "");
+  if (!s.endsWith("()")) return false;
+  const before = s.slice(0, -2);
+  const last = before.charAt(before.length - 1);
+  if (last !== ")" && last !== "}") return false;
+  return bracketsBalanced(s);
+}
+
+/** 括号/花括号平衡（含字符串字面量感知——字符串内的括号不计数）。 */
+function bracketsBalanced(s: string): boolean {
+  let round = 0;
+  let curly = 0;
+  let quote: string | null = null;
+  let escaped = false;
+  for (const ch of s) {
+    if (quote !== null) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") round++;
+    else if (ch === ")") round--;
+    else if (ch === "{") curly++;
+    else if (ch === "}") curly--;
+    if (round < 0 || curly < 0) return false;
+  }
+  return round === 0 && curly === 0 && quote === null;
 }
 
 // ============================================================

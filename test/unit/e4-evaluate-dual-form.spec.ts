@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { promises as fs, mkdtempSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BrowseChannel, evaluateFunctionArg } from "../../src/channels/BrowseChannel.js";
+import { BrowseChannel, evaluateFunctionArg, isIifeString } from "../../src/channels/BrowseChannel.js";
 import { evalFence, parseEvalResult } from "../../src/browse/upstream-response.js";
 import { setStateStoreContext } from "../../src/util/state-store.js";
 import { _resetRunIdForTests, newRunId } from "../../src/util/run-id.js";
@@ -215,5 +215,82 @@ describe("E④ · 会话轮换错误归类 session_rotated", () => {
     } as BrowseOptions);
     expect(r.outcome).toBe("unknown");
     expect(r.error).toContain("eval_upstream_error:");
+  });
+});
+
+// ============================================================
+// 5. BUG-04 决议 C1：IIFE 第三形态（doc/bugs/04 §7）
+// ============================================================
+// 机理（上游 tarball 逐行复核）：performEvaluation（script.js:158-165）=
+// `evaluateHandle('(' + fnString + ')')` 后 `fn(...args)`——IIFE 串求值成
+// **结果**而非函数 → `fn is not a function`（报告 §9-②a 消费方实测）。
+// 修：IIFE 探测（结构化尾部调用判定）命中 → 包成表达式体箭头 `() => (\n${t}\n)`。
+describe("C1 · evaluate IIFE 第三形态", () => {
+  it("5a. 三 IIFE 形态包成表达式体箭头（求值即得结果）", () => {
+    for (const iife of [
+      "(async () => { const t = await Promise.resolve(1); return t; })()",
+      "(() => { return 42 })()",
+      "(function() { return 1; })()",
+      "(async function(){ return 2; })()",
+      "(() => { return 3 })();", // 尾分号形态
+    ]) {
+      const out = evaluateFunctionArg(iife);
+      expect(out).toBe(`() => (\n${iife.replace(/;\s*$/, "")}\n)`);
+      expect(out).not.toBe(iife); // 原样透传 = 上游 fn is not a function（毒点）
+    }
+  });
+
+  it("5b. isIifeString 反例锚：箭头尾调用/尾参非空括号/截断——维持透传（静默变更风险大于响亮报错）", () => {
+    // 箭头尾调用：上游直接自调用箭头，透传语义正确（决议指定反例）
+    expect(isIifeString("() => document.getElementById('x').click()")).toBe(false);
+    expect(evaluateFunctionArg("() => document.getElementById('x').click()")).toBe(
+      "() => document.getElementById('x').click()",
+    );
+    // 尾参非空括号组：(x) 不是 ()——维持透传（文档化取向）
+    expect(isIifeString("() => (foo)(x)")).toBe(false);
+    expect(evaluateFunctionArg("() => (foo)(x)")).toBe("() => (foo)(x)");
+    // 括号函数表达式（非调用）——透传（既有 E④ 语义不回退）
+    expect(isIifeString("(() => 42)")).toBe(false);
+    expect(isIifeString("(function() { return 1; })")).toBe(false);
+    // 平衡破坏（截断/畸形）——不判 IIFE，交上游响亮报错
+    expect(isIifeString("(() => { return 1 })(")).toBe(false);
+    // 字符串内的括号不计数
+    expect(isIifeString('(function(){ return ")("; })()')).toBe(true);
+  });
+
+  it("5c. doEvaluate 行为：IIFE 入参 → 上游收到表达式体箭头 + 结果直达（不再 fn is not a function）", async () => {
+    const { client, calls } = makeClient({
+      evaluate_script: () => fencedEval("7"),
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "(async () => { const x = await Promise.resolve(7); return x; })()",
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    const fnArg = String(calls.find((c) => c.name === "evaluate_script")!.args.function);
+    expect(fnArg).toMatch(/^\(\) => \(\n\(async/); // 包裹形态
+    expect(r.data?.preview).toBe("7");
+  });
+
+  it("5d. E④ 既有语料不回退（函数表达式透传 / 语句体包裹——全向量复跑）", () => {
+    for (const fn of [
+      "() => document.title",
+      "async () => 1",
+      "(() => 42)",
+      "(function() { return 1; })",
+      "function f() { return 1; }",
+      "async function f() { return 1; }",
+      "x => x + 1",
+      "async x => x",
+    ]) {
+      expect(evaluateFunctionArg(fn)).toBe(fn);
+    }
+    for (const stmt of [
+      "return document.title",
+      "const a = 1; return a",
+      "var x = 1;\nx + 2",
+    ]) {
+      expect(evaluateFunctionArg(stmt)).toBe(`() => {\n${stmt}\n}`);
+    }
   });
 });
