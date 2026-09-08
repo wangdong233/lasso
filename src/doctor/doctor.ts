@@ -162,7 +162,7 @@ const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const LASSO_VERSION = "1.20.0";
+export const LASSO_VERSION = "1.21.0";
 
 // ============================================================
 // 类型

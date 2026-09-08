@@ -215,7 +215,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.20.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.21.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -232,6 +232,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 <details>
 <summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>
 
+- **v1.21.0**：浏览器主权与生命周期根治批（BUG-03，真机事故驱动）——① 🔴 **行为变更**：`launch-chrome` CLI 默认空闲回收从「永不回收」改为 **30 分钟自动回收**（旧永不回收行为用 `--idle-ms 0` 显式恢复）；② **用户激活让位门**：你点 Dock/Spotlight 掀出 lasso 隐藏的 Chrome 时，lasso 以「HID 空闲 + 前置窗口」双判据识别这是**人在操作**——放行、30 秒确认窗后退位（页面自弹的窗口照常压回，v1.18.3 静默契约零回归）；③ **停机不连坐**：修复一个 P0——此前任意 lasso server 进程退出会按全局台账**扫杀全部隐藏 Chrome**（违背 `--idle-ms 0` 保活承诺）；现在按归属三维过滤，CLI 拉起的实例在 server 退出后照常存活、照常被回收；④ **僵尸占位自愈**：9222 被自家挂死实例占用时不再误报「非 CDP 进程」，自动按台账归因收尸重拉；doctor 端口占用三分类（自家僵尸/陈留/用户资产），**永不建议代杀用户资产**（台账伪造 + pid 冒名也拒杀，新不变量 INV-85/86/87）；⑤ 消费方实战修复（cc-control 反馈）：`browse` 截图上游契约适配（大图 filePath 直写 + Access-denied 降级重试，会话内截图通路补齐）、`evaluate` 恒返 undefined 根治（函数表达式双形态透传）、会话轮换归类为可重试的 `session_rotated`；⑥ `launch-chrome --mode headless` 可选档（无人值守专用——诚实声明：headless 也共享 Chrome bundle 槽位）。对抗三轮闭环：28 变异全杀 + 3 个 CRITICAL 当场修复复核 PASS；测试 2595→2676 / 不变量 84→87。
 - **v1.20.0**：渲染档并行安全批（stop/doctor 端口作用域化）——① 🔴 **行为变更**：`render-chrome --stop` 此前无视 `LASSO_RENDER_PORT`、会收掉**全机**渲染档（同机多 agent 并行验收时互杀对方实例的第一入口）；现在**显式设了 `LASSO_RENDER_PORT` 只收该 port**（与 `--ensure`/`--status` 对称），未设=维持全收不变，非法值 exit 1 报用法错。设了 port 却想全收的旧脚本请改用 `chrome-stop --modes render`；`--stop` 输出形状不变（幂等 `{"stopped":[...]}`）。② `render-chrome doctor` 孤儿判定同样作用域化 + 双豁免：显式 port 只判该 port，他人命名空间实例不再被误判孤儿（范围外 port + touch 心跳 10 分钟内新鲜双重豁免，`--clean` 不再误杀在用实例）。③ 配套**同机多 agent 并行验收**三 env 隔离配方（`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`）真机验证：双终端并发各自清场，并行互不可见零互杀。media-gen-mcp 等消费方只调 `--ensure` 不受影响（已源码级实证）。
 - **v1.19.0**：确定性渲染档 + 性能/准确率批——① 新增 `lasso-mcp render-chrome`：给其它 AI 工具（如 media-gen-mcp）当**确定性渲染浏览器**——`--ensure` 一行拉起带冻结旗标快照的 headless Chrome（消费方进程被强杀浏览器照常存活，空闲 10 分钟自动回收并清理 profile），详见 README 渲染档节；② 性能：浏览器引擎冷启动握手加预算（卡死快速失败不再挂 60 秒，`LASSO_MCP_HANDSHAKE_TIMEOUT_MS` 可调）、首装 npx 下载税消除、2FA 探测幂等化、大求值截断快路；③ 准确率：搜索页改版检测链上线（选择器失效自动发现并记录基线）。工具接口零变化（纯新增子命令与旗标）。
 - **v1.18.8**：doctor 与 CLI 打磨——① `doctor` 不再因 **ad-hoc 签名**报「不健康」（此前 `ready:false` 误报：ad-hoc 是官方免费合法方案，功能正常，唯一代价是重编译后需重新系统授权；Developer ID 正签仍 pass）② `lasso launch-chrome --help` 修复（此前会误启动一个 Chrome，现在正确打印用法说明）③ 架构文档全量对齐 + 20 项历史遗留清理（测试增至 2471 / 不变量 84）。
