@@ -4826,8 +4826,14 @@ const assertions = [
         /function classifyPortOccupierNextStep[\s\S]*?\n\}/,
       );
       if (!classifier) return false;
-      if (!classifier[0].includes("never_kill_user_asset")) return false;
-      if (!classifier[0].includes("chrome-stop --port")) return false; // 自家僵尸→清僵尸出口
+      // BUG-04 决议 A4 起：判定收敛进 chrome-status 单一真源，本函数为渲染器——
+      // 文案锚随迁到渲染函数（nextStepTextForClassification）。
+      const renderer87 = doctorSrc.match(
+        /function nextStepTextForClassification[\s\S]*?\n\}/,
+      );
+      if (!renderer87) return false;
+      if (!renderer87[0].includes("never_kill_user_asset")) return false;
+      if (!renderer87[0].includes("chrome-stop --port")) return false; // 用户本人出口（paste 语境）
 
       // ----- (c) doctor 源码禁 open 另起新实例形态 -----
       if (/open -na/.test(doctorSrc)) return false;
@@ -4853,8 +4859,166 @@ const assertions = [
       if (!uoWindow.includes("user_taken_asset")) return false;
       if (!uoWindow.includes("never_kill_user_asset")) return false;
       // doctor 归因：用户拥有记录不得给「清僵尸」代杀指引
-      const uoDoctor = doctorSrc.match(/isUserOwnedRecord\(rec\)[\s\S]{0,600}?user_taken_asset/);
+      // doctor 归因（BUG-04 决议 A4 起为渲染器，判定收敛进 chrome-status 单一
+      // 真源）：用户拥有分类文案必含 user_taken_asset + 用户本人 chrome-stop
+      // （非 agent 出口）；agent 侧清僵尸/清账指引必须是 --zombie-gate 门槛变体。
+      const uoDoctor = doctorSrc.match(/ledger_user_owned[\s\S]{0,700}?user_taken_asset/);
       if (!uoDoctor) return false;
+      if (!/chrome-stop --zombie-gate --port/.test(doctorSrc)) return false;
+
+      return true;
+    },
+  },
+  // ============================================================
+  // BUG-04（2026-09-08，doc/bugs/04 §4 决议 A）新增 —— chrome-status 输出契约
+  // ============================================================
+  // 09-08 误杀事故（报告第一部分）的直接纵深：把「归属鉴定」从 agent 手里收走
+  // ——classifyPortOccupier 单一真源（10 枚举 + R1-R3 机械规则）+ 永不给 agent
+  // kill 能力。守（输出契约 + 规则锚 + 门槛变体三面钉死）：
+  //  INV-88  chrome-status 输出契约：
+  //    (a) 模块源码（剥注释）零 kill 命令形态字面量（pkill/killall/kill -N/
+  //        osascript）——输出面永不给 agent kill 能力（grep tripwire）
+  //    (b) AGENT_DIRECTIVES 单一真源：chrome-stop 只允许 `--zombie-gate` 门槛
+  //        变体字面量，且只出现在 ledger_zombie_collectible / ledger_stale
+  //        （决议 A2 铁律 + 「台账陈留清账指引同用门槛变体」括注）两分支；
+  //        其余占用分支 allowed_commands 恒空 + must_report + never_kill token
+  //    (c) R1 失效安全：probe_failed 指令恒空；分类器 lsof 空 / ps 空 / TCP
+  //        不可判三分支均落 probe_failed（空输出≠空属性）；free 仅认 TCP 拒连
+  //    (d) R2 pid 一致性：evidence.pid_match；pid_match && ownedAlive 门内才可能
+  //        落 lasso_live/zombie；不匹配走 classifyByOccupierIdentity（实际占口者）
+  //    (e) R3 慢启动守卫：chrome-ledger 导出 LAUNCH_GRACE_MS + isLaunchingRecord
+  //        单一真源；chrome-status 与 launch-chrome A2 门（zombieCollectible
+  //        回补锚）都消费它
+  //    (f) chrome-stop --zombie-gate 分支必含 exemptUserTaken:true +
+  //        modes:["hidden","headless"]（kill 时刻重估）；parse 层拒无 --port /
+  //        拒与 --modes 组合；gated_skipped 输出面带 never_kill token
+  //    (g) doctor 渲染器消费单一真源（import + await classifyPortOccupier）；
+  //        agent 出口（门槛变体）与用户本人出口（chrome-stop --port）分流
+  {
+    id: "INV-88-chrome-status-no-kill-contract",
+    desc:
+      "BUG-04 决议 A：chrome-status 归属鉴定输出契约——模块零 kill 命令形态字面量（tripwire）；AGENT_DIRECTIVES 中 chrome-stop 只允许 --zombie-gate 门槛变体且仅 zombie/stale 两分支，其余占用分支 allowed_commands 恒空 + must_report + never_kill_user_asset；R1 失效安全（探针断链→probe_failed 恒空指令）/ R2 pid 一致性（pid_match 门）/ R3 慢启动守卫（LAUNCH_GRACE_MS 单一真源 + A2 门 zombieCollectible 回补）全部机械化；--zombie-gate 分支 kill 时刻重估（exemptUserTaken+modes）；doctor 渲染器消费单一真源且 agent/用户出口分流",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const csSrc = byPath(/^doctor\/chrome-status\.ts$/)?.text ?? "";
+      const csCode = stripComments(csSrc);
+      const stopSrc = byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "";
+      const stopCode = stripComments(stopSrc);
+      const launchSrc = byPath(/^launcher\/launch-chrome\.ts$/)?.text ?? "";
+      const ledgerSrc = byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "";
+      const doctorSrc = byPath(/^doctor\/doctor\.ts$/)?.text ?? "";
+      if (!csSrc) return false;
+
+      // ----- (a) 模块零 kill 形态字面量（user_paste_pack 的用户出口只有
+      //           chrome-stop CLI 命令形态——非 shell kill，不受本禁令管辖）-----
+      if (/\bp?killall\b|\bpkill\b|\bkill\s+-|osascript/.test(csCode)) return false;
+
+      // ----- (b) AGENT_DIRECTIVES 单一真源 -----
+      const directives = csCode.match(/export const AGENT_DIRECTIVES[\s\S]*?\n\};/);
+      if (!directives) return false;
+      const dirBody = directives[0];
+      let idx = dirBody.indexOf("chrome-stop");
+      let seenGated = false;
+      while (idx !== -1) {
+        if (!dirBody.startsWith("chrome-stop --zombie-gate", idx)) return false;
+        seenGated = true;
+        idx = dirBody.indexOf("chrome-stop", idx + 5);
+      }
+      if (!seenGated) return false;
+      // 按顶层 key 切块逐分支断言：非 (zombie|stale|free) 分支 allowed_commands
+      // 恒空且无 chrome-stop；zombie/stale 允许门槛变体；free 允许 launch-chrome。
+      const entries = dirBody.split("\n  ");
+      let currentKey = "";
+      const byKey = new Map();
+      for (const line of entries) {
+        const m = line.match(/^(\w+): \{/);
+        if (m) currentKey = m[1];
+        if (currentKey) {
+          byKey.set(currentKey, (byKey.get(currentKey) ?? "") + line + "\n");
+        }
+      }
+      const gatedBranches = new Set(["ledger_zombie_collectible", "ledger_stale"]);
+      for (const [key, block] of byKey) {
+        if (gatedBranches.has(key)) {
+          if (!/chrome-stop --zombie-gate/.test(block)) return false;
+          continue;
+        }
+        if (/chrome-stop/.test(block)) return false;
+        if (key !== "free" && /allowed_commands:\s*\[\s*"/.test(block)) return false;
+      }
+      // 矩阵 10 枚举齐全
+      for (const k of [
+        "free",
+        "lasso_launching",
+        "lasso_live",
+        "ledger_zombie_collectible",
+        "ledger_user_owned",
+        "ledger_stale",
+        "lasso_profile_orphan_suspected",
+        "user_asset_suspected",
+        "external_occupier",
+        "probe_failed",
+      ]) {
+        if (!byKey.has(k)) return false;
+      }
+      // 占用分支 must_report + never_kill token
+      for (const k of [
+        "lasso_launching",
+        "ledger_user_owned",
+        "ledger_stale",
+        "lasso_profile_orphan_suspected",
+        "user_asset_suspected",
+        "external_occupier",
+        "probe_failed",
+      ]) {
+        const b = byKey.get(k) ?? "";
+        if (!/must_report:\s*true/.test(b)) return false;
+        if (!/never_kill_user_asset:\s*true/.test(b)) return false;
+      }
+
+      // ----- (c) R1 失效安全 -----
+      const probeBlock = byKey.get("probe_failed") ?? "";
+      if (/allowed_commands:\s*\[\s*"/.test(probeBlock)) return false;
+      const classifyFn = csCode.match(
+        /export async function classifyPortOccupier\([\s\S]*?\n\}/,
+      );
+      if (!classifyFn) return false;
+      const cf = classifyFn[0];
+      if (!/tcp === null[\s\S]{0,200}?probe_failed/.test(cf)) return false;
+      if (!/lsofFn\(port\);[\s\S]{0,160}?=== null[\s\S]{0,240}?probe_failed/.test(cf)) return false;
+      if (!/psFn\(lsofPid\);?[\s\S]{0,160}?=== null[\s\S]{0,240}?probe_failed/.test(cf)) return false;
+      if (!/tcp === false/.test(cf)) return false; // free 仅认 TCP 主动拒连
+
+      // ----- (d) R2 pid 一致性 -----
+      if (!/evidence\.pid_match = lsofPid === rec\.pid/.test(cf)) return false;
+      if (!/if \(evidence\.pid_match && ownedAlive\)/.test(cf)) return false;
+      if (!/classifyByOccupierIdentity/.test(cf)) return false;
+
+      // ----- (e) R3 慢启动守卫（单一真源 + 两消费方）-----
+      if (!/export const LAUNCH_GRACE_MS = 60_000/.test(stripComments(ledgerSrc))) return false;
+      if (!/export function isLaunchingRecord/.test(stripComments(ledgerSrc))) return false;
+      if (!/isLaunchingRecord/.test(csCode)) return false;
+      if (!/isLaunchingRecord\(zombie\)/.test(stripComments(launchSrc))) return false;
+
+      // ----- (f) --zombie-gate kill 时刻重估 + parse 双拒 + gated_skipped -----
+      const gateBranch = stopCode.match(/if \(opts\.zombieGate\) \{[\s\S]*?\n  \}/);
+      if (!gateBranch) return false;
+      if (!/exemptUserTaken = true/.test(gateBranch[0])) return false;
+      if (!/modes = \["hidden", "headless"\]/.test(gateBranch[0])) return false;
+      const parseFn = stopCode.match(/export function parseChromeStopArgs[\s\S]*?\n\}/);
+      if (!parseFn) return false;
+      if (!/--zombie-gate requires an explicit --port/.test(parseFn[0])) return false;
+      if (!/--zombie-gate cannot be combined with --modes/.test(parseFn[0])) return false;
+      if (!/gated_skipped/.test(stopCode)) return false;
+      if (!/never_kill_user_asset/.test(stopCode)) return false;
+
+      // ----- (g) doctor 渲染器消费单一真源 + 出口分流 -----
+      if (!/from "\.\/chrome-status\.js"/.test(stripComments(doctorSrc))) return false;
+      if (!/await classifyPortOccupier\(port, deps\)/.test(stripComments(doctorSrc))) return false;
+      const renderer = doctorSrc.match(/function nextStepTextForClassification[\s\S]*?\n\}/);
+      if (!renderer) return false;
+      if (!/chrome-stop --zombie-gate --port/.test(renderer[0])) return false; // agent 出口=门槛变体
+      if (!/chrome-stop --port/.test(renderer[0])) return false; // 用户本人出口（paste 语境）
 
       return true;
     },

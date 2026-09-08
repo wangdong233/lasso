@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync, promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { recordLaunch, type LaunchedChromeRecord } from "../../src/launcher/chrome-ledger.js";
+import { recordLaunch, LAUNCH_GRACE_MS, type LaunchedChromeRecord } from "../../src/launcher/chrome-ledger.js";
 import { launchChrome } from "../../src/launcher/launch-chrome.js";
 import { stopLaunchedChromes } from "../../src/launcher/chrome-stop.js";
 import { classifyPortOccupierNextStep } from "../../src/doctor/doctor.js";
@@ -44,7 +44,8 @@ function makeRec(overrides: Partial<LaunchedChromeRecord> = {}): LaunchedChromeR
     port: 9222,
     pid: 66111,
     profileDir: PROFILE,
-    launchedAt: Date.now(),
+    // BUG-04 R3：缺省陈年记录（慢启动宽限窗外——年轻记录有专门测试 1i）
+    launchedAt: Date.now() - LAUNCH_GRACE_MS * 10,
     status: "ready",
     launchMode: "hidden",
     ...overrides,
@@ -238,34 +239,64 @@ describe("A2 · launch-chrome 僵尸占位自愈", () => {
     expect(stopCalls).toHaveLength(0);
     expect(r.error).toMatch(/guardian-managed|user_taken_asset/);
   });
+
+  // ---- BUG-04 决议 A1 R3 回补：年轻 cdp_not_ready 记录不被 zombieCollectible 收割 ----
+  it("1i. 年轻记录（< LAUNCH_GRACE_MS）→ 慢启动守卫拒绝收割：STARTING 诚实错误 + 零收尸 + 打点", async () => {
+    await recordLaunch(makeRec({ launchedAt: Date.now() - 3_000, status: "cdp_not_ready" }));
+    const stopCalls: number[] = [];
+    const logs: Array<Record<string, unknown>> = [];
+    const r = await launchChrome(
+      makeLaunchOpts({
+        stopZombieFn: async (o) => {
+          stopCalls.push(o.port);
+        },
+        aliveFn: () => true,
+        psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
+        logFn: (p: Record<string, unknown>) => logs.push(p),
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(stopCalls).toHaveLength(0);
+    expect(r.error).toMatch(/may still be STARTING/);
+    expect(r.error).toMatch(/never_kill_user_asset/);
+    expect(logs.some((p) => p.evt === "ledger_launching_not_collected")).toBe(true);
+  });
 });
 
 // ============================================================
 // doctor 三分类归因
 // ============================================================
 describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
-  it("2a. 自家僵尸 → 建议 chrome-stop --port N 清僵尸后重拉", async () => {
+  // BUG-04 决议 A4 起：doctor 为渲染器，判定在 chrome-status 单一真源——DI 面随迁
+  //（tcpFn/cdpVersionFn/lsofFn/psFn{command,etimeS}/aliveFn 全注入，零真机）。
+  const CHROME_CMD = `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222`;
+  const doctorDeps = (overrides: Record<string, unknown> = {}) => ({
+    tcpFn: async () => true,
+    cdpVersionFn: async () => ({ ok: false }),
+    cdpListFn: async () => null,
+    lsofFn: async () => 66111,
+    psFn: () => ({ command: CHROME_CMD, etimeS: 900 }),
+    aliveFn: () => true,
+    ...overrides,
+  });
+
+  it("2a. 自家僵尸 → 建议 chrome-stop --zombie-gate --port N 门槛变体清僵尸（BUG-04 r1：裸 chrome-stop 指引已收敛）", async () => {
     await recordLaunch(makeRec());
-    const step = classifyPortOccupierNextStep(9222, {
-      aliveFn: () => true,
-      psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
-    });
-    expect(step).toMatch(/chrome-stop --port 9222/);
+    const step = await classifyPortOccupierNextStep(9222, doctorDeps());
+    expect(step).toMatch(/chrome-stop --zombie-gate --port 9222/);
     expect(step).toMatch(/pid 66111/);
+    expect(step).not.toMatch(/清僵尸.{0,40}chrome-stop --port 9222\n/); // agent 面无裸 chrome-stop
   });
 
-  it("2b. 陈留记录（pid 死/归属不符）→ 清账建议（区分僵尸与陈旧）", async () => {
+  it("2b. 陈留记录（端口已释放/归属不符）→ 清账建议同用门槛变体（区分僵尸与陈旧）", async () => {
     await recordLaunch(makeRec());
-    const step = classifyPortOccupierNextStep(9222, {
-      aliveFn: () => false,
-      psFn: () => "",
-    });
+    const step = await classifyPortOccupierNextStep(9222, doctorDeps({ tcpFn: async () => false }));
     expect(step).toMatch(/陈留/);
-    expect(step).toMatch(/chrome-stop --port 9222/);
+    expect(step).toMatch(/chrome-stop --zombie-gate --port 9222/);
   });
 
-  it("2c. 用户资产/未知占用 → 如实报告永不代杀（never_kill_user_asset）", () => {
-    const step = classifyPortOccupierNextStep(9222, {});
+  it("2c. 用户资产/未知占用 → 如实报告永不代杀（never_kill_user_asset + pid 证据面）", async () => {
+    const step = await classifyPortOccupierNextStep(9222, doctorDeps());
     expect(step).toMatch(/never_kill_user_asset/);
     expect(step).toMatch(/用户/);
   });
@@ -290,10 +321,7 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
 
   it("2f. doctor：userTakenAt 已认领占用 → 用户拥有分类（user_taken_asset），不给 chrome-stop 清僵尸指引", async () => {
     await recordLaunch(makeRec({ userTakenAt: Date.now() }));
-    const step = classifyPortOccupierNextStep(9222, {
-      aliveFn: () => true,
-      psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
-    });
+    const step = await classifyPortOccupierNextStep(9222, doctorDeps());
     expect(step).toMatch(/user_taken_asset/);
     expect(step).toMatch(/never_kill_user_asset/);
     expect(step).toMatch(/用户本人/); // 唯一出口=用户本人跑 chrome-stop（非 agent）
@@ -302,10 +330,7 @@ describe("A2 · doctor classifyPortOccupierNextStep 三分类", () => {
 
   it("2g. doctor：visible 档占用 → 同面用户拥有分类", async () => {
     await recordLaunch(makeRec({ launchMode: "visible" }));
-    const step = classifyPortOccupierNextStep(9222, {
-      aliveFn: () => true,
-      psFn: () => `/Applications/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222\n`,
-    });
+    const step = await classifyPortOccupierNextStep(9222, doctorDeps());
     expect(step).toMatch(/user_taken_asset/);
     expect(step).not.toMatch(/清僵尸/);
   });

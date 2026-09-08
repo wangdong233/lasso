@@ -189,6 +189,8 @@ import type { DesiredHideWatchdog } from "./launcher/desired-hide-watchdog.js";
 import { runRenderChromeCli } from "./render/render-chrome.js";
 import { runRenderGuardianCli } from "./render/render-guardian.js";
 import { runReplayBaselineCli } from "./serp/replay-baseline.js";
+// BUG-04 决议 A2（doc/bugs/04 §4）：chrome-status 归属鉴定 CLI + admin action 共用核心
+import { runChromeStatusCli, classifyPortOccupier } from "./doctor/chrome-status.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { promises as fsPromises } from "node:fs";
@@ -1214,6 +1216,9 @@ async function runMcpServer(): Promise<void> {
     // v1.9（parse17 §4.4 机制三）：tab_restore 入口（从 LoggedInChannel.restoreTabs 转发；
     // 只关快照后新增的 tab，红线不碰用户原有 tab）
     tabRestore: () => logged_in.restoreTabs(),
+    // BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status 只读归属鉴定（admin 入口）——
+    // 与 CLI chrome-status 共用 classifyPortOccupier 单一真源（三处分类收敛）。
+    chromeStatus: (port?: number) => classifyPortOccupier(port ?? config.cdpPort),
   });
 
   // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
@@ -1466,7 +1471,17 @@ const CLI_USAGE = [
   "                                               on-disk ledger (pid ownership verified via cmdline;",
   "                                               --modes hidden|visible|render|headless filters",
   "                                               by launch mode; no --modes --all = stop incl.",
-  "                                               render tier — intentional full-stop escape hatch)",
+  "                                               render tier — intentional full-stop escape hatch;",
+  "                                               --zombie-gate (requires --port N, exclusive",
+  "                                               with --modes): agent-facing gated variant —",
+  "                                               re-evaluates the user-claim gate at kill time,",
+  "                                               only ever touches hidden/headless records)",
+  "  lasso-mcp chrome-status [--port N] [--json] Classify a CDP port's occupier (READ-ONLY:",
+  "                                               ledger zombie / user-owned / lasso orphan /",
+  "                                               user asset / external / probe_failed) with",
+  "                                               evidence + user_paste_pack. Never outputs a",
+  "                                               kill command; agents report the paste pack",
+  "                                               instead (never_kill_user_asset)",
   "  lasso-mcp hide-enforcer                     Desired-hide enforcer daemon (auto-spawned by",
   "                                               chrome-hide / launch-chrome hidden; dual duty:",
   "                                               sticky re-hide + hidden-tier idle reaping;",
@@ -1579,6 +1594,18 @@ async function main(): Promise<void> {
   // 收尾 launch-chrome 起的 Chrome（cmdline 验证归属后才杀；幂等 exit 0）。
   if (process.argv[2] === "chrome-stop") {
     await runChromeStopCli();
+    return;
+  }
+  // BUG-04 决议 A（doc/bugs/04 §4）：`lasso chrome-status [--port N] [--json]` ——
+  // 端口占用者归属鉴定（只读；10 枚举分类 + 证据 + agent_directive + user_paste_pack）。
+  // 把「归属鉴定」从 agent 手里收走（09-08 误杀事故的直接教训）；永不输出 kill 命令
+  //（INV-88 tripwire）。缺省端口同 config cdpPort。
+  if (process.argv[2] === "chrome-status") {
+    const csCfg = loadConfig({ runId: "chrome-status-cli" });
+    await runChromeStatusCli(process.argv.slice(3), {
+      defaultPort: csCfg.cdpPort,
+      helpText: CLI_USAGE,
+    });
     return;
   }
   // P4（v1.17.3，得到实战新用法）：`lasso chrome-hide [--port N|--all]` / `chrome-show`——

@@ -90,7 +90,7 @@
  *      parse5 §3.4 v0.4 M0.4a 4 项 forest 扩展；
  *      parse5 §3.4 + §3.3 v0.4 M0.4c 1 项 stealth + #21 HEAD 探测升级。
  */
-import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import {
   promises as fs,
@@ -139,8 +139,12 @@ import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
 // BUG-03 决议 A2/E①/C（doc/bugs/03）：checkCdp9222 端口占用三分类归因——
 // 台账读 + cmdline 归属验证（chrome-stop 同源红线，纯读绝不 kill）。
-import { readLedgerSync, isUserOwnedRecord, type LaunchedChromeRecord } from "../launcher/chrome-ledger.js";
-import { verifyOwnership } from "../launcher/chrome-stop.js";
+// BUG-04 决议 A4（doc/bugs/04 §4）：归因升级为消费 chrome-status 单一真源
+// classifyPortOccupier（10 枚举分类矩阵 + R1-R3 机械规则）——补齐非台账占口者
+// 的真实 pid 证据面（09-08 误杀事故的直接教训：agent 自行推断归属）。
+// readLedgerSync/isUserOwnedRecord/verifyOwnership 的谓词全部收敛进分类器，
+// doctor 不再自持第二套判定（INV-87/88 断言面同步）。
+import { classifyPortOccupier, type ChromeStatusResult } from "./chrome-status.js";
 // v1.4 Phase B（parse-v1.4 §Phase B）：#36 machine_search_mcp doctor check
 // 守 INV-72：doctor 经 detectMachineSearchMcp() 只读探测 ~/.claude.json；永不 log Authorization 值；
 //            detail 只报 hostname（open.bigmodel.cn），不报完整 url（path 可含 token 片段）。
@@ -969,65 +973,61 @@ async function checkChromeBinary(): Promise<DoctorCheck> {
 
 /** 6. 本机 :9222 CDP 已开 + 至少 1 个 tab。 */
 /**
- * BUG-03 决议 A2/E①/C（doc/bugs/03 §4 A2 + §4 C）：端口不可达时的占用者三分类
- * 归因（纯读：台账 + pid 探活 + cmdline 归属验证——与 chrome-stop 同源红线，
- * 绝不 kill）。返回 next_step 文案：
- *  - 自家僵尸（台账在案 + pid 活 + 归属通过）→ `chrome-stop --port N` 清僵尸后重拉
- *  - 用户资产 / 未知占用 → 如实报告「lasso 不会动它，请用户裁决」（never_kill_
- *    user_asset 指引 token，INV-87 tripwire）或换口
- *  - 真空闲 → launch-chrome
- * 🔴 `open` 另起新实例的建议已删（BUG-03 实测逃不出同 bundle id 单实例槽位，
- * 徒增混乱——INV-87 grep 禁令：doctor 源码禁该 open 形态字面量）。
+ * BUG-03 决议 A2/E①/C（doc/bugs/03 §4）+ BUG-04 决议 A4（doc/bugs/04 §4）：
+ * 端口占用归因 → doctor next_step 文案。
+ *
+ * BUG-04 起本函数是**纯渲染器**：判定全部来自 chrome-status 单一真源
+ * `classifyPortOccupier`（10 枚举 + R1 失效安全 / R2 pid 一致性 / R3 慢启动
+ * 守卫；补齐非台账占口者的真实 pid 证据面——09-08 误杀事故的直接教训）。
+ * 渲染铁律（INV-87/88）：agent 指引只给 `chrome-stop --zombie-gate --port N`
+ * 门槛变体（清僵尸/清陈留账）；用户拥有/无主/用户资产/探针失败分支必含
+ * never_kill_user_asset + 上报用户裁决；裸 `chrome-stop --port N` 只作为
+ * **用户本人**出口出现（paste 语境）。
  */
-function classifyPortOccupierNextStep(
+async function classifyPortOccupierNextStep(
   port: number,
-  deps: {
-    readLedgerFn?: () => LaunchedChromeRecord[];
-    psFn?: (pid: number) => string;
-    aliveFn?: (pid: number) => boolean;
-  } = {},
-): string {
-  const readLedgerFn = deps.readLedgerFn ?? readLedgerSync;
-  const aliveFn =
-    deps.aliveFn ??
-    ((pid: number) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-  const psFn =
-    deps.psFn ??
-    ((pid: number) => {
-      try {
-        return spawnSync("ps", ["-p", String(pid), "-o", "command="], {
-          encoding: "utf8",
-          timeout: 1_000,
-        }).stdout as string;
-      } catch {
-        return "";
-      }
-    });
-  const rec = readLedgerFn().find((r) => r.port === port);
-  if (rec && aliveFn(rec.pid) && verifyOwnership(rec.pid, rec.profileDir, psFn)) {
-    // BUG-03 adversarial r2 F1：用户拥有记录（已认领/visible）≠ 僵尸——不得向
-    // agent 输出「chrome-stop 清僵尸」指引（那是把用户级权限塞给 agent 的
-    // 变相代杀出口）；归入用户资产分支，唯一出口=用户自行关或用户本人跑。
-    if (isUserOwnedRecord(rec)) {
-      return `端口 ${port} 被 lasso 台账在案但**已被用户拥有**的 Chrome（pid ${rec.pid}，user_taken_asset：${
-        rec.userTakenAt !== undefined ? "userTakenAt 已认领（用户激活/显式 chrome-show）" : "visible 登录窗"
-      }）占用：lasso 任何机制都不会自动清理（never_kill_user_asset）——唯一出口 = 用户自行关闭或**用户本人**运行 \`lasso-mcp chrome-stop --port ${port}\`；agent 请换口 launch-chrome --port N 并报告用户裁决`;
-    }
-    return `端口 ${port} 被 lasso 台账在案的自家 Chrome（pid ${rec.pid}，疑似 CDP 挂死）占用：先 \`lasso-mcp chrome-stop --port ${port}\` 清僵尸，再 \`lasso-mcp launch-chrome --port ${port}\`（A2 后 launch-chrome 会自动收尸重拉）`;
-  }
-  if (rec) {
-    return `端口 ${port} 台账有陈留记录但 pid 不在/归属不符（陈旧条目，不影响）：\`lasso-mcp chrome-stop --port ${port}\` 清账后重拉`;
-  }
-  return `端口 ${port} 被外部进程占用（可能是您自己的 Chrome——用户资产，lasso 任何机制都不会 kill 它：never_kill_user_asset）：请用户裁决（手动关闭该进程）或换口 launch-chrome --port N`;
+  deps: Parameters<typeof classifyPortOccupier>[1] = {},
+): Promise<string> {
+  const res = await classifyPortOccupier(port, deps);
+  return nextStepTextForClassification(res);
 }
 export { classifyPortOccupierNextStep };
+
+/**
+ * BUG-04 决议 A4：分类 → doctor next_step 人话（单一渲染真源；chrome-status
+ * CLI 的 classificationSummary 同分类不同出口面——doctor 面向「排查下一步」，
+ * chrome-status 面向「归属鉴定完整证据」）。
+ */
+function nextStepTextForClassification(res: ChromeStatusResult): string {
+  const port = res.port;
+  const pid = res.evidence.pid;
+  const pname = res.evidence.pname ?? "";
+  const etime = res.evidence.etime_s;
+  switch (res.classification) {
+    case "free":
+      return `端口 ${port} 空闲（TCP 主动拒连）：可 \`lasso-mcp launch-chrome --port ${port}\``;
+    case "lasso_launching":
+      return `端口 ${port} 的 lasso Chrome 仍在慢启动宽限窗（台账记录 <60s；launch 时刻不代 kill——会误杀慢启动 Chrome）：等待 ≥60s 后重跑 doctor 或 \`lasso-mcp chrome-status --port ${port}\`；永不 kill（never_kill_user_asset）`;
+    case "lasso_live":
+      return `端口 ${port} 是 lasso 台账在案且健康的 Chrome（pid ${pid}，CDP 可达）：正常使用即可`;
+    case "ledger_zombie_collectible":
+      return `端口 ${port} 被 lasso 台账在案的自家 Chrome（pid ${pid}，疑似 CDP 挂死；归属验证通过、非用户拥有、非慢启动）占用：先 \`lasso-mcp chrome-stop --zombie-gate --port ${port}\` 清僵尸（kill 时刻重估用户认领门），再 \`lasso-mcp launch-chrome --port ${port}\`；完整证据面跑 \`lasso-mcp chrome-status --port ${port}\``;
+    case "ledger_user_owned":
+      return `端口 ${port} 被 lasso 台账在案但**已被用户拥有**的 Chrome（pid ${pid}，user_taken_asset：${
+        res.evidence.ledger_record?.userTakenAt !== undefined ? "userTakenAt 已认领（用户激活/显式 chrome-show）" : "visible 登录窗"
+      }）占用：lasso 任何机制都不会自动清理（never_kill_user_asset）——唯一出口 = 用户自行关闭或**用户本人**运行 \`lasso-mcp chrome-stop --port ${port}\`；agent 请换口 launch-chrome --port N 并报告用户裁决`;
+    case "ledger_stale":
+      return `端口 ${port} 台账有陈留记录但与实际占口者不符（pid_match:${res.evidence.pid_match}；陈旧条目不影响实际占口者判定）：\`lasso-mcp chrome-stop --zombie-gate --port ${port}\` 清账后重拉（already_dead/pid_reused 路径 kill-free）；实际占口者按 \`lasso-mcp chrome-status --port ${port}\` 分类处理`;
+    case "lasso_profile_orphan_suspected":
+      return `端口 ${port} 的占用者疑似 lasso 无主实例（pid ${pid}，cmdline 含 lasso profile 指纹但台账无匹配记录；含 render 档 guardian 自管域）——lasso 不认领不杀（认领=杀，决议 D）：上报用户裁决（\`lasso-mcp chrome-status --port ${port}\` 取上报包）或换口 launch-chrome --port N（never_kill_user_asset）`;
+    case "user_asset_suspected":
+      return `端口 ${port} 被疑似用户资产的 Chrome（pid ${pid}${pname ? ` ${pname}` : ""}${etime !== undefined ? `，已运行 ${etime}s` : ""}，无 lasso 指纹）占用（可能是您自己的 Chrome——用户资产，lasso 任何机制都不会 kill 它：never_kill_user_asset）：请用户裁决（手动关闭该进程）或换口 launch-chrome --port N`;
+    case "external_occupier":
+      return `端口 ${port} 被外部非 Chrome 进程（pid ${pid}${pname ? ` ${pname}` : ""}）占用（可能是您自己的进程——用户资产，lasso 任何机制都不会 kill 它：never_kill_user_asset）：请用户裁决（手动关闭该进程）或换口 launch-chrome --port N`;
+    case "probe_failed":
+      return `端口 ${port} 占用者身份无法确证（探针失败/空输出——空输出≠空属性，lasso 拒绝在证据断链时下结论；never_kill_user_asset）：上报用户裁决或换口 launch-chrome --port N；完整证据面跑 \`lasso-mcp chrome-status --port ${port} --json\``;
+  }
+}
 
 async function checkCdp9222(
   port: number,
@@ -1042,7 +1042,7 @@ async function checkCdp9222(
         name: "cdp_9222_logged_in",
         status: "fail",
         detail: `CDP /json/version returned HTTP ${versionResp.status}`,
-        next_step: classifyPortOccupierNextStep(port, deps),
+        next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
     const tabsResp = await fetch(`http://127.0.0.1:${port}/json`, {
@@ -1063,7 +1063,7 @@ async function checkCdp9222(
       name: "cdp_9222_logged_in",
       status: "warn",
       detail: String(e),
-      next_step: classifyPortOccupierNextStep(port, deps),
+      next_step: await classifyPortOccupierNextStep(port, deps),
     };
   }
 }

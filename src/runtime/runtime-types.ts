@@ -186,4 +186,9 @@ export type AdminAction =
   | "breaker_reset"
   // v1.9（parse17 §4.4 机制三）：tab_restore —— 恢复用户原 tab 列表（mutation 必传
   // reason，同 capability_disable 惯例；只关快照后新增的 tab，红线不碰用户原有 tab）
-  | "tab_restore";
+  | "tab_restore"
+  // BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status —— 端口占用者归属鉴定（只读；
+  // 10 枚举分类 + R1-R3 机械规则 + 上报包；INV-17 action-enum 折叠，免 reason）。
+  // 永不给 agent kill 能力（INV-88：allowed_commands 无 kill 形态、chrome-stop
+  // 只允许 --zombie-gate 门槛变体且仅僵尸分支）。
+  | "chrome_status";

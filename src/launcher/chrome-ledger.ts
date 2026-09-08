@@ -88,6 +88,34 @@ export interface LaunchedChromeRecord {
  */
 export const CLI_LAUNCH_IDLE_DEFAULT_MS = 30 * 60 * 1000;
 
+/**
+ * BUG-04 决议 A1 R3（doc/bugs/04 §4，2026-09-08）：慢启动守卫宽限窗（单一真源）。
+ *
+ * `launchedAt` 距今 < 本窗的台账记录一律按「可能仍在慢启动」处理（lasso_launching
+ * 分类）——永不进僵尸可收面、永不给 kill 指引。锚：launch-chrome.ts 既有注释
+ * 「cdp_not_ready 时 Chrome 可能仍在慢启动——launch 时刻仍不代 kill（会误杀）」
+ * （wave2 U-04-1 实证 pid 74620）。取值 = CDP_PROBE_ATTEMPTS_VISIBLE 探活窗
+ * （40×300ms=12s）×5 余量，同源对齐；消费方：chrome-status 分类器 / launch-chrome
+ * A2 僵尸门（R3 回补——存量隐藏缺陷：年轻 cdp_not_ready 记录在并发 launch 场景
+ * 曾会被当僵尸收割）。
+ */
+export const LAUNCH_GRACE_MS = 60_000;
+
+/**
+ * BUG-04 决议 A1 R3：记录是否仍在慢启动宽限窗内（lasso_launching）。
+ * 无 launchedAt 的陈留记录（readLedgerSync typeof 守卫后理论上不可达，防御性
+ * 归入 launching——失败方向安全：宁可等待不杀）。
+ */
+export function isLaunchingRecord(
+  rec: LaunchedChromeRecord,
+  now: number = Date.now(),
+): boolean {
+  if (typeof rec.launchedAt !== "number" || !Number.isFinite(rec.launchedAt)) {
+    return true;
+  }
+  return now - rec.launchedAt < LAUNCH_GRACE_MS;
+}
+
 /** 台账路径（env LASSO_LAUNCHED_CHROMES_PATH 可覆盖；测试隔离 + 同机多 agent 并行验收隔离用，配方见 doc/渲染档-并行验收隔离配方.md）。 */
 export function launchedChromesPath(): string {
   const override = process.env.LASSO_LAUNCHED_CHROMES_PATH;

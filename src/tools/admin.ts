@@ -83,6 +83,9 @@ export const adminSchema = {
     // v1.9（parse17 §4.4 机制三）：tab_restore —— 恢复用户原 tab 列表（mutation
     // 必传 reason；只关快照后新增的 tab）。显式 opt-in 入口（同 cookie_restore 惯例）。
     "tab_restore",
+    // BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status —— 端口占用者归属鉴定
+    // （只读；与 CLI chrome-status 共用 classifyPortOccupier 单一真源）
+    "chrome_status",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -114,6 +117,8 @@ export const adminSchema = {
   /** caller_cap_set 用 */
   callerId: z.string().min(1).optional(),
   cap: z.number().int().nonnegative().optional(),
+  /** BUG-04 决议 A2：chrome_status 用（缺省 = config.cdpPort）。 */
+  port: z.number().int().positive().optional(),
   /**
    * v0.8 新增（parse9 §3）：profile_switch / cookie_restore 用。
    *
@@ -187,6 +192,12 @@ export interface AdminToolDeps {
     closed: string[];
     reason?: string;
   }>;
+  /**
+   * BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status 入口（包装
+   * doctor/chrome-status classifyPortOccupier——CLI 与 admin 两入口共用单一真源）。
+   * 只读 action（免 reason）。未注入 → configured:false（零回归，同惯例）。
+   */
+  chromeStatus?: (port?: number) => Promise<import("../doctor/chrome-status.js").ChromeStatusResult>;
 }
 
 // ============================================================
@@ -224,6 +235,8 @@ export function registerAdminTool(
           // v0.8 新增（parse9 §3）：profile + op
           profile?: string;
           op?: "export" | "import";
+          // BUG-04 决议 A2：chrome_status 用
+          port?: number;
         };
         const action = args.action as AdminAction;
 
@@ -514,6 +527,22 @@ export function registerAdminTool(
                   error: String(e),
                 });
                 return fail(action, `cookie_restore(${op}) failed: ${String(e)}`);
+              }
+            }
+
+            // ---------- BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status ----------
+            // 只读归属鉴定（INV-17 action-enum 折叠；免 reason）。永不给 agent
+            // kill 能力（INV-88）——allowed_commands 白名单在分类器单一真源内。
+            case "chrome_status": {
+              if (!deps.chromeStatus) {
+                return ok(action, { configured: false });
+              }
+              try {
+                const port = typeof args.port === "number" ? args.port : undefined;
+                const result = await deps.chromeStatus(port);
+                return ok(action, { ...result });
+              } catch (e) {
+                return fail(action, `chrome_status failed: ${String(e)}`);
               }
             }
 

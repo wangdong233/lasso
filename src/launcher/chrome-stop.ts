@@ -71,6 +71,17 @@ export interface ChromeStopOptions {
    * chrome-stop CLI **不传**（显式 chrome-stop 仍是用户认领实例的合法关闭出口）。
    */
   exemptUserTaken?: boolean;
+  /**
+   * BUG-04 决议 A2b（doc/bugs/04 §4，r1 修订——关 TOCTOU 窗）：`--zombie-gate`
+   * 门槛变体。CLI 专用（stopLaunchedChromes 直调时由调用方自带全部谓词）：
+   * 内部映射 `{ exemptUserTaken: true, modes: ["hidden","headless"] }`——
+   * **kill 时刻重估**用户认领门与档位门（裸 chrome-stop 的 check 时刻判定在
+   * B1 认领/chrome-show 落 userTakenAt 后的秒~分钟级间隔内会误杀，r2-F1
+   * 事故型）。与 `--modes` 显式组合即拒绝（防反向放宽）；必须与显式 `--port`
+   * 同现（agent 永不 all-stop）。被门排除的记录进 gated_skipped 输出面
+   * （agent 的合法下一步被收敛为上报，而非升级到裸 chrome-stop）。
+   */
+  zombieGate?: boolean;
   /** 测试注入：pid 探活（默认 process.kill(pid, 0)）。 */
   aliveFn?: (pid: number) => boolean;
   /** 测试注入：ps -p <pid> -o command= 输出（默认真实 spawnSync ps）。 */
@@ -95,6 +106,17 @@ export interface ChromeStopResult {
     port: number;
     pid: number;
     action: ChromeStopAction;
+    launchMode?: "hidden" | "visible" | "render" | "headless";
+  }>;
+  /**
+   * BUG-04 决议 A2b：`--zombie-gate` 被门排除的记录（userTakenAt 已认领 /
+   * launchMode 超出 hidden+headless）。**永不因本路径被杀**——agent 的合法
+   * 下一步被收敛为上报（never_kill_user_asset token），而非升级到裸 chrome-stop。
+   */
+  gated_skipped?: Array<{
+    port: number;
+    pid: number;
+    reason: string;
     launchMode?: "hidden" | "visible" | "render" | "headless";
   }>;
 }
@@ -233,10 +255,44 @@ export async function stopLaunchedChromes(
   const killTreeFn = opts.killTreeFn ?? ((pid: number) => killTreeSync(pid, "chrome-stop"));
   const sleepFn = opts.sleepFn ?? defaultSleep;
 
+  // BUG-04 决议 A2b：zombie-gate 门槛变体映射 + 入口约束（CLI 解析层二次校验，
+  // 直调方违反契约也在此拦——失败方向安全）。
+  if (opts.zombieGate) {
+    if (opts.port === undefined) {
+      throw new Error("--zombie-gate requires an explicit --port (agents never all-stop)");
+    }
+    if (opts.modes) {
+      throw new Error("--zombie-gate cannot be combined with --modes (gate implies modes=hidden,headless)");
+    }
+    opts.exemptUserTaken = true;
+    opts.modes = ["hidden", "headless"];
+  }
+
   const ledger = readLedgerSync();
   let targets = opts.port !== undefined
     ? ledger.filter((r) => r.port === opts.port)
     : ledger; // 无 port = --all
+  // BUG-04 决议 A2b：被门排除的记录进 gated_skipped 输出面（先于过滤计算——
+  // 用户认领（userTakenAt）与档位门（visible/render）是两条被排除路径）。
+  const gatedList = opts.zombieGate
+    ? targets
+        .filter(
+          (r) =>
+            r.userTakenAt !== undefined ||
+            !(opts.modes as NonNullable<ChromeStopOptions["modes"]>).includes(
+              r.launchMode ?? "hidden",
+            ),
+        )
+        .map((r) => ({
+          port: r.port,
+          pid: r.pid,
+          reason:
+            r.userTakenAt !== undefined
+              ? "user_taken_asset_never_kill_user_asset"
+              : `launch_mode_${r.launchMode ?? "hidden"}_gated_never_kill_user_asset`,
+          ...(r.launchMode ? { launchMode: r.launchMode } : {}),
+        }))
+    : undefined;
   // P1（v1.17.3）：mode 过滤——停机收尾只碰 hidden（visible 归用户，只有显式 chrome-stop 能关）
   if (opts.modes) {
     targets = targets.filter((r) => opts.modes!.includes(r.launchMode ?? "hidden"));
@@ -302,7 +358,8 @@ export async function stopLaunchedChromes(
       log,
     );
   }
-  return { stopped };
+  // gated_skipped 仅在非空时携带（裸 chrome-stop 输出面 byte-identical 不变）
+  return { stopped, ...(gatedList && gatedList.length > 0 ? { gated_skipped: gatedList } : {}) };
 }
 
 // ============================================================
@@ -402,7 +459,10 @@ export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") continue;
-    if (a === "--port") {
+    if (a === "--zombie-gate") {
+      // BUG-04 决议 A2b：门槛变体 flag（约束在循环后统一校验——--port 可能后置）。
+      opts.zombieGate = true;
+    } else if (a === "--port") {
       const n = argv[i + 1] ? parseInt(argv[i + 1]!, 10) : NaN;
       if (!Number.isNaN(n)) opts.port = n;
       i++;
@@ -425,6 +485,21 @@ export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
       i++;
     }
     // 未知 flag 忽略（forward-compat）
+  }
+  // BUG-04 决议 A2b 入口约束（post-parse 校验——flag 顺序无关）：
+  //  1. --zombie-gate 必须与显式 --port 同现（agent 永不 all-stop）；
+  //  2. 与 --modes 显式组合即拒绝（防反向放宽门语义）。
+  if (opts.zombieGate) {
+    if (opts.port === undefined) {
+      throw new Error(
+        "--zombie-gate requires an explicit --port N (agents never all-stop; e.g. chrome-stop --zombie-gate --port 9222)",
+      );
+    }
+    if (opts.modes) {
+      throw new Error(
+        "--zombie-gate cannot be combined with --modes (the gate implies modes=hidden,headless)",
+      );
+    }
   }
   return opts;
 }

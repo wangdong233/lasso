@@ -43,7 +43,16 @@ import {
   chromeCandidatesForPlatform,
   type ChromePathCandidate,
 } from "./chrome-paths.js";
-import { recordLaunch, readLedgerSync, isUserOwnedRecord, type LedgerLogFn, type LaunchedChromeRecord } from "./chrome-ledger.js";
+import {
+  recordLaunch,
+  readLedgerSync,
+  isUserOwnedRecord,
+  // BUG-04 决议 A1 R3 回补：慢启动守卫（LAUNCH_GRACE_MS 单一真源在 chrome-ledger）
+  isLaunchingRecord,
+  LAUNCH_GRACE_MS,
+  type LedgerLogFn,
+  type LaunchedChromeRecord,
+} from "./chrome-ledger.js";
 // BUG-03 决议 A2/E①（doc/bugs/03 §4 A2）：port_in_use_non_cdp 前的台账归因——
 // 自家挂死 Chrome（CDP 死进程活）收尸重拉（render 档 ensure 四条件门同语义）。
 import { verifyOwnership, stopLaunchedChromes } from "./chrome-stop.js";
@@ -391,8 +400,17 @@ export async function launchChrome(
     // 走下方正常 spawn，不提前 return）；归因不成立 = 用户资产/外部进程占口 →
     // 三分类出口（决议 C：永不代杀用户资产——禁 kill 指引进错误契约）。
     const readLedgerFn = opts.readLedgerFn ?? readLedgerSync;
+    // BUG-04 决议 A2b：默认收尸出口映射门槛变体（kill 时刻重估用户认领门 +
+    // 档位门——与 chrome-stop --zombie-gate 同谓词；check 时刻判定与 kill 之间
+    // 的 B1 认领/chrome-show TOCTOU 窗由此关闭）。
     const zombieStopFn =
-      opts.stopZombieFn ?? (async (o: { port: number }) => stopLaunchedChromes({ port: o.port }));
+      opts.stopZombieFn ??
+      (async (o: { port: number }) =>
+        stopLaunchedChromes({
+          port: o.port,
+          exemptUserTaken: true,
+          modes: ["hidden", "headless"],
+        }));
     const aliveFn =
       opts.aliveFn ??
       ((pid: number) => {
@@ -419,7 +437,12 @@ export async function launchChrome(
       zombieOwnedAlive &&
       zombie !== undefined &&
       !isUserOwnedRecord(zombie) &&
-      zombie.launchMode !== "render";
+      zombie.launchMode !== "render" &&
+      // BUG-04 决议 A1 R3 回补（doc/bugs/04 §4）：慢启动守卫——launchedAt 距今
+      // < LAUNCH_GRACE_MS（60s）的记录永不进可收面（存量隐藏缺陷：年轻
+      // cdp_not_ready 记录在并发 launch 场景会被当僵尸收割；锚=下方 :701 注释
+      // 「cdp_not_ready 时 Chrome 可能仍在慢启动——launch 时刻仍不代 kill」）。
+      !isLaunchingRecord(zombie);
     if (zombieCollectible && zombie) {
       log({
         evt: "ledger_zombie_collected",
@@ -429,6 +452,30 @@ export async function launchChrome(
       });
       await zombieStopFn({ port });
       // 收尸后端口已释放 → 落入正常 spawn 流程（primary attempt）
+    } else if (zombieOwnedAlive && zombie && isLaunchingRecord(zombie)) {
+      // BUG-04 决议 A1 R3（doc/bugs/04 §4）：年轻记录（<60s 慢启动宽限窗）——
+      // 可能仍在启动（并发 launch / 慢盘），永不收割：等待后重探或换口。
+      log({
+        evt: "ledger_launching_not_collected",
+        port,
+        pid: zombie.pid,
+        launchedAt: zombie.launchedAt,
+        status: zombie.status,
+        note: "record is younger than LAUNCH_GRACE_MS (slow-start guard); never collected; wait >=60s and re-probe, or use another port",
+      });
+      return {
+        ok: false,
+        binaryPath: found.path,
+        port,
+        profileDir,
+        candidateSources,
+        error:
+          `port_in_use_non_cdp:port ${port} is occupied by a lasso-launched Chrome that may still be STARTING ` +
+          `(ledger record younger than ${LAUNCH_GRACE_MS / 1000}s, status=${zombie.status}). ` +
+          `lasso will not touch it during the slow-start grace window (never_kill_user_asset — killing here would ` +
+          `race a live launch). Options: (1) wait >=60s and retry; (2) run \`lasso-mcp chrome-status --port ${port}\` ` +
+          `for the current classification; (3) retry with a different --port`,
+      };
     } else if (zombieOwnedAlive && zombie) {
       // BUG-03 adversarial r2 F1：占用者 = 台账在案且归属验证通过、但**用户拥有**
       // （isUserOwnedRecord）或非本门管辖（render）→ 永不自动收尸，如实拒绝。
