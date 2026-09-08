@@ -15,7 +15,7 @@
  *  - preSnapshot=undefined 跳过 preexisting
  *  - pollIntervalMs / timeout_ms / defaultTimeoutMs 优先级
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   expectPoll,
   validateCondition,
@@ -261,32 +261,64 @@ describe("expectPoll — gone=true 反向语义", () => {
 // expectPoll — timeout / interval 配置
 // ============================================================
 describe("expectPoll — 配置优先级", () => {
-  it("cond.timeout_ms 覆盖 opts.defaultTimeoutMs", async () => {
-    // cond.timeout_ms=5 比默认 20 短 → 失败更快
-    const { client } = makeMockClient((_) => "false");
-    const t0 = Date.now();
-    await expectPoll(
-      client,
+  // 09-09 稳定化（cc-control 09-08 全量复检回告：141ms>80ms 仅并发压机时红，
+  // 单跑 43/43 绿）：原两用例用**墙钟**断言 elapsed<80ms，而墙钟反映的是机器负载
+  // 不是被测语义——timer 饥饿下 sleep(1) 实际耗时 130ms+，贴边阈值必红。
+  // 修法（业界惯例：时序语义用 fake timers 测虚拟时间，不测机器速度）：
+  // vi.useFakeTimers + 逐 1ms 推进虚拟时钟，断言改为 **poll 次数判别**
+  // （次数 = deadline/interval 的函数，零机器依赖）：
+  //  - 本用例 deadline=5ms/interval=1ms ⇒ ≤5 次 poll；
+  //  - 若回归（误用 default=100ms）⇒ ~100 次 poll + settle 虚拟时刻 ≥100ms——判别面 20 倍。
+  // CI 重试语义：确定性化后**不加** retry（vitest `retry` 只救不可消除的环境竞态，
+  // 这里已消除——retry 会掩盖真回归）；也不标 flaky（vitest 2 无该注解语义，
+  // 且标注=承认不可修，与事实不符）。
+  const runVirtualPoll = async (
+    cond: ExpectCondition,
+    opts: ExpectPollOptions,
+    maxVirtualMs: number,
+  ): Promise<{ verdict?: "verified" | "preexisting" | "failed"; steps: number }> => {
+    vi.useFakeTimers();
+    try {
+      const { client } = makeMockClient((_) => "false");
+      let verdict: "verified" | "preexisting" | "failed" | undefined;
+      const track = expectPoll(client, cond, undefined, opts).then((v) => {
+        verdict = v;
+      });
+      let steps = 0;
+      while (verdict === undefined && steps < maxVirtualMs) {
+        steps++;
+        await vi.advanceTimersByTimeAsync(1);
+      }
+      await track;
+      return { verdict, steps };
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it("cond.timeout_ms 覆盖 opts.defaultTimeoutMs（虚拟时钟：deadline 取 5ms 而非默认 100ms）", async () => {
+    // 虚拟上限 200ms：正常路径 settle 于 ~5 步；若误用 default=100ms 会 ~100 步——
+    // 次数判别在两种负载下都不变（对照旧墙钟断言：负载下 5ms 语义跑出 141ms 墙钟）
+    const { verdict, steps } = await runVirtualPoll(
       { text: "x", timeout_ms: 5 },
-      undefined,
       { pollIntervalMs: 1, defaultTimeoutMs: 100 },
+      200,
     );
-    const elapsed = Date.now() - t0;
-    // timeout_ms=5 + 1ms poll → 总耗时 < 50ms（远小于 100ms 默认）
-    expect(elapsed).toBeLessThan(80);
+    expect(verdict).toBe("failed");
+    expect(steps).toBeLessThanOrEqual(10); // 5ms deadline + settle 微任务余量
+    expect(steps).toBeLessThan(100); // 判别面：误用 default 100ms ⇒ ~100 步
   });
 
-  it("opts.defaultTimeoutMs 在 cond.timeout_ms 缺省时启用", async () => {
-    const { client } = makeMockClient((_) => "false");
-    const t0 = Date.now();
-    await expectPoll(
-      client,
+  it("opts.defaultTimeoutMs 在 cond.timeout_ms 缺省时启用（虚拟时钟：deadline 取 10ms）", async () => {
+    // 虚拟上限 50ms：正常路径 settle 于 ~10 步；若回归忽略 opts（硬编码默认
+    // DEFAULT_TIMEOUT_MS=5000）⇒ 50 步内不 settle → verdict undefined → 红
+    const { verdict, steps } = await runVirtualPoll(
       { text: "x" },
-      undefined,
       { pollIntervalMs: 1, defaultTimeoutMs: 10 },
+      50,
     );
-    const elapsed = Date.now() - t0;
-    expect(elapsed).toBeLessThan(80);
+    expect(verdict).toBe("failed");
+    expect(steps).toBeLessThanOrEqual(15); // 10ms deadline + settle 微任务余量
   });
 
   it("pollIntervalMs=0 → 仍正常工作（busy poll）", async () => {
