@@ -341,6 +341,7 @@ lasso launch-chrome
 - hide 是**粘滞**的（v1.18.3，v1.18.5 补全生命周期）：已 hide 的窗口无论被什么来源掀出（上游页面自己弹的、外部工具开的 tab、系统焦点切换），约 1.5 秒内自动压回后台；想看窗口用 `chrome-show`（明示解除，不再压回）。粘滞状态跨重启保留；v1.18.5 起 hidden 档**出生即受保护**（拉起落账即写粘滞），且由独立执守进程兜底——**即使 Claude 会话/server 不在，隐藏的 Chrome 被掀出也会被压回**（执守是账空自退的短命进程，不留常驻开销）。
 - **你亲手点开它时，执守会让位**（BUG-03 B1）：压回决策带「用户激活让位门」——Dock 点击 / 你手动点开的激活（判定 = 本 Chrome 处于前台 + 键鼠刚有输入，连续约 30 秒确认）会被认领：不再压回、不再自动收，关它只剩你自己关或显式 `chrome-stop`。程序掀出（页面自己弹的）照常压回。误认领可用 `lasso chrome-hide` 重新武装。
 - **端口被你自己的 Chrome 占了？lasso 永不动它**（BUG-03 C）：报 `port_in_use_non_cdp` 时，自家挂死且**未被用户使用**的实例会自动清掉重拉（`ledger_zombie_collected`）；已被用户拿去用的实例（已认领 `user_taken_asset` / visible 登录窗）**绝不自动清理**——唯一出口是你自己关掉或你本人跑 `chrome-stop`；是你手开的 Chrome / 其他程序占用则明确说「用户资产，不会 kill，请自行裁决或换口」——lasso 不提供任何针对非自家资产的 kill 出口。
+- **端口被占了想知道是谁？`lasso chrome-status [--port N] [--json]`**（BUG-04 A，只读）：lasso 直接替你做「归属鉴定」——真实监听 pid / 进程名 / 已运行时长 / 命令行 / 台账 / CDP 探测一次查清，分 10 类作答（空闲 / lasso 在用 / 慢启动中 / 台账僵尸 / 用户已认领 / 台账陈留 / 疑似 lasso 无主实例 / 疑似用户资产 / 外部进程 / 证据不足），并给出**给你看的裁决包**（`user_paste_pack`，含你能走的出口：自己关 / 本人跑 `chrome-stop --port N` / 让 Claude 换口）。对 Claude/agent 侧它**永不输出任何 kill 命令**（唯一的清账指引是 `chrome-stop --zombie-gate --port N` 门槛变体——kill 时刻重估你的认领状态，且仅限 lasso 自家僵尸分支）；探针失败/空输出一律如实报「证据不足、只上报」——空输出≠没占用。MCP 侧等价入口：`admin {action:"chrome_status"}`。
 - 纯抓取不需要登录态时可用 `--mode headless`（BUG-03 B2）：无头实例零窗口/零打扰，适合**无人值守**机器的纯抓取。🔴 真机复核订正（BUG-03 对抗复审）：macOS 上它**并不**让出 Dock 槽位——它活着时你点 Chrome 图标不会有任何反应（激活被无头实例吸收、没有窗口可显示）；有人会用的机器请用默认 hidden（有让位门，你点开它会让位）。代价：没有窗口、`chrome-show` 无效，登录流用 hidden/visible。
 
 </details>

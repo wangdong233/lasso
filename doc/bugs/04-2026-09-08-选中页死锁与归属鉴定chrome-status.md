@@ -116,7 +116,7 @@ lasso 单侧**无法硬拦** agent 经 Bash 发出的 kill——shell 不在 MCP
 - **C2 fallback 语义**：调用方脚本错不拉响备用通道。`classifyBrowseError` 增 `eval_upstream_error` → **didnt**（确定性不可得，P10 upstream_unsupported 同先例——换通道救不了坏 JS）；`isFallbackWorthy` 无需改（didnt 本就不 fallback）。回归面：脚本错从 unknown+fallback 变 didnt+直达错误——正是报告 §9-②b 要的行为；B 的 `upstream_wedge_*` 维持 unknown（通道错，fallback 正确）。
 - **C3 doctor 措辞**：`checkCdp9222` detail 如实区分实测形态——`HTTP <status>` / `connection accepted, empty/invalid body` / `fetch aborted (timeout)` / `connection refused`（fetch DI 注入断言四种文本）；next_step 仍走 A1 分类器。不引入「僵尸」暗示性叙事（事故教训：空响应≠CDP 坏≠僵尸）。
 
-## 8. 决议 D：③b 认领无主实例——**NO-GO（维持边界）**
+## 8. 决议 D：③b 认领无主实例——**NO-GO（维持边界；已落地为文档化边界 + chrome-status 替代出口）**
 
 - **认领=杀**。指纹（cmdline 含 lasso profileDir）证明「跑着 lasso profile」，**证明不了「没人在用」**：B1 之后无主 hidden Chrome 可能已被用户激活认领（userTakenAt 在台账里——台账丢了即不可知）→ 自动认领可杀掉用户正在用的窗口 = 09-08 事故型，且被系统化。
 - 机器内不存在 agent 不可伪造的「用户裁决」通道（CLI/Bash/文件 agent 都能代跑——事故已证）。**r1 订正原前提句**（原句「现有全部杀路径的安全谓词（isUserOwnedRecord）依赖台账」对 CLI 路径事实性错误）：各杀路径谓词分层——A2 门/doctor 用 isUserOwnedRecord（台账）、停机/exit 用 ownerPid+exemptUserTaken（台账）、**chrome-stop CLI 仅 verifyOwnership（cmdline marker）**；CLI 之所以可接受，靠的不是谓词而是**运行者=用户**（同意通道）。无主认领既拿不到台账谓词、更没有同意通道 → 自动认领 = 把「CLI 级弱谓词 + 零同意通道」交给机器自动执行，比任何既有杀路径都更不安全。
@@ -161,3 +161,30 @@ PreToolUse hook——唯一真正强制层，拦截 agent 经 CC 工具发出的
 | F3 | §9 规格不全：matcher 只 Bash / 裸 pid 静态不可区分 / 交付物未落盘无测试载体 | 本文件 §9 原稿文本实证；事故 kill 原形 `kill 11633` 无进程名（报告 §2 时间线）；cc-control 全库 grep PreToolUse = 空；desktop 通道复核修正——appleScript 档为 rust 静态白名单（applescript_whitelist.rs 9 模板，无 kill 形态）**今日不可杀**，真实向量 = act hotkey/press Cmd+Q | **采纳（含一处机理修正）**。§9 重写为 E1-E4 需求规格：matcher 至少 Bash+mcp__lasso__desktop（desktop 向量按实测修正为 hotkey 形态，appleScript 白名单作 tripwire 锚）；E2 强制动态 pid 解析 + 失效安全；E4 落盘 cc-control + 测试载体 + 验收门 |
 
 **驳回清单：空**（无一项误报；F3 的 desktop-appleScript 向量机理被复核修正，属收窄而非驳回）。
+
+## 13. 实施落地记录（2026-09-08，实施员轮）
+
+按 §10 实施序完成，单主题单 commit（不 push 不发版），每 commit `npm run build && npx vitest run && npm run check-invariants` 全绿：
+
+| 序 | commit | 内容 | 测试增量 |
+|---|---|---|---|
+| B | `b61827a` fix(channels) | P1 选中页死锁自愈：`src/browse/upstream-wedge.ts` 签名单一真源；browseSingle 被动检测+heal+单次重试（双失败透明前缀 `upstream_wedge_selected_page_closed`/`upstream_wedge_unhealed`，classify→unknown）；LoggedInChannel heal 两层（层 1 `new_page {background:true}` 结构性逃逸口 / 层 2 `subproc.restart`——永不触碰 Chrome）；reconcile 类型化信号不再吞；INV-89 新增；INV-78(d) 激活禁令精化（new_page 唯一例外 = heal 层 1 零抢焦形态） | +17（bug04-wedge-selfheal.spec） |
+| A | `cc35194` feat(doctor,launcher) | chrome-status 归属鉴定：`src/doctor/chrome-status.ts` classifyPortOccupier 单一真源（10 枚举 + R1 失效安全 + R2 pid 一致性 + R3 慢启动守卫）+ AGENT_DIRECTIVES（全表永无 kill 形态；chrome-stop 只允许 `--zombie-gate` 门槛变体且仅 zombie/stale 分支）+ user_paste_pack 上报包；CLI `chrome-status [--port N] [--json]` + admin 只读 action `chrome_status` + doctor 渲染器消费（三处分类收敛）；chrome-stop `--zombie-gate`（kill 时刻重估 exemptUserTaken+modes；拒无 --port / 拒与 --modes 组合；gated_skipped 输出面）；launch-chrome A2 门 R3 回补（`isLaunchingRecord` 进 zombieCollectible + `ledger_launching_not_collected` 诚实拒绝分支）+ 默认收尸出口映射门槛谓词；INV-88 新增；INV-87 (b)(e) doctor 锚随迁渲染器 | +37（bug04-chrome-status.spec 36 + a2 spec 1i 等） |
+| C1 | `e921289` fix(channels) | evaluate 第三形态（IIFE）：结构化尾部调用判定（剥尾 `;` + 空参 `()` 收尾 + 前字符平衡 `)`/`}` + 括号平衡含字符串感知）→ 包 `() => (\n${t}\n)`；反例锚（箭头尾调用 / `() => (foo)(x)`）维持透传；工具描述双例→三例 | +4（e4 spec 5a-5d） |
+| C2 | `d834c94` fix(fallback) | `eval_upstream_error` → didnt（P10 先例：换通道救不了坏 JS）；`upstream_wedge_*` 维持 unknown（分流锚）；e4 4c / upstream-contract ①② 期望同步（有意行为变更：脚本错不再拉响 fallback） | 期望修订 + fallback 锚 |
+| C3 | `e6927e9` fix(doctor) | checkCdp9222 detail 如实四形态（HTTP <status> / connection accepted, empty/invalid body / fetch aborted (timeout) / connection refused）+ fetchFn DI；归因接线三分支 | +5（a2 spec 3a-3e） |
+| 文档 | 本 commit | 决议 D 文档化定稿（本节）+ README 双语 chrome-status 用户面 + 附录 E（cc-control 答复要点 + hook 交付包，§9 E4 规格的落盘样例） | — |
+
+基线与终态：测试 2676+1 skipped → **2739+1 skipped**（+63：wedge 17 + chrome-status 37 + C1 4 + C3 5）；不变量 87 → **89**（INV-88/89）；INV-78/87 两处既有断言随架构演进精化（均有本批 commit 说明）。
+
+### 实施期新发现（白盒 + 真机）
+
+1. **macOS ps 合并列截断（真机 smoke 实锤）**：`ps -p <pid> -o command= -o etime=` 会把 command 截到 16 字符（用户 Chrome 被截成 `/Applications/Go` → external_occupier 误分类）。修复：defaultPsFn 两次独立探测 + 源码锚测试（bug04-chrome-status.spec 10a）。这是「证据断链导致误判」的又一实例——正是 R1 要结构化排除的形态。
+2. **INV-76(a) grep 禁令与文档字面量冲突**：BrowseChannel 注释中的 `(function(){...})()` 示例撞上「裸 IIFE 串直传上游」禁令的正则——注释改用带空格形态表述，禁令本身不动（锚语义不变）。
+3. **真机 chrome-status 冒烟**（本机 9222 实况）：占用者 = 用户自己的 Chrome（pid 3881，运行 ~2h10m）→ 正确分类 `user_asset_suspected` + must_report + never_kill_user_asset + 上报包——与 09-08 事故现场同形态的场景，分类器给出了事故当时 agent 三重误判未给出的答案。
+
+### 决议 D 落地形态（NO-GO 边界文档化）
+
+- 边界维持：**无主 lasso 实例（台账丢失的旧实例）不被自动认领**——认领=杀（指纹只证明「跑着 lasso profile」，证明不了「没人在用」；B1 之后无主 hidden Chrome 可能已被用户激活认领，台账丢了即不可知；机器内不存在 agent 不可伪造的用户裁决通道）。重议条件不变（带外用户确认通道 + E 类 CC 侧硬拦联动）。
+- 替代出口已交付：chrome-status 的 `lasso_profile_orphan_suspected` 分类 + 完整证据 + user_paste_pack——用户自己决定、自己动手（`chrome-stop --pid` 不存在，用户出口 = 本人跑 `chrome-stop --port N` 或手动关）。失败方向 = 少杀（安全侧）。
+
