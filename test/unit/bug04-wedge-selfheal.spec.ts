@@ -132,6 +132,34 @@ describe("BUG-04B · TabRegistry.reconcile 类型化信号", () => {
     const r = await reg.reconcile(client); // 空列表 → no-op，不 throw
     expect(r).toEqual({ reaped: [], kept: 0 });
   });
+
+  // adversarial r1（真机复现 adv8）：页标题/URL 是内容侧任意文本——健康页列表
+  // 中标题恰含签名串的页面（如报道本 bug 的文章/issue 页）在旧「签名先行」
+  // 判序下触发假阳性 heal：每次 action 静默新开 about:blank 并切换操作目标
+  // （outcome=worked 但读错页）。判序修正后：可解析列表（哪怕含签名串标题）
+  // 永不判楔死；真楔死响应是纯错误文本（零 `<id>:` 页行 → parse 恒 null）。
+  it("5b. 健康页列表含签名串标题 → 不触发类型化信号（adversarial r1 假阳性回归）", async () => {
+    const { client, calls } = makeClient({
+      list_pages: () =>
+        textContent(
+          "## Pages\n\n1: The selected page has been closed (http://127.0.0.1/poison) [selected]\n2: other (http://x/y)",
+        ),
+    });
+    const reg = new TabRegistry(10);
+    reg.noteOwnPage(1);
+    const r = await reg.reconcile(client); // 不 throw：可解析 → 健康通道
+    expect(r.kept).toBe(1); // selected own 页正常触达入册
+    expect(calls.filter((c) => c.name === "close_page")).toHaveLength(0);
+  });
+
+  it("5c. 签名串出现在不可解析响应（零页行）→ 仍触发类型化信号（合取不漏真阳性）", async () => {
+    const { client } = makeClient({
+      list_pages: () =>
+        textContent(`upstream error envelope\n${WEDGE_TEXT}\n(no page entries)`, true),
+    });
+    const reg = new TabRegistry(10);
+    await expect(reg.reconcile(client)).rejects.toThrow(/^upstream_wedge:/);
+  });
 });
 
 // ============================================================

@@ -188,3 +188,42 @@ PreToolUse hook——唯一真正强制层，拦截 agent 经 CC 工具发出的
 - 边界维持：**无主 lasso 实例（台账丢失的旧实例）不被自动认领**——认领=杀（指纹只证明「跑着 lasso profile」，证明不了「没人在用」；B1 之后无主 hidden Chrome 可能已被用户激活认领，台账丢了即不可知；机器内不存在 agent 不可伪造的用户裁决通道）。重议条件不变（带外用户确认通道 + E 类 CC 侧硬拦联动）。
 - 替代出口已交付：chrome-status 的 `lasso_profile_orphan_suspected` 分类 + 完整证据 + user_paste_pack——用户自己决定、自己动手（`chrome-stop --pid` 不存在，用户出口 = 本人跑 `chrome-stop --port N` 或手动关）。失败方向 = 少杀（安全侧）。
 
+## 14. 对抗复审轮记录（adversarial r1，2026-09-08，复审员轮）
+
+验收六项 PASS 判定的对抗否定复核。方法：4 变异验证（改坏接线→定向红→还原 md5 核对）+ 上游 1.7.0 tarball 锚点独立核验 + 真机主权攻击（chrome-status 四分类面 / paste-pack 命令武器化 / zombie-gate 入口约束）+ 真机 P1 稳定性压测（3 轮顺序 + 5/8/12 路并发 + cap 驱逐 + 会话收尾）+ 全量门禁。
+
+### 变异验证（全红→还原 md5 全匹配）
+
+| 变异 | 期望红 | 实测红 |
+|---|---|---|
+| A：browseSingle 楔死检测改 `false &&` | 被动自愈组失效 | spec 6/7/8/9 共 4 测红 |
+| B：heal 层 1 删 `background:true`（抢焦回潮） | 零抢焦锚 | spec 12 红 + INV-78(d) 红 |
+| C：zombie 分支指令改裸 `chrome-stop --port` | INV-88 tripwire | spec 1d/5b 红 + INV-88 红 |
+| D：reconcile 吞回类型化信号 | 主动接入点失效 | spec 3/15/16 共 3 测红 |
+
+上游锚点（npm tarball 独立核验）：McpContext.js:253 签名整串、pages.js `background`（"without bringing it to the front"）、ToolHandler.js:189 结构死点、newPage→selectPage 先于 :189——全部实存。
+
+### 发现 F-r1-1（CONFIRMED·P1·当场修复）：主动检测签名碰撞假阳性——静默错目标
+
+- **真机复现**：把选中页 navigate 到标题恰为 `The selected page has been closed` 的无害页面（如报道本 bug 的文章/issue 页）→ 每次 evaluate 都触发假阳性 heal：`upstream_wedge_healed_new_page` ×2、**操作目标被静默切到 about:blank**（outcome=worked 但读错页）、每次 action 多开一个空白 tab 且对该页永久锁死。
+- **根因**：`TabRegistry.reconcile` 的签名检查跑在 list_pages **全文**（含页标题/URL——内容侧任意文本）且先于 parse。upstream-wedge.ts 注释「该响应在健康通道上恒为页列表」为真，但页条目本身携带内容文本，签名检查在该面上不安全。
+- **修复**（判序反转）：parse 先行，`entries === null && isUpstreamWedgeError(text)` 合取才抛类型化信号——真楔死响应是纯错误文本（零 `<id>:` 页行 → parse 恒 null）不漏真阳性；可解析列表（哪怕标题含签名串）永不判楔死。被动面（action 错误文本）不变。
+- **守护**：spec 5b（签名串标题健康列表→不触发+selected own 页正常入册）/5c（签名串在不可解析响应→仍触发，防合取过窄）；INV-89(b) 锚反转（合取式 + parse 先于签名的顺序锚）。
+- **真机复验**：修复后同一 poison 场景 0 heal、目标保持 poison.html、无杂散 tab；真楔死 3 轮场景 3 heal 全 worked（回归安全）。
+
+### 发现 F-r1-2（P3·登记待办）：并发楔死自愈不去重——tab 瞬时堆积
+
+- 12 路并发 evaluate（选中页刚关）→ 10/10 全 worked（正确性零损），但 heal 不去重 + `noteOwnPage` 的页只有成为 selected 才进 LRU Map（touch 只加 selected）→ 未选中 own 页**不受 cap 约束**，实测瞬时 15 tab（cap=10 不驱逐）；会话收尾 TabSession 全清（实测 0 残留）。
+- 无 kill/主权面风险（全是 lasso 自建 blank 页）；browse_logged_in 附着用户 Chrome 时表现为用户可见的瞬时空白 tab 堆积。
+- 建议后续：heal 单飞（singleflight 去重）+ `noteOwnPage` 时直接入册（不等 selected 观测）。
+
+### 边界核验（非缺陷，留档）
+
+- paste-pack 的用户出口 `chrome-stop --port 9222` 被 agent 抄用 → 实测 `{"stopped":[]}`、用户 Chrome（pid 3881）存活——kill 面物理上只达台账+归属验证进程，非台账资产零可达。
+- `chrome-stop --zombie-gate` 无 `--port` → 硬拒（agents never all-stop）；与 `--modes` 组合 → 硬拒。
+- chrome-status 真机四分类：9339 free / 9334 lasso_live / 9222 user_asset_suspected（真实用户 Chrome）/ 9338 external_occupier——agent_directive 全表零 kill 形态。
+
+### 门禁与回归
+
+修复后全量：`npm run build && npx vitest run && npm run check-invariants` 全绿（2741+1 skipped / 89 INV）；README 同步检查绿；历史四条+BUG-03 面零回归（evaluate 直返 JSON / screenshot PNG / 裸启存活真机复核）。
+

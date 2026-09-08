@@ -186,15 +186,24 @@ export class TabRegistry {
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join("\n");
-    // BUG-04 决议 B（doc/bugs/04 §5 主动接入点）：list_pages 响应命中上游选中页
-    // 死锁签名 → **类型化信号** throw（不再吞成 tab_reconcile_unparseable_list
-    // warn——该吞法是主通道楔死零检测零自愈的放大因）。唯一消费方
-    // LoggedInChannel.getMcpClient 捕获本前缀后在返回 client 前触发 heal，
-    // 下一个 action 永远看不到楔死态。
-    if (isUpstreamWedgeError(text)) {
+    // BUG-04 决议 B（doc/bugs/04 §5 主动接入点）+ adversarial r1 假阳性修复：
+    // list_pages 响应命中上游选中页死锁签名 → **类型化信号** throw（不再吞成
+    // tab_reconcile_unparseable_list warn——该吞法是主通道楔死零检测零自愈的
+    // 放大因）。唯一消费方 LoggedInChannel.getMcpClient 捕获该前缀后在返回
+    // client 前触发 heal，下一个 action 永远看不到楔死态。
+    //
+    // 🔴 r1 判序修正（先 parse 后签名）：list_pages 响应的页行含**页标题/URL
+    // （内容侧任意文本）**——标题恰含签名串的健康页面（如报道本 bug 的文章/
+    // issue）会在旧判序（签名先行）下触发假阳性 heal：每次 action 静默新开
+    // about:blank 并把操作目标切过去（outcome=worked 但读错页——静默错目标，
+    // 真机复现见 bug04-wedge-selfheal.spec 假阳性回归测）。真楔死的 list_pages
+    // 响应是纯错误文本（零 `<id>:` 页行 → parseUpstreamPageEntries 恒 null），
+    // 故「解析 null 且签名命中」才是类型化信号；健康可解析列表永不判楔死。
+    // 被动面（action 错误文本签名检测）不受本判序影响。
+    const entries = parseUpstreamPageEntries(text);
+    if (entries === null && isUpstreamWedgeError(text)) {
       throw new Error(`${UPSTREAM_WEDGE_SIGNAL_PREFIX}${text.slice(0, 120)}`);
     }
-    const entries = parseUpstreamPageEntries(text);
     if (entries === null) {
       // 空响应 / 上游格式漂移 → 保守 no-op（宁可不淘汰；失败方向良性）
       logger.warn({ evt: "tab_reconcile_unparseable_list", note: "skip this round" });

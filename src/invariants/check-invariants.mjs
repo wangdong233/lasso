@@ -5072,17 +5072,25 @@ const assertions = [
         return false;
       }
 
-      // ----- (b) reconcile 不吞（楔死签名先于 parse 判定；非楔死的格式漂移
-      //           仍走保守 no-op warn——合法保留，与楔死信号分流）-----
+      // ----- (b) reconcile 不吞（parse 先行 + 「解析 null 且签名命中」合取；
+      //           adversarial r1 判序修正——健康可解析列表永不判楔死；非楔死
+      //           的格式漂移仍走保守 no-op warn——合法保留，与楔死信号分流）-----
       const reconcileBody = tabSrc.match(/async reconcile\(client: McpClient\)[\s\S]*?\n  }/);
       if (!reconcileBody) return false;
-      if (!/isUpstreamWedgeError\(text\)/.test(reconcileBody[0])) return false;
+      // r1 合取锚：类型化信号 throw 必须以 entries === null 为前置（页标题/URL
+      // 是内容侧任意文本——标题含签名串的健康页面在旧「签名先行」判序下会
+      // 触发假阳性 heal，静默把操作目标切到 about:blank；真楔死响应是纯错误
+      // 文本，parse 恒 null，合取不漏真阳性）
+      if (!/entries === null && isUpstreamWedgeError\(text\)/.test(reconcileBody[0])) {
+        return false;
+      }
       if (!/UPSTREAM_WEDGE_SIGNAL_PREFIX/.test(reconcileBody[0])) return false;
-      // 顺序锚：楔死签名检测必须先于 parseUpstreamPageEntries（否则签名响应先进
-      // parse → null → 被吞成 unparseable no-op——BUG-04 修复前的放大因形态）
+      // 顺序锚（r1 修正后的正确方向）：parseUpstreamPageEntries 必须先于
+      // isUpstreamWedgeError（旧方向「签名先行」正是假阳性根源——签名检查
+      // 跑在含页标题的全文上）
       if (
-        reconcileBody[0].indexOf("isUpstreamWedgeError") >
-        reconcileBody[0].indexOf("parseUpstreamPageEntries")
+        reconcileBody[0].indexOf("parseUpstreamPageEntries") >
+        reconcileBody[0].indexOf("isUpstreamWedgeError")
       ) {
         return false;
       }
