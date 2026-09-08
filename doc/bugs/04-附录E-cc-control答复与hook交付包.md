@@ -1,9 +1,13 @@
 # BUG-04 附录 E：给 cc-control 的答复要点 + PreToolUse hook 交付包（样例落盘）
 
 > 定位：BUG-04 决议 E（doc/bugs/04 §9，r1 修订 E1-E4 需求规格）的**交付样例**——E4 规定交付物
-> （脚本实体 + 测试载体 + settings 接线样例）落 cc-control 仓库（建议 `scripts/hooks/deny-browser-kill.mjs`
-> + `test/`）；本文件是 lasso 侧的规格指针 + 可整包复制的样例，供 cc-control 回写。
-> 日期：2026-09-08；来源：09-08 误杀事故（cc-control/doc/lasso-报告-2026-09-08-事故与复验.md 第一部分）。
+> （脚本实体 + 测试载体 + settings 接线样例）落 cc-control 仓库（`scripts/hooks/deny-browser-kill.mjs`
+> + 测试）；本文件是 lasso 侧的规格指针 + 样例快照。
+> 日期：2026-09-08；**09-09 回修**：初版样例两缺陷（cc-control 深检定罪，见 §3d）+ E4 教训固化
+> （样例必须以可执行文件 + 测试载体落仓，文档内嵌块降级为快照指针）。
+> 权威副本：`scripts/hooks/deny-browser-kill.mjs`（本仓）——测试
+> `test/unit/deny-browser-kill.spec.ts` 含文档同步锚（本文件 §3a 内嵌块 ↔ 权威副本逐字节一致，
+> 漂移即红）。
 
 ---
 
@@ -23,7 +27,7 @@
      ——lasso 通道内自愈（new_page 零抢焦逃逸口 + 上游子进程 respawn），主动面（reconcile）+ 被动面
      （action catch + 单次重试）双接入，主通道不再需要 MCP 重启。
    - P3 三项已修：evaluate IIFE 第三形态 / 调用方坏 JS 不再拉响 fallback（直达错误）/ doctor detail
-     如实四形态（不再笼统 404）。
+     如实四形态（不再笼统 404；09-09 追加：`/json` tabs 探测面同规——见 doc/governance/12）。
 3. **对消费方 agent 的两条工作约定（建议进 cc-control 契约）**：
    - 遇 `port_in_use*` / doctor `cdp_9222_logged_in` fail：**先跑 `lasso-mcp chrome-status --port N`**，
      按 agent_directive 走（只上报或门槛清账）；禁止自行 lsof/curl/osascript/ps 推断归属后 kill。
@@ -48,17 +52,27 @@
   无法与合法自动化静态区分——Cmd+Q 规则只拦 hotkey/press 显式形态。
 - **E4 交付要求**：脚本 + 测试载体落 cc-control 仓库 + user 级 `~/.claude/settings.json` 接线样例
   （跨全部项目会话——事故 agent 恰是另一项目会话）；**验收门：样例测试不绿不算交付**。
+  🔴09-09 教训固化（初版违例的根因）：**交付物必须自带测试载体**——「文档内嵌样例、无测试」
+  等于交付未验证代码，缺陷必从该缺口逃逸（§3d 两缺陷即此）。lasso 侧样例现以可执行文件
+  + 测试落仓，文档内嵌块仅作快照（同步锚钉住）。
 
 ---
 
-## 3. 交付样例（整包复制到 cc-control）
+## 3. 交付样例（权威副本在本仓 scripts/hooks/，cc-control 整包复制）
 
 ### 3a. 脚本：`scripts/hooks/deny-browser-kill.mjs`
+
+（以下内嵌块与仓内权威副本逐字节一致——test/unit/deny-browser-kill.spec.ts 文档同步锚钉住）
 
 ```js
 #!/usr/bin/env node
 /**
- * deny-browser-kill.mjs —— BUG-04 决议 E（E1-E4）交付样例（放 cc-control 仓库）。
+ * deny-browser-kill.mjs —— BUG-04 决议 E（E1-E4）交付样例（lasso 仓权威副本）。
+ *
+ * cc-control 侧部署副本：cc-control 仓 scripts/hooks/deny-browser-kill.mjs（09-08 已
+ * 接线 user 级 settings 并双向 live 验证）；本文件是 upstream 权威样例 + 测试载体宿主（E4：样例必须自带测试——「样例无测试=缺陷逃逸」
+ * 是 09-08 附录E初版两缺陷的根因，见 doc/bugs/04-附录E §3c）。两副本由
+ * test/unit/deny-browser-kill.spec.ts 的文档同步锚钉住（doc 内嵌块 ↔ 本文件逐字节一致）。
  *
  * CC PreToolUse hook：唯一真正的强制层——拦截 agent 经 CC 工具发出的浏览器 kill。
  * 事故原形（2026-09-08）：`kill 11633`（裸 pid、无进程名）——静态 grep 型 hook 恰好
@@ -71,104 +85,126 @@
  *    实时解析——匹配上述模式 → deny；ps 查无此进程 → allow（kill 无害）；
  *    ps 自身失败/输出为空 → deny（空输出≠进程属性——事故四根因之首）
  *  - desktop act（hotkey/press）对 Cmd+Q（⌘Q/cmd+q/Meta+q/key_q 等）→ deny
+ *    （🔴入参真实形状是 tool_input.options.actions[]；漏读 options 层=恒放行——
+ *    附录E初版缺陷①。keys 数组须扁平化 "meta+q" 再匹配，JSON 序列化形
+ *    ["meta","q"] 不命中正则——缺陷②）
  *  - 其余 → allow（exit 0 无 JSON）
  *
- * deny 回馈：exit 0 + {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
- * "permissionDecisionReason":"..."}}——reason 指引 agent 改走 chrome-status 上报路径。
+ * deny 回馈：exit 0 + {"hookSpecificOutput":{"hookEventName":"PreToolUse",
+ * "permissionDecision":"deny","permissionDecisionReason":"..."}}——reason 指引 agent
+ * 改走 chrome-status 上报路径（lasso 1.22+：agent_directive.allowed=[] must_report=true）。
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 const BROWSER_MARKERS =
   /Chrome|Chromium|puppeteer_dev_chrome_profile|chrome-profile-default|render-chrome-profile-/i;
 const NAME_KILL_RE = /\b(killall|pkill)\b|\bosascript\b[\s\S]*\bquit\b/i;
 const CMD_Q_RE = /(^|[^a-z])(cmd\+q|⌘q|command\+q|meta\+q|key_q|"q"\s*,\s*"meta"|modifier[^"]*"meta"[^"]*"q")/i;
 
-const deny = (reason) => {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason:
-          reason +
-          " — never_kill_user_asset: browsers are ONLY managed via lasso (launch-chrome / chrome-stop). " +
-          "For a blocked port run `lasso-mcp chrome-status --port N` and report its user_paste_pack to the user.",
-      },
-    }),
-  );
-  // exit 0：deny 决策经 JSON 回馈，非退出码
-};
+const DENY_SUFFIX =
+  " — never_kill_user_asset: browsers are ONLY managed via lasso (launch-chrome / chrome-stop). " +
+  "For a blocked port run `lasso-mcp chrome-status --port N` and report its user_paste_pack to the user.";
 
-function psCommand(pid) {
+/**
+ * 可单测核心：runHook(input, deps) → { decision: 'deny'|'allow', reason?: string }。
+ * deps.psCommand(pid) 注入替换 spawnSync（测试载体用，见 deny-browser-kill.spec.ts）。
+ */
+export function runHook(input, deps = { psCommand: realPsCommand }) {
+  const tool = input?.tool_name ?? "";
+  const command = String(input?.tool_input?.command ?? "");
+  const action = input?.tool_input ?? {};
+
+  // ---- E1 面 2：desktop act（hotkey/press 显式 Cmd+Q 形态）----
+  if (/^mcp__lasso__desktop$/.test(tool)) {
+    // 真实工具入参形状：tool_input.options.actions[]({kind:"hotkey",keys:[...]} / {kind:"press",key})
+    // 🔴附录E初版样例此处漏读 options 层（读 tool_input.actions=恒 undefined→T5 恒放行）；
+    // 且 JSON 序列化 ["meta","q"] 不命中 CMD_Q_RE 的 meta\+q 形态——须扁平化为 "meta+q" 再匹配
+    const opts = action.options ?? {};
+    const flat = (acts) =>
+      (acts ?? []).map((a) => [a?.key, (a?.keys ?? []).join("+")].filter(Boolean).join("+")).join(" ");
+    const pressed = [
+      action.key, action.keys?.join("+"),
+      opts.key, opts.keys?.join("+"),
+      flat(opts.actions), flat(action.actions),
+    ].filter(Boolean).join(" ");
+    if (CMD_Q_RE.test(pressed)) {
+      return { decision: "deny", reason: "Cmd+Q against the foreground app can gracefully quit the USER's browser (E1 desktop vector)" + DENY_SUFFIX };
+    }
+    return { decision: "allow" }; // 其余 desktop 形态：E3 边界（AX 点击/键入不静态区分）
+  }
+
+  // ---- E1 面 1：Bash kill 全形态 ----
+  if (tool !== "Bash") return { decision: "allow" };
+
+  // 名字型
+  if (NAME_KILL_RE.test(command) && BROWSER_MARKERS.test(command)) {
+    return { decision: "deny", reason: "named kill matches a browser / lasso profile marker" + DENY_SUFFIX };
+  }
+
+  // 裸 pid 型：kill [-SIGNAL] <pid> [<pid>...]
+  const killMatch = command.match(/\bkill\b(?:\s+-[A-Za-z0-9]+)*(?:\s+-\d+)?((?:\s+\d+)+)/);
+  if (killMatch) {
+    const pids = killMatch[1].trim().split(/\s+/).map(Number);
+    for (const pid of pids) {
+      const ps = deps.psCommand(pid);
+      if (!ps.ok) {
+        // 已死进程（ESRCH）= kill 无害 → 跳过；解析失败 = 失效安全 deny
+        if (!ps.dead) {
+          return { decision: "deny", reason: `cannot verify pid ${pid} (ps failed) — fail-safe deny` + DENY_SUFFIX };
+        }
+        continue;
+      }
+      if (BROWSER_MARKERS.test(ps.command)) {
+        return { decision: "deny", reason: `pid ${pid} resolves to a browser process (${ps.command.slice(0, 80)})` + DENY_SUFFIX };
+      }
+    }
+  }
+  return { decision: "allow" }; // allow：无输出即放行
+}
+
+function realPsCommand(pid) {
   try {
-    const r = spawnSync("ps", ["-p", String(pid), "-o", "command="], {
-      encoding: "utf8",
-      timeout: 1000,
-    });
+    const r = spawnSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 1000 });
     if (r.error || r.status !== 0) return { ok: false }; // 工具级失败：失效安全
     const out = (r.stdout ?? "").replace(/[\r\n]+$/, "");
-    if (!out) return { ok: false, dead: true }; // 空输出≠进程属性——deny（见下）
+    if (!out) return { ok: false, dead: true }; // 空输出≠进程属性——deny（见 runHook）
     return { ok: true, command: out };
   } catch {
     return { ok: false };
   }
 }
 
-/** 解析 PreToolUse 入参（stdin JSON）——容错：解析失败按 allow 之外最保守处理（deny）。 */
-function readInput() {
+/** main：读 stdin JSON → runHook → deny 时输出决策 JSON（exit 0）；allow 静默。 */
+function main() {
+  let input = null;
   try {
-    return JSON.parse(readFileSync(0, "utf8"));
+    input = JSON.parse(readFileSync(0, "utf8"));
   } catch {
-    return null;
-  }
-}
-
-const input = readInput();
-const tool = input?.tool_name ?? "";
-const command = String(input?.tool_input?.command ?? "");
-const action = input?.tool_input ?? {};
-
-// ---- E1 面 2：desktop act（hotkey/press 显式 Cmd+Q 形态）----
-if (/^mcp__lasso__desktop$/.test(tool)) {
-  const pressed = [action.key, action.keys?.join("+"), JSON.stringify(action.actions ?? [])].join(" ");
-  if (CMD_Q_RE.test(pressed)) {
-    deny("Cmd+Q against the foreground app can gracefully quit the USER's browser (E1 desktop vector)");
+    // 解析失败：非本 hook 关心的形态，静默放行（其余防线仍在）
     process.exit(0);
   }
-  process.exit(0); // 其余 desktop 形态：E3 边界（AX 点击/键入不静态区分）
-}
-
-// ---- E1 面 1：Bash kill 全形态 ----
-if (tool !== "Bash") process.exit(0);
-
-// 名字型
-if (NAME_KILL_RE.test(command) && BROWSER_MARKERS.test(command)) {
-  deny("named kill matches a browser / lasso profile marker");
+  const out = runHook(input);
+  if (out.decision === "deny") {
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: out.reason,
+        },
+      }),
+    );
+  }
+  // exit 0：deny 决策经 JSON 回馈，非退出码
   process.exit(0);
 }
 
-// 裸 pid 型：kill [-SIGNAL] <pid> [<pid>...]
-const killMatch = command.match(/\bkill\b(?:\s+-[A-Za-z0-9]+)*(?:\s+-\d+)?((?:\s+\d+)+)/);
-if (killMatch) {
-  const pids = killMatch[1].trim().split(/\s+/).map(Number);
-  for (const pid of pids) {
-    const ps = psCommand(pid);
-    if (!ps.ok) {
-      // 已死进程（ESRCH）= kill 无害 → 跳过；解析失败 = 失效安全 deny
-      if (!ps.dead) {
-        deny(`cannot verify pid ${pid} (ps failed) — fail-safe deny`);
-        process.exit(0);
-      }
-      continue;
-    }
-    if (BROWSER_MARKERS.test(ps.command)) {
-      deny(`pid ${pid} resolves to a browser process (${ps.command.slice(0, 80)})`);
-      process.exit(0);
-    }
-  }
-}
-process.exit(0); // allow：无输出即放行
+/* 直跑守卫：仅作为脚本执行时跑 main（node --test / vitest 导入时不跑——否则
+ * readFileSync(0) 挂等 stdin。🔴附录E初版建议的 NODE_ENV!=="test" 守卫在
+ * node --test 下不成立（不设该变量）——缺陷③，改标准 import.meta.url 判定）。 */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
 ```
 
 ### 3b. 接线样例：`~/.claude/settings.json`（user 级——跨全部项目会话）
@@ -191,7 +227,8 @@ process.exit(0); // allow：无输出即放行
 }
 ```
 
-### 3c. 测试载体（最小六向量，进 cc-control 测试）
+### 3c. 测试载体（权威副本在本仓 test/unit/deny-browser-kill.spec.ts，cc-control 复制为
+`scripts/hooks/deny-browser-kill.test.mjs`，载体 node:test）
 
 | # | 输入（tool_input 形状） | mock ps | 期望 |
 |---|---|---|---|
@@ -199,12 +236,37 @@ process.exit(0); // allow：无输出即放行
 | T2 | Bash `kill 12345` | pid 12345 → `/usr/local/bin/vitest run` | allow（同形无害进程） |
 | T3 | Bash `pkill -f puppeteer_dev_chrome_profile` | （名字型，无 ps） | **deny** |
 | T4 | Bash `killall "Google Chrome"` | （名字型） | **deny** |
-| T5 | desktop act `{action:"act", options:{actions:[{kind:"hotkey", keys:["meta","q"]}]}}` | — | **deny** |
+| T5 | desktop act `{action:"act", options:{actions:[{kind:"hotkey", keys:["meta","q"]}]}}` | — | **deny**（🔴真实形状在 options.actions 下——初版缺陷①的回归锚） |
 | T6 | Bash `kill 99999` | ps 失败（r.error） | **deny**（失效安全） |
 | T7 | Bash `kill 99998` | ps 空 + ESRCH（已死） | allow |
+| B1 | Bash `kill -9 542` | pid 542 → Chrome | **deny**（信号形态） |
+| B2 | Bash `kill 100 200` | 100→vitest / 200→Chromium | **deny**（多 pid 任一命中） |
+| B3 | Bash `kill 777` | 777 → Chrome `--user-data-dir=.../chrome-profile-default` | **deny**（lasso profile 标记） |
+| B4 | Bash `npm test && echo done` | — | allow（非 kill 命令） |
+| B5 | desktop hotkey `["meta","c"]` | — | allow（非 Cmd+Q，E3 边界） |
+| B6 | desktop press `{kind:"press", key:"cmd+q"}` 及顶层 `{options:{key}}` | — | **deny**（press 形态两层覆盖） |
+| — | 文档同步锚 | — | 附录E §3a 内嵌块 == 仓内权威副本（逐字节） |
 
-> 实现提示：把 `spawnSync` 经参数注入（`runHook(input, deps)`）即可单测 mock，脚本底部
-> `if (process.env.NODE_ENV !== "test") main()`。**验收门：六向量不绿不算交付（E4）。**
+> 实现要点（初版缺失，09-09 补齐为交付内建）：`spawnSync` 经参数注入
+> （`runHook(input, deps)`）可单测 mock；脚本底部直跑守卫用标准
+> `import.meta.url === pathToFileURL(process.argv[1]).href` 判定——🔴初版建议的
+> `NODE_ENV !== "test"` 守卫在 node --test 下不成立（不设该变量，导入即挂等 stdin）。
+> **验收门：全向量不绿不算交付（E4）。**
+
+### 3d. 初版样例两缺陷定罪（09-08 cc-control 深检，09-09 回修）
+
+初版交付包样例（本文档 09-08 版内嵌块）自带两缺陷，E4 自检未发现——**因样例未附测试载体**：
+
+1. **desktop 入参漏读 options 层**：读 `tool_input.actions`，真实形状
+   `tool_input.options.actions[]` → 恒 undefined → T5（Cmd+Q）恒放行——恰是要拦的向量；
+2. **JSON 序列化不命中正则**：`JSON.stringify(["meta","q"])` 产出 `"meta","q"` 不命中
+   CMD_Q_RE 的 `meta\+q` 形态，须把 keys 扁平化为 `"meta+q"` 再匹配。
+   另：初版建议的 `NODE_ENV !== "test"` 直跑守卫在 node --test 下不成立（挂等 stdin），
+   须 `import.meta.url` 直跑判定。
+
+**教训（已固化进 E4）**：交付物必须自带测试载体——「文档内嵌样例、无测试」等于交付
+未验证代码。lasso 侧处置：样例以可执行文件落仓 `scripts/hooks/deny-browser-kill.mjs` +
+向量测试 `test/unit/deny-browser-kill.spec.ts`（含文档同步锚，文档快照漂移即红）。
 
 ---
 
