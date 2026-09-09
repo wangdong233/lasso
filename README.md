@@ -145,6 +145,8 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/usage/01-
 
 > **v1.5 起，`browse_headless` 默认开启反检测**（伪装 UA / 抹除 `navigator.webdriver` / 伪造 webgl、plugins、codecs 等共十几路）。**无需配置，自动生效**——很多「检测 headless」的站点现在能直接抓（v1.8 修复了一个注入静默失效的缺陷，现在是真的生效，且注入失败会在日志里如实报错）。v1.11 起反检测在**浏览器启动层**就生效：UA、视口、语言随档案统一下发，网络层 HTTP 头和页面 JS 看到的是同一套值，不再自相矛盾；v1.12 起 macOS 上默认指纹**与你的系统对齐**（不再「UA 说 Windows、机器特征招供 macOS」）。只有 Cloudflare 级重度反爬才需要走云浏览器（见下方「反爬强攻」）。想验证反检测效果？跑 `lasso doctor --stealth-check` 看 creepjs 检测对比。
 
+> **测本地 HTML 文件**（单文件交付物、离线产物验收）：`file://` 链接默认拒（防注入的 agent 顺手读你本地盘）；对 Claude 说「打开 file://…」被拒时会带 opt-in 指引——设 `LASSO_ALLOW_FILE_FROM=/你的项目目录` 后，`browse_headless` / `browse_logged_in` 即可导航/快照/抽取/截图**指定目录子树内**的本地文件（`../` 穿越、symlink 逃逸、目录前缀伪造全封口；`fetch_url` 等其余工具仍保持 http(s)）。
+
 ### 抓登录态页（有 2FA 的也行）
 
 > 你：「看看我 Jira 的待办」 → 登录态页面快照
@@ -165,13 +167,15 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/usage/01-
 
 > 你：「截个整页长图」「存成 PDF」 → 落盘文件路径
 
-所有图片和 PDF 都**存到本地、返回路径**，不会把一大坨图片数据塞进对话浪费上下文。超大文本输出（fetch_url / network 等）超过 48 KiB 也会自动落盘，返回预览 + `@oN` 续页句柄——用 `read_text` 工具按页续读（v1.8 起经 MCP 可直接调用）。
+所有图片和 PDF 都**存到本地、返回路径**，不会把一大坨图片数据塞进对话浪费上下文。超大文本输出（fetch_url / network 等）超过 48 KiB 也会自动落盘，返回预览 + `@oN` 续页句柄——用 `read_text` 工具按页续读（v1.8 起经 MCP 可直接调用）。要**自定截图落盘位置**（`options.screenshot.filePath`）：默认拒（防任意路径写盘）——设 `LASSO_SCREENSHOT_DIR=/你的输出目录` 开放，且只允许写进指定目录子树（嵌套新目录自动创建也限在内）；不指定路径时默认落 `/tmp/lasso-screenshot-*.png`，行为不变。
 
 ### 看一个页面加载了什么
 
 > 你：「这页加载了哪些第三方跟踪？」 → 资源列表 + 跟踪域名计数
 
 自动识别页面加载的全部资源，按第三方域名聚合，方便看隐私风险、性能瓶颈。v1.11 起资源采集直接走浏览器引擎的原生网络层——**代理 / TUN 网络环境下也完整**，每条资源还带请求方法和状态码。
+
+> **排查页面报错**：对 Claude 说「读一下这个页面的 console」——`browse_headless` / `browse_logged_in` 的 `console` action 直接读当前页自上次导航以来的 console 消息（`console_level` 按严重度过滤 error/warn/info/debug，`console_limit` 只留最近 N 条）。渲染类缺陷排查不再需要注入 `window.onerror` 绕路。顺带一提：你传了但当前 action 用不上的 options 键会在响应的 `data.ignored_options` 里如实列出——Lasso 不静默丢参数。
 
 ### 控桌面原生 app
 
@@ -391,6 +395,8 @@ lasso launch-chrome
 - 调无头浏览器空闲自动回收时间（`LASSO_HEADLESS_IDLE_MS`，默认 5 分钟；配 `0` 禁用）
 - 调 launch-chrome 起的 Chrome「用完即关」时间（`LASSO_LAUNCH_IDLE_MS`，默认 60 秒；配 `300000` 回退 5 分钟、`0` 禁用）或切回可见启动（`LASSO_LAUNCH_MODE=visible`）
 - 给浏览器配出口代理（`LASSO_PROXY`，如 `http://127.0.0.1:7890`；**只影响无头浏览器和 Steel 云浏览器，登录态 Chrome 的出口永远保持原样**——v1.11）
+- 放行 `file://` 本地文件导航（`LASSO_ALLOW_FILE_FROM`，冒号分隔目录白名单；只开 `browse_headless` / `browse_logged_in` 两工具，且只放行指定目录子树——默认仍拒）
+- 开放自定截图落盘路径（`LASSO_SCREENSHOT_DIR`，冒号分隔写根目录；`options.screenshot.filePath` 只允许写进指定子树，默认拒、默认 `/tmp` 管理路径不受影响）
 - 设 Steel 自托管云浏览器端点（`STEEL_ENDPOINT`，如 `http://localhost:3000`；需同时开 `LASSO_ALLOW_CLOUD_BROWSER=true` 才启用）
 
 完整变量清单和默认值见 [Key 配置指南 · 高级调优](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配)。**Surge / Clash 等 TUN 代理网络（fake-ip，`198.18.0.0/15`）与 `127.0.0.1`（本机 Chrome CDP 调试端口用）都已内置放行**，无需额外配置——这是设计行为，不是漏配。
@@ -443,6 +449,7 @@ lasso launch-chrome
 | 搜索一直没结果 | 跑 `lasso doctor` 看 `machine_search_mcp` / `brave_keys`；Brave key 是否过期或额度用完；机器 MCP 复用 + 免费实搜兜底本身零配置可用 |
 | 链接打不开 | 改说「这个链接找不到了，找找存档」，去查互联网档案馆 |
 | 提示要内网访问被拒 | 确认 URL 没写错；TUN 代理网络已默认放行，其他内网需手动允许 |
+| `file://` 链接被拒（`ssrf_blocked:protocol_not_allowed:file:`） | 默认行为。测本地单文件 HTML 时设 `LASSO_ALLOW_FILE_FROM=项目目录`（冒号分隔多目录），拒绝 payload 里的 hint 有完整指引；配没配可用 `lasso doctor` 看 `ssrf_config` 的 `fileFrom=<n>` 回显 |
 | 想验证反检测效果 | 跑 `lasso doctor --stealth-check`，会驱动 creepjs 检测页对比基线（可选，不影响日常使用） |
 
 完整 FAQ 与调试技巧见 [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md)。

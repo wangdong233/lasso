@@ -309,6 +309,8 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源：Brave 计量计费属 L4 会被排除；machine_mcp 复用是 L1 零成本、**永远保留**（v1.17 起 registry 内唯一 API 源是 Brave，L1/L2/L3 档由 machine_mcp 兜底；无机器 MCP 时诚实返空结果） |
 | `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
+| `LASSO_ALLOW_FILE_FROM` | `file://` 导航目录白名单（**冒号分隔**；仅 `browse_headless` / `browse_logged_in` 两工具生效） | 空（`file://` 默认拒） | 测本地单文件 HTML 交付物时配，如 `LASSO_ALLOW_FILE_FROM=/Users/you/Documents/project`。只放行指定目录**子树**（realpath 规范化 + 边界匹配：`../` 穿越 / symlink 逃逸 / 目录前缀伪造全封口；不存在条目装载时丢弃）；`fetch_url` / `screenshot` 等其余工具保持 http(s)-only。拒绝 payload 带 opt-in hint；`lasso doctor` 的 `ssrf_config` 回显 `fileFrom=<n>`，丢弃条目会降级 warn 提示 |
+| `LASSO_SCREENSHOT_DIR` | `options.screenshot.filePath` 截图落盘**写根**（冒号分隔；仅 browse 两工具的截图 action 生效） | 空（显式 filePath 恒拒；缺省管理路径 `/tmp/lasso-screenshot-*.png` 不受影响） | 要自定截图落盘位置时配，如 `LASSO_SCREENSHOT_DIR=/Users/you/shots`。默认拒是收紧「任意路径写盘」暴露面（防注入的 agent 覆写 `~/.zshrc` 类文件）；写根内嵌套父目录自动创建；写根外 / `../` 出根 / symlink 逃逸全拒。`lasso doctor` 回显 `shotDir=<n>` |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
 | `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
 | `LASSO_RENDER_IDLE_MS` | 渲染档 Chrome（`render-chrome --ensure` 拉起的确定性 headless 实例）空闲回收阈值；消费方用 `touch` 心跳文件续命（见 README 渲染档节） | `600000`（10 分钟） | 渲染会话密集可放宽；渲染档是无人值守资源，**不建议 0**（不回收=泄漏面） |

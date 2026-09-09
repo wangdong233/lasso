@@ -144,6 +144,8 @@ Auto-strips nav bars, ads, sidebars and other clutter — **saves 30–70% on to
 
 > **As of v1.5, `browse_headless` has anti-detection on by default** (spoofed UA / `navigator.webdriver` removed / faked webgl, plugins, codecs, and a dozen more layers). **Zero config — automatic.** Many "detect headless" sites now scrape directly (v1.8 fixed a defect where the injection silently failed to apply — it really takes effect now, and injection failures are reported honestly in the logs). As of v1.11 anti-detection is applied **at browser-launch level**: UA, viewport and language are issued together from the profile, so the network-layer HTTP headers and the page's JS see the same values — no more self-contradiction. As of v1.12 the default fingerprint on macOS **matches your system** (no more "UA says Windows while machine traits give away macOS"). Only Cloudflare-grade heavy anti-bot needs the cloud browser (see "Anti-Bot Bypass" below). Want to verify the anti-detection effect? Run `lasso doctor --stealth-check` for a creepjs detection comparison.
 
+> **Testing local HTML files** (single-file deliverables, offline acceptance): `file://` URLs are rejected by default (so an injected agent can't wander your local disk); the rejection payload carries an opt-in hint — set `LASSO_ALLOW_FILE_FROM=/your/project/dir` and `browse_headless` / `browse_logged_in` can navigate/snapshot/extract/screenshot local files **inside the allowlisted directory subtrees** only (`../` traversal, symlink escapes and directory-prefix forgery are all sealed; `fetch_url` and other tools stay http(s)-only).
+
 ### Scrape Logged-in Pages (even with 2FA)
 
 > You: "Show me my Jira to-dos" → snapshot of the logged-in page
@@ -164,13 +166,15 @@ When you don't need to render a full page, direct HTTP is **~4× faster and ~4×
 
 > You: "Take a full-page screenshot" / "Save as PDF" → file path on disk
 
-All images and PDFs are **saved to disk and a path is returned** — no giant blob dumped into your chat to waste context. Oversized text output (fetch_url / network, etc.) beyond 48 KiB is also written to disk automatically, returning a preview plus an `@oN` continuation handle — page through it with the `read_text` tool (directly callable over MCP since v1.8).
+All images and PDFs are **saved to disk and a path is returned** — no giant blob dumped into your chat to waste context. Oversized text output (fetch_url / network, etc.) beyond 48 KiB is also written to disk automatically, returning a preview plus an `@oN` continuation handle — page through it with the `read_text` tool (directly callable over MCP since v1.8). To **choose the screenshot output path yourself** (`options.screenshot.filePath`): rejected by default (no arbitrary-path writes) — set `LASSO_SCREENSHOT_DIR=/your/output/dir` to opt in, and writes are confined to the allowlisted subtrees (auto-created nested dirs included); with no path specified the default `/tmp/lasso-screenshot-*.png` behavior is unchanged.
 
 ### See What a Page Loads
 
 > You: "What third-party trackers did this page load?" → resource list with tracker-domain counts
 
 Auto-identifies every resource the page loads, grouped by third-party domain — handy for spotting privacy risk and performance bottlenecks. As of v1.11, resource capture goes through the browser engine's native network layer — **complete even under proxy / TUN networks** — and every resource carries its request method and status code.
+
+> **Debugging page errors**: say "read this page's console" — the `console` action of `browse_headless` / `browse_logged_in` reads the current page's console messages since the last navigation (`console_level` filters by severity error/warn/info/debug, `console_limit` keeps the most recent N). No more `window.onerror` injection detours for rendering-defect debugging. Related: option keys you pass that the chosen action doesn't consume are echoed back honestly in `data.ignored_options` — Lasso never drops parameters silently.
 
 ### Drive Native Desktop Apps
 
@@ -370,6 +374,8 @@ You can **completely ignore** the below for daily use. These are only for specia
 - Tune the headless browser's idle auto-recycle time (`LASSO_HEADLESS_IDLE_MS`, default 5 minutes; `0` disables)
 - Tune the launched Chrome's "close when done" time (`LASSO_LAUNCH_IDLE_MS`, default 60 s; `300000` restores 5 minutes, `0` disables) or switch back to visible launch (`LASSO_LAUNCH_MODE=visible`)
 - Set an egress proxy for browsers (`LASSO_PROXY`, e.g. `http://127.0.0.1:7890`; **affects the headless browser and the Steel cloud browser only — your logged-in Chrome's egress always stays as-is** — v1.11)
+- Allow `file://` local-file navigation (`LASSO_ALLOW_FILE_FROM`, colon-separated dir allowlist; opens `browse_headless` / `browse_logged_in` only, and only inside the allowlisted subtrees — still rejected by default)
+- Open up custom screenshot output paths (`LASSO_SCREENSHOT_DIR`, colon-separated write roots; `options.screenshot.filePath` is confined to the allowlisted subtrees — rejected by default, default `/tmp` managed path unaffected)
 - Set the Steel self-hosted cloud browser endpoint (`STEEL_ENDPOINT`, e.g. `http://localhost:3000`; needs `LASSO_ALLOW_CLOUD_BROWSER=true` too in order to activate)
 
 Full variable list and defaults: [Key Configuration Guide · Advanced Tuning](./doc/usage/01-KEY-GUIDE.md#e-高级调优可选全不配). **Surge / Clash TUN proxy networks (fake-ip, `198.18.0.0/15`) and `127.0.0.1` (used by the local Chrome CDP debug port) are already allowed out of the box** — no extra configuration needed. That's by design, not a missing setting.
@@ -405,6 +411,7 @@ Your data is yours.
 | Search keeps returning nothing | Run `lasso doctor` and check `machine_search_mcp` / `brave_keys`; check whether the Brave key expired / quota is exhausted; machine MCP reuse + the free live-search fallback work with zero config |
 | A link won't open | Say "this link is dead, find an archive" to check the Internet Archive |
 | Prompted that internal-network access was blocked | Double-check the URL; TUN proxy networks are allowed by default, other internal networks need explicit permission |
+| `file://` link blocked (`ssrf_blocked:protocol_not_allowed:file:`) | By design. For testing local single-file HTML set `LASSO_ALLOW_FILE_FROM=project_dir` (colon-separated for multiple); the rejection payload's hint has full guidance; `lasso doctor` shows the `fileFrom=<n>` echo under `ssrf_config` |
 | Want to verify the anti-detection effect | Run `lasso doctor --stealth-check` — it drives the creepjs detection page and compares against a baseline (optional, doesn't affect daily use) |
 
 Full FAQ and debugging tips in [`doc/usage/02-TROUBLESHOOTING.md`](./doc/usage/02-TROUBLESHOOTING.md).
