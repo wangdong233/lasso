@@ -219,7 +219,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.22.1**（更新日志见本节末尾折叠块）。
+**当前版本 v1.23.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -236,6 +236,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 <details>
 <summary>📋 更新日志（v1.8 → v1.18.6，点开看每版改了什么）</summary>
 
+- **v1.23.0**：本地文件与排障能力批（BUG-05，novel-engine 实测驱动）——① **`LASSO_ALLOW_FILE_FROM` file:// 目录白名单**：测本地单文件 HTML（离线产物验收的标配场景）此前被 SSRF 守卫一刀切拦——现在设 `LASSO_ALLOW_FILE_FROM=/你的项目目录` 后 `browse_*` 可导航/快照/抽取/截图**指定目录子树内**的本地文件（默认仍拒、零配置零行为变化；`../` 穿越、symlink 逃逸、目录前缀伪造、末段 symlink 写逃逸全封口——读面 18+写面 10 攻击变体零逃逸）；② 新 **`console` action**：直接读当前页自上次导航以来的 console 消息（按严重度过滤 + 最近 N 条）——渲染类缺陷排查不再需要注入 window.onerror 绕路；③ **`ignored_options` 诚实契约**：你传了但当前 action 用不上的 options 键会在响应里如实列出（不再静默丢弃——novel-engine 实测踩到的「worked 但截图没生成」根因之一）；顺带明确：navigate+截图一步走**本就是 `action=screenshot` 的行为**（先导航再截图）；④ **`LASSO_SCREENSHOT_DIR` 截图写根约束**：自定义截图落盘路径默认拒（防任意写盘），opt-in 且限指定目录子树内。对抗两轮 clean：6 变异全红+SSRF 守卫本体零削弱证明+消费方场景（真实单文件 HTML http/file:// 双路径）真机全通。
 - **v1.22.1**：审查与稳定性批——① 消费方深检回告六项收口：给 cc-control 的 hook 硬拦样例**回修三处缺陷并落仓自带 17 向量测试**（样例必落仓、文档只指路——交付物质量制度成型）、doctor 端口探测 detail 文案四形态如实化、版本对齐测试泛化（断言读 package.json 单一真源，不再逐版手改）、`npm run gate` 门禁固化（显式计数断言防管道吞退出码）；② 03 审查测试清单全面审查（四轨六维+Gauntlet 验证+双盲对抗 clean）；③ 三个时序 flake 收口（墙钟边界改固定时钟注入/sleep 赌落盘改轮询/阈值贴判别面）——全量连跑 5 轮 + gate 全绿实证。
 - **v1.22.0**：归属鉴定与通道自愈批（BUG-04，消费方实战驱动）——① 新子命令 **`chrome-status [--port N]`**：把「这个端口被谁占着、我能不能动它」的鉴定权从 AI 手里收走——lasso 直接十分类（账本僵尸/陈留/疑似用户资产…），输出人类决策文案 + 机器可读指令（`allowed_commands` / `must_report`——AI 拿到「疑似用户资产」分类时被明确告知**零允许操作、必须上报你**）+ 可直接粘贴的上报包；配套 `chrome-stop --zombie-gate` 唯一机器代杀出口（台账在案+指纹对+kill 时刻重读台账三重门）。旧命令行为零变化。② 修复 `browse_logged_in` **选中页死锁**（P1 通道级）：根因是上游引擎的结构性缺陷——选中页一旦被关闭，后续 navigate/evaluate/snapshot 永久报错只能重启；现在自动检测楔死签名并后台自建页接管自愈，修不掉时如实前缀上报。③ `evaluate` 兼容 `(async () => {...})()` 形态（此前报 fn is not a function）；④ 调用方自己写错 JS 不再拉响备用通道（脚本错误与通道错误分类）；⑤ doctor 端口探测措辞如实化（「HTTP 404」→ 四形态真实归因）。对抗两轮 clean：5 变异全杀 + 真实用户 Chrome 主权实机验证 + 上报包武器化测试不破防。给重度自动化用户的配套：PreToolUse hook 硬拦样例（拦 AI 经 Bash kill 浏览器）见 doc/bugs/04-附录E。
 - **v1.21.0**：浏览器主权与生命周期根治批（BUG-03，真机事故驱动）——① 🔴 **行为变更**：`launch-chrome` CLI 默认空闲回收从「永不回收」改为 **30 分钟自动回收**（旧永不回收行为用 `--idle-ms 0` 显式恢复）；② **用户激活让位门**：你点 Dock/Spotlight 掀出 lasso 隐藏的 Chrome 时，lasso 以「HID 空闲 + 前置窗口」双判据识别这是**人在操作**——放行、30 秒确认窗后退位（页面自弹的窗口照常压回，v1.18.3 静默契约零回归）；③ **停机不连坐**：修复一个 P0——此前任意 lasso server 进程退出会按全局台账**扫杀全部隐藏 Chrome**（违背 `--idle-ms 0` 保活承诺）；现在按归属三维过滤，CLI 拉起的实例在 server 退出后照常存活、照常被回收；④ **僵尸占位自愈**：9222 被自家挂死实例占用时不再误报「非 CDP 进程」，自动按台账归因收尸重拉；doctor 端口占用三分类（自家僵尸/陈留/用户资产），**永不建议代杀用户资产**（台账伪造 + pid 冒名也拒杀，新不变量 INV-85/86/87）；⑤ 消费方实战修复（cc-control 反馈）：`browse` 截图上游契约适配（大图 filePath 直写 + Access-denied 降级重试，会话内截图通路补齐）、`evaluate` 恒返 undefined 根治（函数表达式双形态透传）、会话轮换归类为可重试的 `session_rotated`；⑥ `launch-chrome --mode headless` 可选档（无人值守专用——诚实声明：headless 也共享 Chrome bundle 槽位）。对抗三轮闭环：28 变异全杀 + 3 个 CRITICAL 当场修复复核 PASS；测试 2595→2676 / 不变量 84→87。
