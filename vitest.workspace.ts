@@ -47,8 +47,12 @@ export default defineWorkspace([
     test: {
       name: "timing-sensitive",
       include: SLOW_SPECS,
-      testTimeout: 15_000,
-      hookTimeout: 15_000,
+      // 🔴 30s（2026-09-09 二次上调 15→30）：gate 串行 build 后 + 全量并发形态下
+      // doctor-deep-probe 的 runDoctor{deep:true} 全 check 链可超 15s（实锤 1 failed
+      // 假红，mock fetch 零真出网——纯等待预算不足）。池成员全为真 spawn/重探测型，
+      // 30s 不掩盖死挂（死挂语义远超 30s）；CI 余量充足（当前 1-2min/门）。
+      testTimeout: 30_000,
+      hookTimeout: 30_000,
     },
   },
 ]);

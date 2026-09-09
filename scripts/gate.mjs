@@ -35,12 +35,16 @@ const vitestSummary = (out) => {
   return { files: files.trim(), tests: tests.trim(), failedFiles, failedTests };
 };
 
+// 🔴 门序（2026-09-09 实锤修正）：build 必须先于 vitest——CLI 集成测试
+// （runDoctorCliViaDist 等）读 dist 产物，旧 dist 会假红（版本镜像断言
+// pkgVersion vs 旧 dist 的 lasso_version 不匹配）。原实现 vitest 先跑，
+// VERDICT 打印顺序对但执行顺序反。
+const build = run("npm run build", "npm", ["run", "build"]);
 const vitest = run("vitest run（全量）", "npx", ["vitest", "run"]);
 const vSum = vitestSummary(vitest.out);
 // 双源判绿：退出码 AND 汇总行计数（任一红即红——汇总行是 §14 教训的权威源）
 const vitestOk = vitest.ok && vSum.failedFiles === 0 && vSum.failedTests === 0;
 
-const build = run("npm run build", "npm", ["run", "build"]);
 const inv = run("check-invariants", "node", ["src/invariants/check-invariants.mjs"]);
 const readme = run("check-readme-sync", "node", ["scripts/check-readme-sync.mjs"]);
 
