@@ -245,8 +245,14 @@ describe("BUG-04A · R3 慢启动守卫", () => {
   });
 
   it("4c. isLaunchingRecord 单一真源边界（<60s 真 / ≥60s 假 / 非 finite 防御真）", () => {
-    expect(isLaunchingRecord(makeRec({ launchedAt: Date.now() - 59_999 }))).toBe(true);
-    expect(isLaunchingRecord(makeRec({ launchedAt: Date.now() - 60_000 }))).toBe(false);
+    // 🔴 固定 now 注入（2026-09-09 flake 收口）：原写法 launchedAt=Date.now()-59_999
+    // 后不传 now——构造与判定间墙钟跨 1ms 即越 60s 窗 → false（确定性竞态：全量
+    // 并发同 tick 绿、调度抖动跨 ms 红，gate 亲跑两次 1 failed 实锤）。实现本就
+    // 支持注入（chrome-ledger.ts:111 now 参数）——边界语义（59_999/60_000/NaN）
+    // 用固定时钟精确钉死，不再赌墙钟。
+    const NOW = 1_800_000_000_000;
+    expect(isLaunchingRecord(makeRec({ launchedAt: NOW - 59_999 }), NOW)).toBe(true);
+    expect(isLaunchingRecord(makeRec({ launchedAt: NOW - 60_000 }), NOW)).toBe(false);
     expect(isLaunchingRecord({ ...makeRec(), launchedAt: Number.NaN } as LaunchedChromeRecord)).toBe(true);
     expect(LAUNCH_GRACE_MS).toBe(60_000);
   });

@@ -1,6 +1,12 @@
 /**
  * SerpHealthMonitor 单测（parse8 §3.4 / §5.1）
  *
+ * 🔴 时序敏感面登记（2026-09-09 flake 收口轮）：本文件异步事件传播多用短 sleep
+ * （25-60ms）等待——其中 :308 首录 baseline 用例已实锤负载下假红（30ms 赌落盘
+ * IO 不够）并改轮询化；其余 6 处（L192/337/356/375/382/403）等的是内存事件
+ * 传播，历史零实锤，暂维持短 sleep（全改轮询将使测试膨胀）。纪律：任何一处
+ * 再实锤假红 → 就地轮询化（模式见 :306-314），不放宽断言。
+ *
  * 覆盖：
  *  - onResult(hit=true) 计 hit（registry + hitRate 都 +1）
  *  - onResult(hit=false) 计 miss
@@ -304,8 +310,16 @@ describe("SerpHealthMonitor — ACC-1② hit 路径自动首录 baseline", () =>
     );
     expect(await change.hasBaseline("baidu", "rust")).toBe(false); // 前置：无
     m.onResult("baidu", "v1", "rust", "<baseline-dom/>", true);
-    await new Promise((r) => setTimeout(r, 30));
-    expect(await change.hasBaseline("baidu", "rust")).toBe(true); // 落盘
+    // 🔴 轮询等待（2026-09-09 flake 收口）：原 setTimeout(30) 赌异步落盘完成——
+    // 负载高时 30ms 不够 → hasBaseline false 假红（sleep-based sync 反模式）。
+    // 轮询至真（上限 2s）——语义「最终落盘」精确化，事件断言留充足裕度。
+    const deadline = Date.now() + 2_000;
+    for (;;) {
+      if (await change.hasBaseline("baidu", "rust")) break;
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(await change.hasBaseline("baidu", "rust")).toBe(true); // 落盘（最终一致）
     expect(infoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ evt: "serp_baseline_auto_captured", engine: "baidu" }),
     );

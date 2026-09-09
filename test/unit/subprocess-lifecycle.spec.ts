@@ -101,8 +101,14 @@ describe("RustBridge / SubprocessManager — W1-DEF-9 spawn error 接线", () =>
       /rust_helper_crashed:subproc_spawn_failed/,
     );
     const elapsed = Date.now() - started;
-    // 归因正确 + 显著快于 3s 超时（wave1 实锤是烧满 rust_call_timeout）
-    expect(elapsed).toBeLessThan(1500);
+    // 归因正确 + 未烧满 3s 超时预算（wave1 实锤缺陷=烧满 rust_call_timeout≈3000ms）。
+    // 判别面=「fail fast vs 烧满超时」：负例≈3000ms，正例几十 ms——间隙巨大。
+    // 🔴 阈值 2900（非 1500 中点）：全量并发压机时真 spawn 链路可漂至 >1500ms，
+    // 但仍远小于超时预算、语义（未烧满）不变——1500 中点在高负载下假红
+    // （2026-09-09 本机两次 1 failed 复现，~50%/~15% 负载相关；同型教训：
+    // cc-control §14 expect-poll 墙钟断言→虚拟时钟根治，本测真 OS spawn
+    // 无法虚拟时钟，故阈值贴判别面而非贴正例观测值）。
+    expect(elapsed).toBeLessThan(2900);
     expect(bridge.pendingCount()).toBe(0);
     await mgr.shutdown();
   }, 10_000);
