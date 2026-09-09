@@ -210,7 +210,7 @@
 
 **输入**：验收对象 `0117235`（基线 6003604 + 5 commits）+ 六项裁决证据（/tmp/bug05-accept）。
 
-**复核结论**：六项裁决的证据链全部核实（JSONL 逐条与磁盘产物对上：shot-t1/timeline-{http,file}.png 真 PNG；should-not-exist.png 确未生成；s2b 七发拒因与 hint 逐条吻合；s3 console 过滤语义正确；s4 私网矩阵全拒）。变异验证 9 发全红（4 selftest 样本 + 5 条独立变异：naive-prefix isPathInside / 去掉 checkFileUrl realpath / 去掉 canonicalizeExistingPrefix realpath / 拆 ignored_options 接线 / 破字节锚 reason），还原后 md5 与工作树净核验通过。file:// 读面自研攻击 20 变体（编码/双重编码/词法/符号链/host/大小写/NUL/query/四斜杠/302 与 meta-refresh 跳 file://）全部封口或落回白名单内同一文件——**读面零逃逸**。SSRF 守卫零削弱（协议白名单字面量与基线逐字节相等 + 38/38 矩阵 + 真机 127.0.0.2 拒）。消费方契约纯加法（schema 键集基线对比：删 0 增 9 可选）。
+**复核结论**：六项裁决的证据链全部核实（JSONL 逐条与磁盘产物对上：shot-t1/timeline-{http,file}.png 真 PNG；should-not-exist.png 确未生成；s2b 七发拒因与 hint 逐条吻合；s3 console 过滤语义正确；s4 私网矩阵全拒）。变异验证 9 发全红（4 selftest 样本 + 5 条独立变异：naive-prefix isPathInside / 去掉 checkFileUrl realpath / 去掉 canonicalizeExistingPrefix realpath / 拆 ignored_options 接线 / 破字节锚 reason），还原后 md5 与工作树净核验通过。file:// 读面自研攻击 20 变体（编码/双重编码/词法/符号链/host/大小写/NUL/query/四斜杠/302 与 meta-refresh 跳 file://）全部封口或落回白名单内同一文件——**读面零逃逸**。SSRF 守卫零削弱（协议白名单字面量与基线逐字节相等 + 38/38 矩阵 + 真机 127.0.0.2 拒）。消费方契约纯加法（schema 键集基线对比：删 0 增 10 可选）。【r4 勘误：本行原记「增 9 可选」——对抗复审 r2 基线对比实测 10 键（console_level/console_limit/network_filter + pdf 7 键），与 §11.1 commit③「schema 反向补全 10 键」对齐】
 
 **发现（P1，当场修复）——决议 E 写根末段 symlink 写逃逸（w7）**：
 
@@ -221,3 +221,18 @@
 - 定级依据：利用前提是写根内存在**预置 symlink**（lasso/agent 自身无任何建 symlink 通路）——单用户机器实际风险低，但该缺口直接证伪「写限根内」 containment 承诺（README/KEY-GUIDE 已宣传「symlink 逃逸全拒」），且修复廉价确定 → 按 P1 当场修。
 
 **残留观察（不计为 issue）**：验收 L1c 的管理路径截图 `/tmp/lasso-screenshot-8c85d4c1-….png` 现已不在盘上（证据 JSONL 内有 preview 字符串；同窗口其他 /tmp 截图俱在，判断为验收方单文件清理）——证据链完整性小瑕疵，行为本身由 L1b 落盘 + 单测 byte 锚覆盖。
+
+## 13. 对抗否定复审轮（r4，2026-09-09 · 第 2 轮复审员 · 独立攻击复核 1332d0e）
+
+**输入**：HEAD=1332d0e（基线 6003604 + 6 commits，树净）+ r3 六项验收裁决。
+
+**复核结论：adversarial: clean（0 阻塞 / 1 处 P3 文档勘误当场修——§12「增 9 可选」实测 10 键，已就地标注）**。六维复核全过：
+
+1. **变异验证（6 独立变异 + selftest）**：M1 file 入口路由断开（`false && isFileProtocol`）→ 入口端到端 2 测红；M2 doScreenshot 守卫移至上游调用后 → INV-93(a) 顺序锚红；M3 末段 lstat 封口禁用 → r2 三测红；M4 空白名单字节锚篡改 → 3 测 + INV-90(b) 红；M5 ignored_options 出口禁用 → 5 测红；M6 console_limit 取头去尾 → 2 测红。每轮 git restore 后 md5 与 HEAD 逐字节核验。`inv-selftest` 31/31 样本违规全红、树零污染。
+2. **白名单自研攻击（真机 dist/index.js MCP stdio 全链）**：读面 18 变体（词法/%2E%2E/%2F/双重编码/symlink 文件+目录/host 注入/大小写/NUL/前缀伪造/超弹 ../ 大小写 scheme FILE:// 等）全拒或落回子树内；无 env 复验默认拒 payload 字节不变且 hint 仅 file: 族出现；写面 10 变体（写根外/../ /前缀伪造/末段 symlink dangling+非 dangling/父目录 symlink/`.zshrc`/相对路径/大小写）全拒、根外零文件、w7 目标未触碰、根内含嵌套 mkdir 正常落盘（.zshrc 前后 cmp 一致）。steps 无 per-step url（runChain 单入口 url 过入口守卫）——无 steps 旁路面。
+3. **SSRF 零削弱**：真机 169.254.169.254/10.x/192.168.x 全拒（private_ip）+ 127.0.0.1 默认放行保持 + 非 file 拒绝 payload hint 缺席（byte-identical）；ssrf-guard.spec 本体零改（diff 无此文件）；SsrfConfig 变更纯 additive 可选字段。
+4. **消费方契约**：schema 键集基线对比删 0 增 10 可选（实测）；hint/ignored_options 空省略；network 独立工具 envelope 白名单自建（ignored_options 不透传）；evaluate 通道零触碰；L-1/L-2/L-3 处置形态与消费方台账请求逐条对上。
+5. **文档**：README 双语/KEY-GUIDE/决议与实现一致（doctor fileFrom/shotDir 真机回显核过）；§12 计数勘误即本节第 0 条；§11.1 的 2834+1（r2 时点）与当前 2838+1（r3 +4 测）按轮次口径自洽。
+6. **项目外零新组件**：diff 全部在仓内（src/test/doc/scripts/README）；package.json 零改动（无新依赖）；新模块 stdlib-only import。
+
+**残留观察（不计 issue，供未来锚强化）**：INV-90(c)/INV-91(c)/INV-93(d) 的文本正则锚可被「保留调用文本但恒假短路」（`if (false && …)` 类）满足——本行为已由行为测试网兜住（M1/M3/M5 均测红），属纵深防御第二层弱化而非缺口；如未来强化可加「守卫调用位于条件可达路径」类 CFG 锚（暂无必要，行为测试已足）。
