@@ -441,4 +441,26 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
     );
     expect(r.status).toBe("fail");
   });
+
+  // 09-09 adversarial 回炉 F-adv-1：C3-r1（5191828）声明「补四分支」但实际仅 +3
+  //（3f/3g/3h）——/json（tabs）fetch throw 落进的内层 catch（doctor.ts:1127）零覆盖，
+  // 变异把该 detail 前缀误标成 `/json/version` 形态时 95 测试 + INV 全绿（幸存坐实）。
+  // 本测锚回第四分支：throw 面 = warn（探测不可判≠死），detail 前缀锚 tabs 面，
+  // String(e) 的 "Error:" 前缀如实在场（与 src 模板逐字符对齐）。
+  it("3i. /json (tabs) fetch throw（version 健康）→ `CDP /json (tabs) request failed` warn——不回潮 /json/version 误标", async () => {
+    const r = await checkCdp9222(
+      9222,
+      fastDeps(async (url: string) => {
+        if (url.includes("/json/version")) return versionOk();
+        throw new Error("fetch failed: socket hang up");
+      }),
+    );
+    expect(r.status).toBe("warn");
+    expect(r.detail).toBe(
+      "CDP /json (tabs) request failed: Error: fetch failed: socket hang up — /json/version was healthy",
+    );
+    // 误标类回潮的专项负锚（detail 尾注 "/json/version was healthy" 是合法在场，
+    // 禁的是把它标成 version 面的错误形态前缀）
+    expect(r.detail).not.toMatch(/CDP \/json\/version (fetch failed|returned HTTP)/);
+  });
 });
