@@ -105,8 +105,9 @@ import { createRequire } from "node:module";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { BAIDU_SELECTORS, DDG_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
-// BUG-05 决议 B3：file:// 白名单 dropped 清单感知（doctor 降级可见）
+// BUG-05 决议 B3/E1：file:// 白名单 + screenshot 写根感知（doctor 降级可见）
 import { loadColonDirAllowlist } from "../ssrf/dir-allowlist.js";
+import { loadScreenshotWriteRoots } from "../ssrf/screenshot-guard.js";
 import { BUILTIN_PROVIDERS } from "../config/providers.js";
 import { ProviderRegistry } from "../config/provider-registry.js";
 import {
@@ -1186,18 +1187,27 @@ function checkSsrfConfig(): DoctorCheck {
     //（n=0 注明「file:// 默认拒」）；LASSO_ALLOW_FILE_FROM 中不存在条目在装载时
     // 被丢弃（dir-allowlist），此处经同装载器直读 env 取 dropped 清单降级为 warn
     //（不新增 check 项——doctor 计数断言面不动）。
-    const fileFrom = cfg.fileAllowFrom?.length ?? 0;
-    const { dropped } = loadColonDirAllowlist(process.env.LASSO_ALLOW_FILE_FROM);
+    // BUG-05 决议 E1（§6-E）：shotDir=<n>（screenshot filePath 写根，默认 0=显式
+    // filePath 拒）；dropped 同降级 warn。
+    const { dirs: fileDirs, dropped } = loadColonDirAllowlist(
+      process.env.LASSO_ALLOW_FILE_FROM,
+    );
+    const { roots: shotDirs, dropped: shotDropped } = loadScreenshotWriteRoots(process.env);
     const detail =
       `allow=${cfg.allowRanges.length} deny=${cfg.denyRanges.length} ` +
-      `fileFrom=${fileFrom}${fileFrom === 0 ? "（file:// 默认拒）" : ""} ` +
+      `fileFrom=${fileDirs.length}${fileDirs.length === 0 ? "（file:// 默认拒）" : ""} ` +
+      `shotDir=${shotDirs.length}${shotDirs.length === 0 ? "（filePath 默认拒）" : ""} ` +
       `(DEFAULT_ALLOW_RANGES 内置 2 条)`;
-    if (dropped.length > 0) {
+    const allDropped = [
+      ...dropped.map((d) => `LASSO_ALLOW_FILE_FROM:${d}`),
+      ...shotDropped.map((d) => `LASSO_SCREENSHOT_DIR:${d}`),
+    ];
+    if (allDropped.length > 0) {
       return {
         name: "ssrf_config",
         status: "warn",
         detail,
-        next_step: `LASSO_ALLOW_FILE_FROM 丢弃 ${dropped.length} 个不存在目录: ${dropped.join("、")}（修正路径或删除条目后重启）`,
+        next_step: `目录白名单装载丢弃 ${allDropped.length} 个不存在条目: ${allDropped.join("、")}（修正路径或删除条目后重启）`,
       };
     }
     return {

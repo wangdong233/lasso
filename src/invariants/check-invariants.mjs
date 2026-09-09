@@ -5289,6 +5289,65 @@ const assertions = [
       return true;
     },
   },
+
+  // BUG-05（doc/bugs/05 §6-E，2026-09-09 设计修订 r1 新增）：options.screenshot
+  // .filePath 任意路径写盘（live 双证：任意嵌套父目录自动创建、任意扩展名照收）——
+  // 上游 validatePath 因未协商 roots 拒一切 filePath → 实际写者几乎总是 lasso
+  // 自己的 writeFile（零路径约束）。决议 E：LASSO_SCREENSHOT_DIR 写根 opt-in。
+  //  INV-93  screenshot 写根不变量：
+  //    (a) env 空 + 显式 filePath 恒拒：doScreenshot 守卫在**任何上游调用与
+  //        mkdir 之前**（顺序锚：checkScreenshotTarget < callTool take_screenshot
+  //        < mkdir）——三条写路径 + mkdir 全部被前置覆盖
+  //    (b) filePath 缺省走管理路径 byte-identical（/tmp/lasso-screenshot-<uuid>）
+  //    (c) classifyBrowseError 对 screenshot_path_not_allowed 归 didnt（策略拒与
+  //        screenshot_write_failed 交付失败显式分流）
+  //    (d) screenshot-guard.ts：默认空写根拒 reason 内嵌 opt-in 指引（绝不静默
+  //        回退 /tmp 管理名）+ containment 经 isPathInside（词法坍缩 + realpath）
+  {
+    id: "INV-93-screenshot-write-root",
+    desc:
+      "BUG-05 决议 E：options.screenshot.filePath 写根约束（LASSO_SCREENSHOT_DIR，默认关）——守卫先于上游调用与 mkdir（三写路径前置覆盖）；filePath 缺省=管理路径 byte-identical；策略拒 screenshot_path_not_allowed 归 didnt（与交付失败分流）；默认拒 reason 内嵌 opt-in 指引、绝不静默回退",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+      const guardSrc = byPath(/^ssrf\/screenshot-guard\.ts$/)?.text ?? "";
+
+      // ----- (a) 守卫位置顺序锚（doScreenshot 函数体内）-----
+      const shotFn = browseSrc.match(
+        /async function doScreenshot\([\s\S]*?\n\}/,
+      );
+      if (!shotFn) return false;
+      const body = shotFn[0];
+      const guardIdx = body.indexOf("checkScreenshotTarget(");
+      const callIdx = body.indexOf('callTool("take_screenshot"');
+      const mkdirIdx = body.indexOf("mkdir(");
+      if (guardIdx < 0 || callIdx < 0 || mkdirIdx < 0) return false;
+      if (!(guardIdx < callIdx && guardIdx < mkdirIdx)) return false;
+      // 显式判定 + 拒即 throw（不静默回退）
+      if (!/explicitPath !== undefined/.test(body)) return false;
+
+      // ----- (b) 管理路径 byte 锚 -----
+      if (!/`\/tmp\/lasso-screenshot-\$\{randomUUID\(\)\}\.png`/.test(body)) return false;
+      if (!/const target = explicitPath \?\? `\/tmp\/lasso-screenshot-/.test(body))
+        return false;
+
+      // ----- (c) classify 分流 -----
+      const classifyBody = browseSrc.match(/function classifyBrowseError[\s\S]*?\n\}/);
+      if (!classifyBody) return false;
+      if (!/m\.includes\("screenshot_path_not_allowed"\)\) return "didnt"/.test(classifyBody[0]))
+        return false;
+
+      // ----- (d) guard 模块锚 -----
+      if (!/export function checkScreenshotTarget/.test(guardSrc)) return false;
+      if (!/screenshot_path_not_allowed:/.test(guardSrc)) return false;
+      if (!/LASSO_SCREENSHOT_DIR/.test(guardSrc)) return false;
+      if (!/isPathInside/.test(guardSrc)) return false;
+      if (!/path\.resolve\(filePath\)/.test(guardSrc)) return false;
+      if (!/realpathSync/.test(guardSrc)) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

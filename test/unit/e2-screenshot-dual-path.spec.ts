@@ -91,10 +91,15 @@ beforeEach(() => {
   tempCache = mkdtempSync(path.join(os.tmpdir(), "lasso-e2-shot-"));
   setStateStoreContext({ runId: newRunId(), cacheDir: tempCache });
   shotDir = mkdtempSync(path.join(os.tmpdir(), "lasso-e2-out-"));
+  // BUG-05 决议 E（doc/bugs/05 §6-E）：显式 filePath 自本轮起须落在
+  // LASSO_SCREENSHOT_DIR 写根内（默认关=收紧为拒）。本 spec 测试 3/4/8/9
+  // 用显式 filePath——统一把临时 shotDir 注册为写根。
+  process.env.LASSO_SCREENSHOT_DIR = shotDir;
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  delete process.env.LASSO_SCREENSHOT_DIR;
   rmSync(tempCache, { recursive: true, force: true });
   rmSync(shotDir, { recursive: true, force: true });
 });

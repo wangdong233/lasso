@@ -66,6 +66,12 @@ import {
   imageBlock,
   firstText,
 } from "../browse/upstream-response.js";
+// BUG-05 决议 E（doc/bugs/05 §6-E）：options.screenshot.filePath 写根守卫
+//（LASSO_SCREENSHOT_DIR，默认关=显式 filePath 收紧为拒——任意写盘暴露面收窄）
+import {
+  checkScreenshotTarget,
+  loadScreenshotWriteRoots,
+} from "../ssrf/screenshot-guard.js";
 // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：doPdf + doConsole + doNetwork
 //   追加进 actionDispatch Map
 // INV-33 守：pdf + console + network 三 action 必经 dispatch Map，禁第二套 dispatch
@@ -1027,6 +1033,25 @@ async function doScreenshot(
   _url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
+  // BUG-05 决议 E1（doc/bugs/05 §6-E，写根守卫——位置铁律）：显式 filePath 的
+  // 双重 containment 判定必须在**任何上游调用与 mkdir 之前**（三条写路径 +
+  // mkdir 全部被前置覆盖，含未来协商 roots 后上游兑现的路径 1）。
+  //  - filePath 缺省 → 管理路径 /tmp/lasso-screenshot-<uuid>.png，行为零变
+  //    （byte-identical，默认主路径不动）；
+  //  - filePath 显式 + LASSO_SCREENSHOT_DIR 空 → 拒（didnt）——绝不静默回退
+  //    随机 /tmp 名（把错误输入伪装成成功比拒绝更糟，「空输出≠空属性」同族）；
+  //  - filePath 显式 + 写根非空 → 词法 containment ∧ 最近存在祖先 realpath
+  //    containment 双过才放行（screenshot-guard.ts；决议 E1 第 3 步）。
+  const explicitPath = opts.screenshot?.filePath;
+  if (explicitPath !== undefined) {
+    const guard = checkScreenshotTarget(
+      explicitPath,
+      loadScreenshotWriteRoots().roots,
+    );
+    if (!guard.allowed) {
+      throw new Error(guard.reason);
+    }
+  }
   // E②（BUG-03 决议 E②，doc/bugs/03 §4 E，消费方②screenshot 根治）双路径：
   //   路径 1（优先）：传 filePath 给上游（chrome-devtools-mcp@1.7.0 已支持——
   //     0.3.0 时代被 zod strip 的参数未跟进是当日两次大截图失败的根因：上游
@@ -1044,7 +1069,7 @@ async function doScreenshot(
   // 走 image block 可用）。修复：isError 且文本含 "Access denied"（路径 1 被
   // 拒）→ 不带 filePath 重试一次（落到路径 2 的两形态：image block 或上游
   // 临时文件文本行）；其余 isError 维持原样如实抛。
-  const target = opts.screenshot?.filePath ?? `/tmp/lasso-screenshot-${randomUUID()}.png`;
+  const target = explicitPath ?? `/tmp/lasso-screenshot-${randomUUID()}.png`;
   let r = (await c.callTool("take_screenshot", {
     format: "png",
     fullPage: opts.screenshot?.full ?? false,
@@ -1731,6 +1756,10 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   if (m.includes("enotfound") || m.includes("nxdomain")) return "unknown";
   // v1.8（W1-DEF-3 / W1-DEF-5）：screenshot 落盘失败是明确「本地交付不可得」→ didnt
   if (m.includes("screenshot_write_failed")) return "didnt";
+  // BUG-05 决议 E1（doc/bugs/05 §6-E）：显式 filePath 写根**策略拒** → didnt。
+  // 与 screenshot_write_failed（交付失败）显式分流——不复用前缀：对 agent 是
+  // 不同下一步（前者改参数/配 env 可解，后者重试无益）。
+  if (m.includes("screenshot_path_not_allowed")) return "didnt";
   // E④（BUG-03 决议 E④）：会话轮换（"No page selected" 类）是**瞬态可重试**信号
   //（页面被轮换/清空，重 snapshot 即恢复）——显式归 unknown（可重试档）+
   // session_rotated 前缀供 agent 透明识别下一步（重 snapshot），不再落泛 unknown

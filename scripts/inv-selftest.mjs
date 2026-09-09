@@ -319,6 +319,19 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // BUG-05 决议 E：INV-93 (a)——doScreenshot 守卫被旁路（任意路径写盘
+    // 暴露面回潮）→ 红。
+    inv: "INV-93",
+    desc: "doScreenshot 写根守卫被旁路（guard 调用替换为恒放行）",
+    file: "channels/BrowseChannel.ts",
+    mutation: {
+      replace: [
+        "const guard = checkScreenshotTarget(",
+        "const guard = /* guard bypassed */ ({ allowed: true } as ReturnType<typeof checkScreenshotTarget>); const _unused = (0, checkScreenshotTarget)(",
+      ],
+    },
+  },
 ];
 
 // ============================================================
