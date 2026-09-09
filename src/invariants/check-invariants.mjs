@@ -5120,6 +5120,61 @@ const assertions = [
       return true;
     },
   },
+
+  // BUG-05（doc/bugs/05 §4，2026-09-09 消费方台账 L-2）：file:// 一刀切拦截断路
+  // 本地静态文件测试——裁决为 LASSO_ALLOW_FILE_FROM 目录 opt-in 白名单（默认关）。
+  // 红线（用户裁决沿用）：SSRF 守卫本体（内网段/fake-ip 拦截）不得削弱——file://
+  // 白名单必须是加法且 opt-in，默认行为不变。
+  //  INV-90  file-guard 默认关不变量：
+  //    (a) ssrfGuard 本体协议白名单字面量恒 {http:,https:}（file: 不得进本体）
+  //    (b) 空白名单拒绝 reason 字节锚：checkFileUrl 空表分支返回字面量
+  //        "protocol_not_allowed:file:"（与旧 ssrfGuard 输出逐字节相等）
+  //    (c) 入口路由只旁路 browse 两工具：tools/browse.ts 含 isFileProtocol 路由 +
+  //        checkFileUrl 旁路 + 非 file: 仍走 ssrfGuard（本体路径不变）
+  //    (d) 边界负锚：除 tools/browse.ts 外任何 tools/* 不得 import file-guard
+  //        （screenshot/pdf/network/fetch_url/fetch_feed/wayback 保持 http(s)-only）
+  {
+    id: "INV-90-file-guard-default-off",
+    desc:
+      "BUG-05 决议 B：file:// 白名单（LASSO_ALLOW_FILE_FROM）纯加法 opt-in——ssrfGuard 本体 ALLOWED_PROTOCOLS 恒 {http:,https:}；空白名单拒绝 reason 与旧输出逐字节相等（protocol_not_allowed:file: 字面量锚）；入口旁路仅 browse 两工具（其余 tools 禁 import file-guard）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const guardSrc = byPath(/^ssrf\/ssrf-guard\.ts$/)?.text ?? "";
+      const fileGuardSrc = byPath(/^ssrf\/file-guard\.ts$/)?.text ?? "";
+      const browseToolSrc = byPath(/^tools\/browse\.ts$/)?.text ?? "";
+
+      // ----- (a) 本体协议白名单字面量 -----
+      if (!/const ALLOWED_PROTOCOLS = new Set\(\["http:", "https:"\]\)/.test(guardSrc))
+        return false;
+      if (/ALLOWED_PROTOCOLS[\s\S]{0,80}new Set\(\["http:", "https:", "file:"\]\)/.test(guardSrc))
+        return false;
+
+      // ----- (b) 空白名单字节锚 -----
+      if (!/reason: "protocol_not_allowed:file:"/.test(fileGuardSrc)) return false;
+      // 空表短路在匹配逻辑之前（空白名单永不走到子树匹配）
+      const cfgFn = fileGuardSrc.match(/export function checkFileUrl[\s\S]*?\n\}/);
+      if (!cfgFn) return false;
+      const emptyIdx = cfgFn[0].indexOf("allowDirs.length === 0");
+      const matchIdx = cfgFn[0].indexOf("isPathInside");
+      if (emptyIdx < 0 || matchIdx < 0 || emptyIdx > matchIdx) return false;
+
+      // ----- (c) 入口路由（file: 旁路 / 非 file: 原样 ssrfGuard）-----
+      if (!/isFileProtocol\(url\)/.test(browseToolSrc)) return false;
+      if (!/checkFileUrl\(url, fileAllow\)/.test(browseToolSrc)) return false;
+      if (!/ssrfGuard\(url, cfg\)/.test(browseToolSrc)) return false;
+
+      // ----- (d) 边界负锚：file-guard 只被 browse 工具入口（+其自身域）接线 -----
+      const offenders = SRC.filter(
+        (s) =>
+          /^tools\//.test(s.f) &&
+          s.f.replace(/\\/g, "/") !== "tools/browse.ts" &&
+          /file-guard\.js/.test(s.text),
+      );
+      if (offenders.length > 0) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

@@ -59,6 +59,13 @@ export interface InteractResult<T = unknown> {
   error?: string;
   /** v0.2 新增（F3.9.7）：多源扇出时部分源失败的诚实记录 */
   partial_failures?: PartialFailure[];
+  /**
+   * BUG-05 决议 B3（doc/bugs/05 §4）：拒绝/降级 payload 的可选行动指引
+   * （error 字符串字节不变，hint 是并列新字段——quality/partial_failures
+   * additive 先例）。首个消费面：file:// 默认拒 → opt-in 指引
+   * （LASSO_ALLOW_FILE_FROM）。缺省不填（非 file 拒绝 byte-identical）。
+   */
+  hint?: string;
 }
 
 // ============================================================

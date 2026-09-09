@@ -105,6 +105,8 @@ import { createRequire } from "node:module";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { BAIDU_SELECTORS, DDG_SELECTORS } from "../serp/selectors.js";
 import { loadSsrfConfig } from "../ssrf/ssrf-guard.js";
+// BUG-05 决议 B3：file:// 白名单 dropped 清单感知（doctor 降级可见）
+import { loadColonDirAllowlist } from "../ssrf/dir-allowlist.js";
 import { BUILTIN_PROVIDERS } from "../config/providers.js";
 import { ProviderRegistry } from "../config/provider-registry.js";
 import {
@@ -1180,10 +1182,28 @@ async function checkCacheWritable(cacheDir: string): Promise<DoctorCheck> {
 function checkSsrfConfig(): DoctorCheck {
   try {
     const cfg = loadSsrfConfig();
+    // BUG-05 决议 B3（doc/bugs/05 §4）：file:// 白名单感知回显——fileFrom=<n>
+    //（n=0 注明「file:// 默认拒」）；LASSO_ALLOW_FILE_FROM 中不存在条目在装载时
+    // 被丢弃（dir-allowlist），此处经同装载器直读 env 取 dropped 清单降级为 warn
+    //（不新增 check 项——doctor 计数断言面不动）。
+    const fileFrom = cfg.fileAllowFrom?.length ?? 0;
+    const { dropped } = loadColonDirAllowlist(process.env.LASSO_ALLOW_FILE_FROM);
+    const detail =
+      `allow=${cfg.allowRanges.length} deny=${cfg.denyRanges.length} ` +
+      `fileFrom=${fileFrom}${fileFrom === 0 ? "（file:// 默认拒）" : ""} ` +
+      `(DEFAULT_ALLOW_RANGES 内置 2 条)`;
+    if (dropped.length > 0) {
+      return {
+        name: "ssrf_config",
+        status: "warn",
+        detail,
+        next_step: `LASSO_ALLOW_FILE_FROM 丢弃 ${dropped.length} 个不存在目录: ${dropped.join("、")}（修正路径或删除条目后重启）`,
+      };
+    }
     return {
       name: "ssrf_config",
       status: "pass",
-      detail: `allow=${cfg.allowRanges.length} deny=${cfg.denyRanges.length} (DEFAULT_ALLOW_RANGES 内置 2 条)`,
+      detail,
     };
   } catch (e) {
     return {

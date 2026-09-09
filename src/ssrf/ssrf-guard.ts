@@ -23,6 +23,7 @@
 import { lookup } from "node:dns/promises";
 import { cidrContains, isPrivateIp } from "./cidr.js";
 import { DEFAULT_ALLOW_RANGES, PRIVATE_RANGES } from "./defaults.js";
+import { loadColonDirAllowlist } from "./dir-allowlist.js";
 
 // ============================================================
 // 配置类型
@@ -32,6 +33,13 @@ export interface SsrfConfig {
   allowRanges: string[];
   /** 显式拒段（优先级最高，覆盖 allow）。 */
   denyRanges: string[];
+  /**
+   * BUG-05 决议 B（doc/bugs/05 §4）：LASSO_ALLOW_FILE_FROM 冒号分隔目录白名单
+   * （realpath 规范化后；file:// 导航 opt-in，默认缺省=关）。additive 可选字段：
+   * 既有 12 个 ssrfGuard 调用点不读此字段（守卫本体零改动，INV-90）；
+   * 只被 browse_headless/browse_logged_in 工具入口的 file: 旁路（checkFileUrl）消费。
+   */
+  fileAllowFrom?: string[];
 }
 
 export interface SsrfCheckResult {
@@ -183,8 +191,14 @@ export function loadSsrfConfig(env: NodeJS.ProcessEnv = process.env): SsrfConfig
       .map((s) => s.trim())
       .filter(Boolean);
 
+  // BUG-05 决议 B：LASSO_ALLOW_FILE_FROM 冒号分隔目录（realpath 规范化；不存在
+  // 条目丢弃——dropped 清单由 doctor 经 loadColonDirAllowlist 直读 env 可见，
+  // 本函数只保留有效 dirs）。空表时省略字段（12 个既有调用点形状零变化）。
+  const fileAllow = loadColonDirAllowlist(env.LASSO_ALLOW_FILE_FROM);
+
   return {
     allowRanges: csv(env.LASSO_SSRF_ALLOW_RANGES),
     denyRanges: csv(env.LASSO_SSRF_DENY_RANGES),
+    ...(fileAllow.dirs.length > 0 ? { fileAllowFrom: fileAllow.dirs } : {}),
   };
 }

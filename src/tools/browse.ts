@@ -30,6 +30,13 @@ import {
   callerCapExceededResult,
 } from "../runtime/CallerTierTracker.js";
 import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
+// BUG-05 决议 B（doc/bugs/05 §4）：file:// 旁路白名单（LASSO_ALLOW_FILE_FROM，
+// 默认关）。只在此入口路由——ssrfGuard 本体零改动（INV-90 红线）。
+import {
+  checkFileUrl,
+  isFileProtocol,
+  fileGuardHint,
+} from "../ssrf/file-guard.js";
 import {
   BROWSE_HEADLESS_DESCRIPTION,
   BROWSE_LOGGED_IN_DESCRIPTION,
@@ -116,9 +123,11 @@ const browseSchema = {
 // ============================================================
 // 工具
 // ============================================================
-function ssrfBlocked(reason: string) {
+function ssrfBlocked(reason: string, hint?: string) {
   // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
   // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
+  // BUG-05 决议 B3：file: 族拒绝附加可选 hint（opt-in 指引）；error 字符串
+  // 字节不变（hint 是 InteractResult additive 字段，缺省不填=byte-identical）。
   const d = ssrfDenial(reason);
   const payload: InteractResult<never> = {
     outcome: d.outcome,
@@ -127,10 +136,29 @@ function ssrfBlocked(reason: string) {
     fallback_used: false,
     retrieval_method: d.retrieval_method,
     error: d.error,
+    ...(hint ? { hint } : {}),
   };
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
   };
+}
+
+/**
+ * BUG-05 决议 B（doc/bugs/05 §4）：工具入口守卫路由。
+ * file: → checkFileUrl（目录白名单旁路，默认空白名单=拒且 reason 与旧
+ * ssrfGuard 输出逐字节相等）；非 file: → ssrfGuard 原样（本体零改动）。
+ * 全部 file: 族 reason 走 ssrfDenial → policy 确定性（didnt）——已核
+ * isSsrfEnvTransientReason 对它们恒 false。
+ */
+async function guardEntryUrl(
+  url: string,
+  cfg: SsrfConfig,
+): Promise<{ result: ReturnType<typeof checkFileUrl> | Awaited<ReturnType<typeof ssrfGuard>>; fileAllow: string[] }> {
+  const fileAllow = cfg.fileAllowFrom ?? [];
+  if (isFileProtocol(url)) {
+    return { result: checkFileUrl(url, fileAllow), fileAllow };
+  }
+  return { result: await ssrfGuard(url, cfg), fileAllow };
 }
 
 function browseResultContent(result: InteractResult<BrowseResult>) {
@@ -212,9 +240,13 @@ export function registerBrowseTools(
       const denied = callerTierGate(callerTier, extra?._meta);
       if (denied) return denied;
 
-      const ssrfResult = await ssrfGuard(url, ssrfConfig);
+      // BUG-05 决议 B：入口守卫路由（file: → 目录白名单旁路；非 file: → ssrfGuard）
+      const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
       if (!ssrfResult.allowed) {
-        return ssrfBlocked(ssrfResult.reason);
+        return ssrfBlocked(
+          ssrfResult.reason,
+          fileGuardHint(ssrfResult.reason, fileAllow),
+        );
       }
 
       const plan = {
@@ -252,9 +284,13 @@ export function registerBrowseTools(
       const denied = callerTierGate(callerTier, extra?._meta);
       if (denied) return denied;
 
-      const ssrfResult = await ssrfGuard(url, ssrfConfig);
+      // BUG-05 决议 B：入口守卫路由（file: → 目录白名单旁路；非 file: → ssrfGuard）
+      const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
       if (!ssrfResult.allowed) {
-        return ssrfBlocked(ssrfResult.reason);
+        return ssrfBlocked(
+          ssrfResult.reason,
+          fileGuardHint(ssrfResult.reason, fileAllow),
+        );
       }
 
       // 终端通道：v0.1 不再 fallback（no next hop）。2FA 命中走 outcome=didnt
