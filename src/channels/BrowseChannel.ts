@@ -510,6 +510,10 @@ export abstract class BrowseChannel extends UiChannel {
         ...partial,
       });
 
+      // BUG-05 决议 D1（INV-91）：传入但该 action 未消费的 options 键诚实标注
+      //（空省略 = byte-identical；消费表单一真源 CONSUMED_OPTIONS）
+      const ignored = computeIgnoredOptions(action, options);
+
       return {
         outcome: "worked",
         data: {
@@ -537,6 +541,10 @@ export abstract class BrowseChannel extends UiChannel {
           // v1.17 Phase F（parse24 §6.2 C2 + 冲突 #8）：raw 档 + include_refs=true 的
           // 诚实标注（运行时忽略，schema 不拒——宽松进严格出）。缺省关时不填。
           ...(partial.ignored_include_refs ? { ignored_include_refs: true } : {}),
+          // BUG-05 决议 D1：同族诚实标注的泛化（旧 ignored_include_refs 是本机制
+          // 的单字段先例，保留兼容；include_refs 传给非 extract action 现在也进
+          // ignored_options 超集标注，不冲突）。
+          ...(ignored.length > 0 ? { ignored_options: ignored } : {}),
         },
         served_by: this.name,
         fallback_used: false,
@@ -1646,6 +1654,69 @@ const NAV_FIRST_ACTIONS = new Set(["network", "screenshot", "pdf"]);
 //    dispatchAction）——无条件 nav-first 会把 root 注册 URL 回灌导航、破坏
 //    观察态（r3 原提案的反证，故收敛为空白门控）。
 const FRESH_PAGE_NAV_ACTIONS = new Set(["snapshot", "extract"]);
+
+// ============================================================
+// BUG-05 决议 D1（doc/bugs/05 §6，INV-91）：per-action 实际消费的 options 键表
+// ============================================================
+/**
+ * ignored_options 诚实标注机制的单一真源：表项 = **channel 实际消费键**。
+ *
+ * 纪律（决议 r1 修订）：把死键列入消费表会让 ignored_options 机制对其豁免
+ * （调用方传了也零信号），恰是本机制要消灭的静默面——
+ * network_timeout_ms / network_include_bodies 自 v1.11 起「字段保留（zod 契约
+ * 稳定），值被忽略」（cdp-actions.ts 注释明载），故不进 network 表项。
+ *
+ * 实施注（白盒修正，偏离决议 D1 字面表——已回写决议 §6-D1 定稿标注）：
+ * 「会导航的 action」（navigate 本尊 + NAV_FIRST 三者无条件 + FRESH_PAGE_NAV
+ * 两者的空白会话先导）都经 doNavigate 消费 no_cache——no_cache 记入这些
+ * action 的表项，防止主流路径（如空白会话首 snapshot 传 no_cache）被误标
+ * ignored。方向性理由：误标（实际消费却被标 ignored，诱导调用方删有效参数）
+ * 比漏标（实际忽略却沉默 = 旧行为）有害。wait/click/fill/evaluate 不导航，
+ * 传 no_cache 属真死键 → 如实标注。
+ *
+ * 入口级消费（browse() 分流，非本表）：steps 非空 → StepEngine 链（steps 路径
+ * 不走 browseSingle，无本标注）；budget_ms 仅 steps 路径消费——单 action 路径
+ * 传入 budget_ms 会出现在 ignored_options（诚实标注）。
+ */
+const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  navigate: ["no_cache"],
+  /** 空白会话 needsFreshPageNav 先导导航时消费 no_cache（见上实施注） */
+  snapshot: ["no_cache"],
+  /** NAV_FIRST：先导航（消费 no_cache）再截屏（消费 screenshot.full/filePath） */
+  screenshot: ["screenshot", "no_cache"],
+  extract: ["extract_mode", "include_refs", "no_cache"],
+  click: ["selectors"],
+  fill: ["selectors"],
+  wait: ["expect"],
+  evaluate: ["js"],
+  pdf: [
+    "pdf_format",
+    "pdf_landscape",
+    "pdf_print_background",
+    "pdf_margin_top",
+    "pdf_margin_bottom",
+    "pdf_margin_left",
+    "pdf_margin_right",
+    "no_cache",
+  ],
+  console: [],
+  /** network_include_bodies / network_timeout_ms 死键不入表（决议 r1） */
+  network: ["network_filter", "no_cache"],
+});
+
+/**
+ * BUG-05 决议 D1：计算「传入但该 action 未消费」的 options 键（导出供测试）。
+ * 只对 worked 出口调用（didnt/unknown 路径不标——错误已自解释）。
+ */
+export function computeIgnoredOptions(
+  action: string,
+  options: BrowseOptions,
+): string[] {
+  const consumed = CONSUMED_OPTIONS[action];
+  if (!consumed) return Object.keys(options); // 未注册 action 由 unknown_action 早退拦下，此处防御
+  const set = new Set<string>(consumed);
+  return Object.keys(options).filter((k) => !set.has(k));
+}
 
 function classifyBrowseError(msg: string, _action: string): Outcome {
   const m = msg.toLowerCase();

@@ -293,6 +293,19 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // BUG-05 决议 D1 r1：INV-91 (b)——network 表项抹掉真消费键 network_filter
+    //（消费表≠实际消费键 = ignored_options 机制对死键豁免回潮）→ 红。
+    inv: "INV-91",
+    desc: "network 消费表项抹掉 network_filter（表项≠实际消费键）",
+    file: "channels/BrowseChannel.ts",
+    mutation: {
+      replace: [
+        'network: ["network_filter", "no_cache"],',
+        'network: ["no_cache"],',
+      ],
+    },
+  },
 ];
 
 // ============================================================

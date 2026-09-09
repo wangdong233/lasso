@@ -150,6 +150,13 @@ export interface BrowseResult {
    * 标注（宽松进严格出，schema 不拒）。缺省关时无此字段（byte-identical）。
    */
   ignored_include_refs?: boolean;
+  /**
+   * BUG-05 决议 D1（doc/bugs/05 §6，INV-91）：本次调用传入但**该 action 未
+   * 消费**的 options 键（诚实标注——防「schema 接受 → channel 零消费」静默
+   * 失效；ignored_include_refs 单字段手法的泛化）。消费表单一真源 =
+   * BrowseChannel CONSUMED_OPTIONS。空数组/无死键时省略（byte-identical）。
+   */
+  ignored_options?: string[];
 }
 
 // ============================================================

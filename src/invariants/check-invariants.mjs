@@ -5175,6 +5175,63 @@ const assertions = [
       return true;
     },
   },
+
+  // BUG-05（doc/bugs/05 §6-D1，2026-09-09 消费方台账 L-1）：navigate 传
+  // options.screenshot「worked 但零文件零告警」——「schema 接受 → channel 零消费」
+  // 静默失效（违「空输出≠空属性」）。裁决 D1：CONSUMED_OPTIONS 表 + worked 出口
+  // data.ignored_options 诚实标注（INV-66 ignored_include_refs 手法泛化）。
+  //  INV-91  CONSUMED_OPTIONS 完备性：
+  //    (a) 键集一致：actionDispatch Map 每个 action key 都有 CONSUMED_OPTIONS 表项
+  //        （新 action 必须同 commit 登记消费键——同源维护纪律）
+  //    (b) 表项=实际消费键（r1 纪律）：network 表项含 network_filter 且不含
+  //        network_include_bodies / network_timeout_ms（v1.11 起值被忽略的死键，
+  //        列入=被 ignored_options 机制豁免=重建静默面）
+  //    (c) worked 出口接线：browseSingle 调 computeIgnoredOptions 且
+  //        ignored_options 空省略（byte-identical）
+  {
+    id: "INV-91-consumed-options-completeness",
+    desc:
+      "BUG-05 决议 D1：ignored_options 诚实标注——CONSUMED_OPTIONS 与 actionDispatch 键集同源完备（新 action 必登记）；表项=channel 实际消费键（network:[network_filter] 锚，死键 network_include_bodies/network_timeout_ms 禁入表）；browseSingle worked 出口经 computeIgnoredOptions 标注、空省略",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+
+      // ----- (a) 键集一致 -----
+      const dispatchBlock = browseSrc.match(
+        /protected readonly actionDispatch = new Map[\s\S]*?\n  \]\);/,
+      );
+      const consumedBlock = browseSrc.match(/const CONSUMED_OPTIONS[\s\S]*?\n\}\);/);
+      if (!dispatchBlock || !consumedBlock) return false;
+      const dispatchKeys = [...dispatchBlock[0].matchAll(/\["(\w+)",/g)].map((m) => m[1]);
+      const consumedKeys = [...consumedBlock[0].matchAll(/^ {2}(\w+): \[/gm)].map((m) => m[1]);
+      if (dispatchKeys.length === 0 || consumedKeys.length === 0) return false;
+      const dSet = new Set(dispatchKeys);
+      const cSet = new Set(consumedKeys);
+      if (dSet.size !== dispatchKeys.length || cSet.size !== consumedKeys.length) return false;
+      for (const k of dispatchKeys) if (!cSet.has(k)) return false;
+      for (const k of consumedKeys) if (!dSet.has(k)) return false;
+
+      // ----- (b) 表项=实际消费键（network 锚；stripComments——表头纪律注释
+      //           提及死键名属文档，非表项违例）-----
+      const consumedCode = stripComments(consumedBlock[0]);
+      const networkLine = consumedCode.match(/^ {2}network: \[([^\]]*)\]/m);
+      if (!networkLine) return false;
+      if (!networkLine[1].includes('"network_filter"')) return false;
+      if (networkLine[1].includes("network_include_bodies")) return false;
+      if (networkLine[1].includes("network_timeout_ms")) return false;
+      // 死键不得出现在任何表项（防换 action 洗白）
+      if (/network_include_bodies|network_timeout_ms/.test(consumedCode)) return false;
+
+      // ----- (c) worked 出口接线（空省略）-----
+      const singleBody = browseSrc.match(/private async browseSingle[\s\S]*?\n  \}/);
+      if (!singleBody) return false;
+      if (!/computeIgnoredOptions\(action, options\)/.test(singleBody[0])) return false;
+      if (!/ignored\.length > 0 \? \{ ignored_options: ignored \}/.test(singleBody[0]))
+        return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

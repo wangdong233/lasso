@@ -67,6 +67,10 @@ const browseSchema = {
           // E②（BUG-03 决议 E②）：指定截图落盘路径（上游 1.7.0 take_screenshot
           // filePath 直写；缺省 /tmp/lasso-screenshot-<uuid>.png；上游未兑现回退
           // image-block 路径——两路径同校验）。schema 与 doScreenshot 消费面同 commit。
+          // BUG-05 决议 A3（doc/bugs/05 §3）作用域标注：本字段**仅 action=screenshot
+          // 消费**（doScreenshot；该 action NAV_FIRST 先导航后截屏 = 一步导航+截图）；
+          // navigate 等其余 action 传入零消费 → 响应 data.ignored_options 诚实标注
+          //（消费表单一真源 = BrowseChannel CONSUMED_OPTIONS，INV-91）。
           filePath: z.string().min(1).optional(),
         })
         .optional(),
