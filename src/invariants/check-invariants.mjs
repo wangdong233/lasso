@@ -5344,6 +5344,22 @@ const assertions = [
       if (!/isPathInside/.test(guardSrc)) return false;
       if (!/path\.resolve\(filePath\)/.test(guardSrc)) return false;
       if (!/realpathSync/.test(guardSrc)) return false;
+      // 【r2】末段 symlink 封口锚（对抗复审 w7：末段 lstat 拒——lstat 不跟随
+      // symlink，dangling/非 dangling 一律拒；缺此锚则删 lstat 分支不红）
+      if (!/lstatSync/.test(guardSrc)) return false;
+      if (!/isSymbolicLink\(\)/.test(guardSrc)) return false;
+      if (!/final path component is a symlink/.test(guardSrc)) return false;
+      // 末段 lstat 判定必须在 canonicalizeExistingPrefix 之前或并列（lexical 定
+      // 义后、containment 放行前——顺序锚）
+      const shotGuardFn = guardSrc.match(
+        /export function checkScreenshotTarget[\s\S]*?\n\}/,
+      );
+      if (!shotGuardFn) return false;
+      const lstatIdx = shotGuardFn[0].indexOf("lstatSync(lexical)");
+      const canonIdx = shotGuardFn[0].indexOf("canonicalizeExistingPrefix(lexical)");
+      const allowIdx = shotGuardFn[0].indexOf("return { allowed: true }");
+      if (lstatIdx < 0 || canonIdx < 0 || allowIdx < 0) return false;
+      if (!(lstatIdx < allowIdx)) return false;
 
       return true;
     },

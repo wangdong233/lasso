@@ -203,6 +203,47 @@ describe("BUG-05 E — opt-in 写根（LASSO_SCREENSHOT_DIR）", () => {
     expect(existsSync(path.join(outsideDir, "evil.png"))).toBe(false);
   });
 
+  // ---- 对抗复审 r2（w7 真机实锤回归锚）：末段 symlink 写逃逸封口 ----
+  it("【r2】末段 dangling symlink（指向根外不存在文件）→ didnt + 根外零创建（w7 形态）", async () => {
+    const outsideFile = path.join(root, "outside-dangling-target.bin");
+    symlinkSync(outsideFile, path.join(writeRoot, "dangle.png")); // dangling：目标不存在
+    process.env.LASSO_SCREENSHOT_DIR = writeRoot;
+    const ch = new TestChannel(makeClient());
+    const r = await ch.browse("https://example.com/", "screenshot", {
+      screenshot: { filePath: path.join(writeRoot, "dangle.png") },
+    } as BrowseOptions);
+    expect(r.outcome).toBe("didnt");
+    expect((r.error ?? "")).toMatch(/screenshot_path_not_allowed:.*symlink/);
+    expect(existsSync(outsideFile)).toBe(false); // writeFile 不得沿 symlink 在根外创建
+  });
+
+  it("【r2】末段 symlink 指向根外已存在文件 → didnt（非空目标此前仅靠 PNG 终验撞运拦下，现守卫前置拒）", async () => {
+    const outsideFile = path.join(root, "outside-nonempty.html");
+    writeFileSync(outsideFile, "<h1>secret</h1>");
+    symlinkSync(outsideFile, path.join(writeRoot, "leak.png"));
+    process.env.LASSO_SCREENSHOT_DIR = writeRoot;
+    const ch = new TestChannel(makeClient());
+    const r = await ch.browse("https://example.com/", "screenshot", {
+      screenshot: { filePath: path.join(writeRoot, "leak.png") },
+    } as BrowseOptions);
+    expect(r.outcome).toBe("didnt");
+    expect((r.error ?? "")).toMatch(/screenshot_path_not_allowed:.*symlink/);
+    expect(readFileSync(outsideFile, "utf8")).toBe("<h1>secret</h1>"); // 原文未被覆写
+  });
+
+  it("【r2】末段 symlink 指向根内 → 仍拒（误拒不误放——lstat 不区分指向，安全方向一致）", () => {
+    symlinkSync(path.join(writeRoot, "real-target.png"), path.join(writeRoot, "alias.png"));
+    const r = checkScreenshotTarget(path.join(writeRoot, "alias.png"), [realRoot()]);
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toMatch(/symlink/);
+  });
+
+  it("【r2】末段为普通已存在文件（非 symlink）→ 不因末段存在而拒（containment 语义内）", () => {
+    const existing = path.join(writeRoot, "existing.png");
+    writeFileSync(existing, "x");
+    expect(checkScreenshotTarget(existing, [realRoot()]).allowed).toBe(true);
+  });
+
   it("写根 allow 不吞 allowdev（path-boundary 前缀伪造封口）", () => {
     const devDir = path.join(root, "wrootdev");
     mkdirSync(devDir);

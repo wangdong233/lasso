@@ -18,13 +18,17 @@
  *  1. path.resolve 词法归一后 path-boundary 匹配（封 ../ 词法穿越 +
  *     前缀伪造 /allow vs /allowdev）
  *  2. 最近存在祖先（父目录可不存在——向上取最近存在者）realpath 后边界
- *     匹配（封 symlink 逃逸；双侧 realpath——macOS /tmp→/private/tmp 类
+ *     匹配（封**前缀** symlink 逃逸；双侧 realpath——macOS /tmp→/private/tmp 类
  *     前缀归一，dir-allowlist.ts 同纪律）
+ *  3. 末段 lstat：末段是 symlink（含 dangling）即拒——末段不在 2 的解引用
+ *     面（目标常不存在），writeFile 会沿末段 symlink 写到根外（对抗复审 r2
+ *     w7 真机实锤：dangling symlink → 根外创建 PNG；读面 file-guard 对全路径
+ *     realpath 无此缺口，写面曾不对称）
  *  大小写变体：realpath 后失配即拒（误拒不误放——安全方向）。
- *  TOCTOU（realpath 与写盘之间换文件）：接受——单用户本地场景，与上游
+ *  TOCTOU（realpath/lstat 与写盘之间换文件）：接受——单用户本地场景，与上游
  *  validatePath 同窗（决议 E2）。
  */
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import * as path from "node:path";
 import { isPathInside, loadColonDirAllowlist } from "./dir-allowlist.js";
 
@@ -105,10 +109,29 @@ export function checkScreenshotTarget(
     };
   }
 
-  // 双重 containment（决议 E1 第 3 步 / E2 绕过面表）：词法归一（path.resolve
-  // 坍缩 ../）+ 已存在前缀 realpath（消 symlink 逃逸 + macOS /var 前缀归一）
+  // 双重 containment（决议 E1 第 3 步 / E2 绕过面表）+ 末段 symlink 拒（对抗
+  // 复审 r2 w7 实锤补口）：词法归一（path.resolve 坍缩 ../）+ 已存在前缀
+  // realpath（消前缀 symlink 逃逸 + macOS /var 前缀归一）+ **末段 lstat**（末段
+  // symlink——含 dangling——canonicalizeExistingPrefix 不解引用：非空目标被
+  // 「上游兑现」stat 误判拦截是撞运（PNG 终验），dangling 目标 writeFile 沿
+  // symlink 在根外创建文件=写逃逸。lstat 不跟随 symlink，末段是 symlink 即拒
+  // ——指向根内也拒（误拒不误放，安全方向）；TOCTOU 窗与 E2 同判接受）
   // → canonical 与 realpath 化写根做 path-boundary 匹配
   const lexical = path.resolve(filePath);
+  try {
+    const st = lstatSync(lexical);
+    if (st.isSymbolicLink()) {
+      return {
+        allowed: false,
+        reason:
+          `screenshot_path_not_allowed:${filePath.slice(0, 200)} final path component is a symlink ` +
+          `(write would follow it, possibly outside the LASSO_SCREENSHOT_DIR root(s)); ` +
+          `use a regular file path inside the write root`,
+      };
+    }
+  } catch {
+    /* ENOENT = 末段不存在（常态，待创建）→ 放行进入 containment 判定 */
+  }
   const canonical = canonicalizeExistingPrefix(lexical);
   if (canonical !== null && roots.some((r) => isPathInside(canonical, r))) {
     return { allowed: true };

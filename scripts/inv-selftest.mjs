@@ -332,6 +332,19 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // BUG-05 决议 E r2（对抗复审 w7）：INV-93 (d)——末段 symlink 封口被删
+    //（末段 dangling symlink 写逃逸回潮）→ 红。
+    inv: "INV-93",
+    desc: "末段 symlink lstat 封口被拆除（w7 写逃逸回潮）",
+    file: "ssrf/screenshot-guard.ts",
+    mutation: {
+      replace: [
+        "    const st = lstatSync(lexical);",
+        "    const st = /* lstat bypassed */ ({ isSymbolicLink: () => false } as ReturnType<typeof lstatSync>);",
+      ],
+    },
+  },
 ];
 
 // ============================================================

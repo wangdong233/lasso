@@ -119,6 +119,8 @@
 
 `../` 词法穿越=path.resolve+边界匹配；symlink 逃逸=最近存在祖先 realpath+双侧规范化；前缀伪造（`/allow` vs `/allowdev`）=path-boundary；大小写变体=realpath 后失配即拒（安全方向）；TOCTOU=接受（与上游 validatePath 同窗先例）。
 
+【r3 修正（对抗复审 w7 真机实锤）】上行「symlink 逃逸=最近存在祖先 realpath」只封**前缀** symlink——**末段** symlink 不在解引用面（目标常不存在）：非空末段目标此前仅靠「上游兑现」stat 误判 + PNG 终验**撞运**拦下；dangling 末段 symlink 经 `writeFile` 沿链接在写根**外**创建文件（live 实锤：`/wroot/dangle.png` → 根外 PNG 落盘）。r3 补第 4 判：末段 `lstat`（不跟随 symlink）是 symlink 即拒（含指向根内——误拒不误放）。见 §12。
+
 ### E3 红线对齐
 
 纯加法、默认关；默认（无 env）唯一行为变化 = 显式 filePath 从「任意路径写盘」**收紧为拒**——这是收窄暴露面，不是削弱守卫（SSRF 守卫本体零涉，`ALLOWED_PROTOCOLS` 不动）；既有依赖默认管理路径的调用方零感知（byte-identical）。
@@ -203,3 +205,19 @@
 4. **附带加固（与台账无关，审查轮发现的 P1）**：options.screenshot.filePath 此前可任意路径写盘——现默认拒、`LASSO_SCREENSHOT_DIR` 写根 opt-in。你们「独立 screenshot 工具（只传 full）」的用法零感知。
 5. **正面记录已内参**：evaluate 通道的 8 轮注入式测试好评与 navigate+screenshot 组合可用性记录进入决议 §9 关联证据。
 
+
+## 12. 对抗否定复审轮（r3，2026-09-09 · 复审员 · 验收裁决 6 PASS 的独立攻击复核）
+
+**输入**：验收对象 `0117235`（基线 6003604 + 5 commits）+ 六项裁决证据（/tmp/bug05-accept）。
+
+**复核结论**：六项裁决的证据链全部核实（JSONL 逐条与磁盘产物对上：shot-t1/timeline-{http,file}.png 真 PNG；should-not-exist.png 确未生成；s2b 七发拒因与 hint 逐条吻合；s3 console 过滤语义正确；s4 私网矩阵全拒）。变异验证 9 发全红（4 selftest 样本 + 5 条独立变异：naive-prefix isPathInside / 去掉 checkFileUrl realpath / 去掉 canonicalizeExistingPrefix realpath / 拆 ignored_options 接线 / 破字节锚 reason），还原后 md5 与工作树净核验通过。file:// 读面自研攻击 20 变体（编码/双重编码/词法/符号链/host/大小写/NUL/query/四斜杠/302 与 meta-refresh 跳 file://）全部封口或落回白名单内同一文件——**读面零逃逸**。SSRF 守卫零削弱（协议白名单字面量与基线逐字节相等 + 38/38 矩阵 + 真机 127.0.0.2 拒）。消费方契约纯加法（schema 键集基线对比：删 0 增 9 可选）。
+
+**发现（P1，当场修复）——决议 E 写根末段 symlink 写逃逸（w7）**：
+
+- 形态：`LASSO_SCREENSHOT_DIR=/wroot` 下 filePath=`/wroot/dangle.png`，`dangle.png` 是指向写根外不存在文件的 dangling symlink → 守卫放行（末段不在「最近存在祖先 realpath」解引用面）→ `stat(target)` ENOENT → `upstreamWrote=false` → image-block `writeFile` **沿 symlink 在写根外创建 PNG**（真机实锤：报告 worked + 根外 41855B PNG）。
+- 邻接形态：末段 symlink 指向根外**已存在**文件时，此前的拦截纯属撞运（「上游兑现」stat 经 symlink 误判 `upstreamWrote=true` 跳过写 + PNG 终验读到非 PNG 头才 didnt）——若根外目标恰为 PNG 头或空文件，撞运链断裂。
+- 读面对称性证据：file-guard（读面）对**全路径** realpath，无此缺口——写面缺口是实施疏漏而非裁决意图（E2 表「symlink 逃逸=最近存在祖先 realpath」措辞覆盖不到末段）。
+- 修复（本 commit）：`checkScreenshotTarget` 增第 4 判——末段 `lstatSync`（不跟随 symlink）是 symlink 即拒（dangling/非 dangling/指向根内一律拒：误拒不误放；reason 保留 `screenshot_path_not_allowed:` 前缀走既有 didnt 分流）。TOCTOU 窗与 E2 同判接受。回归锚：screenshot-guard.spec 4 新测（dangling/非空/指向根内/普通文件不误伤）+ INV-93(d) 末段锚（lstatSync/isSymbolicLink/顺序）+ inv-selftest 新变异样本（拆 lstat 判定→红）。
+- 定级依据：利用前提是写根内存在**预置 symlink**（lasso/agent 自身无任何建 symlink 通路）——单用户机器实际风险低，但该缺口直接证伪「写限根内」 containment 承诺（README/KEY-GUIDE 已宣传「symlink 逃逸全拒」），且修复廉价确定 → 按 P1 当场修。
+
+**残留观察（不计为 issue）**：验收 L1c 的管理路径截图 `/tmp/lasso-screenshot-8c85d4c1-….png` 现已不在盘上（证据 JSONL 内有 preview 字符串；同窗口其他 /tmp 截图俱在，判断为验收方单文件清理）——证据链完整性小瑕疵，行为本身由 L1b 落盘 + 单测 byte 锚覆盖。
