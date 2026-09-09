@@ -542,3 +542,31 @@ describe("BUG-04A · 默认探针源码锚", () => {
     expect((body.match(/spawnSync\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });
+
+// ============================================================
+// 11. CLI 路由接线（index.ts 白盒；09-09 adversarial 回炉 F-adv-2 补）
+// ============================================================
+// 缺口实锤：BUG-04 决议 A / README 双语用户面已承诺 `lasso chrome-status
+// [--port N] [--json]` 出口，但 index.ts 的 dispatch 块此前零守卫——删掉该块
+//（或注入错形）后子命令沸进 F-CLI-01 unknown-subcommand 兜底（exit 1 + usage），
+// 全量测试仍绿。守三件事：dispatch 在、注入形状对、排序先于兜底（idiom 同
+// chrome-hideshow G1-8 白盒锚）。
+describe("BUG-04A · CLI 路由接线（index.ts 白盒）", () => {
+  const indexSrc = readFileSync("src/index.ts", "utf8");
+
+  it("11a. dispatch 在位 + 注入形状：slice(3) 透传 + defaultPort 走 config cdpPort（README 承诺）+ helpText 单一真源", () => {
+    expect(indexSrc).toMatch(/process\.argv\[2\] === "chrome-status"/);
+    expect(indexSrc).toMatch(
+      /runChromeStatusCli\(process\.argv\.slice\(3\), \{\s*defaultPort: csCfg\.cdpPort,\s*helpText: CLI_USAGE,/,
+    );
+    // defaultPort 取值链：loadConfig → csCfg.cdpPort（非硬编码 9222——多口用户面）
+    expect(indexSrc).toMatch(/const csCfg = loadConfig\(\{ runId: "chrome-status-cli" \}\);/);
+  });
+
+  it("11b. 排序守卫：dispatch 必须先于 F-CLI-01 unknown-subcommand 兜底（否则 chrome-status 被 exit 1 沸掉、承诺出口不可达）", () => {
+    const dispatchIdx = indexSrc.indexOf('process.argv[2] === "chrome-status"');
+    const unknownIdx = indexSrc.indexOf("process.argv[2] !== undefined");
+    expect(dispatchIdx).toBeGreaterThan(-1);
+    expect(unknownIdx).toBeGreaterThan(dispatchIdx);
+  });
+});
