@@ -80,6 +80,9 @@ else bad("F README 未出现包名（改名忘同步？）");
 // 而断言随手发版更新——标题成了唯一不会红的静默腐烂点（复检实锤：标题 1.18.3 /
 // 断言 1.22.0）。泛化后标题无版本、断言读 package.json 单一真源；本守卫拦「再写死」：
 // 凡 it/describe 标题含 lasso_version 或 INV-63，不得内嵌任何 semver 字面量。
+// 匹配大小写不敏感（i 旗标）：大写 LASSO_VERSION 同为版本对齐面——09-09 doctor-v10
+// 漏网实锤（标题「LASSO_VERSION 当前值为 1.18.3」在区分大小写正则下逃逸，守卫
+// 全绿与残留并存），故 lasso_version/INV-63 一律按不区分大小写圈定。
 //（历史语境引用如 "v1.14.0 契约"、"1.7.0 契约"（上游版本）不受影响——只圈版本对齐面。）
 {
   const files = [];
@@ -95,7 +98,7 @@ else bad("F README 未出现包名（改名忘同步？）");
   for (const f of files) {
     const lines = readFileSync(f, "utf8").split(/\r?\n/);
     lines.forEach((line, i) => {
-      const m = line.match(/(?:it|describe|test)\(\s*["'`]([^"'`]*(?:lasso_version|INV-63)[^"'`]*)["'`]/);
+      const m = line.match(/(?:it|describe|test)\(\s*["'`]([^"'`]*(?:lasso_version|INV-63)[^"'`]*)["'`]/i);
       if (m && /\d+\.\d+\.\d+/.test(m[1])) {
         rotten.push(`${path.relative(ROOT, f)}:${i + 1} "${m[1].trim()}"`);
       }

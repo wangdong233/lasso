@@ -17,9 +17,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { runDoctor, LASSO_VERSION } from "../../src/doctor/doctor.js";
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 // ============================================================
 // helpers
@@ -204,10 +207,15 @@ describe("doctor INV-63 镜像：LASSO_VERSION 常量", () => {
     expect(LASSO_VERSION.length).toBeGreaterThan(0);
   });
 
-  it("LASSO_VERSION 当前值为 1.18.3（v1.7 Phase A creepjs 回归门禁 + Stagehand 探测）", () => {
+  it("LASSO_VERSION 与 package.json 对齐（INV-63 三处对齐：doctor.ts 侧）", () => {
     // 守 INV-63：package.json + index.ts LASSO_SERVER_VERSION + doctor.ts LASSO_VERSION 三处一致。
     // 本 spec 只验 doctor.ts 这处；INV-63 grep 守全 3 处对齐。
-    expect(LASSO_VERSION).toBe("1.22.0");
+    // 09-09 泛化：断言读 package.json 单一真源，标题不再写死版本号——
+    // 标题版本=每发版手改的静默腐烂点（09-08 复检实锤：标题 1.18.3 断言已 1.22.0）。
+    const pkgVersion = (
+      JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")) as { version: string }
+    ).version;
+    expect(LASSO_VERSION).toBe(pkgVersion);
   });
 });
 
