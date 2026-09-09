@@ -267,16 +267,30 @@ export function parseNetworkRequestLines(text: string): Array<{
  * v1.11（round1 T5）：从占位（"v0.5 M0.5b placeholder"）变实装——调 1.7.0 原生
  * `list_console_messages`。
  *
+ * BUG-05 决议 C（doc/bugs/05 §5，消费方台账 L-3）：参数化 + 描述暴露。
+ * 消费方此前靠 window.onerror 注入绕路（无 console 订阅通道）——实况是
+ * action 已实装但 descriptions 零暴露 + 零参数。本 commit 补齐：
+ *  - console_level：严重度阈值过滤（playwright-mcp browser_console_messages
+ *    语义先例——「Each level includes the messages of more severe levels」）
+ *  - console_limit：过滤后取**最近** N 条（preview 4000 上限截断丢尾部=最新，
+ *    limit 让最新消息保形）
+ *
  * 上游响应（ConsoleFormatter concise 格式）：
  *  - `## Console messages` 头 + 每消息一行
  *    `msgid=<N> [<type>] <text> (<N> args)`（可能带 ` [N times]` 后缀）
+ *
+ * opts（BrowseOptions.console_*）：
+ *  - console_level : "error"|"warn"|"info"|"debug" —— 严重度阈值
+ *                    （error={error} / warn={error,warn} / info=+log 等非 verbose /
+ *                    debug=全部含 verbose）；缺省不过滤（现行为兼容）
+ *  - console_limit : 1..500 —— 过滤后取最近 N 条；缺省全量
  *
  * @returns Partial<BrowseResult>：preview = messages JSON 字符串
  */
 export async function doConsole(
   c: McpClient,
   _url: string,
-  _opts: BrowseOptions,
+  opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
   let r: UpstreamContentResult;
   try {
@@ -292,7 +306,57 @@ export async function doConsole(
   }
 
   const messages = parseConsoleMessageLines(firstText(r) ?? "");
-  return { preview: JSON.stringify(messages) };
+  const filtered = filterConsoleMessages(
+    messages,
+    opts.console_level,
+    opts.console_limit,
+  );
+  return { preview: JSON.stringify(filtered) };
+}
+
+/** BUG-05 决议 C：console_level 取值（severity 阈值，四档）。 */
+export type ConsoleLevel = "error" | "warn" | "info" | "debug";
+
+/** severity 秩（小 = 更严重；档位含更严重档——pw 语义先例）。 */
+const CONSOLE_LEVEL_RANK: Record<ConsoleLevel, number> = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+};
+
+/**
+ * 上游 console 消息类型 → severity 档（决议 C 注释锚）：
+ *  - error/warn 直传（0/1）
+ *  - debug/verbose → debug 档（3）
+ *  - info/log 及其余非 verbose 类型（dir/dirxml/table/trace/clear/group 族/
+ *    issue/未知）→ info 档（2）
+ */
+function consoleTypeRank(type: string): number {
+  if (type === "error") return CONSOLE_LEVEL_RANK.error;
+  if (type === "warn") return CONSOLE_LEVEL_RANK.warn;
+  if (type === "debug" || type === "verbose") return CONSOLE_LEVEL_RANK.debug;
+  return CONSOLE_LEVEL_RANK.info;
+}
+
+/**
+ * BUG-05 决议 C：console 消息过滤纯函数（导出可测）。
+ *  - level 缺省 = 不过滤（现行为兼容）；给定 = severity 阈值（含更严重档）
+ *  - limit 缺省 = 全量；给定 = 取**最近** N 条（slice(-N)，保最新）
+ */
+export function filterConsoleMessages<T extends { type: string }>(
+  messages: T[],
+  level?: ConsoleLevel,
+  limit?: number,
+): T[] {
+  const out =
+    level === undefined
+      ? messages.slice()
+      : messages.filter((m) => consoleTypeRank(m.type) <= CONSOLE_LEVEL_RANK[level]);
+  if (limit !== undefined && out.length > limit) {
+    return out.slice(out.length - limit);
+  }
+  return out;
 }
 
 /** 1.7.0 list_console_messages 文本行 → 结构化消息。 */

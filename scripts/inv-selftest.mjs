@@ -306,6 +306,19 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // BUG-05 决议 C：INV-92 (b)——schema 抹掉 console_level 键（暴露面回退
+    // 到「channel 消费但 MCP 不可参数化」）→ 红。
+    inv: "INV-92",
+    desc: "schema 抹掉 console_level（console 参数化经 MCP 不可达回潮）",
+    file: "tools/browse.ts",
+    mutation: {
+      replace: [
+        'console_level: z.enum(["error", "warn", "info", "debug"]).optional(),',
+        '// console_level removed by selftest mutation',
+      ],
+    },
+  },
 ];
 
 // ============================================================

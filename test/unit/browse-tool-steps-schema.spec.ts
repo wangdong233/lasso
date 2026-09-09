@@ -255,3 +255,108 @@ describe("browse tool schema — include_refs 不被 zod strip（C2 MCP 可达�
     expect(browseCalls[0]!.opts.include_refs).toBeUndefined();
   });
 });
+
+// ============================================================
+// BUG-05 决议 D2（doc/bugs/05 §6）：schema 反向补全——消费但未声明的真消费键
+//（console_level/console_limit/network_filter/pdf_*）经 MCP 可达；
+// 死键 network_include_bodies/network_timeout_ms 保持 zod strip（r1 反死参锚）
+// ============================================================
+describe("browse tool schema — D2 反向补全（BUG-05 console/network/pdf 参数化可达）", () => {
+  function capture() {
+    const { server, captured } = makeCaptureServer();
+    const { headless, logged_in } = makeStubChannels();
+    registerBrowseTools(
+      server as unknown as McpServer,
+      headless as unknown as HeadlessChannel,
+      logged_in as unknown as LoggedInChannel,
+      new FallbackDecider(
+        new Map<string, CircuitBreaker>([
+          ["browse_headless", new CircuitBreaker()],
+          ["browse_logged_in", new CircuitBreaker()],
+        ]),
+      ),
+      ALWAYS_OK_SSRF,
+    );
+    return { captured };
+  }
+
+  it("console_level / console_limit 不被 strip（console action 经 MCP 可参数化）", () => {
+    const { captured } = capture();
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "console",
+        options: { console_level: "error", console_limit: 20 },
+      }) as { options: Record<string, unknown> };
+      expect(parsed.options.console_level).toBe("error");
+      expect(parsed.options.console_limit).toBe(20);
+    }
+  });
+
+  it("network_filter 不被 strip（network action 经 MCP 可参数化）", () => {
+    const { captured } = capture();
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "network",
+        options: { network_filter: "xhr" },
+      }) as { options: Record<string, unknown> };
+      expect(parsed.options.network_filter).toBe("xhr");
+    }
+  });
+
+  it("pdf_* 六键（实际 7 键）不被 strip（pdf 参数面；action 本体受上游 P10 门）", () => {
+    const { captured } = capture();
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "pdf",
+        options: {
+          pdf_format: "Letter",
+          pdf_landscape: true,
+          pdf_print_background: false,
+          pdf_margin_top: 0.5,
+          pdf_margin_bottom: 0.5,
+          pdf_margin_left: 0.5,
+          pdf_margin_right: 0.5,
+        },
+      }) as { options: Record<string, unknown> };
+      expect(parsed.options.pdf_format).toBe("Letter");
+      expect(parsed.options.pdf_landscape).toBe(true);
+      expect(parsed.options.pdf_margin_right).toBe(0.5);
+    }
+  });
+
+  it("【r1 反死参锚】network_include_bodies / network_timeout_ms 被 zod strip（MCP 面不宣传死参数）", () => {
+    const { captured } = capture();
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "network",
+        options: {
+          network_filter: "all",
+          network_include_bodies: true,
+          network_timeout_ms: 5000,
+        },
+      }) as { options: Record<string, unknown> };
+      expect(parsed.options.network_filter).toBe("all");
+      expect(parsed.options.network_include_bodies).toBeUndefined();
+      expect(parsed.options.network_timeout_ms).toBeUndefined();
+    }
+  });
+
+  it("新键全 optional 无默认注入（缺省不传 = byte-identical 基线）", () => {
+    const { captured } = capture();
+    for (const cap of captured) {
+      const parsed = z.object(cap.schema as never).parse({
+        url: "https://example.com",
+        action: "snapshot",
+        options: {},
+      }) as { options: Record<string, unknown> };
+      expect(parsed.options.console_level).toBeUndefined();
+      expect(parsed.options.console_limit).toBeUndefined();
+      expect(parsed.options.network_filter).toBeUndefined();
+      expect(parsed.options.pdf_format).toBeUndefined();
+    }
+  });
+});

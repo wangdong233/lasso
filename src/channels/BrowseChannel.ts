@@ -1699,7 +1699,8 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
     "pdf_margin_right",
     "no_cache",
   ],
-  console: [],
+  /** 决议 C（§5）：console_level/console_limit 由 doConsole 消费（filterConsoleMessages） */
+  console: ["console_level", "console_limit"],
   /** network_include_bodies / network_timeout_ms 死键不入表（决议 r1） */
   network: ["network_filter", "no_cache"],
 });

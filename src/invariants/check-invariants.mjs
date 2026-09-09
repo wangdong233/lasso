@@ -5232,6 +5232,63 @@ const assertions = [
       return true;
     },
   },
+
+  // BUG-05（doc/bugs/05 §5，2026-09-09 消费方台账 L-3）：console action 自 v1.11
+  // 已实装（doConsole 调 1.7.0 原生 list_console_messages）但 descriptions 零暴露
+  // + 零参数——消费方靠 window.onerror 注入绕路。决议 C：暴露面补全 + 参数化
+  //（console_level severity 阈值 / console_limit 最近 N 条）。
+  //  INV-92  console 暴露面锚（schema 键与 doConsole 消费同 commit）：
+  //    (a) BROWSE_HEADLESS_DESCRIPTION 含 console 行 + network 行（CC 消费方可见）
+  //    (b) browse.ts schema 声明 console_level / console_limit（MCP 可参数化）
+  //    (c) doConsole 消费 opts.console_level / console_limit（filterConsoleMessages）
+  //    (d) CONSUMED_OPTIONS console 表项 = [console_level, console_limit]
+  //        （INV-91 联动：新参数键同 commit 进消费表）
+  {
+    id: "INV-92-console-exposure",
+    desc:
+      "BUG-05 决议 C：console action 暴露面——descriptions 含 console/network 行（CC 可见）；schema 声明 console_level/console_limit；doConsole 消费两键（filterConsoleMessages）；CONSUMED_OPTIONS console 表项同步（四面前后一致）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const descSrc = byPath(/^tools\/descriptions\.ts$/)?.text ?? "";
+      const browseToolSrc = byPath(/^tools\/browse\.ts$/)?.text ?? "";
+      const cdpSrc = byPath(/^browse\/cdp-actions\.ts$/)?.text ?? "";
+      const channelSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+
+      // ----- (a) 描述暴露 -----
+      const headlessDesc = descSrc.match(
+        /BROWSE_HEADLESS_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
+      );
+      if (!headlessDesc) return false;
+      if (!/console\s+— read THIS page's console messages/.test(headlessDesc[0])) return false;
+      if (!/network\s+— coarse per-page resource list/.test(headlessDesc[0])) return false;
+      if (!headlessDesc[0].includes("console_level")) return false;
+
+      // ----- (b) schema 键 -----
+      if (!/console_level: z\.enum\(\["error", "warn", "info", "debug"\]\)\.optional\(\)/.test(browseToolSrc))
+        return false;
+      if (!/console_limit: z\.number\(\)\.int\(\)\.min\(1\)\.max\(500\)\.optional\(\)/.test(browseToolSrc))
+        return false;
+
+      // ----- (c) doConsole 消费 -----
+      const consoleFn = cdpSrc.match(/export async function doConsole[\s\S]*?\n\}/);
+      if (!consoleFn) return false;
+      if (!/opts\.console_level/.test(consoleFn[0])) return false;
+      if (!/opts\.console_limit/.test(consoleFn[0])) return false;
+      if (!/filterConsoleMessages\(/.test(consoleFn[0])) return false;
+      // 纯函数导出（可测面）
+      if (!/export function filterConsoleMessages/.test(cdpSrc)) return false;
+
+      // ----- (d) CONSUMED_OPTIONS console 表项 -----
+      const consumedBlock = channelSrc.match(/const CONSUMED_OPTIONS[\s\S]*?\n\}\);/);
+      if (!consumedBlock) return false;
+      const consoleLine = stripComments(consumedBlock[0]).match(/^ {2}console: \[([^\]]*)\]/m);
+      if (!consoleLine) return false;
+      if (!consoleLine[1].includes('"console_level"')) return false;
+      if (!consoleLine[1].includes('"console_limit"')) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

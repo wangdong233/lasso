@@ -120,6 +120,32 @@ const browseSchema = {
           timeout_ms: z.number().int().positive().optional(),
         })
         .optional(),
+      // ============================================================
+      // D2（BUG-05 决议 D，doc/bugs/05 §6）：schema 反向补全——types.ts
+      // BrowseOptions 已有且 channel 真消费、但 schema 未声明（MCP 入参被 zod
+      // strip → action 经 MCP 不可参数化，U-03「schema 缺键致不可达」同族、
+      // 方向相反）。全部 .optional() 无 .default()（extract_mode 同款纪律：
+      // 防 zod 自动注入破坏 byte-identical 断言）。
+      // 🔴 network_timeout_ms / network_include_bodies 不进 schema（决议 r1）：
+      // v1.11 起二者「字段保留（进程内契约稳定），值被忽略」（cdp-actions.ts
+      // 注释明载）——MCP 面不宣传死参数（v1.18.7 删死参数同纪律）；未声明键经
+      // MCP 边界即被 zod strip = 标准边界行为，非静默失效。
+      // ============================================================
+      network_filter: z
+        .enum(["xhr", "fetch", "img", "3rd-party", "all"])
+        .optional(),
+      // 决议 C（§5）：console action 参数化（severity 阈值 + 最近 N 条）
+      console_level: z.enum(["error", "warn", "info", "debug"]).optional(),
+      console_limit: z.number().int().min(1).max(500).optional(),
+      // doPdf 消费（cdp-actions.ts；上游 1.7.0 无 pdf 工具 → action=pdf 恒
+      // upstream_unsupported——参数面照实声明供未来上游升级，描述不宣传）
+      pdf_format: z.enum(["A4", "Letter", "Legal", "Tabloid"]).optional(),
+      pdf_landscape: z.boolean().optional(),
+      pdf_print_background: z.boolean().optional(),
+      pdf_margin_top: z.number().optional(),
+      pdf_margin_bottom: z.number().optional(),
+      pdf_margin_left: z.number().optional(),
+      pdf_margin_right: z.number().optional(),
     })
     .default({}),
 };

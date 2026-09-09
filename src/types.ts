@@ -228,6 +228,21 @@ export interface BrowseOptions {
   /** v0.5 注入时代的采集窗口；v1.11 原生直调后无行为消费（cdp-actions.ts），字段保留仅为 zod 契约稳定 */
   network_timeout_ms?: number;
   // ============================================================
+  // BUG-05 决议 C（doc/bugs/05 §5，消费方台账 L-3）—— console action 专用字段
+  //（cdp-actions.ts doConsole 读；schema/描述/消费同 commit，INV-92）
+  // ============================================================
+  /**
+   * 严重度阈值过滤（playwright-mcp 语义先例「Each level includes the messages
+   * of more severe levels」）：error={error} / warn={error,warn} /
+   * info=+log 等非 verbose 档 / debug=全部（含 verbose）。缺省不过滤（现行为兼容）。
+   */
+  console_level?: "error" | "warn" | "info" | "debug";
+  /**
+   * 过滤后取**最近** N 条（1..500）。preview 4000 上限的朴素截断会丢尾部=
+   * 最新消息——limit 让最新消息保形。缺省全量。
+   */
+  console_limit?: number;
+  // ============================================================
   // v1.1 新增（parse12 §1.3 + §2.2）—— MarkdownExtractor mode-aware 三模式
   // ============================================================
   /**
