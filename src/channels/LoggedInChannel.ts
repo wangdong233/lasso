@@ -393,6 +393,12 @@ export class LoggedInChannel extends BrowseChannel {
       await c.callTool("select_page", { pageId: fresh.pageId });
       this.ownPageId = fresh.pageId;
       this.tabs.noteOwnPage(fresh.pageId);
+      // BUG-07 A⁺ 对抗复审 r2 第 4 穿透口（doc/bugs/07 §8）：本 commit 点把上游
+      // 选中页换成新建 about:blank own 页（own 页被用户手关后下一次 getMcpClient
+      // 即静默走此，无错误签名）——不失效则 current-page 截图 worked+空白页伪造
+      //（击穿 §5.9「用户手关 → didnt」）。封法与 r1 三 return 点同族；url-bearing
+      // 调用随后经导航重建 lastNavigatedClient，零影响（T17-c 非粘滞锚）。
+      this.invalidateCurrentPageSession();
       logger.info({
         evt: "logged_in_own_page_selected",
         pageId: fresh.pageId,

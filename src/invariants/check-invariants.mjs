@@ -5504,14 +5504,17 @@ const assertions = [
   //    (5) 自愈禁令锚（r1）：browseSingle dispatchAction catch 内 current-page
   //        早退（url === undefined）在 healUpstreamWedge / recoverNoPageSelected
   //        任何调用之前（indexOf 序）
-  //    (6) invalidation 锚（r1）：BrowseChannel.invalidateCurrentPageSession 置
-  //        lastNavigatedClient=null；LoggedInChannel heal 两 return 点（层 1
-  //        return c / 层 2 return c2）与 recoverNoPageSelected return true 路径
-  //        均在 return 前调用它（封「同 client 换页」穿透口）
+  //    (6) invalidation 锚（r1 三 return 点 + r2 第 4 穿透口）：BrowseChannel
+  //        invalidateCurrentPageSession 置 lastNavigatedClient=null；
+  //        LoggedInChannel heal 两 return 点（层 1 return c / 层 2 return c2）与
+  //        recoverNoPageSelected return true 路径均在 return 前调用它；r2 增：
+  //        ensureOwnPageSelected 换页 commit 点（ownPageId = fresh.pageId 登记
+  //        后 400 字节内）也必须调用它（own 页被用户手关 → 静默自建新空白页
+  //        切换 → current-page 截图 worked 伪造的穿透口）
   {
     id: "INV-95-current-page-screenshot-contract",
     desc:
-      "BUG-07 决议 A⁺：url 省略 + action=screenshot = current-page 截图（零导航；有 url=NAV_FIRST 字节级不变）——schema↔description 同 commit；dispatch 门 url-definiteness；错误契约四重形状锚（early-return 合取 + 禁 throw ±3 行 + classify 兜底先于 upstream_wedge + isFallbackWorthy 排除集）；tools 层 fallbacks=[] 通道钉定；current-page 禁自愈重试（catch 内早退先于两钩子）；自愈换页三 return 点 invalidateCurrentPageSession",
+      "BUG-07 决议 A⁺：url 省略 + action=screenshot = current-page 截图（零导航；有 url=NAV_FIRST 字节级不变）——schema↔description 同 commit；dispatch 门 url-definiteness；错误契约四重形状锚（early-return 合取 + 禁 throw ±3 行 + classify 兜底先于 upstream_wedge + isFallbackWorthy 排除集）；tools 层 fallbacks=[] 通道钉定；current-page 禁自愈重试（catch 内早退先于两钩子）；自愈换页三 return 点 + r2 ensureOwnPageSelected 换页 commit 点（第 4 穿透口）invalidateCurrentPageSession",
     check: () => {
       const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
       const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
@@ -5657,6 +5660,22 @@ const assertions = [
       const trueIdx = recoverBody[0].indexOf("return true;");
       if (trueIdx < 0) return false;
       if (!/this\.invalidateCurrentPageSession\(\);/.test(recoverBody[0].slice(Math.max(0, trueIdx - 200), trueIdx)))
+        return false;
+
+      // ----- (6-r2) ensureOwnPageSelected 换页 commit 点（第 4 穿透口，验收轮实证） -----
+      const ownBody = loggedInSrc.match(
+        /private async ensureOwnPageSelected\([\s\S]*?\n  \}/,
+      );
+      if (!ownBody) return false;
+      const commitIdx = ownBody[0].indexOf("this.ownPageId = fresh.pageId;");
+      if (commitIdx < 0) return false;
+      if (
+        !/this\.invalidateCurrentPageSession\(\);/.test(
+          // 窗口 500：commit→invalidate 之间隔一段同块 rationale 注释（~385 字节
+          // + 调用串 36 字节）——窗口须容纳整个 needle，非仅起点。
+          ownBody[0].slice(commitIdx, commitIdx + 500),
+        )
+      )
         return false;
 
       return true;
