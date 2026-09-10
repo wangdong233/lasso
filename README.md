@@ -169,6 +169,8 @@ key 怎么申请、免费额度多少 → [**Key 配置指南**](./doc/usage/01-
 
 所有图片和 PDF 都**存到本地、返回路径**，不会把一大坨图片数据塞进对话浪费上下文。超大文本输出（fetch_url / network 等）超过 48 KiB 也会自动落盘，返回预览 + `@oN` 续页句柄——用 `read_text` 工具按页续读（v1.8 起经 MCP 可直接调用）。要**自定截图落盘位置**（`options.screenshot.filePath`）：默认拒（防任意路径写盘）——设 `LASSO_SCREENSHOT_DIR=/你的输出目录` 开放，且只允许写进指定目录子树（嵌套新目录自动创建也限在内）；不指定路径时默认落 `/tmp/lasso-screenshot-*.png`，行为不变。
 
+> **截「当前页面状态」**（动画中间帧取证）：`browse_headless` / `browse_logged_in` 的 `action=screenshot` **省略 url** 即对当前受管页面直接截屏——**零重导航**，前面 evaluate 建立的页面状态（如 `document.getAnimations().forEach(a=>a.pause())` 冻结在 35% 的 CSS 动画）原样保留。推荐循环：带 url 的 action 建会话 → `evaluate` 冻结/注入 → `{action:"screenshot"}`（无 url）截当前帧 → `console` 取证——同会话四通道闭环。独立 `screenshot` 工具省略 url 同义（绑 headless 会话；logged_in 会话的当前帧用 `browse_logged_in`）。无活动会话（冷通道/页面已关/被自愈换页）会显式报错（`didnt` + 下一步指引），**绝不静默新开浏览器、绝不截空白页伪造状态**；带 url 的旧用法行为零变化。
+
 ### 看一个页面加载了什么
 
 > 你：「这页加载了哪些第三方跟踪？」 → 资源列表 + 跟踪域名计数

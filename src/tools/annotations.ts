@@ -150,7 +150,10 @@ export const fetchUrlAnnotations: ToolAnnotations = {
  * - readOnlyHint=true：screenshot 只调 navigate + take_screenshot，不改页面状态
  *   （navigate 是被动加载，不点不填；与 browse_headless readOnly=false 因可 click/fill
  *   形成对比）。CC 可据此自动批准 screenshot。
- * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）。
+ *   BUG-07 决议 A⁺（doc/bugs/07）：url 省略的 current-page 模式**更只读**——
+ *   连 navigate 都不发生，只对当前受管页面截屏（readOnlyHint 仍成立）。
+ * - openWorldHint=true：经 chrome-devtools-mcp 触任意公网 host（SSRF 守门后）；
+ *   current-page 模式无 url → 无导航目标，SSRF 守卫整体跳过（§5.4 正交）。
  *
  * 守 INV-23 衍生：screenshot 不挂 fallback 链（经 BrowseChannel.browse() 入口隐式
  *                 享受 headless→logged_in fallback 是 channel 内部决策，非工具层 fallback）。

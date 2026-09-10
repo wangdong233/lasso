@@ -50,7 +50,12 @@ import {
 // Schema
 // ============================================================
 const browseSchema = {
-  url: z.string().url(),
+  // BUG-07 决议 A⁺（doc/bugs/07 §5.2①）：url 可选化——省略 + action=screenshot
+  // = current-page 模式（对当前受管页面直接截屏，零导航）；省略 + 其它任何
+  // action = 显式拒 url_required_for_action:<action>（channel browse() 门）。
+  // 禁 .default()（absent 必须=undefined，不得注入 ""——extract_mode 同款纪律，
+  // 守 byte-identical 断言）。有 url = 现状 NAV_FIRST 字节级不变。
+  url: z.string().url().optional(),
   action: z.string().default("snapshot"),
   options: z
     .object({
@@ -262,7 +267,7 @@ export function registerBrowseTools(
     browseSchema,
     browseHeadlessAnnotations,
     async (args, extra) => {
-      const url: string = args.url;
+      const url: string | undefined = args.url;
       const action: string = args.action;
       const options: BrowseOptions = args.options ?? {};
 
@@ -270,18 +275,27 @@ export function registerBrowseTools(
       const denied = callerTierGate(callerTier, extra?._meta);
       if (denied) return denied;
 
-      // BUG-05 决议 B：入口守卫路由（file: → 目录白名单旁路；非 file: → ssrfGuard）
-      const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
-      if (!ssrfResult.allowed) {
-        return ssrfBlocked(
-          ssrfResult.reason,
-          fileGuardHint(ssrfResult.reason, fileAllow),
-        );
+      // BUG-07 决议 A⁺（§5.4）：url 省略（current-page 请求）——
+      //  ① SSRF 整体跳过（无导航目标可守，空集守卫=形式主义）；url 存在则
+      //     BUG-05 决议 B 入口守卫路由原样照跑（file: 白名单旁路 + ssrfGuard）。
+      //  ② fallback 钉通道：fallbacks=[]（仅 primary）。否则 headless 中途
+      //     unknown 会 fallback 到 logged_in——静默截**用户 Chrome 当前 tab**
+      //     （跨浏览器状态伪造，比失败更糟；INV-23「不跨 surface fallback」
+      //     同哲学的通道内收紧）。无会话/越界由 channel 的 didnt 短路（decider
+      //     recordSuccess——零熔断污染）。
+      if (url !== undefined) {
+        const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
+        if (!ssrfResult.allowed) {
+          return ssrfBlocked(
+            ssrfResult.reason,
+            fileGuardHint(ssrfResult.reason, fileAllow),
+          );
+        }
       }
 
       const plan = {
         primary: "browse_headless",
-        fallbacks: ["browse_logged_in"],
+        fallbacks: url === undefined ? [] : ["browse_logged_in"],
         cross_modal: false,
       };
 
@@ -306,7 +320,7 @@ export function registerBrowseTools(
     browseSchema,
     browseLoggedInAnnotations,
     async (args, extra) => {
-      const url: string = args.url;
+      const url: string | undefined = args.url;
       const action: string = args.action;
       const options: BrowseOptions = args.options ?? {};
 
@@ -315,12 +329,16 @@ export function registerBrowseTools(
       if (denied) return denied;
 
       // BUG-05 决议 B：入口守卫路由（file: → 目录白名单旁路；非 file: → ssrfGuard）
-      const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
-      if (!ssrfResult.allowed) {
-        return ssrfBlocked(
-          ssrfResult.reason,
-          fileGuardHint(ssrfResult.reason, fileAllow),
-        );
+      // BUG-07 决议 A⁺（§5.4）：url 省略（current-page 请求）SSRF 整体跳过
+      //（无导航目标可守）；本通道终端无 fallback，钉通道天然成立。
+      if (url !== undefined) {
+        const { result: ssrfResult, fileAllow } = await guardEntryUrl(url, ssrfConfig);
+        if (!ssrfResult.allowed) {
+          return ssrfBlocked(
+            ssrfResult.reason,
+            fileGuardHint(ssrfResult.reason, fileAllow),
+          );
+        }
       }
 
       // 终端通道：v0.1 不再 fallback（no next hop）。2FA 命中走 outcome=didnt

@@ -473,6 +473,10 @@ export class LoggedInChannel extends BrowseChannel {
         targetId,
         cdp_port: this.cdpPort,
       });
+      // BUG-07 决议 A⁺（§5.3 r1 ③ 第三穿透口）：自愈把选中页换成新建 about:blank
+      // tab——对 current-page 截图即空白页伪造。返回 true 前失效 current-page
+      // 会话（url-bearing 重试会经导航重建 lastNavigatedClient，零影响）。
+      this.invalidateCurrentPageSession();
       return true;
     } catch (e) {
       logger.warn({
@@ -526,6 +530,10 @@ export class LoggedInChannel extends BrowseChannel {
           pageId: sel?.pageId,
           cdp_port: this.cdpPort,
         });
+        // BUG-07 决议 A⁺（§5.3 r1 ① 自愈穿透口）：层 1 返回**原 client** 但选中页
+        // 已被换成新空白页——client 身份型守卫不可见。返回前失效 current-page
+        // 会话（url-bearing 调用会经导航重建 lastNavigatedClient，零影响）。
+        this.invalidateCurrentPageSession();
         return c; // 选中页已重置——原 client 即已解楔
       }
       logger.warn({
@@ -547,6 +555,9 @@ export class LoggedInChannel extends BrowseChannel {
       this.ownPageId = null;
       this.tabs.resetOwnPages();
       logger.info({ evt: "upstream_wedge_healed_respawn", cdp_port: this.cdpPort });
+      // BUG-07 决议 A⁺（§5.3 r1 ②）：respawn 换新 client = 新浏览器空白页——
+      // 同层 1 返回前失效 current-page 会话。
+      this.invalidateCurrentPageSession();
       return c2;
     } catch (e) {
       logger.warn({

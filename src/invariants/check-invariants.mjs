@@ -5223,9 +5223,11 @@ const assertions = [
       if (/network_include_bodies|network_timeout_ms/.test(consumedCode)) return false;
 
       // ----- (c) worked 出口接线（空省略）-----
+      // BUG-07 决议 A⁺（§5.2③）：computeIgnoredOptions 增第三参 mode
+      //（current_page 派生）——regex 容忍尾随参数（接线语义不变）。
       const singleBody = browseSrc.match(/private async browseSingle[\s\S]*?\n  \}/);
       if (!singleBody) return false;
-      if (!/computeIgnoredOptions\(action, options\)/.test(singleBody[0])) return false;
+      if (!/computeIgnoredOptions\(\s*action,\s*options[,)]/.test(singleBody[0])) return false;
       if (!/ignored\.length > 0 \? \{ ignored_options: ignored \}/.test(singleBody[0]))
         return false;
 
@@ -5470,6 +5472,192 @@ const assertions = [
         return false;
       if (!/LAUNCH_HARD_CAP_DEFAULT_MS = 86_400_000/.test(byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? ""))
         return false; // 单一真源常量（A-1）
+
+      return true;
+    },
+  },
+
+  // ============================================================
+  // BUG-07 决议 A⁺（doc/bugs/07 §5，2026-09-10 消费方台账 L-4）：
+  // 两条截图路径均必经重导航，状态敏感截图（CSS 动画 getAnimations().pause()
+  // 冻结 35% 中间帧取证）不可达。裁决：url 三处 schema 可选化——省略 +
+  // action=screenshot = current-page 模式（零导航直接截当前受管页）；有 url
+  // = 现状 NAV_FIRST 字节级不变；无活动会话显式报错（绝不静默新开/静默截
+  // about:blank 伪造状态）。
+  // 守（六面机械化，r1 修订后语义——#3 含 a-d 四重错误形状锚）：
+  //  INV-95  current-page 截图契约：
+  //    (1) schema↔description 同 commit：browseSchema/screenshotSchema url
+  //        .optional() 与三工具 description 的 current-page 声明共存（INV-92 族）
+  //    (2) dispatch 门源锚：current-page 分支不得调用 navigate handler
+  //        （NAV_FIRST 门形如 `url !== undefined && (NAV_FIRST_ACTIONS.has(...)`）
+  //    (3) 错误契约形状锚（r1 重写——双 grep 抓不住 throw→classify→unknown 违规）：
+  //        (a) early-return 合取锚：browseSingle 源内 outcome:"didnt" 与
+  //            no_active_session:current_page_screenshot 同一 return 对象字面量
+  //            内（≤12 行窗口）
+  //        (b) 负锚（禁 throw 形态）：该码字符串不得出现在任何 throw/new Error(
+  //            ±3 行内（全 src 扫）
+  //        (c) classify 兜底锚：classifyBrowseError 含 no_active_session →
+  //            didnt 规则且先于 upstream_wedge 规则（复合串截胡防护）
+  //        (d) 排除集兜底锚：NOT_FALLBACK_WORTHY_PATTERNS 含 no_active_session
+  //    (4) 通道钉定锚：tools/browse.ts current-page 分支 fallbacks: []（防
+  //        headless unknown 静默 fallback 截用户 Chrome 当前 tab）
+  //    (5) 自愈禁令锚（r1）：browseSingle dispatchAction catch 内 current-page
+  //        早退（url === undefined）在 healUpstreamWedge / recoverNoPageSelected
+  //        任何调用之前（indexOf 序）
+  //    (6) invalidation 锚（r1）：BrowseChannel.invalidateCurrentPageSession 置
+  //        lastNavigatedClient=null；LoggedInChannel heal 两 return 点（层 1
+  //        return c / 层 2 return c2）与 recoverNoPageSelected return true 路径
+  //        均在 return 前调用它（封「同 client 换页」穿透口）
+  {
+    id: "INV-95-current-page-screenshot-contract",
+    desc:
+      "BUG-07 决议 A⁺：url 省略 + action=screenshot = current-page 截图（零导航；有 url=NAV_FIRST 字节级不变）——schema↔description 同 commit；dispatch 门 url-definiteness；错误契约四重形状锚（early-return 合取 + 禁 throw ±3 行 + classify 兜底先于 upstream_wedge + isFallbackWorthy 排除集）；tools 层 fallbacks=[] 通道钉定；current-page 禁自愈重试（catch 内早退先于两钩子）；自愈换页三 return 点 invalidateCurrentPageSession",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+      const loggedInSrc = byPath(/^channels\/LoggedInChannel\.ts$/)?.text ?? "";
+      const browseToolSrc = byPath(/^tools\/browse\.ts$/)?.text ?? "";
+      const shotToolSrc = byPath(/^tools\/screenshot\.ts$/)?.text ?? "";
+      const descSrc = byPath(/^tools\/descriptions\.ts$/)?.text ?? "";
+      const outcomeSrc = byPath(/^fallback\/outcome\.ts$/)?.text ?? "";
+
+      // ----- (1) schema↔description 同 commit（INV-92 族） -----
+      if (!/url: z\.string\(\)\.url\(\)\.optional\(\)/.test(browseToolSrc)) return false;
+      if (!/url: z\.string\(\)\.url\(\)\.optional\(\)/.test(shotToolSrc)) return false;
+      const headlessDesc = descSrc.match(
+        /BROWSE_HEADLESS_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
+      );
+      if (!headlessDesc) return false;
+      if (!/CURRENT-PAGE SCREENSHOT \(BUG-07\)/.test(headlessDesc[0])) return false;
+      if (!/url \(str, optional for action=screenshot = current-page mode/.test(headlessDesc[0]))
+        return false;
+      const loggedInDesc = descSrc.match(
+        /BROWSE_LOGGED_IN_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
+      );
+      if (!loggedInDesc) return false;
+      if (!/current-page screenshot \(BUG-07/.test(loggedInDesc[0])) return false;
+      if (!loggedInDesc[0].includes("no_active_session:current_page_screenshot"))
+        return false;
+      const shotDesc = descSrc.match(
+        /SCREENSHOT_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
+      );
+      if (!shotDesc) return false;
+      if (!/CURRENT-PAGE MODE \(BUG-07\)/.test(shotDesc[0])) return false;
+
+      // ----- (2) dispatch 门源锚（url-definiteness 加法守卫） -----
+      if (
+        !/url !== undefined &&\s*\(\s*NAV_FIRST_ACTIONS\.has\(action\)/.test(browseSrc)
+      )
+        return false;
+      // CURRENT_PAGE_ACTIONS 顶级 const（NAV_FIRST house pattern 预留增项位）
+      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot"\]\)/.test(browseSrc))
+        return false;
+      // needsFreshPageNav 前置 undefined 守卫（防 undefined 走 !== "about:blank" 隐性边）
+      const freshFn = browseSrc.match(/private needsFreshPageNav\([\s\S]*?\n  \}/);
+      if (!freshFn) return false;
+      if (!/url !== undefined &&/.test(freshFn[0])) return false;
+
+      // ----- (3a) early-return 合取锚（browseSingle 内同一 return 对象字面量） -----
+      const singleBody = browseSrc.match(/private async browseSingle[\s\S]*?\n  \}/);
+      if (!singleBody) return false;
+      const codeIdxs = [...singleBody[0].matchAll(/no_active_session:current_page_screenshot/g)].map(
+        (m) => m.index,
+      );
+      if (codeIdxs.length === 0) return false;
+      const conj = codeIdxs.some((i) => {
+        const before = singleBody[0].slice(Math.max(0, i - 500), i);
+        const oIdx = before.lastIndexOf('outcome: "didnt"');
+        if (oIdx < 0) return false;
+        const linesBetween = before.slice(oIdx).split("\n").length - 1;
+        return linesBetween <= 12;
+      });
+      if (!conj) return false;
+
+      // ----- (3b) 负锚：该码不得出现在任何 throw/new Error( ±3 行内（全 src 扫） -----
+      for (const s of SRC) {
+        const lines = s.text.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          if (!lines[i].includes("no_active_session:current_page_screenshot")) continue;
+          for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 3); j++) {
+            if (/\bthrow\b/.test(lines[j]) || /new Error\(/.test(lines[j])) return false;
+          }
+        }
+      }
+
+      // ----- (3c) classify 兜底锚（先于 upstream_wedge——复合串截胡防护） -----
+      const classifyBody = browseSrc.match(/function classifyBrowseError[\s\S]*?\n\}/);
+      if (!classifyBody) return false;
+      const noSessIdx = classifyBody[0].indexOf('m.includes("no_active_session")');
+      if (noSessIdx < 0) return false;
+      if (!/url_required_for_action/.test(classifyBody[0].slice(noSessIdx, noSessIdx + 120)))
+        return false; // 同族同保（并联形态或邻近）
+      const wedgeIdx = classifyBody[0].indexOf('m.includes("upstream_wedge")');
+      if (wedgeIdx < 0 || noSessIdx > wedgeIdx) return false;
+
+      // ----- (3d) 排除集兜底锚 -----
+      const exclBlock = outcomeSrc.match(
+        /const NOT_FALLBACK_WORTHY_PATTERNS = \[[\s\S]*?\] as const;/,
+      );
+      if (!exclBlock) return false;
+      if (!/"no_active_session"/.test(exclBlock[0])) return false;
+      if (!/"url_required_for_action"/.test(exclBlock[0])) return false;
+
+      // ----- (4) 通道钉定锚（tools 层 current-page 请求 fallbacks=[]） -----
+      if (!/fallbacks: url === undefined \? \[\] : \["browse_logged_in"\]/.test(browseToolSrc))
+        return false;
+      // SSRF 跳过形态（url !== undefined 才 guardEntryUrl）
+      const handlerBlock = browseToolSrc.match(
+        /server\.tool\(\s*"browse_headless"[\s\S]*?\n  \);/,
+      );
+      if (!handlerBlock) return false;
+      if (!/if \(url !== undefined\) \{[\s\S]{0,200}guardEntryUrl\(url, ssrfConfig\)/.test(handlerBlock[0]))
+        return false;
+
+      // ----- (5) 自愈禁令锚（catch 内 current-page 早退先于两自愈钩子） -----
+      const singleCode = stripComments(singleBody[0]);
+      for (const hook of ["this.healUpstreamWedge(c)", "this.recoverNoPageSelected(c)"]) {
+        const hookIdx = singleCode.indexOf(hook);
+        if (hookIdx < 0) return false;
+        const before = singleCode.slice(Math.max(0, hookIdx - 500), hookIdx);
+        if (!/url === undefined\)[\s\S]{0,120}return noSessionResult\(\)/.test(before))
+          return false;
+      }
+
+      // ----- (6) invalidation 锚（BrowseChannel 方法 + LoggedIn 三 return 点） -----
+      if (!/protected invalidateCurrentPageSession\(\): void \{\s*this\.lastNavigatedClient = null;\s*\}/.test(browseSrc))
+        return false;
+      if (!/private lastNavigatedClient: McpClient \| null = null;/.test(browseSrc))
+        return false;
+      // 与 navSeenClients 同写点（dispatchAction 两处 add 邻近赋值）
+      const dispatchBody = browseSrc.match(/private async dispatchAction\([\s\S]*?\n  \}/);
+      if (!dispatchBody) return false;
+      const addIdxs = [...dispatchBody[0].matchAll(/this\.navSeenClients\.add\(c\);/g)].map(
+        (m) => m.index,
+      );
+      if (addIdxs.length !== 2) return false;
+      for (const i of addIdxs) {
+        const after = dispatchBody[0].slice(i, i + 200);
+        if (!/this\.lastNavigatedClient = c;/.test(after)) return false;
+      }
+      const healBody = loggedInSrc.match(
+        /protected override async healUpstreamWedge\([\s\S]*?\n  \}/,
+      );
+      if (!healBody) return false;
+      const l1Idx = healBody[0].indexOf("return c;");
+      const l2Idx = healBody[0].indexOf("return c2;");
+      if (l1Idx < 0 || l2Idx < 0) return false;
+      for (const retIdx of [l1Idx, l2Idx]) {
+        const before = healBody[0].slice(Math.max(0, retIdx - 200), retIdx);
+        if (!/this\.invalidateCurrentPageSession\(\);/.test(before)) return false;
+      }
+      const recoverBody = loggedInSrc.match(
+        /protected override async recoverNoPageSelected\([\s\S]*?\n  \}/,
+      );
+      if (!recoverBody) return false;
+      const trueIdx = recoverBody[0].indexOf("return true;");
+      if (trueIdx < 0) return false;
+      if (!/this\.invalidateCurrentPageSession\(\);/.test(recoverBody[0].slice(Math.max(0, trueIdx - 200), trueIdx)))
+        return false;
 
       return true;
     },

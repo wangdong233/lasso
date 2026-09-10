@@ -98,6 +98,10 @@ export function outcomeAfterCheck(
  *      · 404 / not_found
  *      · 403 / forbidden
  *      · needs_manual_2fa
+ *      · no_active_session / url_required_for_action（BUG-07 决议 A⁺ §5.3
+ *        belt-and-braces 之二：current-page 无会话与 url-required 同族——
+ *        「明确否信号误报成 unknown」；万一残余 throw 路径仍产出 unknown+该码，
+ *        立即返回原 result 保留 error/hint，不落 fallback_exhausted 吞噬形态）
  *  - 其他 unknown + error → true（transient：timeout / 429 / 5xx / DNS / ECONNREFUSED / network）
  *
  * v1.18.2（doc/governance/10 Y2）：nxdomain / enotfound 移出排除集——DNS 错在代理/TUN
@@ -110,6 +114,8 @@ const NOT_FALLBACK_WORTHY_PATTERNS = [
   "403",
   "forbidden",
   "needs_manual_2fa",
+  "no_active_session",
+  "url_required_for_action",
 ] as const;
 
 export function isFallbackWorthy(outcome: Outcome, error?: string): boolean {

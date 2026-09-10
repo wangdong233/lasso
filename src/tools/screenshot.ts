@@ -37,7 +37,12 @@ import { screenshotAnnotations } from "./annotations.js";
 // Schema（parse6 §3.2.2）
 // ============================================================
 export const screenshotSchema = {
-  url: z.string().url(),
+  // BUG-07 决议 A⁺（doc/bugs/07 §5.0/§5.2①）：url 可选化——省略 = 截同一
+  // headless 受管会话的**当前帧**（current-page 模式，零导航；本工具与
+  // browse_headless 经同一 HeadlessChannel 单例子进程，「当前页」两入口指向
+  // 同一页面）。禁 .default()（absent=undefined；有 url = 现状 NAV_FIRST
+  // 字节级不变）。
+  url: z.string().url().optional(),
   options: z
     .object({
       // 整页截图（透传 doScreenshot 的 opts.screenshot.full）
@@ -71,25 +76,30 @@ function payloadContent<T>(result: InteractResult<T>) {
  *  5. 返 InteractResult<ScreenshotResult>
  */
 export async function doScreenshotTool(
-  rawUrl: string,
+  rawUrl: string | undefined,
   opts: ScreenshotOptions,
   headless: HeadlessChannel,
   ssrfConfig: SsrfConfig,
 ): Promise<InteractResult<ScreenshotResult>> {
   // ---------- 1. SSRF 守门（与 browse_headless 同函数同 config） ----------
-  const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
-if (!ssrfResult.allowed) {
-    // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
-    // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
-    const d = ssrfDenial(ssrfResult.reason);
-    return {
-      outcome: d.outcome,
-      data: null,
-      served_by: "lasso.ssr_guard",
-      fallback_used: false,
-      retrieval_method: d.retrieval_method,
-      error: d.error,
-    };
+  // BUG-07 决议 A⁺（§5.4）：url 省略（current-page 模式）→ SSRF 整体跳过
+  //（无导航目标可守，空集守卫=形式主义）；无活动会话由 channel 显式报错
+  //（no_active_session:current_page_screenshot，不静默新开）。
+  if (rawUrl !== undefined) {
+    const ssrfResult = await ssrfGuard(rawUrl, ssrfConfig);
+    if (!ssrfResult.allowed) {
+      // v1.18.2（doc/governance/10 F1）：reason 二分——策略确定性拒 → didnt（不可重试）；
+      // DNS 环境瞬态（dns_failed/dns_empty，TUN 断网/DNS 抖动）→ unknown（可重试）。
+      const d = ssrfDenial(ssrfResult.reason);
+      return {
+        outcome: d.outcome,
+        data: null,
+        served_by: "lasso.ssr_guard",
+        fallback_used: false,
+        retrieval_method: d.retrieval_method,
+        error: d.error,
+      };
+    }
   }
 
   // ---------- 2. 透传 BrowseOptions 形状（与 browse.ts schema 对齐） ----------
@@ -112,11 +122,13 @@ if (!ssrfResult.allowed) {
   // ---------- 4. preview 解析：从 "screenshot saved to /tmp/...png" 抽 path ----------
   // doScreenshot 写盘后 preview = "screenshot saved to /tmp/lasso-screenshot-<uuid>.png"
   // 把 preview 提升为 data.path 字段（FetchResult 风格，便于 CC 直接读路径）
+  // BUG-07 A⁺：data.url 取 channel 回显（url-present ≡ rawUrl 逐字节；current-page
+  // 成功 = "current-page" 字面量——单一真源在 BrowseChannel，本层不重造字面量）。
   const screenshotResult: InteractResult<ScreenshotResult> = {
     outcome: result.outcome,
     data: result.data
       ? {
-          url: rawUrl,
+          url: result.data.url,
           path: extractScreenshotPath(result.data.preview),
           preview: result.data.preview,
           ...(result.data.state_id
@@ -128,6 +140,9 @@ if (!ssrfResult.allowed) {
     fallback_used: result.fallback_used,
     retrieval_method: result.retrieval_method,
     ...(result.error ? { error: result.error } : {}),
+    // BUG-07 A⁺（§5.3）：channel 拒绝/降级的 hint 原样透传（current-page 无会话
+    // 的下一步指引；additive 字段，channel 不填时 byte-identical）。
+    ...(result.hint ? { hint: result.hint } : {}),
   };
   return screenshotResult;
 }
@@ -165,7 +180,7 @@ export function registerScreenshotTool(
     screenshotSchema,
     screenshotAnnotations,
     async (args) => {
-      const url: string = args.url;
+      const url: string | undefined = args.url;
       // zod .default({}) 已注入所有默认值
       const opts: ScreenshotOptions = {
         full_page: args.options.full_page,
