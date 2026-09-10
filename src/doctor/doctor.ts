@@ -1013,8 +1013,17 @@ function nextStepTextForClassification(res: ChromeStatusResult): string {
       return `端口 ${port} 空闲（TCP 主动拒连）：可 \`lasso-mcp launch-chrome --port ${port}\``;
     case "lasso_launching":
       return `端口 ${port} 的 lasso Chrome 仍在慢启动宽限窗（台账记录 <60s；launch 时刻不代 kill——会误杀慢启动 Chrome）：等待 ≥60s 后重跑 doctor 或 \`lasso-mcp chrome-status --port ${port}\`；永不 kill（never_kill_user_asset）`;
-    case "lasso_live":
-      return `端口 ${port} 是 lasso 台账在案且健康的 Chrome（pid ${pid}，CDP 可达）：正常使用即可`;
+    case "lasso_live": {
+      // BUG-06 决议 B（doc/bugs/06）：超龄观察行——数据来自 chrome-status 单一真源
+      // （evidence.hard_cap_watch，attachHardCapWatch 命中才在场），doctor 纯渲染
+      // 不自算（既有 A4 分工不变）。12h 幽灵事故在 24h cap 下的新形态 = 持续 warn
+      // + 到顶自动收——「可发现可关闭」宪法闭环。
+      const w = res.evidence.hard_cap_watch;
+      const watchNote = w
+        ? `；硬顶超龄观察：无活动已达上限的 ${Math.round(w.ratio * 100)}%（${Math.round(w.idle_for_ms / 60_000)} 分钟 / ${Math.round(w.cap_ms / 3_600_000)}h 上限），预计 ${new Date(w.reap_at_epoch_ms).toISOString()} 无活动将自动回收——在用即续命（lasso browse 自动 / 外部消费者 \`touch ~/.cache/lasso/chrome-touch-${port}\`），用户本人随时可 \`lasso-mcp chrome-stop --port ${port}\``
+        : "";
+      return `端口 ${port} 是 lasso 台账在案且健康的 Chrome（pid ${pid}，CDP 可达）：正常使用即可${watchNote}`;
+    }
     case "ledger_zombie_collectible":
       return `端口 ${port} 被 lasso 台账在案的自家 Chrome（pid ${pid}，疑似 CDP 挂死；归属验证通过、非用户拥有、非慢启动）占用：先 \`lasso-mcp chrome-stop --zombie-gate --port ${port}\` 清僵尸（kill 时刻重估用户认领门），再 \`lasso-mcp launch-chrome --port ${port}\`；完整证据面跑 \`lasso-mcp chrome-status --port ${port}\``;
     case "ledger_user_owned":

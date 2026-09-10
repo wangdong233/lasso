@@ -167,6 +167,8 @@ lasso launch-chrome
 > v1.17.2 静默边界精修（真机六维实测，doc/governance/08-静默性全面审计）：`browse_logged_in` 连**你自己开的可见 Chrome**——操作面（navigate / click / fill / evaluate / screenshot / snapshot / wait / list / 关页）逐操作真机实测**零抢焦点、零新窗口**；lasso 在你的 Chrome 里自建一个**后台 tab** 干活（不激活、不抢焦点，会话结束自动关），**你的 tab 一律不被改写**（v1.17.1 及之前会把第一个 tab 的内容导走，已修复）。残余边界只有两条：你的 Chrome 本身不静音（lasso 不改写你的浏览器参数，浏览到自动播放页面会真出声——要静音自己启动时加 `--mute-audio`）；操作期间那个后台 tab 会「自认为有焦点」（浏览器调试协议的仿真，不影响你前台应用）。
 >
 > v1.18.5 外部消费闭环（doc/bugs/02）：① **CLI 显式拉起默认 `--idle-ms 0`**——手敲 `lasso launch-chrome` 起的 Chrome 不再被后台 server 的 idle reaper 60s 静默收割（此前外部 CDP 直连工具如 chrome-devtools-mcp 会被误杀）；显式配置 `LASSO_LAUNCH_IDLE_MS`（env / config.json）与 argv `--idle-ms` 仍最高优先，配了就有上述 v1.10 的「用完即关」。② **外部活动信号**：`touch ~/.cache/lasso/chrome-touch-<端口>` 的 mtime 即「刚用过」，reaper 三源取 max——外部消费者一行续命，无需 `--idle-ms 0` 也能共存于「用完即关」阈值下。③ 不需要常驻 Chrome（hidden 档冷启动实测 ~1.5s 内 CDP 可用）；一整段会话要用就 `--idle-ms 1800000`（半小时到点自动收）。
+>
+> 🔴 **BUG-06 语义修订（2026-09-10，doc/bugs/06——12h 幽灵常驻事故根治）**：`--idle-ms 0` / `LASSO_LAUNCH_IDLE_MS=0` 从「永不回收」改为「**无活动 24 小时硬顶回收**」（自最近活动起算——lasso browse 自动落盘 touch 或外部 `touch ~/.cache/lasso/chrome-touch-<端口>` 续命，在用永不触发；`LASSO_LAUNCH_HARD_CAP_MS` 可调/禁）。真·无限常驻 = `--idle-ms 0 --no-hard-cap` 双旗。渲染档 `LASSO_RENDER_IDLE_MS` 语义独立零变化。
 
 ---
 
@@ -316,7 +318,8 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_RENDER_IDLE_MS` | 渲染档 Chrome（`render-chrome --ensure` 拉起的确定性 headless 实例）空闲回收阈值；消费方用 `touch` 心跳文件续命（见 README 渲染档节） | `600000`（10 分钟） | 渲染会话密集可放宽；渲染档是无人值守资源，**不建议 0**（不回收=泄漏面） |
 | `LASSO_MCP_HANDSHAKE_TIMEOUT_MS` | 浏览器引擎子进程（chrome-devtools-mcp）冷启动握手预算；超时即树杀该次尝试并按退避重试 | `20000`（20 秒） | 网络极慢的首装环境若频繁报 `mcp_handshake_timeout` → 适当放宽（如 `60000`）。默认 20s 已覆盖实测首装极值 17.2s，一般不用动 |
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
-| `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 禁用（常驻到 `chrome-stop`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
+| `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 不做 idle 回收——但 **BUG-06 起仍受 24h 硬顶管辖**（见 `LASSO_LAUNCH_HARD_CAP_MS`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
+| `LASSO_LAUNCH_HARD_CAP_MS` | 日常档回收硬顶天花板（BUG-06 新增，2026-09-10）：`--idle-ms 0` 记录的兜底回收上限，自最近活动（touch 续命）起算 | `86400000`（24 小时） | 显式 `0` = 部署级禁用硬顶（真·无限常驻的部署面出口）；NaN/负数自动回退 24h。单次 launch 豁免用 CLI 双旗 `--idle-ms 0 --no-hard-cap`。渲染档 `LASSO_RENDER_IDLE_MS` 不受此键影响 |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |
 | `LASSO_CALLER_CAP_DEFAULT` | 单个 Claude Code 会话 60s 内最多调用 Lasso 工具的次数（自控防失控循环） | **不限制**（`Infinity`，v1.18.1 起） | 担心失控循环烧配额时显式设一个数（如 `120`）；计数照常记录（`admin` 可查），只是默认不再拦截 |
 | `ZHIPU_ENDPOINT` | ~~智谱端点覆盖~~ **已退役（v1.17）** | ——（不再被消费） | 无；历史配置静默忽略（与 `ZHIPU_API_KEY` 同批退役，`zhipu_keys_retired` 提示删除） |

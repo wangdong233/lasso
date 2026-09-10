@@ -73,6 +73,14 @@ export interface LaunchedChromeRecord {
    * chrome-stop。显式 chrome-hide 重武装时清除（双向可逆）。
    */
   userTakenAt?: number;
+  /**
+   * BUG-06 决议 A-6（doc/bugs/06，2026-09-10）：本次 launch 显式豁免硬顶
+   * （CLI `--no-hard-cap` 落盘——与 `--idle-ms 0` 双旗并给 = 真·无限常驻，
+   * kubectl `--grace-period=0 --force` 双意图先例）。readLedgerSync typeof 守卫
+   * `=== true` 才认（非法/缺省 → 无豁免 → 有顶，失效方向偏「有界」）。旧版本
+   * lasso 读新台账按既有前向兼容丢弃未知字段 → 降级为「有顶」，同样安全。
+   */
+  hardCapExempt?: true;
 }
 
 /**
@@ -87,6 +95,29 @@ export interface LaunchedChromeRecord {
  * 三方共用，避免 launcher 目录内循环 import。
  */
 export const CLI_LAUNCH_IDLE_DEFAULT_MS = 30 * 60 * 1000;
+
+/**
+ * BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：日常档 idle 回收硬顶天花板默认值
+ * （单一真源常量，24h）。
+ *
+ * 语义：`--idle-ms 0` / `LASSO_LAUNCH_IDLE_MS=0` 的「永不自收」从此带上硬顶——
+ * 自最近活动（lastUse 三源 max）起算 24h 无任何信号即兜底回收（12h 幽灵常驻
+ * 事故的产品宪法修复：「静默服务前提 = 可发现可关闭」，idleMs:0 把 hidden 档
+ * 唯一自动出口拆了）。真·无限 = `--idle-ms 0 --no-hard-cap` 双旗（决议 A-6）或
+ * 部署级 `LASSO_LAUNCH_HARD_CAP_MS=0`。
+ *
+ * 取值依据（外部惯例映射，决议 A-1）：browserless 全局顶 ≈ 典型会话 10×、
+ * GKE Autopilot ~600s ≈ 典型 30s grace 20×；lasso 24h = CLI 默认 30min 的 48×
+ * （红线把「不误杀合法长任务」权重置于「快收」之上——误杀代价 = 会话数据损失，
+ * 不收代价 = 可观测 + 手动收）。
+ *
+ * 消费方（r1 修订后 chrome-idle-reaper **不再**消费本常量——共享收割函数
+ * hardCapMs 缺省 0 档位无关）：config.ts parseLaunchHardCapMs 缺省 /
+ * desired-hide-enforcer startEnforcerIdleReaper 包装缺省 / chrome-status·doctor
+ * 的 hard_cap_watch 折算。放本文件（chrome-ledger 只 import node:*，config.ts
+ * 反向 import 无环；与 CLI_LAUNCH_IDLE_DEFAULT_MS 同位同理由：四方共用零环）。
+ */
+export const LAUNCH_HARD_CAP_DEFAULT_MS = 86_400_000;
 
 /**
  * BUG-04 决议 A1 R3（doc/bugs/04 §4，2026-09-08）：慢启动守卫宽限窗（单一真源）。
@@ -190,6 +221,9 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
         typeof r.ownerPid === "number" && Number.isInteger(r.ownerPid) ? r.ownerPid : undefined,
       userTakenAt:
         typeof r.userTakenAt === "number" && Number.isFinite(r.userTakenAt) ? r.userTakenAt : undefined,
+      // BUG-06 A-6：硬顶豁免 typeof 守卫（=== true 才认；非法/缺省 → undefined =
+      // 有顶——失效方向偏「有界」，与 ownerKind/userTakenAt 降级哲学同款）
+      hardCapExempt: r.hardCapExempt === true ? true : undefined,
     });
   }
   return out;

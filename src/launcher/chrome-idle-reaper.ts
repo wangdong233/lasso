@@ -24,8 +24,15 @@
  * 续命，第二消费者有一等信号通道而不是绕过收割）。lastUse = max(launchedAt,
  * touchMap, touch 文件 mtime)——三源取 max，外部信号只会延后收割、永不提前。
  *
- * 只活在 server 进程（index.ts 装配）——CLI 单独 launch-chrome 无 reaper，chrome-stop
- * 仍是显式出口（诚实边界 parse18 §5.1）。
+ * BUG-06 硬顶天花板（doc/bugs/06，2026-09-10，r1 修订后语义）：`--idle-ms 0`
+ * 从「永不自收」改为「无活动 24h 硬顶回收」（cap 由装配层传入，共享函数缺省 0
+ * 档位无关）；真·无限 = `--idle-ms 0 --no-hard-cap` 双旗或部署级
+ * `LASSO_LAUNCH_HARD_CAP_MS=0`。touch 文件经决议 A-7 升级为**唯一跨进程活动
+ * 真源**（index.ts onChromeUse 落盘 touchChromePort——write 侧在 channel 层，
+ * reaper 仍是纯读方，R-INT-07 单写多读形态保持）。
+ *
+ * 只活在 server 进程（index.ts 装配）+ hide-enforcer 执守第二职责（A1）+
+ * render-guardian（渲染档宿主，cap 恒 no-op）——chrome-stop 仍是显式出口。
  *
  * INV-64 合规：只 import node:* 内置 + 同目录 chrome-ledger.js / chrome-stop.js /
  * chrome-touch.js / chrome-hide.js。
@@ -54,6 +61,21 @@ export interface ChromeIdleReaperOptions {
   intervalMs?: number;
   /** 全局默认 idle 阈值 ms（= config.launchIdleMs；≤0 时仅当 autoHide 开启才运行）。 */
   defaultIdleMs: number;
+  /**
+   * BUG-06 决议 A-2/A-4（doc/bugs/06，2026-09-10）：硬顶天花板 ms。
+   * **缺省 = 0（关）——共享收割函数档位无关**（r1 反转原案：缺省 24h 会令
+   * render guardian 装配（不传 cap）从「idle opt-out 立即自退」变为「render
+   * 记录在册期间滞留的空转进程」，打红 render-guardian.spec 既有 null 钉子、
+   * 令「渲染档零变化」承诺为假）。24h 策略缺省由两个日常档装配层各自拥有：
+   * config.parseLaunchHardCapMs（index.ts server 装配 / hide-enforcer 路由传入）
+   * + startEnforcerIdleReaper 包装缺省（INV-94 ⑥ 钉死两装配点必传——防未来
+   * 装配点漏传静默回到无顶形态）。
+   * 语义（cap > 0 时，仅日常档非豁免记录）：
+   *   effectiveMs = idleMs <= 0 ? hardCapMs : min(idleMs, hardCapMs)
+   * （ZooKeeper 式夹紧）；计时基 = lastUse 三源 max——touch 活跃永不触发硬顶
+   * （「在用永不杀」红线机械化，决议 A-7 touch 文件为唯一跨进程活动真源）。
+   */
+  hardCapMs?: number;
   /** 装配时已知的活动端口（= config.cdpPort；启动即 touch 一次给宽限）。 */
   touchPorts?: Set<number>;
   /**
@@ -145,10 +167,16 @@ async function defaultTabUrlsFn(port: number): Promise<string[]> {
  * 启动台账 Chrome idle reaper。
  *
  * 每 tick（单条记录，parse18 §2.3）：
- *  1. rec.idleMs ?? defaultIdleMs ≤ 0 → 跳过（record 级 0=禁用；全局 0 调用方不启动）
- *  2. lastUse = max(rec.launchedAt, touchMap.get(rec.port) ?? 0)
- *  3. now - lastUse > idleMs → await stopFn({port: rec.port})
- *  4. 单条 stop 抛错 → logFn warn 继续（reaper 不因一条记录死）
+ *  1. visible / userTakenAt 记录 → 跳过（豁免两道 continue——BUG-06 A-5 顺序锚）
+ *  2. lastUse = max(rec.launchedAt, touchMap.get(rec.port) ?? 0, touch 文件 mtime)
+ *  3. idleMs = rec.idleMs ?? defaultIdleMs；BUG-06 A-2 硬顶：
+ *     cap>0 且非 render 且非 hardCapExempt 时 effectiveMs =
+ *     idleMs<=0 ? cap : min(idleMs, cap)（ZooKeeper 式夹紧；touch 活跃永不触发）
+ *  4. effectiveMs ≤ 0 → 跳过（record 级 0=禁用且无 cap；全局 0 调用方可能仍以
+ *     cap-only 模式启动，见返回值注）
+ *  5. now - lastUse > effectiveMs → await stopFn({port: rec.port})（bound 字段
+ *     标注 idle / hard_cap 触发源）
+ *  6. 单条 stop 抛错 → logFn warn 继续（reaper 不因一条记录死）
  *
  * C2（v1.18，doc/governance/09 D-2）：autoHideAfterLogin（opt-in 默认 off）时，visible 记录
  * 在「登录墙观测到→消失→延迟窗过→agent 无近期活动」四重护栏全过后续走
@@ -156,8 +184,10 @@ async function defaultTabUrlsFn(port: number): Promise<string[]> {
  * （kill 豁免语义不动）。visible 记录永不进 stopFn（N4 红线）。
  *
  * @returns ChromeIdleReaper（timer unref 不阻退出）；defaultIdleMs ≤ 0 且
- *          autoHideAfterLogin 关闭 → null（不启 timer；index.ts 侧配
- *          chrome_idle_reaper_disabled 日志）。
+ *          autoHideAfterLogin 关闭且 hardCapMs ≤ 0 → null（不启 timer；index.ts
+ *          侧配 chrome_idle_reaper_disabled 日志）。BUG-06 A-4：defaultIdleMs ≤ 0
+ *          但 hardCapMs > 0 → **cap-only 模式**（仅硬顶兜底——D2：全局 env
+ *          LASSO_LAUNCH_IDLE_MS=0 不再连硬顶一起拆）。
  */
 export function startChromeIdleReaper(
   opts: ChromeIdleReaperOptions,
@@ -166,9 +196,14 @@ export function startChromeIdleReaper(
   const defaultIdleMs = opts.defaultIdleMs;
   const autoHideAfterLogin = opts.autoHideAfterLogin === true;
   const autoHideDelayMs = opts.autoHideDelayMs ?? AUTO_HIDE_AFTER_LOGIN_DELAY_MS;
+  // BUG-06 决议 A-2：硬顶缺省 0（关）——共享函数档位无关（见 opts.hardCapMs 注）。
+  const hardCapMs = opts.hardCapMs ?? 0;
   // 0=禁用（parse18 §2.4）——但 C2 autoHide 开启时 reaper 仍需运行（visible 记录
-  // 不受 defaultIdleMs 影响，见 tick 内 per-record idleMs<=0 跳过）
-  if (defaultIdleMs <= 0 && !autoHideAfterLogin) return null;
+  // 不受 defaultIdleMs 影响，见 tick 内 per-record idleMs<=0 跳过）。
+  // BUG-06 决议 A-4（D2）：cap>0 时 idle=0 的 reaper 以「仅硬顶」模式运行——
+  // 全局 env LASSO_LAUNCH_IDLE_MS=0 只拆 idle 收割，不再连硬顶兜底一起拆
+  // （idleMs>0 记录照旧按 min(idleMs,cap) 收；idleMs<=0 记录按 cap 收）。
+  if (defaultIdleMs <= 0 && !autoHideAfterLogin && hardCapMs <= 0) return null;
   const readLedgerFn = opts.readLedgerFn ?? readLedgerSync;
   const nowFn = opts.nowFn ?? (() => Date.now());
   const logFn = opts.logFn ?? (() => {});
@@ -237,16 +272,36 @@ export function startChromeIdleReaper(
       // idle 收割禁用（窗口在用户面前被关 = F4 倒挂修复面）；唯一关闭出口 = 用户
       // 自己关或显式 chrome-stop。台账 launchMode 不变（chrome-hide 可重武装清此标记）。
       if (rec.userTakenAt !== undefined) continue;
-      const idleMs = rec.idleMs ?? defaultIdleMs;
-      if (idleMs <= 0) continue; // record 级禁用（parse18 §2.5 per-launch 覆盖）
       // bug02（v1.18.5）：三源取 max——touchMap（lasso browse）/ 外部 touch 文件
       // mtime（第二消费者信号）/ launchedAt（兜底）。外部信号只会延后收割、永不提前。
+      // BUG-06 决议 A-2：lastUse 计算上移到 idleMs<=0 短路之前——硬顶的计时基
+      // 与 idle 收割同源（A-7：touch 文件升级唯一跨进程活动真源，lasso browse
+      // 落盘 + 外部消费者 shell touch + launch 自举 + 渲染档心跳四路同文件）。
       const lastUse = Math.max(
         rec.launchedAt,
         touchMap.get(rec.port) ?? 0,
         touchStatFn(rec.port) ?? 0,
       );
-      if (now - lastUse <= idleMs) continue;
+      const idleMs = rec.idleMs ?? defaultIdleMs;
+      // BUG-06 决议 A-2/A-5（doc/bugs/06）：硬顶天花板谓词——**结构性位于
+      // visible / userTakenAt 两道 continue 之后**（豁免语义字节级不变：用户拥有
+      // 记录永不到达此处；INV-94 ①/④ 顺序锚）+ render 门（渲染档
+      // LASSO_RENDER_IDLE_MS 语义独立，零交叉污染）+ hardCapExempt 门（A-6
+      // --no-hard-cap 双意图豁免）。
+      const capApplies =
+        hardCapMs > 0 &&
+        rec.launchMode !== "render" &&
+        rec.hardCapExempt !== true;
+      const effectiveMs = !capApplies
+        ? idleMs // 旧语义原样（0=无限；cap 关闭/豁免/render 档零变化）
+        : idleMs <= 0
+          ? hardCapMs // 0 → 硬顶兜底（本事故根治点）
+          : Math.min(idleMs, hardCapMs); // ZooKeeper 式夹紧
+      if (effectiveMs <= 0) continue; // record 级禁用 + 无 cap（parse18 §2.5 per-launch 覆盖）
+      if (now - lastUse <= effectiveMs) continue;
+      // 审计字段（决议 A-2）：区分本次收割由谁触发（idle 到期 / 硬顶兜底或夹紧）
+      const bound: "idle" | "hard_cap" =
+        capApplies && (idleMs <= 0 || idleMs > hardCapMs) ? "hard_cap" : "idle";
       try {
         await stopFn({ port: rec.port });
         logFn({
@@ -254,6 +309,8 @@ export function startChromeIdleReaper(
           port: rec.port,
           pid: rec.pid,
           idle_ms: idleMs,
+          bound,
+          hard_cap_ms: hardCapMs,
           idle_for_ms: now - lastUse,
         });
       } catch (e) {

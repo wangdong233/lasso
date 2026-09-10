@@ -701,6 +701,48 @@ describe("launchChrome —— launchMode 分档（parse18 §3 机制二）", () 
     expect(parseLaunchChromeArgs(["--mode", "visible"]).launchMode).toBe("visible");
   });
 
+  it("17b. BUG-06 A-6：--no-hard-cap 解析为 hardCapExempt:true + 记账 roundtrip（双意图旗落台账）", async () => {
+    // 解析层：无参布尔旗
+    const exempt = parseLaunchChromeArgs(["--idle-ms", "0", "--no-hard-cap"]);
+    expect(exempt.idleMs).toBe(0);
+    expect(exempt.hardCapExempt).toBe(true);
+    // 不带旗 → 无豁免（缺省有顶——失效方向偏有界）
+    const plain = parseLaunchChromeArgs(["--idle-ms", "0"]);
+    expect(plain.hardCapExempt).toBeUndefined();
+    // 记账 roundtrip：launchChrome 落盘 hardCapExempt → readLedgerSync 读回 true
+    const mockSpawn = makeMockSpawn(13580);
+    await launchChrome({
+      platform: "mac",
+      port: 9556,
+      launchMode: "hidden",
+      idleMs: 0,
+      hardCapExempt: true,
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const { readLedgerSync } = await import("../../src/launcher/chrome-ledger.js");
+    const rec = readLedgerSync().find((r) => r.port === 9556);
+    expect(rec).toBeDefined();
+    expect(rec!.idleMs).toBe(0);
+    expect(rec!.hardCapExempt).toBe(true);
+    // 对照：不带旗的 idleMs=0 记录无豁免字段（受 24h 硬顶管辖的形态）
+    const mockSpawn2 = makeMockSpawn(13581);
+    await launchChrome({
+      platform: "mac",
+      port: 9557,
+      launchMode: "hidden",
+      idleMs: 0,
+      probeExists: makeMockProbe(existing()),
+      spawnFn: mockSpawn2.spawnFn,
+      ...FAST_PROBE,
+      ...makeMockFetchSafe(),
+    });
+    const rec2 = readLedgerSync().find((r) => r.port === 9557);
+    expect(rec2!.hardCapExempt).toBeUndefined();
+  });
+
   it("v1.10：hidden 档成功路径触发隐藏保险丝（F1 起立即执行；非 mac hideFn no-op 由 chrome-hide.spec 覆盖）", async () => {
     const mockSpawn = makeMockSpawn(24680);
     const hideCalls: Array<number | undefined> = [];

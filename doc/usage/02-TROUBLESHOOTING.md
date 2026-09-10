@@ -391,9 +391,15 @@ v1.18.5（doc/bugs/02 隐藏洞）起执守与 server 解耦：
 touch ~/.cache/lasso/chrome-touch-9223   # 外部 CDP 消费者干活前后 touch 一下即可
 ```
 
-旧缓解（仍然有效，用于 record 级精确控制）：
+旧缓解（record 级精确控制；**BUG-06 起语义修订**，2026-09-10，doc/bugs/06）：
 
 ```bash
-lasso launch-chrome --port 9223 --idle-ms 0   # record 级：仅这条 Chrome 永不收割（推荐）
-# 或全局：export LASSO_LAUNCH_IDLE_MS=0（影响所有 launched Chrome，粒度粗）
+# 推荐（bug02 §9.1 session 配方）：长会话用有限阈值，到点自动收
+lasso launch-chrome --port 9223 --idle-ms 1800000
+# record 级不自收：仅这条 Chrome 不做 idle 回收——但无活动 24h 硬顶兜底回收
+lasso launch-chrome --port 9223 --idle-ms 0
+# 真·无限常驻（双意图旗，kubectl --grace-period=0 --force 先例）：
+lasso launch-chrome --port 9223 --idle-ms 0 --no-hard-cap
+# 或全局：export LASSO_LAUNCH_IDLE_MS=0（影响所有 launched Chrome，粒度粗；
+# 硬顶可用 LASSO_LAUNCH_HARD_CAP_MS 调/禁（0=部署级禁用））
 ```

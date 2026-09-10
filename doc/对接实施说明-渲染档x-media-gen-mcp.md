@@ -151,3 +151,7 @@ await b.close();
 
 ---
 *【2026-09-01 补充】本文含同日二次审校补充(§一.1 字段/退出码/可执行文件解析、§一.2 touch 路径勘误+heartbeat 周期、§一.4 旗标导出法、§一.5 attach 集成契约含 close() 陷阱、§二阶段 2d 三态表+阶段 3 裁决改写、§三边界 7-9、§四精确落点、§五收口),依据 = 双仓现码(media-gen-mcp HEAD 2311f33:browser-pool.ts/render-selfcheck.ts/render-watchdog.mjs;lasso 现码:chrome-ledger.ts/chrome-touch.ts/chrome-stop.ts/chrome-idle-reaper.ts/launch-chrome.ts/CLI_USAGE)。*
+
+---
+
+> **勘误后记（2026-09-10，BUG-06）**：本文表格第 9 行「日常档 CLI 默认 `--idle-ms 0`（不回收）」为 v1.18.5-v1.20 历史语义——v1.21.0 起 CLI 默认已为 30min；BUG-06（[doc/bugs/06](bugs/06-2026-09-10-日常档idle0幽灵常驻-硬顶与配方治理决议.md)）起显式 `--idle-ms 0` 亦带 24h 硬顶（真·无限须 `--idle-ms 0 --no-hard-cap`）。三套 idle 归属不同生命周期勿互抄的结论不变；渲染档两套（10min / 自管池）零变化。

@@ -176,6 +176,10 @@ import {
 // BUG-03 决议 A1（doc/bugs/03）：CLI 显式拉起的默认 idle 单一真源（30min——
 // 「有活动就活，无消费者到期自动收」；显式 --idle-ms 0 / env / config 仍最高优先）
 import { CLI_LAUNCH_IDLE_DEFAULT_MS } from "./launcher/chrome-ledger.js";
+// BUG-06 决议 A-7（doc/bugs/06，r1）：touch 文件升级唯一跨进程活动真源——
+// onChromeUse 落盘 touchChromePort（browse 活动对执守收割宿主可见；外部消费者
+// 契约不变，照旧 shell touch 同一文件）
+import { touchChromePort } from "./launcher/chrome-touch.js";
 // v1.10（parse18 §2.6 机制一）：台账 Chrome idle reaper（15s 周期；kill 100% 经 chrome-stop）
 import { startChromeIdleReaper, type ChromeIdleReaper } from "./launcher/chrome-idle-reaper.js";
 // P27（v1.18.3）：desiredHidden 粘滞复隐看门狗（chrome-hide 记账 → 每 1.5s 压回任意
@@ -487,14 +491,18 @@ async function runMcpServer(): Promise<void> {
   // 与 zombie reaper 分工：zombie 管 procs（MCP 树，HEADLESS_IDLE_MS）；本 reaper
   // 管 ledger（detached Chrome，LAUNCH_IDLE_MS 默认 60s）；致死原语 100% 复用
   // chrome-stop（探活→ps 归属验证→SIGTERM→树杀→删账；零新 kill 路径）。
-  // 0 = 禁用（chrome_idle_reaper_disabled；台账 Chrome 常驻到 chrome-stop / 停机）。
+  // BUG-06 决议 A-4（doc/bugs/06，2026-09-10）：装配层显式传 hardCapMs（INV-94 ⑥
+  // 失顶防护钉——缺省不传 = 共享函数 0 = 无顶）。idle 关闭 + autoHide 关闭 +
+  // cap>0 → cap-only 模式（idle=0 记录仍有 24h 硬顶兜底，D2）；三关全关才整体
+  // 禁用（chrome_idle_reaper_disabled）。
   let chromeReaper: ChromeIdleReaper | null = null;
   // C2（v1.18，doc/governance/09 D-2）：autoHideAfterLogin 开启时 reaper 也要跑（visible 记录
   // 的「登录完成→自动 hide」由 reaper tick 驱动，与 idle 收割同一调度器——不建
   // 第二套 timer）。idle 关闭 + autoHide 关闭才整体禁用。
-  if (config.launchIdleMs > 0 || config.autoHideAfterLogin) {
+  if (config.launchIdleMs > 0 || config.autoHideAfterLogin || config.launchHardCapMs > 0) {
     chromeReaper = startChromeIdleReaper({
       defaultIdleMs: config.launchIdleMs,
+      hardCapMs: config.launchHardCapMs,
       touchPorts: new Set([config.cdpPort]),
       autoHideAfterLogin: config.autoHideAfterLogin,
       autoHideDelayMs: config.autoHideAfterLoginDelayMs,
@@ -507,11 +515,19 @@ async function runMcpServer(): Promise<void> {
         note: "ledger visible Chrome auto-hides after login wall clears + delay (opt-in LASSO_AUTO_HIDE_AFTER_LOGIN; reversible via chrome-show)",
       });
     }
+    // BUG-06 A-4：cap-only 形态可观测（idle=0 + cap>0——仅硬顶兜底在跑）
+    if (config.launchIdleMs <= 0 && !config.autoHideAfterLogin) {
+      logger.info({
+        evt: "chrome_idle_reaper_cap_only",
+        hard_cap_ms: config.launchHardCapMs,
+        note: "LASSO_LAUNCH_IDLE_MS=0 — idle reaping disabled, hard-cap ceiling still enforces (idle-0 records reaped after cap with no activity; touch keeps alive)",
+      });
+    }
   } else {
     logger.info({
       evt: "chrome_idle_reaper_disabled",
       idle_ms: 0,
-      note: "LASSO_LAUNCH_IDLE_MS=0 — launched Chrome stays resident until chrome-stop / server exit",
+      note: "LASSO_LAUNCH_IDLE_MS=0 + LASSO_LAUNCH_HARD_CAP_MS=0 — launched Chrome stays resident until chrome-stop / server exit",
     });
   }
 
@@ -537,13 +553,23 @@ async function runMcpServer(): Promise<void> {
   // v0.8（parse9 §3.2）：LoggedInChannel 注入 ProfileRegistry + CookieStore 工厂
   // v1.10（parse18 §2.6）：onChromeUse 回调——每次 browse 经 getMcpClient 打点
   // reaper touch(cdpPort)（活动源与 browse 频度天然同步；闭包 over chromeReaper）。
+  // BUG-06 决议 A-7（doc/bugs/06 r1，否定轮 N1 修复）：追加落盘 touchChromePort
+  // ——touchMap 是 reaper 实例私有进程内存态，执守收割宿主（双宿主并存为常态）
+  // 不可见；browse 活动必须落 touch 文件才对执守可见（「touch 活跃永不杀」红线
+  // 机械化封跨进程盲区；顺手封 idleMs>0 双宿主既有 30min 误杀盲区）。不 gated
+  // on chromeReaper 非空——server 侧 reaper 整体关闭时，browse 落盘仍对可能在
+  // 世的执守宿主续命。fire-and-forget：touchChromePort best-effort 全内捕获
+  // 永不抛，.catch 仅防御性对称（R-INT-07 形态保持：reaper 读方，channel 层写方）。
   const logged_in = new LoggedInChannel(
     subproc,
     config.cdpPort,
     profileRegistry,
     cookieStoreFactory,
     undefined,
-    () => chromeReaper?.touch(config.cdpPort),
+    () => {
+      chromeReaper?.touch(config.cdpPort);
+      void touchChromePort(config.cdpPort, (p) => logger.info(p)).catch(() => {});
+    },
   );
   // v1.9（parse17 §4.4 机制三）：idle 回收 logged_in spec 前 hook —— 机制一回收
   // logged_in 的 mcp 子进程前先恢复用户 tab 列表（「浏览器用完收尾」完整语义）。
@@ -1460,13 +1486,18 @@ const CLI_USAGE = [
   "  lasso-mcp config <init|path>                 Create / locate ~/.lasso/config.json",
   "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
   "                                               [--mode hidden|visible|headless]",
-  "                                               [--idle-ms N] (headless: unattended-only;",
+  "                                               [--idle-ms N] [--no-hard-cap]",
+  "                                               (headless: unattended-only;",
   "                                               still absorbs Dock activation on macOS;",
   "                                               no chrome-show login flow)",
   "                                               CLI launches default to --idle-ms 1800000 = 30min",
   "                                               auto-reap; external CDP consumers stay alive while",
   "                                               in use: `touch ~/.cache/lasso/chrome-touch-<port>`",
-  "                                               to keep alive; explicit --idle-ms 0 = never reap)",
+  "                                               to keep alive; explicit --idle-ms 0 = no idle reap,",
+  "                                               but a 24h no-activity hard cap still applies",
+  "                                               (BUG-06; LASSO_LAUNCH_HARD_CAP_MS overrides);",
+  "                                               truly never reap = `--idle-ms 0 --no-hard-cap`,",
+  "                                               the two-flag deliberate form)",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
   "                                               on-disk ledger (pid ownership verified via cmdline;",
   "                                               --modes hidden|visible|render|headless filters",
@@ -1620,9 +1651,15 @@ async function main(): Promise<void> {
   // chrome-hide / launch-chrome hidden 自动拉起，用户无需手跑；手跑幂等）。
   // BUG-03 A1：执守双职责（+hidden 档 idle 收割）——收割阈值传 config 层
   //（显式 env/config 0 = 用户裁决禁用收割，执守只保留粘滞复隐）。
+  // BUG-06 决议 A-4（doc/bugs/06）：hardCapMs 必经此透传——部署级 env
+  // LASSO_LAUNCH_HARD_CAP_MS=0 只有经 enforcerCfg 才能到达执守宿主（包装层常量
+  // 缺省会吞掉 env 覆盖；INV-94 ⑥ 失顶防护钉）。
   if (process.argv[2] === "hide-enforcer") {
     const enforcerCfg = loadConfig({ runId: "hide-enforcer-cli" });
-    await runHideEnforcerCli({ defaultIdleMs: enforcerCfg.launchIdleMs });
+    await runHideEnforcerCli({
+      defaultIdleMs: enforcerCfg.launchIdleMs,
+      hardCapMs: enforcerCfg.launchHardCapMs,
+    });
     return;
   }
   // v1.19（渲染档设计决议 3.6/3.7/3.9）：`lasso render-chrome --ensure|--status|--stop|doctor`

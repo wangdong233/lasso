@@ -299,6 +299,32 @@ describe("render 台账三值（渲染档设计决议 3.1）", () => {
   });
 });
 
+describe("hardCapExempt 台账字段（BUG-06 决议 A-6，doc/bugs/06）", () => {
+  it("hardCapExempt 写读往返：--no-hard-cap 落盘 true → 读回 true", async () => {
+    await recordLaunch(
+      makeRec({ port: 9228, idleMs: 0, hardCapExempt: true }),
+    );
+    const rec = readLedgerSync().find((r) => r.port === 9228);
+    expect(rec!.hardCapExempt).toBe(true);
+  });
+
+  it("非法/缺省 hardCapExempt 降级 undefined（=== true 才认——失效方向偏有界）", async () => {
+    await fs.writeFile(
+      ledgerPath,
+      JSON.stringify([
+        { port: 9229, pid: 1, profileDir: "/x", launchedAt: 1, status: "ready", hardCapExempt: "yes" },
+        { port: 9230, pid: 2, profileDir: "/x", launchedAt: 1, status: "ready", hardCapExempt: 1 },
+        { port: 9231, pid: 3, profileDir: "/x", launchedAt: 1, status: "ready" },
+      ]),
+      "utf8",
+    );
+    const ledger = readLedgerSync();
+    expect(ledger.find((r) => r.port === 9229)!.hardCapExempt).toBeUndefined();
+    expect(ledger.find((r) => r.port === 9230)!.hardCapExempt).toBeUndefined();
+    expect(ledger.find((r) => r.port === 9231)!.hardCapExempt).toBeUndefined();
+  });
+});
+
 describe("chrome-stop render 收割（渲染档设计决议 3.4/3.5）", () => {
   /** 建 render 记录 + 真实临时 profile 目录（rmSync 真实断言用）。 */
   async function makeRenderRec(overrides: Partial<LaunchedChromeRecord> = {}): Promise<string> {

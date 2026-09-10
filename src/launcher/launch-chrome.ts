@@ -131,6 +131,13 @@ export interface LaunchChromeOptions {
   /** v1.10（parse18 §2.5）：per-launch idle 覆盖（落台账；reaper 按记录判定）。 */
   idleMs?: number;
   /**
+   * BUG-06 决议 A-6（doc/bugs/06，2026-09-10）：本次 launch 豁免硬顶天花板
+   * （CLI `--no-hard-cap` 落台账 hardCapExempt:true）。单旗无意义（cap 只约束
+   * idleMs<=0 / 超 cap 记录）；与 `--idle-ms 0` 双旗并给 = 真·无限常驻
+   * （kubectl `--grace-period=0 --force` 双意图先例——毁损级例外必须双重意图）。
+   */
+  hardCapExempt?: true;
+  /**
    * BUG-03 决议 A1（doc/bugs/03 §4 A1）：拉起者身份（落台账 ownerKind/ownerPid——
    * 停机不连坐的归属主键）。缺省 "cli"（launchChrome 现网唯一在世入口 =
    * runLaunchChromeCli 短命进程，spawn 后即 process.exit 且不注册 exit 收割钩子，
@@ -668,9 +675,11 @@ export async function launchChrome(
     };
   }
   // BUG-03 A1：归属字段（每次 recordLaunch 共用；见 LaunchChromeOptions.ownerKind 注）
+  // BUG-06 A6：硬顶豁免（--no-hard-cap 双意图旗；typeof 守卫语义在 readLedgerSync）
   const ownerRec = {
     ownerKind: opts.ownerKind ?? "cli",
     ownerPid: process.pid,
+    ...(opts.hardCapExempt === true ? { hardCapExempt: true as const } : {}),
   };
   if (primary.outcome === "ok") {
     // v1.9（parse17 §3.3 机制二）：ok=true 返回前落盘台账（chrome-stop /
@@ -794,6 +803,8 @@ export async function launchChrome(
  *   lasso launch-chrome --mode hidden            # 0 窗口零打扰档（默认）
  *   lasso launch-chrome --mode visible           # v1.9 可见行为
  *   lasso launch-chrome --idle-ms 3600000        # 本次 launch 的 idle 覆盖（1h）
+ *   lasso launch-chrome --idle-ms 0 --no-hard-cap # 真·无限常驻（双意图旗；单 --idle-ms 0
+ *                                                 #  = 无活动 24h 硬顶回收，BUG-06）
  *   lasso launch-chrome --incognito              # 加 --incognito 参数
  *   lasso launch-chrome --help / -h              # 打印 usage + exit 0（不 spawn Chrome）
  *
@@ -883,6 +894,8 @@ export function mergeLaunchDefaults(
  *  - --profile <dir>     ：user-data-dir
  *  - --mode <hidden|visible>：启动档（v1.10；非法值忽略走 config/内置默认）
  *  - --idle-ms <N>       ：per-launch idle 覆盖（v1.10；负数忽略）
+ *  - --no-hard-cap       ：豁免硬顶天花板（BUG-06 A-6 无参布尔旗；与 --idle-ms 0
+ *                          双旗并给 = 真·无限常驻——单旗 idle 0 = 24h 硬顶兜底）
  *  - --incognito         ：等价 --extra-args=--incognito 的快捷 flag
  *  - --extra-args <args> ：附加 Chrome 命令行参数（逗号分隔，如 "--incognito,--start-maximized"）
  *  - --help / -h         ：解析层忽略；runLaunchChromeCli 入口短路（打印 usage + exit 0，
@@ -914,6 +927,9 @@ export function parseLaunchChromeArgs(
       const n = v ? parseInt(v, 10) : NaN;
       if (!Number.isNaN(n) && n >= 0) opts.idleMs = n;
       i++;
+    } else if (a === "--no-hard-cap") {
+      // BUG-06 决议 A-6：硬顶豁免布尔旗（无参；与 --idle-ms 0 双旗 = 真无限）
+      opts.hardCapExempt = true;
     } else if (a === "--incognito") {
       extra.push("--incognito");
     } else if (a === "--extra-args") {

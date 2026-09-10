@@ -367,6 +367,55 @@ describe("loadConfig — file→env 合并", () => {
     expect(CONFIG_TEMPLATE.LASSO_LAUNCH_MODE).toBe("hidden");
     expect(CONFIG_TEMPLATE.LASSO_LAUNCH_IDLE_MS).toBe(60000);
   });
+
+  // ----- BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：LASSO_LAUNCH_HARD_CAP_MS -----
+
+  it("25. LASSO_LAUNCH_HARD_CAP_MS：未设 → 24h 默认；'0' → 0（部署级禁用）；'abc'/'-5' → 24h（防笔误拆网——失效方向偏有顶）", () => {
+    // 未设 → 24h（LAUNCH_HARD_CAP_DEFAULT_MS 单一真源）
+    let cfg = loadConfig({
+      runId: "test-run",
+      env: { LASSO_CONFIG_PATH: path.join(dir, "nonexistent.json") },
+    });
+    expect(cfg.launchHardCapMs).toBe(86_400_000);
+    // 显式 0 → 0（部署级策略开关：真·无限常驻的部署面出口）
+    cfg = loadConfig({
+      runId: "test-run",
+      env: {
+        LASSO_CONFIG_PATH: path.join(dir, "nonexistent.json"),
+        LASSO_LAUNCH_HARD_CAP_MS: "0",
+      },
+    });
+    expect(cfg.launchHardCapMs).toBe(0);
+    // NaN / 负数 → 回退 24h（防笔误静默拆掉安全网）
+    cfg = loadConfig({
+      runId: "test-run",
+      env: {
+        LASSO_CONFIG_PATH: path.join(dir, "nonexistent.json"),
+        LASSO_LAUNCH_HARD_CAP_MS: "abc",
+      },
+    });
+    expect(cfg.launchHardCapMs).toBe(86_400_000);
+    cfg = loadConfig({
+      runId: "test-run",
+      env: {
+        LASSO_CONFIG_PATH: path.join(dir, "nonexistent.json"),
+        LASSO_LAUNCH_HARD_CAP_MS: "-5",
+      },
+    });
+    expect(cfg.launchHardCapMs).toBe(86_400_000);
+    // config.json 文件层 number 形态同样生效（扁平层 key 同 env 名自动继承）
+    writeFileSync(configFile, JSON.stringify({ LASSO_LAUNCH_HARD_CAP_MS: 3600000 }));
+    cfg = loadConfig({ runId: "test-run", env: { LASSO_CONFIG_PATH: configFile } });
+    expect(cfg.launchHardCapMs).toBe(3_600_000);
+    // env 覆盖 file（向后兼容）
+    cfg = loadConfig({
+      runId: "test-run",
+      env: { LASSO_CONFIG_PATH: configFile, LASSO_LAUNCH_HARD_CAP_MS: "0" },
+    });
+    expect(cfg.launchHardCapMs).toBe(0);
+    // CONFIG_TEMPLATE 含新键（init 模板补全）
+    expect(CONFIG_TEMPLATE.LASSO_LAUNCH_HARD_CAP_MS).toBe(86400000);
+  });
 });
 
 // ============================================================

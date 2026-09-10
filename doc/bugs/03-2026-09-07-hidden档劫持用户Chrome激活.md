@@ -300,3 +300,7 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 - **O-R3-4**：headless 档记录不进停机 modes:["hidden"] 收割域（`r.launchMode ?? "hidden"` 精确匹配不含 headless）——失败方向安全（少杀），由 idle reaper（含 headless）/显式 chrome-stop 兜底；与执守收割域（hidden+headless）口径不一致，登记为后续统一项。
 
 
+
+---
+
+> **勘误后记（2026-09-10，BUG-06）**：本文 §4 A1「显式 `--idle-ms 0` 仍最高优先（既有消费者零破坏）」的上界形状已被 [doc/bugs/06](06-2026-09-10-日常档idle0幽灵常驻-硬顶与配方治理决议.md) 修订——显式 `--idle-ms 0` 不再是字面无限：无活动 24h 硬顶兜底回收（touch 续命 / `--idle-ms 0 --no-hard-cap` 双旗真无限）。A1 修默认值、BUG-06 修上界形状，二者正交（06 §3）。

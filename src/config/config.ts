@@ -44,6 +44,9 @@ import { ProviderRegistry } from "./provider-registry.js";
 import { logger } from "../util/logger.js";
 // C2（v1.18，doc/governance/09 D-2）：延迟窗默认值单一真源在 reaper（消费方语义所有者）
 import { AUTO_HIDE_AFTER_LOGIN_DELAY_MS } from "../launcher/chrome-idle-reaper.js";
+// BUG-06 决议 A-1（doc/bugs/06）：硬顶默认 24h 单一真源在 chrome-ledger
+// （config 反向 import 无环——chrome-ledger 只 import node:*）
+import { LAUNCH_HARD_CAP_DEFAULT_MS } from "../launcher/chrome-ledger.js";
 
 export interface LassoConfig {
   runId: string;
@@ -80,6 +83,14 @@ export interface LassoConfig {
    * HEADLESS=MCP spec 子进程树（白盒 §6.1）。
    */
   launchIdleMs: number;
+  /**
+   * BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：launch-chrome 台账 Chrome 回收
+   * 硬顶天花板（ms）。env LASSO_LAUNCH_HARD_CAP_MS / config.json 同名键
+   * （默认 86_400_000 = 24h；0 = 部署级禁用硬顶）。idleMs<=0 记录按 cap 兜底
+   * 回收；idleMs>cap 记录按 min(idleMs, cap) 夹紧（ZooKeeper 式）。渲染档
+   * LASSO_RENDER_IDLE_MS 语义独立不受影响（决议 D3 豁免）。
+   */
+  launchHardCapMs: number;
   /**
    * v1.10（parse18 §3 机制二）：launch-chrome 启动档。
    * env LASSO_LAUNCH_MODE（默认 "hidden" = 0 窗口零打扰；"visible" = v1.9 可见行为）。
@@ -141,6 +152,24 @@ function parseLaunchIdleMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_LAUNCH_IDLE_MS;
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 0) return DEFAULT_LAUNCH_IDLE_MS;
+  return n;
+}
+
+/**
+ * BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：LASSO_LAUNCH_IDLE_MS=0 语义的
+ * 硬顶天花板（默认 24h = LAUNCH_HARD_CAP_DEFAULT_MS）。
+ *
+ * 解析（失效方向必须偏「有顶」——防笔误静默拆掉安全网）：
+ *  - 未设 / NaN / 负数 → 回退 24h 默认
+ *  - 显式 0 → 0（全局禁用硬顶——部署级策略开关，真·无限常驻的部署面出口）
+ * 命名沿用 LASSO_LAUNCH_IDLE_MS 域前缀，刻意区别于渲染档 LASSO_RENDER_IDLE_MS
+ * （三套 idle 勿互抄的既训）。config.json 扁平层 key 同 env 名（合并机制自动继承）。
+ * 导出供 chrome-status/doctor 超龄 watch 折算（BUG-06 决议 B——单一解析真源）。
+ */
+export function parseLaunchHardCapMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return LAUNCH_HARD_CAP_DEFAULT_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return LAUNCH_HARD_CAP_DEFAULT_MS;
   return n;
 }
 
@@ -311,6 +340,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
   LASSO_LAUNCH_MODE: "hidden",
   LASSO_LAUNCH_IDLE_MS: 60000,
+  // BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：idle=0 语义的 24h 硬顶天花板
+  // （0 = 部署级禁用；NaN/负数 parse 回退默认——失效方向偏有顶）
+  LASSO_LAUNCH_HARD_CAP_MS: 86400000,
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,
@@ -425,6 +457,8 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   const headlessIdleMs = parseHeadlessIdleMs(env.LASSO_HEADLESS_IDLE_MS);
   // v1.10（parse18 机制一/二）：台账 Chrome 用完即关阈值 + 启动档（0 = 禁用 reaper）
   const launchIdleMs = parseLaunchIdleMs(env.LASSO_LAUNCH_IDLE_MS);
+  // BUG-06 决议 A-1：idle=0 语义的硬顶天花板（未设 → 24h；显式 0 → 部署级禁用）
+  const launchHardCapMs = parseLaunchHardCapMs(env.LASSO_LAUNCH_HARD_CAP_MS);
   const launchMode = parseLaunchMode(env.LASSO_LAUNCH_MODE);
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台（opt-in 默认 off）+ 延迟窗
   const autoHideAfterLogin = parseAutoHideAfterLogin(env.LASSO_AUTO_HIDE_AFTER_LOGIN);
@@ -443,6 +477,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     searchFreeOnly,
     headlessIdleMs,
     launchIdleMs,
+    launchHardCapMs,
     launchMode,
     autoHideAfterLogin,
     autoHideAfterLoginDelayMs,

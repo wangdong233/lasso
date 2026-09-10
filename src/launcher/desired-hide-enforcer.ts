@@ -51,6 +51,7 @@ import {
 import {
   readLedgerSync,
   CLI_LAUNCH_IDLE_DEFAULT_MS,
+  LAUNCH_HARD_CAP_DEFAULT_MS,
   type LaunchedChromeRecord,
   type LedgerLogFn,
 } from "./chrome-ledger.js";
@@ -268,13 +269,26 @@ function writeEnforcerPidfile(pid: number | undefined, logFn: (p: Record<string,
  * 自管；visible 由 reaper 内部既有豁免）。touch 续命契约不变
  * （~/.cache/lasso/chrome-touch-<port>，bug02 §6 建议 3 跨仓库契约）。
  *
- * @returns ChromeIdleReaper | null（null = defaultIdleMs ≤ 0（显式 env/config 禁用
- *          收割 = 用户裁决，执守只保留粘滞复隐职责））
+ * BUG-06 决议 A-4（doc/bugs/06，2026-09-10）：包装层 hardCapMs 缺省 24h——
+ * 本执守是 12h 幽灵事故实证在跑的收割宿主，idle=0 记录从此在此兜底回收；
+ * cap-only 模式（defaultIdleMs=0 + cap>0）下 reaper 非 null。
+ *
+ * @returns ChromeIdleReaper | null（null = defaultIdleMs ≤ 0 **且** hardCapMs ≤ 0
+ *          （显式 env/config 双禁用 = 用户裁决，执守只保留粘滞复隐职责））
  */
 export function startEnforcerIdleReaper(
   opts: {
     /** 全局 idle 阈值（= config.launchIdleMs；缺省 CLI_LAUNCH_IDLE_DEFAULT_MS）。 */
     defaultIdleMs?: number;
+    /**
+     * BUG-06 决议 A-4/r1（doc/bugs/06）：硬顶天花板 ms。**包装层缺省
+     * `?? LAUNCH_HARD_CAP_DEFAULT_MS`（24h）**——执守是本事故实证在跑的收割
+     * 宿主，日常档装配层必须「失效方向偏有顶」（r1 反转的是共享函数缺省，
+     * 不是本装配层缺省）。部署级 env `LASSO_LAUNCH_HARD_CAP_MS=0` 经 index.ts
+     * hide-enforcer 路由（enforcerCfg.launchHardCapMs）显式传入 0 才关——
+     * 只有包装层常量缺省会吞掉 env 覆盖，故路由必须透传（INV-94 ⑥ 钉）。
+     */
+    hardCapMs?: number;
     /** 测试注入：读台账（默认 readLedgerSync 过滤 hidden 档）。 */
     readLedgerFn?: () => LaunchedChromeRecord[];
     /** 测试注入：时钟。 */
@@ -293,6 +307,7 @@ export function startEnforcerIdleReaper(
 ): ChromeIdleReaper | null {
   return startChromeIdleReaper({
     defaultIdleMs: opts.defaultIdleMs ?? CLI_LAUNCH_IDLE_DEFAULT_MS,
+    hardCapMs: opts.hardCapMs ?? LAUNCH_HARD_CAP_DEFAULT_MS,
     readLedgerFn:
       opts.readLedgerFn ??
       (() =>
@@ -446,9 +461,12 @@ export function startDualDutyEnforcer(
  *
  * @param opts.defaultIdleMs 收割阈值（index.ts 路由传 config.launchIdleMs——
  *        显式 env/config 禁用收割（0）时执守只保留粘滞复隐职责，尊重用户裁决）
+ * @param opts.hardCapMs 硬顶天花板（BUG-06 A-4：index.ts 路由传
+ *        enforcerCfg.launchHardCapMs——部署级 env LASSO_LAUNCH_HARD_CAP_MS=0
+ *        必须经此到达执守宿主；缺省 24h）
  */
 export async function runHideEnforcerCli(
-  opts: { defaultIdleMs?: number } = {},
+  opts: { defaultIdleMs?: number; hardCapMs?: number } = {},
 ): Promise<void> {
   const probe = probeHideEnforcer();
   if (probe.running && probe.pid !== process.pid) {
@@ -478,6 +496,7 @@ export async function runHideEnforcerCli(
     reapDutyFn: (onIdleExit) =>
       startEnforcerIdleReaper({
         defaultIdleMs: opts.defaultIdleMs,
+        hardCapMs: opts.hardCapMs,
         logFn: (p) => cliLogFn({ ...p, scope: "enforcer_reaper" }),
         onIdleExit,
       }),

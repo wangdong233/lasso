@@ -254,8 +254,15 @@ describe("A1 · startEnforcerIdleReaper（执守 idle 收割职责）", () => {
     );
   });
 
-  it("5c. defaultIdleMs=0（显式禁用收割）→ 返回 null（执守只保留粘滞复隐职责）", () => {
-    expect(startEnforcerIdleReaper({ defaultIdleMs: 0, logFn: () => {} })).toBeNull();
+  it("5c. defaultIdleMs=0（显式禁用收割）→ BUG-06 起 cap-only 模式非 null；双禁用（hardCapMs=0）才 null", () => {
+    // BUG-06 决议 A-4/r1（doc/bugs/06，2026-09-10）：执守包装层缺省 24h 硬顶——
+    // idle=0 只拆 idle 收割不再连硬顶兜底一起拆（12h 幽灵事故根治点）。
+    expect(startEnforcerIdleReaper({ defaultIdleMs: 0, logFn: () => {} })).not.toBeNull();
+    // 部署级双禁用（LASSO_LAUNCH_IDLE_MS=0 + LASSO_LAUNCH_HARD_CAP_MS=0 经路由
+    // 传入）= 用户裁决，执守只保留粘滞复隐职责（旧 5c 语义的精确收窄形态）
+    expect(
+      startEnforcerIdleReaper({ defaultIdleMs: 0, hardCapMs: 0, logFn: () => {} }),
+    ).toBeNull();
   });
 });
 
@@ -272,8 +279,10 @@ describe("A1 · 接线白盒锚", () => {
     expect(exitHook?.[0] ?? "").toMatch(/ownerPid: process\.pid/);
     // CLI 默认 idle 单一真源消费
     expect(src).toMatch(/: CLI_LAUNCH_IDLE_DEFAULT_MS;/);
-    // 执守路由传 config 层收割阈值
-    expect(src).toMatch(/runHideEnforcerCli\(\{ defaultIdleMs: enforcerCfg\.launchIdleMs \}\)/);
+    // 执守路由传 config 层收割阈值 + 硬顶（BUG-06 A-4：env 覆盖必达执守宿主）
+    expect(src).toMatch(
+      /runHideEnforcerCli\(\{\s*defaultIdleMs: enforcerCfg\.launchIdleMs,\s*hardCapMs: enforcerCfg\.launchHardCapMs,\s*\}\)/,
+    );
   });
 
   it("7. runHideEnforcerCli 双职责自退闩：两职责都 idle 才 exit（单职责退出不杀另一职责）", () => {

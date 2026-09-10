@@ -5364,6 +5364,116 @@ const assertions = [
       return true;
     },
   },
+
+  // ============================================================
+  // BUG-06 决议（doc/bugs/06，2026-09-10，r1 修订后语义）：
+  // 日常档 `--idle-ms 0` 幽灵常驻（12h 不可发现不可关闭）——24h 硬顶天花板。
+  // 守（六面机械化）：
+  //  INV-94  launch-hard-cap-contract：
+  //    (a) cap 谓词位于 tick 内 visible / userTakenAt 两道 continue **之后**
+  //        （豁免语义字节级不变——用户拥有记录永不到达 cap 判定）且含 render 门
+  //        + hardCapExempt 门（A-2/A-5）
+  //    (b) render 三文件（render-launcher/render-guardian/render-flags）零
+  //        hard-cap 符号（交叉污染 tripwire——渲染档 LASSO_RENDER_IDLE_MS 语义
+  //        独立，「渲染档零变化」承诺的机械化）
+  //    (c) CLI_USAGE 含 --no-hard-cap 帮助行（决议 C）
+  //    (d) isUserOwnedRecord 仍被 cap 路径前置短路：reaper tick 的 userTakenAt
+  //        continue 先于 cap 谓词 + chrome-status attachHardCapWatch 门口
+  //        isUserOwnedRecord(rec) return（决议 B 的豁免继承锚）
+  //    (e) index.ts LoggedInChannel onChromeUse 回调含 touchChromePort 落盘符号
+  //        （A-7 写侧机械钉——browse 活动跨进程可见性；读侧由 reaper spec
+  //        测试 18/28 钉）
+  //    (f) 两个日常档装配点显式传 hardCapMs（r1 反转缺省后的失顶防护钉——
+  //        防未来装配点漏传静默回到无顶形态）：index.ts server 装配
+  //        config.launchHardCapMs + hide-enforcer 路由 enforcerCfg.launchHardCapMs
+  //        + startEnforcerIdleReaper 包装缺省 LAUNCH_HARD_CAP_DEFAULT_MS
+  {
+    id: "INV-94-launch-hard-cap-contract",
+    desc:
+      "BUG-06 决议 A：日常档 idle-0 幽灵常驻 24h 硬顶——（a）cap 谓词在 visible/userTaken 两道 continue 之后且含 render+hardCapExempt 门；（b）render 三文件零 hard-cap 符号（渲染档零变化 tripwire）；（c）CLI_USAGE 含 --no-hard-cap；（d）isUserOwnedRecord 前置短路（reaper tick 顺序 + chrome-status watch 门口）；（e）onChromeUse 回调 touchChromePort 落盘（A-7 跨进程活动真源写侧）；（f）两日常档装配点显式传 hardCapMs（失顶防护钉）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const reaperCode = stripComments(byPath(/^launcher\/chrome-idle-reaper\.ts$/)?.text ?? "");
+      const indexCode = stripComments(byPath(/^index\.ts$/)?.text ?? "");
+      const enforcerSrc = byPath(/^launcher\/desired-hide-enforcer\.ts$/)?.text ?? "";
+      const enforcerCode = stripComments(enforcerSrc);
+      const statusCode = stripComments(byPath(/^doctor\/chrome-status\.ts$/)?.text ?? "");
+
+      // ----- (a) cap 谓词顺序 + 三门 -----
+      const tickBody = reaperCode.match(/async function tick\(\): Promise<void> \{[\s\S]*?\n  \}/);
+      if (!tickBody) return false;
+      const visibleIdx = tickBody[0].indexOf('rec.launchMode === "visible"');
+      const userTakenIdx = tickBody[0].indexOf("rec.userTakenAt !== undefined) continue");
+      const capIdx = tickBody[0].indexOf("const capApplies =");
+      if (visibleIdx < 0 || userTakenIdx < 0 || capIdx < 0) return false;
+      if (!(visibleIdx < userTakenIdx && userTakenIdx < capIdx)) return false;
+      const capExpr = tickBody[0].slice(capIdx, capIdx + 400);
+      if (!/hardCapMs > 0/.test(capExpr)) return false;
+      if (!/rec\.launchMode !== "render"/.test(capExpr)) return false; // render 门
+      if (!/rec\.hardCapExempt !== true/.test(capExpr)) return false; // 双意图豁免门
+      // effectiveMs 三档：旧语义原样 / 0→cap 兜底 / min 夹紧（A-2 全语义在场）
+      if (!/idleMs <= 0[\s\S]{0,80}hardCapMs/.test(tickBody[0])) return false;
+      if (!/Math\.min\(idleMs, hardCapMs\)/.test(tickBody[0])) return false;
+      // 审计字段：bound / hard_cap_ms（决议 A-2）
+      if (!/const bound: "idle" \| "hard_cap"/.test(tickBody[0])) return false;
+      if (!/hard_cap_ms: hardCapMs/.test(tickBody[0])) return false;
+      // cap-only null 三条件（A-4/D2）
+      if (!/defaultIdleMs <= 0 && !autoHideAfterLogin && hardCapMs <= 0\) return null/.test(reaperCode))
+        return false;
+      // 共享函数缺省 0（r1 反转——档位无关，不携带日常档策略常量）
+      if (!/const hardCapMs = opts\.hardCapMs \?\? 0;/.test(reaperCode)) return false;
+      if (/LAUNCH_HARD_CAP_DEFAULT_MS/.test(reaperCode)) return false;
+
+      // ----- (b) render 三文件零 hard-cap 符号（交叉污染 tripwire） -----
+      for (const re of [
+        /^render\/render-launcher\.ts$/,
+        /^render\/render-guardian\.ts$/,
+        /^render\/render-flags\.ts$/,
+      ]) {
+        const f = byPath(re);
+        if (!f) return false; // 文件必须存在
+        if (/hard[-_]?cap/i.test(stripComments(f.text))) return false;
+      }
+
+      // ----- (c) CLI_USAGE 帮助行 -----
+      if (!indexCode.includes("--no-hard-cap")) return false;
+      if (!/24h no-activity hard cap/.test(indexCode)) return false;
+
+      // ----- (d) isUserOwnedRecord 前置短路 -----
+      const watchFn = statusCode.match(/function attachHardCapWatch\([\s\S]*?\n\}/);
+      if (!watchFn) return false;
+      if (!/if \(isUserOwnedRecord\(rec\)\) return;/.test(watchFn[0])) return false;
+      const isOwnedGateIdx = watchFn[0].indexOf("isUserOwnedRecord(rec)");
+      const launchModeGateIdx = watchFn[0].indexOf('rec.launchMode === "render"');
+      if (!(isOwnedGateIdx < launchModeGateIdx)) return false;
+
+      // ----- (e) A-7 写侧：onChromeUse 回调落盘 touchChromePort（不 gated on chromeReaper） -----
+      const touchIdx = indexCode.indexOf("chromeReaper?.touch(config.cdpPort)");
+      const diskIdx = indexCode.indexOf("void touchChromePort(config.cdpPort");
+      if (touchIdx < 0 || diskIdx < 0) return false;
+      if (!(diskIdx > touchIdx && diskIdx - touchIdx < 200)) return false; // 同回调内
+      if (!indexCode.includes('import { touchChromePort } from "./launcher/chrome-touch.js"'))
+        return false;
+
+      // ----- (f) 两日常档装配点显式传 hardCapMs（失顶防护钉） -----
+      const serverAssembly = indexCode.match(/startChromeIdleReaper\(\{[\s\S]*?\}\)/);
+      if (!serverAssembly) return false;
+      if (!/hardCapMs: config\.launchHardCapMs/.test(serverAssembly[0])) return false;
+      if (!/config\.launchIdleMs > 0 \|\| config\.autoHideAfterLogin \|\| config\.launchHardCapMs > 0/.test(indexCode))
+        return false; // cap-only 启动条件（A-4）
+      if (!/chrome_idle_reaper_cap_only/.test(indexCode)) return false; // cap-only 可观测
+      const enforcerRoute = indexCode.match(/runHideEnforcerCli\(\{[\s\S]*?\}\)/);
+      if (!enforcerRoute) return false;
+      if (!/hardCapMs: enforcerCfg\.launchHardCapMs/.test(enforcerRoute[0])) return false;
+      // 执守包装层缺省常量（装配层「失效方向偏有顶」；env 覆盖必达执守宿主）
+      if (!/hardCapMs: opts\.hardCapMs \?\? LAUNCH_HARD_CAP_DEFAULT_MS/.test(enforcerCode))
+        return false;
+      if (!/LAUNCH_HARD_CAP_DEFAULT_MS = 86_400_000/.test(byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? ""))
+        return false; // 单一真源常量（A-1）
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

@@ -47,6 +47,10 @@ import {
   type LaunchedChromeRecord,
 } from "../launcher/chrome-ledger.js";
 import { verifyOwnership } from "../launcher/chrome-stop.js";
+// BUG-06 决议 B（doc/bugs/06）：超龄可观测——touch 文件 mtime（与 reaper 三源
+// max 同源）+ 硬顶值折算（parseLaunchHardCapMs 单一真源，失效方向偏有顶）
+import { chromeTouchMtimeSync } from "../launcher/chrome-touch.js";
+import { parseLaunchHardCapMs, mergedEnv } from "../config/config.js";
 
 // ============================================================
 // 类型
@@ -86,6 +90,8 @@ export interface PortOccupierEvidence {
     status: LaunchedChromeRecord["status"];
     launchMode?: LaunchedChromeRecord["launchMode"];
     userTakenAt?: number;
+    /** BUG-06 决议 B：per-record idle 覆盖（超龄 watch 的判定输入之一）。 */
+    idleMs?: number;
   };
   cdp: {
     /** /json/version 是否返回 200 且可解析。 */
@@ -96,6 +102,24 @@ export interface PortOccupierEvidence {
   };
   /** 台账记录的 cmdline 归属验证是否通过（verifyOwnership）。 */
   ownership_verified?: boolean;
+  /**
+   * BUG-06 决议 B（doc/bugs/06，2026-09-10）：硬顶超龄咨询块（只读 advisory——
+   * 零新增 kill/指令面，classification 与 AGENT_DIRECTIVES 不变）。命中条件：
+   * 台账在案 + 非用户拥有（isUserOwnedRecord 前置）+ 非 render + 非 hardCapExempt
+   * + 有效回收期限 = cap（idleMs<=0 或 idleMs>cap）+ lastUse 龄 > 50% cap。
+   * 12h 幽灵事故在 24h cap 下的新行为 = 12h 起持续 warn、24h 自动收——
+   * 「可发现可关闭」宪法闭环的发现面。
+   */
+  hard_cap_watch?: {
+    /** 生效硬顶 ms（parseLaunchHardCapMs 折算：未设→24h；显式 0→关）。 */
+    cap_ms: number;
+    /** lastUse（launchedAt 与 touch 文件 mtime 取 max）距今 ms。 */
+    idle_for_ms: number;
+    /** idle_for_ms / cap_ms（0.5+ 才在场）。 */
+    ratio: number;
+    /** 预期回收时刻 epoch ms（lastUse + cap）。 */
+    reap_at_epoch_ms: number;
+  };
 }
 
 export interface PortOccupierDirective {
@@ -139,6 +163,13 @@ export interface ClassifyPortOccupierDeps {
   aliveFn?: (pid: number) => boolean;
   /** 时钟注入（R3 单测）。 */
   now?: () => number;
+  /**
+   * BUG-06 决议 B：touch 文件 mtime 注入（默认 chromeTouchMtimeSync——超龄
+   * watch 的 lastUse 与 reaper 三源 max 同源，touch 新鲜 = 不告警）。
+   */
+  touchStatFn?: (port: number) => number | undefined;
+  /** BUG-06 决议 B：硬顶值注入（默认 parseLaunchHardCapMs 折算 env/config 层）。 */
+  hardCapMs?: number;
 }
 
 // ============================================================
@@ -364,6 +395,11 @@ export async function classifyPortOccupier(
   const readLedgerFn = deps.readLedgerFn ?? readLedgerSync;
   const aliveFn = deps.aliveFn ?? defaultAliveFn;
   const now = deps.now ?? Date.now;
+  const touchStatFn = deps.touchStatFn ?? ((p: number) => chromeTouchMtimeSync(p));
+  // 折算经 mergedEnv（config.json 扁平层 + env）——与 reaper 装配侧 loadConfig
+  // 同一合并顺序，watch 口径与执行口径一致（R-CI-02 单一真源精神）
+  const hardCapMs =
+    deps.hardCapMs ?? parseLaunchHardCapMs(mergedEnv().LASSO_LAUNCH_HARD_CAP_MS);
 
   const evidence: PortOccupierEvidence = { cdp: { reachable: false } };
   const finalize = (
@@ -380,6 +416,7 @@ export async function classifyPortOccupier(
         ...(extraLedger.userTakenAt !== undefined
           ? { userTakenAt: extraLedger.userTakenAt }
           : {}),
+        ...(extraLedger.idleMs !== undefined ? { idleMs: extraLedger.idleMs } : {}),
       };
     }
     return {
@@ -449,6 +486,9 @@ export async function classifyPortOccupier(
   // 4. 台账判定
   const rec = readLedgerFn().find((r) => r.port === port);
   if (rec) {
+    // BUG-06 决议 B：硬顶超龄咨询块（只读；分类与指令面零改动）。attach 在一切
+    // 分类分支之前——用户拥有（isUserOwnedRecord 前置）与 render 档结构性无 watch。
+    attachHardCapWatch(evidence, rec, port, { hardCapMs, now: now(), touchStatFn });
     evidence.pid_match = lsofPid === rec.pid;
     const ownedAlive = aliveFn(rec.pid);
     if (evidence.pid_match && ownedAlive) {
@@ -489,6 +529,45 @@ function classifyByOccupierIdentity(cmdline: string): PortOccupierClassification
 }
 
 // ============================================================
+// BUG-06 决议 B：硬顶超龄 watch（只读 advisory——零新增 kill/指令面）
+// ============================================================
+/**
+ * 命中条件（决议 B 全集）：台账在案 + 非用户拥有（isUserOwnedRecord——visible/
+ * userTakenAt 档豁免语义零变化）+ 非 render（D3 红线隔离）+ 非 hardCapExempt
+ * （--no-hard-cap 双意图）+ **有效回收期限 = cap**（rec.idleMs<=0 或 >cap——
+ * undefined 不判：其有效 idle 取决于收割宿主缺省，chrome-status 无法判定则不
+ * 告警，失败方向偏安静）+ lastUse 龄 > 50% cap（launchedAt 与 touch 文件 mtime
+ * 取 max——touch 新鲜即不告警，与 reaper「在用永不杀」同源）。
+ */
+function attachHardCapWatch(
+  evidence: PortOccupierEvidence,
+  rec: LaunchedChromeRecord,
+  port: number,
+  ctx: {
+    hardCapMs: number;
+    now: number;
+    touchStatFn: (port: number) => number | undefined;
+  },
+): void {
+  if (ctx.hardCapMs <= 0) return; // 部署级禁用（LASSO_LAUNCH_HARD_CAP_MS=0）
+  if (isUserOwnedRecord(rec)) return; // visible / userTakenAt 豁免（前置短路）
+  if (rec.launchMode === "render") return; // 渲染档 D3 红线隔离
+  if (rec.hardCapExempt === true) return; // --no-hard-cap 双意图豁免
+  if (rec.idleMs === undefined) return; // 有效 idle 宿主依赖，不可判则不告警
+  if (rec.idleMs > 0 && rec.idleMs <= ctx.hardCapMs) return; // idle 阈值先于 cap 生效
+  const lastUse = Math.max(rec.launchedAt, ctx.touchStatFn(port) ?? 0);
+  const idleForMs = ctx.now - lastUse;
+  const ratio = idleForMs / ctx.hardCapMs;
+  if (ratio <= 0.5) return; // 未过半不告警（12h 事故 = 24h cap 的 12h 起持续 warn）
+  evidence.hard_cap_watch = {
+    cap_ms: ctx.hardCapMs,
+    idle_for_ms: idleForMs,
+    ratio,
+    reap_at_epoch_ms: lastUse + ctx.hardCapMs,
+  };
+}
+
+// ============================================================
 // 上报包（user_paste_pack——「零 kill 逃生口」的替代物）
 // ============================================================
 /**
@@ -511,10 +590,19 @@ export function buildUserPastePack(
   if (ev.ledger_record) {
     const r = ev.ledger_record;
     lines.push(
-      `ledger: pid=${r.pid} mode=${r.launchMode ?? "hidden"} status=${r.status} launchedAt=${new Date(r.launchedAt).toISOString()}${r.userTakenAt !== undefined ? ` userTakenAt=${new Date(r.userTakenAt).toISOString()}` : ""} pid_match=${ev.pid_match}`,
+      `ledger: pid=${r.pid} mode=${r.launchMode ?? "hidden"} status=${r.status} launchedAt=${new Date(r.launchedAt).toISOString()}${r.userTakenAt !== undefined ? ` userTakenAt=${new Date(r.userTakenAt).toISOString()}` : ""}${r.idleMs !== undefined ? ` idleMs=${r.idleMs}` : ""} pid_match=${ev.pid_match}`,
     );
   } else {
     lines.push("ledger: (no record for this port)");
+  }
+  // BUG-06 决议 B：硬顶超龄行（预期回收时刻 + touch 续命法 + 用户本人 chrome-stop
+  // 出口——paste 语境的用户专属出口，不受 allowed_commands 约束）
+  if (ev.hard_cap_watch) {
+    const w = ev.hard_cap_watch;
+    const pct = Math.round(w.ratio * 100);
+    lines.push(
+      `hard-cap watch: idle for ${Math.round(w.idle_for_ms / 60_000)}min = ${pct}% of the ${Math.round(w.cap_ms / 3_600_000)}h no-activity hard cap — auto-reaps at ${new Date(w.reap_at_epoch_ms).toISOString()} unless used; keep alive: touch ~/.cache/lasso/chrome-touch-${port}; your exit anytime: lasso-mcp chrome-stop --port ${port}`,
+    );
   }
   lines.push("lasso will NEVER kill this process on its own (never_kill_user_asset).");
   lines.push("Your exits (user-only): close it yourself, or run it yourself:");

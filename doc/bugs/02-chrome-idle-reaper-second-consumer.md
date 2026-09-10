@@ -120,3 +120,7 @@ node dist/index.js launch-chrome --port 9223 --idle-ms 0
 - `--idle-ms 0` 的 Chrome 需要显式 `chrome-stop` 收(工作流侧 media-gen 已如此用);reaper 只活在 server 进程的边界不变(CLI 无 reaper)。
 - 执守进程 spawn 用 `process.execPath` + `../index.js`(launcher/ 上一级;见 9.6——初版 `../../` 是 bug01 同族,已修并有结构锚定测试);布局异常(无 index.js)诚实降级不 spawn——server 内看门狗仍是主执守面。
 - bug01 侧核验:§4 五条 + §8 A1 三件套在 HEAD 全部在位,代码与档案零漂移;唯一叙述注记见 doc/bugs/01 §5 补记(净版 v1.18.5)。
+
+---
+
+> **勘误后记（2026-09-10，BUG-06）**：本文首倡的 `--idle-ms 0` 缓解（§2/§6 建议）已被 [doc/bugs/06](06-2026-09-10-日常档idle0幽灵常驻-硬顶与配方治理决议.md) 正式退役——`--idle-ms 0` 语义现为「不自收、但无活动 24h 硬顶回收」（真·无限须 `--idle-ms 0 --no-hard-cap` 双旗）；本文记载的旧语义仅作历史存档。touch 续命契约（§6 建议 3）不变且升级为唯一跨进程活动真源（决议 A-7）。
