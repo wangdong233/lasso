@@ -6,7 +6,8 @@
  *  （白盒 §1.4），zombie reaper 结构性看不见它。本 reaper 只做三件事——
  *   1. 读磁盘台账（readLedgerSync）
  *   2. 判 idle（now - max(launchedAt, touch) > idleMs）
- *   3. 调既有 stopLaunchedChromes({port})（归属验证/树杀/删账 100% 复用 chrome-stop.ts）
+ *   3. 调既有 stopLaunchedChromes({port, exemptUserTaken:true})（归属验证/树杀/
+ *      删账 100% 复用 chrome-stop.ts）
  *  **零新 kill 原语、零第二份 pgrep 递归**（INV-78c 守：本文件函数体不含
  *  killTreeSync / process.kill 直接调用——杀必须经 chrome-stop 验证路径）。
  *
@@ -30,6 +31,13 @@
  * `LASSO_LAUNCH_HARD_CAP_MS=0`。touch 文件经决议 A-7 升级为**唯一跨进程活动
  * 真源**（index.ts onChromeUse 落盘 touchChromePort——write 侧在 channel 层，
  * reaper 仍是纯读方，R-INT-07 单写多读形态保持）。
+ *
+ * BUG-06 r2（对抗复审 P2，2026-09-10）：默认 stopFn 携带 exemptUserTaken:true
+ * ——kill 时刻谓词重估。tick 读账（收割判定）与 stopLaunchedChromes 内部二次
+ * 读账（执行）之间落下的 chrome-show/B1 认领（userTakenAt）不被尊重的 ms~s 级
+ * TOCTOU 窗由此关闭（doc/bugs/03 O-R3-2 登记的 reaper 半边；A2 僵尸门半边已由
+ * BUG-04 决议 A2b 同款闭口）。只收不放：该旗只从 kill 集合中**移除**记录，tick
+ * 时刻 visible/userTaken 两道 continue 的豁免语义字节级不变。
  *
  * 只活在 server 进程（index.ts 装配）+ hide-enforcer 执守第二职责（A1）+
  * render-guardian（渲染档宿主，cap 恒 no-op）——chrome-stop 仍是显式出口。
@@ -104,7 +112,11 @@ export interface ChromeIdleReaperOptions {
   touchStatFn?: (port: number) => number | undefined;
   /** 测试注入：时钟（默认 Date.now）。 */
   nowFn?: () => number;
-  /** 测试注入：回收出口（默认 stopLaunchedChromes({port})）。 */
+  /**
+   * 测试注入：回收出口。默认 stopLaunchedChromes({port, exemptUserTaken:true})
+   * ——BUG-06 r2（对抗复审 P2）：kill 时刻对 userTakenAt 重估（只收不放——注入
+   * 自定义 stopFn 的调用方自带谓词，形态与 BUG-04 A2b zombieStopFn 同款）。
+   */
   stopFn?: (opts: { port: number }) => Promise<unknown>;
   /**
    * v1.19（渲染档设计决议 1.3）：连续 N tick readLedgerFn() 返回空 → 自停 +
@@ -207,10 +219,15 @@ export function startChromeIdleReaper(
   const readLedgerFn = opts.readLedgerFn ?? readLedgerSync;
   const nowFn = opts.nowFn ?? (() => Date.now());
   const logFn = opts.logFn ?? (() => {});
+  // BUG-06 r2（对抗复审 P2，doc/bugs/06 §8-4）：默认回收出口在 kill 时刻重估
+  // 用户认领门——stopLaunchedChromes 内部会二次读账，exemptUserTaken 令判定→
+  // 执行间隙落盘的 userTakenAt（chrome-show/B1 认领）同样豁免（TOCTOU 闭口；
+  // 与 BUG-04 决议 A2b zombieStopFn 同谓词同形状）。只收不放：无认领记录的
+  // kill 行为零变化；tick 内两道 continue 的豁免判定不走此路径（字节级不变）。
   const stopFn =
     opts.stopFn ??
     (async (o: { port: number }) =>
-      stopLaunchedChromes({ port: o.port, logFn }));
+      stopLaunchedChromes({ port: o.port, exemptUserTaken: true, logFn }));
   const tabUrlsFn = opts.tabUrlsFn ?? defaultTabUrlsFn;
   const hideFn = opts.hideFn ?? ((pid: number | undefined) => hideChromeByPidAsync(pid));
   const touchStatFn = opts.touchStatFn ?? ((port: number) => chromeTouchMtimeSync(port));

@@ -295,7 +295,7 @@ lasso 守卫链行为正确:launch 返回 `port_in_use_non_cdp`(12:08:04Z,守卫
 ### 11.3 观察与残留（非缺陷登记）
 
 - **O-R3-1**：上轮（r2 验收/回炉）残留陈旧执守 pidfile（~/.cache/lasso/desired-hide-enforcer.json 指向已死 pid 73043，03:42 写入）——probe 判 pid_dead 功能上无害，本轮已随清理删除；「环境全清」口径建议把 pidfile 一并纳入。
-- **O-R3-2（低危加固建议，未实施）**：idle reaper 与 A2 僵尸门的 stopFn 均为 `stopLaunchedChromes({port})` 不带 `exemptUserTaken`（靠调用方前置过滤）——存在 ms 级 TOCTOU（读账判定→stop 内二次读账之间用户恰好 chrome-show 认领）。窗口毫秒级且需 30min idle 同时命中，登记为后续防御纵深（stopFn 传 exemptUserTaken:true 可闭）。
+- **O-R3-2（低危加固建议——2026-09-10 BUG-06 r2 收口）**：idle reaper 与 A2 僵尸门的 stopFn 均为 `stopLaunchedChromes({port})` 不带 `exemptUserTaken`（靠调用方前置过滤）——存在 ms 级 TOCTOU（读账判定→stop 内二次读账之间用户恰好 chrome-show 认领）。A2 僵尸门半边已由 BUG-04 决议 A2b 闭口（launch-chrome.ts zombieStopFn 传 `exemptUserTaken: true` + modes 门）；reaper 半边由 BUG-06 r2（doc/bugs/06 §8-4/§11，对抗复审 P2 升格——硬顶令 idle-0 幽灵永久 eligible、判定→执行窗拉宽秒级、认领人群与过顶人群重叠）同款闭口：reaper 默认 stopFn 传 `exemptUserTaken: true`（只收不放；测试 chrome-idle-reaper.spec 29/30/31 + 变异红证）。原「窗口毫秒级且需 30min idle 同时命中」风险算式已被 BUG-06 作废，故升格修复而非维持登记。
 - **O-R3-3**：死窗复验期间观察到 2 个瞬时 hide-enforcer 进程（93637/93640，04:14）自行退场（入口让位收敛）；受控单发复测执守恰 1 个、单 `hide_enforcer_spawned` 事件——未复现双拉根因（可能为旧执守退出窗口与新 launch 的 probe 竞态），单例不变量全程保持（恰一存活）。登记待观察。
 - **O-R3-4**：headless 档记录不进停机 modes:["hidden"] 收割域（`r.launchMode ?? "hidden"` 精确匹配不含 headless）——失败方向安全（少杀），由 idle reaper（含 headless）/显式 chrome-stop 兜底；与执守收割域（hidden+headless）口径不一致，登记为后续统一项。
 

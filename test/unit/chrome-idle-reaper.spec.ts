@@ -17,7 +17,10 @@
  * / 不真杀进程 / 不等真实 15s。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   startChromeIdleReaper,
@@ -517,5 +520,137 @@ describe("chrome-idle-reaper —— 台账 Chrome idle 用完即关（parse18 §
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ============================================================
+  // BUG-06 r2（对抗复审 P2，doc/bugs/06 §8-4）：TOCTOU 闭口——kill 时刻
+  // userTakenAt 重估。tick 读账（收割判定）与 stopLaunchedChromes 内部二次读账
+  // （执行）之间落下的 chrome-show/B1 认领此前不被尊重（默认 stopFn 未传
+  // exemptUserTaken）；BUG-06 硬顶令 idle-0 幽灵每 15s tick 永久 eligible、
+  // 多幽灵顺序 await 把判定→执行窗拉宽到秒级、且 hidden 幽灵唯一认领方式恰是
+  // chrome-show（认领人群与过顶人群完全重叠）——既有登记（bug03 O-R3-2）的
+  // 风险算式失效，升格 P2 修复。
+  // ============================================================
+
+  it("29. BUG-06 r2：源码钉——默认 stopFn 携带 exemptUserTaken:true（kill 时刻重估接线锚；BUG-04 A2b zombieStopFn 同形状）", () => {
+    const src = readFileSync(
+      fileURLToPath(new URL("../../src/launcher/chrome-idle-reaper.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(src).toMatch(
+      /opts\.stopFn \?\?\s*\(async \(o: \{ port: number \}\) =>\s*stopLaunchedChromes\(\{ port: o\.port, exemptUserTaken: true, logFn \}\)\)/,
+    );
+  });
+
+  /**
+   * 真实时钟 settle（node:timers 的 setTimeout 不经 vitest fake timers 补丁）：
+   * 默认 stopFn 内 removeLedgerEntries 是真实 fs 异步——advanceTimersByTimeAsync
+   * 推虚拟时钟、不等挂起的真实 I/O 链，须轮询到谓词成立（上限 1s）。
+   */
+  async function settleUntil(pred: () => boolean, tries = 100, stepMs = 10): Promise<boolean> {
+    const { setTimeout: realSetTimeout } = await import("node:timers");
+    for (let i = 0; i < tries; i++) {
+      if (pred()) return true;
+      await new Promise<void>((r) => realSetTimeout(r, stepMs));
+    }
+    return pred();
+  }
+
+  /**
+   * TOCTOU 重放 harness：走**真实默认 stopFn**（零 stopFn 注入）+ 隔离台账
+   * （LASSO_LAUNCHED_CHROMES_PATH）+ 替身真进程（cmdline 末参 = --user-data-dir
+   * marker，过 verifyOwnership 真 ps 验证）。readLedgerFn 给 tick 一份**陈旧视图**
+   * （无 userTakenAt），盘上真值由 diskTruthHasClaim 控制——精确复现「收割判定
+   * 读账时刻 → stop 内二次读账执行时刻」之间落认领的竞态形状（对抗复审 dist
+   * 实弹同构，单测化）。替身进程 finally 必清（不留孤儿）。
+   */
+  async function tocTouReplay(diskTruthHasClaim: boolean) {
+    const tmpDir = mkdtempSync(join(tmpdir(), "lasso-reaper-r2-"));
+    const prevLedgerPath = process.env.LASSO_LAUNCHED_CHROMES_PATH;
+    const ledgerPath = join(tmpDir, "launched-chromes.json");
+    process.env.LASSO_LAUNCHED_CHROMES_PATH = ledgerPath;
+    const profileDir = join(tmpDir, "profile");
+    const child = spawn(
+      process.execPath,
+      // `--` 终结 node 选项解析：marker 作为脚本 argv 留在 cmdline（verifyOwnership
+      // 真 ps 验证可过）且替身真活 60s——直接跟在 -e 后会被 node 判 bad option 秒退
+      ["--eval", "setTimeout(() => {}, 60000)", "--", `--user-data-dir=${profileDir}`],
+      { stdio: "ignore" },
+    );
+    const logs: Array<Record<string, unknown>> = [];
+    try {
+      await new Promise<void>((resolve) => {
+        if (child.pid !== undefined) resolve();
+        else child.once("spawn", () => resolve());
+      });
+      const rec = makeRec({
+        pid: child.pid!,
+        profileDir,
+        launchedAt: 0,
+        idleMs: 0, // 事故人群：idle-0 过顶记录（每 tick eligible）
+        launchMode: "hidden",
+      });
+      // 盘上真值 = stop 内二次读账所见；陈旧视图（readLedgerFn）恒无认领
+      const diskRec = diskTruthHasClaim ? { ...rec, userTakenAt: 123_456 } : rec;
+      writeFileSync(ledgerPath, JSON.stringify([diskRec], null, 2), "utf8");
+      const reaper = startChromeIdleReaper({
+        defaultIdleMs: 0,
+        hardCapMs: 24 * 3_600_000,
+        readLedgerFn: () => [rec], // tick 判定时刻：认领尚未可见（竞态形状本体）
+        nowFn: () => 25 * 3_600_000, // 龄 25h > 24h cap
+        touchStatFn: () => undefined,
+        logFn: (p) => {
+          logs.push(p);
+        },
+      });
+      expect(reaper).not.toBeNull();
+      // +5s 余量：默认 stopFn 内 SIGTERM 优雅窗（2s/200ms 步进）排在 interval
+      // 触发之后——恰好推满一个周期会冻结内层 timer 链（SIGTERM 已发、删账未跑）
+      await vi.advanceTimersByTimeAsync(CHROME_IDLE_REAPER_INTERVAL_MS + 5_000);
+      reaper?.stop();
+      // 真实时钟 settle：等待 stop 链路（含删账 fs 异步）落定
+      const settled = diskTruthHasClaim
+        ? await settleUntil(() => logs.some((p) => p.evt === "chrome_idle_reaped")) // 豁免路径：stopFn 返回即链路完成（无删账）
+        : await settleUntil(
+            () =>
+              (JSON.parse(readFileSync(ledgerPath, "utf8")) as unknown[]).length === 0,
+          );
+      expect(settled).toBe(true); // 超时 = 默认 stopFn 链路未完成（harness 自检）
+      let alive = false;
+      try {
+        process.kill(child.pid!, 0);
+        alive = true;
+      } catch {
+        alive = false;
+      }
+      const ledgerAfter = JSON.parse(readFileSync(ledgerPath, "utf8")) as Array<
+        Record<string, unknown>
+      >;
+      return { alive, ledgerAfter, logs };
+    } finally {
+      try {
+        process.kill(child.pid!, "SIGKILL"); // 替身清理（已死则忽略）
+      } catch {
+        /* already dead */
+      }
+      if (prevLedgerPath === undefined) delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+      else process.env.LASSO_LAUNCHED_CHROMES_PATH = prevLedgerPath;
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  it("30. BUG-06 r2：TOCTOU 重放——判定读账无认领、盘上真值已落 userTakenAt → 替身存活 + 台账保留 + kill 分支未进", async () => {
+    const { alive, ledgerAfter, logs } = await tocTouReplay(true);
+    expect(alive).toBe(true); // kill 时刻重估：chrome-show 认领被尊重（闭口本体）
+    expect(ledgerAfter).toHaveLength(1); // 未删账
+    expect(ledgerAfter[0].userTakenAt).toBe(123_456); // 认领保留
+    expect(logs.some((p) => p.evt === "chrome_stop_result")).toBe(false); // 未进 kill 分支
+  });
+
+  it("31. BUG-06 r2：同 harness 阳性对照——盘上真值无认领 → 真收 + 删账（防 30 空转；硬顶本体行为零回归）", async () => {
+    const { alive, ledgerAfter, logs } = await tocTouReplay(false);
+    expect(alive).toBe(false); // 无认领 → 真杀（只收不放：唯一移出 kill 集的条件是认领）
+    expect(ledgerAfter).toHaveLength(0); // 删账
+    expect(logs.some((p) => p.evt === "chrome_stop_result")).toBe(true); // kill 分支真进
   });
 });
