@@ -206,7 +206,10 @@ describe("级联链 5：SSRF DNS 瞬态 → unknown 可重试；真策略拦截 
   const cfg: SsrfConfig = { allowRanges: [], denyRanges: [] };
 
   it("dns_failed → outcome=unknown + retrieval_method=ssrf_dns_unresolved（CC 可重试；不再「政策拦截」终答）", async () => {
-    // lookup 一个肯定解析不出的域名（.invalid 是 RFC 2606 保留 TLD）
+    // lookup 一个肯定解析不出的域名（.invalid 是 RFC 2606 保留 TLD）。
+    // 超时 30s：真实 DNS 查询（非 mock）——TUN/代理环境的负响应可实测 >5s
+    //（本机 ClashX fake-ip 下 5.7s，2026-09-15 gate 实锤），vitest 缺省 5s 会
+    // 在慢解析器机器上假红；断言本体两分支语义不变。
     const r = await ssrfGuard("https://definitely-not-resolvable-misfit.invalid/", cfg);
     // CI DNS 行为可能有两分支：解析失败（dns_failed）或被环境解析出 IP——只对失败分支断言语义
     if (!r.allowed && r.reason.startsWith("dns_failed")) {
@@ -218,7 +221,7 @@ describe("级联链 5：SSRF DNS 瞬态 → unknown 可重试；真策略拦截 
       // mock-DNS 用例权威覆盖；此处仅验证不抛错
       expect(typeof r.allowed).toBe("boolean");
     }
-  });
+  }, 30_000);
 
   it("工具层二分语义纯函数：private_ip/deny_range/userinfo/protocol → didnt 不变（安全守卫本体零弱化）", () => {
     expect(ssrfDenial("private_ip:10.0.0.5").outcome).toBe("didnt");
