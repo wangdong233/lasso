@@ -99,6 +99,25 @@ describe("BUG-08 D-1 — isSameDocumentNavigation 纯函数", () => {
     // 无 hash 侧 + 有 hash 侧：去 hash 后相等 + 串不同 → true（首挂 hash 形态）
     expect(isSameDocumentNavigation("https://x.test/search", "https://x.test/search#results")).toBe(true);
   });
+
+  // ---- BUG-08 对抗复审轮 1（t7 真机实锤）：URL 规范化边界 ----
+  it("t7 空路径省略斜杠变体 → true（http://x#/q=b 是 http://x/#/q=a 的 same-document——raw 串比较漏检的假数据复活口）", () => {
+    expect(isSameDocumentNavigation("http://127.0.0.1:18765/#/q=eps", "http://127.0.0.1:18765#/q=zeta")).toBe(true);
+  });
+
+  it("规范化族其余成员：默认端口消解 / host 大小写 → true（规范化后同页的正确合并，不产假阳性）", () => {
+    expect(isSameDocumentNavigation("http://x.test:80/#/a", "http://x.test#/b")).toBe(true);
+    expect(isSameDocumentNavigation("http://X.test/#/a", "http://x.test/#/b")).toBe(true);
+    // 不同文档规范化后仍必不等（假阳性排除）
+    expect(isSameDocumentNavigation("http://x.test:8080/#/a", "http://x.test/#/b")).toBe(false);
+    expect(isSameDocumentNavigation("https://x.test/#/a", "http://x.test/#/b")).toBe(false);
+  });
+
+  it("解析失败侧退化 raw 去-hash 比较（保守 = 至多回到修复前行为）", () => {
+    // 相对/畸形串（非绝对 URL）解析失败 → 退化 strip 串比较，语义与修复前一致
+    expect(isSameDocumentNavigation("not a url#frag1", "not a url#frag2")).toBe(true);
+    expect(isSameDocumentNavigation("not a url#frag1", "other#frag2")).toBe(false);
+  });
 });
 
 // ============================================================
@@ -150,6 +169,19 @@ describe("BUG-08 D-1 — doNavigate hash 检测 + 默认 reload", () => {
     expect(r.outcome).toBe("worked");
     expect(r.data!.same_document_navigated).toBeUndefined();
     expect(names(calls, "navigate_page")).toHaveLength(1);
+  });
+
+  it("t7 行为级：空路径省略斜杠的 hash-only 目标 → 检测命中 + 补 reload + 双标注（真机假数据复活口的行为钉）", async () => {
+    // location.href 恒为规范化形态（带 /）；调用方目标少打斜杠——raw 比较漏检形态
+    const { client, calls } = navClient("http://127.0.0.1:18765/#/q=eps");
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("http://127.0.0.1:18765#/q=zeta", "navigate", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.same_document_navigated).toBe(true);
+    expect(r.data!.same_document_reloaded).toBe(true);
+    const navCalls = names(calls, "navigate_page");
+    expect(navCalls).toHaveLength(2);
+    expect(navCalls[1]!.args.type).toBe("reload");
   });
 
   it("当前页 URL 读取失败（evaluate 抛错/空串）→ 跳过检测走现状路径", async () => {
@@ -204,6 +236,20 @@ describe("BUG-08 D-2 — evaluate 先导导航语义", () => {
     expect(r.outcome).toBe("worked");
     expect(names(calls, "navigate_page")).toHaveLength(0); // 零导航调用
     expect(r.data!.preview).toBe("7");
+  });
+
+  it("复审轮 1 t7 配套：url 为当前页的规范化变体（空路径省略斜杠）→ 同页零导航原地执行（免一次无谓整页 reload——SPA 会话态保护）", async () => {
+    const { client, calls } = makeClient({
+      evaluate_script: (n) =>
+        n === 1
+          ? fencedEval(JSON.stringify("http://127.0.0.1:18765/#/q=eps")) // location.href 规范化形态
+          : fencedEval(JSON.stringify(42)),
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("http://127.0.0.1:18765#/q=eps", "evaluate", { js: "() => 2" });
+    expect(r.outcome).toBe("worked");
+    expect(names(calls, "navigate_page")).toHaveLength(0); // 规范化后同页 → 不先导导航
+    expect(r.data!.preview).toBe("42");
   });
 
   it("url 省略 → 现状字节级不变（gate 拒 url_required_for_action:evaluate——D-2 不动 current-page 家族）", async () => {

@@ -250,7 +250,7 @@ export abstract class BrowseChannel extends UiChannel {
         return handler(c, url, opts); // url 省略 = 当前页（现状）
       }
       const currentHref = await readCurrentHref(c);
-      if (currentHref === url) {
+      if (currentHref !== null && isSameUrlAfterNormalize(currentHref, url)) {
         return handler(c, url, opts); // 原地执行零开销
       }
       // 不同或无页/读取失败 → 先导导航（wrapNavigate 链：before/afterNavigate 同享）
@@ -1204,16 +1204,54 @@ const HTTP_404_SIGNATURE =
  * URL 已新词——「哒哒=0 条干净」差点写进报告，真值 3718）。
  * 导出供测试。
  */
+/**
+ * BUG-08 对抗复审轮 1（t7 实锤，2026-09-15）：same-document 判定 / evaluate
+ * 原地判等的 **URL 规范化比较基**。raw 串比较会被「空路径省略斜杠」击穿：
+ * 当前页 `http://x/#/q=a`（location.href 恒带规范化斜杠）vs 目标
+ * `http://x#/q=b`（调用方少打一个 `/`）——URL 规范化后同一 origin/path/search
+ * （same-document），字符串却不等 → D-1 检测漏 → 不补 reload → **旧数据 + 新
+ * URL 的假数据形态原样复活**（真机复现：DATA_AT_LOAD 停旧词、final_url 新词、
+ * same_document_navigated 缺席）。两侧先过 `new URL()` 取 origin+pathname+
+ * search 再比（空路径补 `/`、默认端口消解、host 大小写归一——全部「规范化后
+ * 同页」的正确合并方向，不产生假阳性：不同文档规范化后不可能相等）；任一侧
+ * 解析失败退化 raw 去-hash 串（保守 = 至多回到修复前行为）。
+ */
+export function normalizeForSameDocumentCompare(u: string): string {
+  try {
+    const p = new URL(u);
+    return `${p.origin}${p.pathname}${p.search}`;
+  } catch {
+    const i = u.indexOf("#");
+    return i >= 0 ? u.slice(0, i) : u;
+  }
+}
+
+/**
+ * D-2 原地判等：**全量规范化**（含 hash——evaluate 的「同一页」必须连锚点
+ * 一起等，hash-only 目标仍走先导导航 + D-1 reload 的组合语义钉，不受本 helper
+ * 影响）。raw 相等是它的子集；解析失败退化 raw 相等（保守）。
+ */
+function isSameUrlAfterNormalize(currentHref: string, targetUrl: string): boolean {
+  if (currentHref === targetUrl) return true;
+  const canonical = (u: string) => {
+    try {
+      return new URL(u).href; // 规范化全串（空路径补 /、默认端口消解、hash 保留）
+    } catch {
+      return u;
+    }
+  };
+  return canonical(currentHref) === canonical(targetUrl);
+}
+
 export function isSameDocumentNavigation(
   currentHref: string,
   targetUrl: string,
 ): boolean {
   if (currentHref === targetUrl) return false; // 完整串相同 = 无导航事件（非本检测域）
-  const strip = (u: string) => {
-    const i = u.indexOf("#");
-    return i >= 0 ? u.slice(0, i) : u;
-  };
-  return strip(currentHref) === strip(targetUrl);
+  return (
+    normalizeForSameDocumentCompare(currentHref) ===
+    normalizeForSameDocumentCompare(targetUrl)
+  );
 }
 
 /** D-1：轻量读当前页真实 URL（quickSnapshot 式单次 evaluate；失败/空 → null 跳过检测）。 */
