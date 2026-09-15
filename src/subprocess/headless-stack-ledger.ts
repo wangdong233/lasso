@@ -93,6 +93,16 @@ export function readStacksSync(): HeadlessStackRecord[] {
 function writeStacksSync(records: HeadlessStackRecord[]): void {
   const file = stacksLedgerPath();
   try {
+    if (records.length === 0) {
+      // 空账直接删文件（不留 [] 残骸——doctor stealth-check 等真实 spawn 用例的
+      // kill 收尾路径会把账清空；unlink 幂等吞掉不存在）
+      try {
+        unlinkSync(file);
+      } catch {
+        // best-effort
+      }
+      return;
+    }
     mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.tmp-${process.pid}`;
     writeFileSync(tmp, JSON.stringify(records), "utf8");
@@ -119,21 +129,12 @@ export function removeStackRecords(pids: number[]): void {
   writeStacksSync(readStacksSync().filter((r) => !drop.has(r.pid)));
 }
 
-/** 清除某 owner 的全部登记（server 正常停机 exit 钩子，best-effort；空账顺手收口删文件）。 */
+/** 清除某 owner 的全部登记（server 正常停机 exit 钩子，best-effort；空账删文件）。 */
 export function removeStackRecordsForOwner(ownerPid: number): void {
   const before = readStacksSync();
   const after = before.filter((r) => r.ownerPid !== ownerPid);
   if (after.length === before.length) return; // 无变化零写（幂等，含文件不存在）
-  if (after.length === 0) {
-    // 空账 → 直接删文件（不留空数组残骸；不存在/失败均幂等吞掉）
-    try {
-      unlinkSync(stacksLedgerPath());
-    } catch {
-      // best-effort
-    }
-    return;
-  }
-  writeStacksSync(after);
+  writeStacksSync(after); // 空数组 → 删文件（writeStacksSync 内收口）
 }
 
 // ============================================================
