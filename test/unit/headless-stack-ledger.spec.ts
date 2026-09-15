@@ -16,7 +16,7 @@
  * 起始时间不符用例红；拆条件② 包串 → 包串不符用例红。
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -104,6 +104,10 @@ describe("headless-stack-ledger — sidecar 读写往返", () => {
     expect(readStacksSync().map((r) => r.pid)).toEqual([222]);
     removeStackRecordsForOwner(2);
     expect(readStacksSync()).toEqual([]);
+    // 对抗轮 M2 变异锚（2026-09-16）：空账是 **unlink 文件** 而非留 [] 残骸
+    //（54d9975 B2 收口——读语义两形态等价，唯文件缺席可判别；此前该测试名
+    // 「空账删文件」但只断言读语义，M2 变异（留 []）实测逃逸）。
+    expect(existsSync(sidecar)).toBe(false);
   });
 
   it("文件缺失 / 损坏 / 非数组 → []（不抛，chrome-ledger 同容错）", () => {
