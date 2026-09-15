@@ -1,6 +1,6 @@
 # lasso/doc 导读
 
-> Lasso（npm `lasso-mcp`）doc/ 目录索引。更新：2026-08-31（v1.18.7 · P2 处置台账轮——索引新鲜度对账 + 断链修复 + governance/11 新档）。
+> Lasso（npm `lasso-mcp`）doc/ 目录索引。更新：2026-09-16（v1.26.0 预写态 · DocAudit 轮——补 governance/12、bugs/03-08、根级渲染档文档组七件，新鲜度对账至 BUG-08 审查循环；删除类处置见 [整理决议-2026-09-16.md](整理决议-2026-09-16.md) 先报后删）。
 > 规则：本文件只做导读与新鲜度对账，**不改写任何编号文档语义**；决策记录是不可变审计史（勘误上版，不回改）。
 
 ## 目录结构与编号规则（2026-08-27 重整确立）
@@ -10,11 +10,13 @@ doc/
 ├── usage/        使用向手册（npm 用户与日常操作）      01-03 组内序号
 ├── architecture/ 架构基线与排期（改代码前后必读）      01-02
 ├── testing/      功能测试清单                          01
-├── governance/   审计与裁决档案（轻量 ADR，按时间线）   01-11
+├── governance/   审计与裁决档案（轻量 ADR，按时间线）   01-12
 ├── history/      执行记录（测试执行证据本体，原样冻结）  01
-├── bugs/         BUG 档案                              01-02
+├── bugs/         BUG 档案                              01-08（+04-附录E）
+├── 根级 *.md     渲染档文档组（决议/需求/对接/配方/裁决/提案/登记，见 ⑦）
 ├── archive/      历史快照（parse 36 件 + research 17 件，编号保留原样不回改）
-└── assets/       图片资产（打赏二维码）
+├── assets/       图片资产（打赏二维码）
+└── 整理决议-2026-09-16.md（DocAudit 轮删除清单，先报后删，临时文件）
 ```
 
 **编号规则**：编号 = 组内序号（每组从 01 重新计数），不再使用全仓连续大编号。旧全局编号（08/09/17-29）已在本次重整中全量映射到新路径——正文与 src/test 注释中的引用已同步重写；`archive/` 内部为冻结快照，保留旧编号原样。
@@ -64,6 +66,7 @@ doc/
 | 2026-08-19/20 | [`governance/09-静默守则审计/`](governance/09-静默守则审计/)（6 件） | 静默守则入宪（INV-82）+ 得到实战五修 + 问题集 13 条终裁 | 已实施（v1.18.0/1） |
 | 2026-08-20 | [`governance/10-错配机制审计/`](governance/10-错配机制审计/)（3 件） | 守卫对准真实威胁模型：错配四修 + 默认放行（src 注释引用最密 ×54） | PASS 裁决，已实施（v1.18.2） |
 | 2026-08-31 | [`governance/11-P2处置台账.md`](governance/11-P2处置台账.md)（1 件） | wf_c02ef3df 全量 P2（34+22 去重 46 项）三档裁决：20 修 / 25 留档 / 1 已偿（r3 已偿） | 已实施（v1.18.7 处置轮，单 commit） |
+| 2026-09-09 | [`governance/12-回告收口与交付物测试载体决议.md`](governance/12-回告收口与交付物测试载体决议.md)（1 件） | cc-control 09-08 深检回告收口：附录E 样例回修三缺陷 + **交付物必须自带测试载体**制度（deny-browser-kill.mjs 落仓 + 14 向量测试 + 文档同步锚新机制） | 已实施（v1.22.1，单 commit） |
 
 ## ⑤ bugs/ — BUG 档案
 
@@ -71,6 +74,13 @@ doc/
 |---|---|---|
 | [`bugs/01-rust-helper-relative-path.md`](bugs/01-rust-helper-relative-path.md) | rust-helper 相对路径致 desktop 通道全挂——根因/修复纪要/对抗复审/勘误制度示范（§9） | 已根治（v1.18.4） |
 | [`bugs/02-chrome-idle-reaper-second-consumer.md`](bugs/02-chrome-idle-reaper-second-consumer.md) | idle reaper 误杀外部 CDP 消费者的 Chrome（R-INT-07 活案例；§9 闭环纪要） | 已根治（v1.18.6，§9 闭环纪要——fb4f790 §6 四条建议全落地 + 隐藏洞补全） |
+| [`bugs/03-2026-09-07-hidden档劫持用户Chrome激活.md`](bugs/03-2026-09-07-hidden档劫持用户Chrome激活.md) | 事故级用户主权双违反（裸 kill 原生 Chrome + Dock 激活被 hidden 档压回）——停机三维谓词 / 端口占用归因 / user_taken_asset 永不代杀 | 已根治（v1.21.0，INV-85/86/87） |
+| [`bugs/04-2026-09-08-选中页死锁与归属鉴定chrome-status.md`](bugs/04-2026-09-08-选中页死锁与归属鉴定chrome-status.md) | 选中页死锁自愈 + `chrome-status` 十分类归属鉴定（allowed_commands/must_report）+ `--zombie-gate` 唯一机器代杀出口 | 已根治（v1.22.0，INV-88/89） |
+| [`bugs/04-附录E-cc-control答复与hook交付包.md`](bugs/04-附录E-cc-control答复与hook交付包.md) | PreToolUse hook 硬拦样例（deny-browser-kill.mjs）+ 文档同步锚（附录E ↔ 仓内权威副本逐字节一致，governance/12 制度） | 活（README v1.22.0 引用；样例本体在 scripts/hooks/） |
+| [`bugs/05-2026-09-09-消费方台账L1-L3-navigate死参数-file白名单-console暴露面.md`](bugs/05-2026-09-09-消费方台账L1-L3-navigate死参数-file白名单-console暴露面.md) | novel-engine 消费方台账 L1-L3：navigate 死参数 / `LASSO_ALLOW_FILE_FROM` file 白名单 / console 暴露面 | 已根治（v1.23.0，INV-90/91/92/93） |
+| [`bugs/06-2026-09-10-日常档idle0幽灵常驻-硬顶与配方治理决议.md`](bugs/06-2026-09-10-日常档idle0幽灵常驻-硬顶与配方治理决议.md) | 12h 幽灵常驻事故——`--idle-ms 0` 语义改「不自收 + 24h 硬顶」+ 跨进程活动真源 + 配方治理 | 已根治（v1.24.0，INV-94） |
+| [`bugs/07-2026-09-10-消费方台账L4-截图必经重导航无法截当前页面状态.md`](bugs/07-2026-09-10-消费方台账L4-截图必经重导航无法截当前页面状态.md) | 消费方台账 L4：`action=screenshot` 省略 url = 截当前受管页（零导航） | 已根治（v1.25.0，INV-95） |
+| [`bugs/08-2026-09-15-商标查询马拉松-五组修复决议.md`](bugs/08-2026-09-15-商标查询马拉松-五组修复决议.md) | 反爬马拉松 A-F 六组决议：evaluate 预算/超时类型化 + sidecar 治理 browser_recycle + freshProfile 逃生门 + hash 导航默认 reload + 端口三层解析/fetch 细分 + vitest threads/gate 追杀带 | 已实施（v1.26.0 预写，INV-96；§9 实施定稿 + §11 对抗复审 + §12 F 组） |
 
 ## ⑥ archive/ — 历史档案（快照性质，不回改，编号保留原样）
 
@@ -79,7 +89,19 @@ doc/
 | [`archive/parse/`](archive/parse/)（36 件） | v0.1-v1.10 执行史全集（parse1-18 + 各 acceptance + v14 契约），src/index.ts、architecture/02、usage/02 Q5 的引用锚 | 快照（2026-08-27 自 cc-control-all/doc/parse/ 抢救迁入） |
 | [`archive/research/`](archive/research/)（16 件 + `搜索mcp工具/`） | 立项与演进调研全集：00-06 七路白盒调研、07 可行性、10-18 各专项（爬虫/登录态/白盒审查/资源占用），archive/research/14 §4.2d、16 §5 等被 src 注释引用 ×14 | 快照（同期抢救迁入；architecture/01 头部「上游」五链指向此处） |
 
-## ⑦ assets/ — 图片资产
+## ⑦ 根级渲染档文档组（doc/*.md，2026-09-01~10 渲染档与 perf/acc 轮产物）
+
+| 文档 | 一句话定位 | 状态 |
+|---|---|---|
+| [`渲染档设计决议.md`](渲染档设计决议.md) | 渲染档三项裁决定案（detached guardian / 冻结旗标 / 12 条细节收口；r2/r3 修订在档）——src/render/ 实施唯一依据，src ×8 引用 | 生效决议（v1.19.0 落地） |
+| [`需求-渲染档浏览器治理.md`](需求-渲染档浏览器治理.md) | media-gen-mcp 提的 R1-R7 需求真源（P0 Chrome 泄漏事故背景） | 活（R7 重开条件仍被引用） |
+| [`对接实施说明-渲染档x-media-gen-mcp.md`](对接实施说明-渲染档x-media-gen-mcp.md) | 消费方接口契约（ensure 协议逐字段 / 退出码 0-5 / 时序 / 双方义务） | 活（消费方 attach 依据） |
+| [`渲染档-并行验收隔离配方.md`](渲染档-并行验收隔离配方.md) | 同机多 agent 并行验收三 env 命名空间隔离配方（排程车道表） | 活（README 中英双语链接） |
+| [`性能准确率优化裁决表.md`](性能准确率优化裁决表.md) | perf/acc 专项轮裁决（PERF-1 npx registry 税 / PERF-2a 看门狗双宿主 / ACC-1①② 等） | 已实施（v1.19.0 立即修批） |
+| [`提案-render-stop端口作用域化.md`](提案-render-stop端口作用域化.md) | `--stop` 端口作用域化提案 + §6 裁决落款（已实施 v1.20.0）——该行为唯一裁决依据 | 历史里程碑（保留原位：被 并行验收隔离配方 §0 引用） |
+| [`登记问题-timing假红与退出契约与通用化.md`](登记问题-timing假红与退出契约与通用化.md) | 登记级开项台账：#8 timing 假红 / #9 独立脚本退出契约 / #10 R7 通用化重开条件 | 活（三项全开） |
+
+## ⑧ assets/ — 图片资产
 
 `assets/support-alipay.jpg` / `assets/support-wechat.jpg`——2 个 README（中 + 英）`<img src="doc/assets/support-*.jpg">` 引用。
 
@@ -87,19 +109,21 @@ doc/
 
 | 文档 | 写到版本 | 最后同步 |
 |---|---|---|
-| ../README.md | v1.18.x（changelog 齐） | 2026-08-23 |
-| ../ARCHITECTURE.md | v1.18.7（P2 处置轮刷新：头部版本/§2 分层图 search-local 出框/§9 计数改真） | 2026-08-31 |
-| usage/01（KEY-GUIDE） | v1.18.4（轻核对；90 天时效标注 2026-08-17/18） | 2026-08-27 |
-| usage/02（TROUBLESHOOTING） | v1.18.7（P2 处置轮修 §2.13 死链 ./KEY-GUIDE.md → ./01-KEY-GUIDE.md） | 2026-08-31 |
+| ../README.md | v1.26.0 预写（changelog ①-⑥ 齐含审查轮 3f73331 子句；发版时改版本行） | 2026-09-16 |
+| ../ARCHITECTURE.md | v1.26.0 预写态（DocAudit 轮增补对齐：头部横幅 / §16 五批新增面 / INV 84→96 / §14 版本要点 v1.19-v1.26 / §15 主线第 8-9 条） | 2026-09-16 |
+| usage/01（KEY-GUIDE） | v1.26.0 预写（BUG-08 批补 `LASSO_EVAL_TIMEOUT_MS`） | 2026-09-15 |
+| usage/02（TROUBLESHOOTING） | v1.26.0 预写（BUG-08 批补 §10 四配方：9222 被占/freshProfile/长 evaluate/fetch 细分） | 2026-09-15 |
 | usage/03（SELECTOR-MAINTENANCE） | v1.13 + v1.15 局部（http-serp 消费面待补，见 governance/07 §2.6） | 2026-08-27（仅修头部断链） |
 | architecture/01（基线冻结） | v0.x 快照 + 仓迁注 | 2026-08-27 |
-| architecture/02（排期） | v1.18.7（P2 处置轮补 v1.18.5/6/7 三行） | 2026-08-31 |
-| testing/01（功能测试清单） | v1.18.4（v1.18 增补记录节） | 2026-08-27 |
+| architecture/02（排期） | v1.26.0 预写（DocAudit 轮补 v1.19.0-v1.26.0 九行） | 2026-09-16 |
+| testing/01（功能测试清单） | v1.26.0 预写（BUG-08 审查循环 Gauntlet 增补 R-INT-06 证据修订后记 2026-09-16） | 2026-09-16 |
 | governance/01 | v1.10-v1.13（快照性质） | 2026-08-17 |
 | governance/02 / 03 | v1.14 / v1.15 | 2026-08-17 |
 | governance/04（含附录A） | 方法论（版本无关） | 2026-08-18 |
 | governance/05 / 06 | v1.16 / v1.17 | 2026-08-18 |
 | governance/07（盘点矩阵） | v1.18.5（§8 续盘含结构重整行） | 2026-08-27 |
 | governance/08 / 09 / 10 | v1.17.2 / v1.18.0-1 / v1.18.2 | 2026-08-19/20 |
-| bugs/01 | v1.18.4（已根治） | 2026-08-23 |
-| bugs/02 | v1.18.6（已根治，§9 闭环纪要） | 2026-08-31 |
+| governance/11 / 12 | v1.18.7 / v1.22.1 | 2026-08-31 / 2026-09-09 |
+| bugs/01-02 | v1.18.4 / v1.18.6（已根治） | 2026-08-23/31 |
+| bugs/03-08 | v1.21.0 / v1.22.0+附录E / v1.23.0 / v1.24.0 / v1.25.0 / v1.26.0 预写 | 2026-09-07~16 |
+| 根级渲染档文档组（7 件） | v1.19-v1.20 落地面 + 登记开项 | 2026-09-10（登记 #10 最新核） |

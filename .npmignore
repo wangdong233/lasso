@@ -44,3 +44,8 @@ output/
 
 # ----- ProfileRegistry 运行态（P2 处置轮：防 dev 残留再混入发布包）-----
 profiles/
+
+# ----- DocAudit 2026-09-16（整理决议 B2）：过程性证据不进发布包（git 内保留，证据冻结承诺不破）-----
+doc/history/
+doc/archive/
+doc/governance/08-静默性全面审计/verify-data/

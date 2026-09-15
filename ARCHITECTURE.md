@@ -1,6 +1,8 @@
 # Lasso 架构
 
 > 本文是 Lasso **v1.18.7** 的架构概览（user-first；深度架构基线见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)（冻结于 2026-07-21，头部有现状对齐横幅）；实施排期与决策记录见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)；doc/ 目录导读见 [`doc/README.md`](./doc/README.md)）。头部版本与全文计数由 P2 处置轮刷新（doc/governance/11 台账 + 本轮 20 条机械对账，2026-08-31，事实基准 = HEAD `4a40b7e` 源码实核 + `tools/list` / `npm test` / `check-invariants` / `cargo test` / `doctor` 实跑）。
+>
+> **现状对齐增补（2026-09-16，DocAudit 轮，基准 HEAD `7ab999b` = v1.26.0 预写态 / npm latest 1.25.0）**：v1.19.0→v1.26.0 共九版（渲染档 + BUG-03~08 五批）的架构面以**增量段落**对齐——§2 渲染档行、§9 浏览器主权三层防线、§11 INV 84→96、新 §16 五批新增面、§14 版本要点、§15 主线第 8-9 条；本实跑核验 = `check-invariants`（96/96 PASS），测试计数引自 BUG-08 gate 实跑（2997+1，见 README v1.26.0 changelog ⑥）——本轮未重跑全量 npm test，全文其余计数仍为 2026-08-31 基准。
 
 ## 1. 项目定位
 
@@ -80,6 +82,8 @@ Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户�
 ```
 
 ### 2.1 浏览器驱动契约锁：chrome-devtools-mcp 1.7.0（v1.11 迁移）
+
+> **v1.19+ 增补**：分层图之外新增两组面——① `src/render/`（v1.19.0 渲染档，5 文件：render-launcher / render-flags 冻结旗标单一真源 / render-guardian detached 执守 / render-doctor / 配套，`launchMode:"render"` 走台账 7 落点，与日常档机制天然隔离）；② Subprocess 层 sidecar 治理（v1.26.0 BUG-08 决议 B：chrome-devtools-mcp 栈 spawn 即登记 sidecar + 任意 spawn 前孤儿扫除 pid 归并/lstart 交叉核对 + `admin browser_recycle` 受控重启正门）。详见 §16。
 
 `src/subprocess/SubprocessManager.ts` 的 `LOCKED_CDP_MCP_VERSION = "1.7.0"` 是唯一真源，启动时经 `npx -y chrome-devtools-mcp@1.7.0` 自动拉取。v1.11 从 0.3.0 → 1.7.0 的一次性迁移（11 个月 / 57 个上游版本）要点：
 
@@ -313,14 +317,18 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
   - **诚实边界固化**（不可修，见 KEY-GUIDE/README 矩阵）：desktop 物理键鼠设计占用；launch-chrome hidden 的 Dock 图标（有头 Chrome 注册 Foreground ASN，LSUIElement 不可控；headless 无此问题——真机实证无 Foreground ASN）；visible 档语义即「看着干」；用户 Chrome 不静音（零注入铁律）+ 操作 tab 的 hasFocus 仿真（不抢 OS 焦点）。
   - **守卫**：INV-78(d) 精化——`bringToFront` token 级零命中（作用域内任何 select_page 都不可能带激活开关）+ `"new_page"` 禁令新增 + S-7 实装锚（select_page 调用形 + 护栏日志事件 grep）。
 - 其余安全 INV 面（cloud 双重解锁 / appleScript 白名单 / stealth profiles / 连接池）见 §11 分类表
+- **浏览器主权三层防线（v1.22.0 BUG-04 + v1.21.0 BUG-03 增补，永不 kill 用户浏览器红线的机械化）**：
+  1. **归属鉴定**——`chrome-status [--port N]` 十分类（账本僵尸 / 陈留 / 疑似用户资产…），输出人类决策文案 + 机器可读 `allowed_commands` / `must_report`（「疑似用户资产」分类 = 零允许操作 + 必须上报用户）；INV-88 守「鉴定器永不给 kill 出口」；
+  2. **PreToolUse hook 硬拦**——`scripts/hooks/deny-browser-kill.mjs`（12 向量，伪模式当场拦 / sleep 放行；样例落仓自带 14 向量测试 + 附录E 文档同步锚，governance/12 制度）；
+  3. **never_kill 语义内化**——停机三维谓词（modes × ownerPid × userTakenAt 豁免：任何进程退出只许收自己拉起的 Chrome）+ `isUserOwnedRecord`（用户已认领 / visible 登录窗）永不进程序化收尸 + `chrome-stop --zombie-gate` 三重门（台账在案+指纹对+kill 时刻重读台账）唯一机器代杀出口；INV-85/86/87 守。
 
 ## 10. 测试策略
 
-| 层 | 工具 | 覆盖 | 规模（v1.18.7 终态，2026-08-31 本机全量实跑） |
+| 层 | 工具 | 覆盖 | 规模（v1.26.0 预写态，2026-09-16 对齐：INV/gate 为 BUG-08 批实跑口径） |
 |---|---|---|---|
-| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..84 静态 grep + 形状测 | **84 条** |
-| INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84，26 个 pin 红翻转实证**（外部契约类全覆盖；未验证 pin 显性化报告） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak 等 | **2471 passed + 1 skipped**（148 文件；#4 裁决落地后本机实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
+| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..96 静态 grep + 形状测 | **96 条**（85-96 = BUG-03~08 五批新增，2026-09-16 实跑全 PASS） |
+| INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84 时代口径 + 26 个 pin 红翻转实证**（外部契约类全覆盖；85-96 批次自带形状测） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak / render / bug03-08 批次 spec 等 | **2997 passed + 1 skipped**（182 文件，BUG-08 gate 实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；`rust-helper/src/*.rs` 自 v1.13 零改——v1.18.4 仅动 `build/sign.sh` ad-hoc 签名链） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤——r4 轮改真口径） |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ 三引擎录制基线 | 6 条 HTML fixture（baidu/bing/google ×2；doctor #32 实跑 detail） |
@@ -328,7 +336,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | 全量功能测试 | doc/testing/01 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
 | 契约锁 | chrome-devtools-mcp@**1.7.0** version pin（`LOCKED_CDP_MCP_VERSION` 单一真源） | 上游小版本升级不破 Lasso；迁移要点见 §2.1 | SubprocessManager.ts |
 
-## 11. 不变量（84 条）分类
+## 11. 不变量（96 条）分类
 
 | 范畴 | INV 编号 | 守的是什么 |
 |---|---|---|
@@ -348,6 +356,11 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | v1.14-v1.17 运营事实与死层清除 | INV-54 / 80 | 死层墓碑：Bing（BingChannel 全链删、配置静默忽略）/ zhipu 直连（无 SearchChannel 类 / engine enum 无 "zhipu" / config 键容忍不消费 / doctor 报 retired） |
 | v1.18 用户运行守则生命周期 | **82** | D-5 exit 钩子 modes:['hidden']（visible 登录窗口不被 server 退出杀死）/ C2 自动 hide 默认 off + 只挂 visible 分支永不进 kill 路径 / 四重护栏（见墙→延迟窗→agent 安静→失败降级）/ hide 走 chrome-hide PID 定向 / 延迟窗默认单一真源 |
 | v1.18.7 架构重审轮（2026-08-31） | **83 / 84** | firstText 全仓唯一定义在 browse/upstream-response.ts（5 份私有拷贝收敛后防回潮）/ doctor 层（src/doctor/*.ts，doctor-cli.ts 组合根除外）禁 import ../channels/*（反向 value 依赖 = ESM 循环温床；defaultHeadlessProfileForHost 已迁 browse/stealth-profiles.ts） |
+| v1.21-v1.22 浏览器主权（BUG-03/04） | **85 / 86 / 87 / 88 / 89** | 用户激活让位（归因绑定）/ 停机不连坐（owner-scoped shutdown）/ 永不代杀用户资产 / chrome-status 输出契约（鉴定器无 kill 出口）/ 上游选中页死锁自愈（楔死签名检测 + 后台自建页接管） |
+| v1.23 消费方台账（BUG-05） | **90 / 91 / 92 / 93** | file-guard 默认关 / CONSUMED_OPTIONS 完备性（收了不生效=假接口）/ console 暴露面锚（schema 键与消费同 commit）/ screenshot 写根不变量 |
+| v1.24 幽灵常驻根治（BUG-06） | **94** | 日常档 idle-0 的 24h 硬顶契约（cap 谓词顺序 + render 三文件零 hard-cap tripwire + CLI_USAGE + isUserOwnedRecord 前置短路 + onChromeUse touch 写侧 + 两装配点显式传参） |
+| v1.25 当前页截图（BUG-07） | **95** | url 省略 + action=screenshot = current-page 截图（零导航；有 url 字节级不变）——schema↔description 同 commit 等 A⁺ 六面 |
+| v1.26 马拉松稳定性（BUG-08） | **96** | 五组防线：callTool timeout 透传 / doEvaluate 传预算 / 栈扫除判定序 + chrome-stop 域隔离 / fresh profile 先杀后删 + 陈年双闸 / wait current-page 家族 / fallback 耗尽 primary-first 复合串 |
 
 完整 INV 列表 + 释义见 `src/invariants/check-invariants.mjs` 顶部注释。
 
@@ -433,16 +446,26 @@ $ lasso launch-chrome
 | desktop 四档 | src/desktop/{AxProvider,AxBackend,AxBackendFactory,OutlineMapper,CGEventProvider,ScreenshotVlmProvider}.ts | AxProvider ~330 |
 | FallbackDecider | src/fallback/FallbackDecider.ts | ~350 |
 | Launcher | src/launcher/{launch-chrome,chrome-paths,chrome-stop,chrome-idle-reaper,chrome-ledger,chrome-hide,chrome-hideshow-cli,chrome-touch,desired-hide-state,desired-hide-watchdog,desired-hide-enforcer}.ts（INV-64 不引新 npm dep；chrome-touch / desired-hide-* = v1.18.3~v1.18.6 bug02 链） | 11 文件共 ~2900 |
+| Render 档 | src/render/{render-chrome,render-launcher,render-flags,render-guardian,render-doctor}.ts（v1.19-1.20 五文件；冻结旗标单一真源 + detached 执守 + reused 四条件门，见 §16.2） | — |
 | Doctor | src/doctor/doctor.ts（doctor CLI 默认 34 项实跑核；MCP doctor tool / DesktopChannel 装配 desktopChecks:true 时加 #15-#21 共 41 项；--deep 加 #11b brave_deep_probe；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / zhipu_keys_retired） | ~3060 |
-| Invariants | src/invariants/check-invariants.mjs（84 条 INV） | ~4600 |
+| Invariants | src/invariants/check-invariants.mjs（96 条 INV；85-96 = BUG-03~08 五批，2026-09-16 实跑全 PASS） | ~4600 |
 | INV 自测 | scripts/inv-selftest.mjs（20 样本红转复证） | ~410 |
 | Subprocess | src/subprocess/SubprocessManager.ts（`LOCKED_CDP_MCP_VERSION = "1.7.0"`）；rust-helper-path.ts（模块锚定：`new URL("../../rust-helper/...", import.meta.url)` 与宿主 cwd 解耦——v1.18.4 根治「非仓库根目录启动 desktop 全报 rust_helper_crashed」） | ~750 |
 | Rust helper | rust-helper/src/{ax,uia,atspi,applescript,applescript_whitelist,cgevent,cgevent_keymap,screenshot,tcc,windows,protocol,main,lib,ax_role_map,app_bundle_map}.rs（15 文件）；build/sign.sh（v1.18.4 ad-hoc 兜底签名进构建链） | ~5000；src/*.rs 自 v1.13 零改 |
 
 ## 14. 版本与发布
 
-- **当前版本**：`1.18.7`（架构重审落地版；2026-08-31）
+- **当前版本**：npm latest `1.25.0`；工作树 HEAD `7ab999b` 为 **v1.26.0 预写态**（changelog 已预写、版本行未改，发版归审查循环后用户指令——README v1.26.0 条目）
 - **version 真源**：`package.json` + `src/index.ts:LASSO_SERVER_VERSION` + `src/doctor/doctor.ts:LASSO_VERSION`（INV-63 守：三处必字面量一致）
+- **v1.19.0 → v1.26.0 要点**（2026-09-16 增补；用户向完整版见 README changelog；决策记录见 doc/bugs/03-08 + doc/渲染档文档组）：
+  - **v1.19.0**：确定性渲染档（`render-chrome --ensure/--status/--stop/doctor`，`src/render/` 5 文件 + 冻结旗标快照 + detached guardian）+ perf/acc 裁决批（npx registry 税 `--prefer-offline` 等）——设计决议见 doc/渲染档设计决议.md
+  - **v1.20.0**：渲染档并行安全批——`--stop` 端口作用域化（显式合法=只收该 port / 未设=全收 / 非法=exit 1，提案 §6 裁决）
+  - **v1.21.0**：浏览器主权与生命周期根治批（BUG-03）——CLI 默认 30min 回收 + 停机三维谓词 + 端口占用归因（`ledger_zombie_collected` / `never_kill_user_asset` / `user_taken_asset`）+ `--mode headless` 档
+  - **v1.22.0/1**：归属鉴定与通道自愈批（BUG-04）——`chrome-status` 十分类 + `--zombie-gate` + 选中页死锁自愈 + evaluate IIFE 形态；v1.22.1 回告收口（governance/12：交付物自带测试载体制度）
+  - **v1.23.0**：本地文件与排障能力批（BUG-05）——`LASSO_ALLOW_FILE_FROM` file 白名单 / navigate 死参数清扫 / console 暴露面
+  - **v1.24.0**：幽灵常驻根治批（BUG-06）——`--idle-ms 0` 语义改「不自收 + 24h 硬顶」+ 跨进程活动真源 + 配方治理
+  - **v1.25.0**：当前页截图批（BUG-07）——`action=screenshot` 省略 url 截当前受管页（零导航）
+  - **v1.26.0（预写）**：反爬马拉松稳定性批（BUG-08）——same-document 导航默认 reload + evaluate url=ensure-navigation + `budget_ms` 超时类型化 + freshProfile 逃生门 + sidecar 治理 `browser_recycle` + logged_in 端口三层解析 + fetch_url 失败细分 + vitest threads 钉死 / gate 超时追杀带
 - **v1.18.1 ~ v1.18.7 要点**（用户向完整版见 README changelog；决策记录见 doc/architecture/02 排期表）：
   - **v1.18.0/1.18.1**：静默守则入宪（doc/governance/09）——D-5 exit 钩子 modes:['hidden']（visible 登录窗口不再被 server 退出杀死）+ C2 登录后自动 hide（opt-in）+ INV-82；批量实战五修（求值失败不静默吞 / 无选中 tab 自愈 / visible 冷启动探活 12s / PDF 上游缺失前置如实报）
   - **v1.18.2**：错配机制审计（doc/governance/10）——威胁模型错配守卫四修 + 默认放行（单用户本地 stdio 形态下「多租户滥用」类限额默认 Infinity / opt-in；瞬态 DNS ≠ 策略拦截，语义 unknown 可重试）
@@ -453,7 +476,7 @@ $ lasso launch-chrome
   - **v1.18.7**：架构重审落地——browse 族接口面死参数清扫（诚实化）+ doctor/channels 解耦（INV-84）+ firstText 单一定义（INV-83）+ 文档改真 + INV 82→84；随后 P2 处置轮（doc/governance/11）46 项三档裁决 + `launch-chrome --help` 误启动修复 + CI actions 升 checkout@v7 / setup-node@v6 并加 Node 24
 - **doctor readiness 现状（如实）**：任一 check fail → `ready:false`。**#15 `rust_helper_signed` 现行语义 = ad-hoc 签名 → warn**（2026-08-31 用户裁决降级：ad-hoc 是官方免费合法方案、功能正常，唯一代价 rebuild 后 TCC 重授权；FAIL 把正常配置判成 ready:false 属噪音。Developer ID 长期方案保留在 next_step；Developer ID 正签仍 pass、未签仍 warn——回归测试 rust-helper-signed-warn.spec 三态锚定）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁（本地）**：`npm run build` / `npm test`（vitest 2471 passed + 1 skipped，148 文件 + readme-sync）/ `npm run check-invariants`（84）/ `npm run inv-selftest`（20 样本 26 pin 红翻转）+ `cargo test`（207，CI 不含）
+- **门禁（本地）**：`npm run build` / `npm test`（**2026-09-16 基准：2997 passed + 1 skipped，182 文件 + readme-sync**——BUG-08 gate 实跑口径）/ `npm run check-invariants`（**96**，2026-09-16 实跑全 PASS）/ `npm run inv-selftest` + `cargo test`（207，CI 不含）；`npm run gate` 后台化 + 60s 轮询读 log（180s stall 防误判；vitest 树超时追杀带 `LASSO_GATE_VITEST_TIMEOUT_MS`，doc/bugs/08 §12）
 - **CI（.github/workflows/ci.yml 实况）**：ubuntu-latest × Node **20/22/24** 矩阵（20=下限锚点 / 22=maintenance LTS / 24=active LTS——search-local 的 `node:sqlite` 依赖 NODE_MAJOR>=23，加 24 后该文件 40 测在 CI 真跑）；actions checkout@v7 / setup-node@v6；步骤 = npm ci → build → test → check-invariants（**JS 门禁三件套，无 cargo 步骤**——Rust 面靠本地 cargo test/check 守）
 
 ## 15. 质量与决策主线（doc/governance/01 → doc/governance/06 → doc/testing/01）
@@ -467,10 +490,41 @@ $ lasso launch-chrome
 5. **全量功能测试轮**（doc/testing/01，v1.17.1）：四面板 ~170 用例真机执行，抓出并修复 6 缺陷（🔴IPv6 字面量 SSRF 绕过 / 🔴HighRiskGate 裸 JSON.parse / doWait 假成功 / tab_restore no-op / doctor file 键 / SIGHUP），R1 独立裁决 **ALL-CLEAN**；§6 简单架构 38 条终判见 §6.1。
 6. **静默性 / 守则 / 错配审计三连**（doc/governance/08 / 09 / 10，v1.17.2 → v1.18.2）：全通道零抢焦点（S-7/S-10）→ 用户运行守则入宪（S1/S2/S3 三子句 + INV-82）→ 错配机制审计（47 处命中逐个裁决：4 修复 + 5 黄 + 19 保留）。
 7. **全面重审与 P2 处置**（2026-08-31，wf_c02ef3df 15-agent 五路 review + doc/governance/11 台账）：首轮五路 34 + 复审 22 = 56 原始 P2 去重合并 46 项，三档裁决 **20 fixed / 25 deferred / 1 rejected（已被 r3 轮修复偿）**；fixed 批次含 types.ts 死字段清理、doctor.spec flake 抬 15s、CI actions 升级 + Node 24 矩阵、`launch-chrome --help` 误启动短路；deferred 项全部留档可追。
+8. **渲染档 + BUG-03~08 五批实战驱动线**（2026-09-01 → 09-15，doc/渲染档文档组 + doc/bugs/03-08）：确定性渲染档（v1.19-1.20，media-gen-mcp 消费方托付浏览器生命周期）→ 浏览器主权根治（BUG-03 事故：用户 Chrome 被裸 kill）→ 归属鉴定 chrome-status（BUG-04，消费方实战）→ 消费方台账 L1-L4 两批（BUG-05/07，novel-engine）→ 幽灵常驻 24h 硬顶（BUG-06，用户 12h 实锤）→ 反爬马拉松稳定性（BUG-08，3 小时商标库实战 + F 组用户负载 188 实锤）。每批 = 事故/台账驱动 → 设计决议 → 实施 → 对抗复审 clean 闭环；INV 84 → 96。
+9. **BUG-08 审查循环（2026-09-16，Gauntlet 对抗复核）**：主对象 `git diff 92200d3..7ab999b`（16 commit/43 files）+ 五批累计架构漂移面——R-INT-06 证据修订后记（testing/01 §6：BrowseChannel.ts 磁石效应五批中四批落点 14 commit、doEvaluate 85 行 ≥4 职责类，**下批触碰 navigate/evaluate 语义须抽导航语义模块**，doc/testing/01 表后记）等。
 
 方法学沉淀（供复用）：裁决官不采信文档（关键声称白盒双源亲验）；证据阶梯 L0-L3；mutation 即验收；「先拿事实再加参数」；收敛协议前置；零基视角才可见方案级盲区；决策分级（GO/DECISION/WATCH/NOGO）交用户裁决而非默认全做。
 
-## 16. 相关文档
+## 16. v1.19 → v1.26 新增架构面（渲染档 + BUG-03~08 五批；2026-09-16 DocAudit 轮增补）
+
+> 本节为增量对齐段：v1.18.7 基线之后新增、且改变架构形态的面。逐项决策记录见 doc/bugs/03-08 与 doc/渲染档文档组（索引 doc/README.md ⑦/⑤）。
+
+### 16.1 台账体系（chrome ledger，v1.9 既有 + 五批扩展为治理中枢）
+
+台账 `~/.cache/lasso/launched-chromes.json`（主键 port + 归属标记）从「拉起记录」演进为**全生命周期治理中枢**：`launchMode` 三值（hidden / visible / **render** v1.19）× 停机三维谓词（modes × ownerPid × userTakenAt 豁免，BUG-03——任何进程退出只许收自己拉起的 Chrome）× `userTakenAt`/`isUserOwnedRecord` 用户认领态（永不进程序化收尸）× 24h 硬顶（BUG-06，无窗口实例保命天花板 + `--no-hard-cap` 逃生口）× 跨进程活动真源 `chrome-touch-<port>`（外部 CDP 消费者 touch 续命）。`chrome-status` 十分类把「这个端口被谁占着、我能不能动它」做成可机械判定的归属鉴定（§9 三层防线第 1 层）。
+
+### 16.2 渲染档（src/render/，v1.19-1.20）
+
+确定性 headless Chrome 档，服务 media-gen-mcp 等渲染消费方：`render-chrome --ensure`（幂等 + reused 四条件门 + 单飞锁 + 退出码 0-5 契约）/ 冻结旗标快照（render-flags.ts 单一真源 + fixture tripwire，同输入同像素）/ detached `render-guardian` 执守（收割调度，Chrome 本体持有者 =「无人」PPID=1 + 磁盘台账共有制）/ profile 三路径连带清理 / 9224 固定口（`LASSO_RENDER_PORT` 可隔离，冲突 exit 3）。并行验收三 env 命名空间配方见 doc/渲染档-并行验收隔离配方.md。设计决议：doc/渲染档设计决议.md（r2/r3 修订在档）。
+
+### 16.3 上游楔死自愈（BUG-04，v1.22.0）
+
+上游 chrome-devtools-mcp 选中页被关后 navigate/evaluate/snapshot 永久报错的结构性缺陷：lasso 检测楔死签名 → 后台自建页接管（`Target.createBackgroundTarget`，零抢焦）→ 自愈后如实前缀上报（`session_rotated:`）；修不掉时诚实报错不伪装。INV-89 守（heal 函数体双锚）。v1.26.0 补齐长 evaluate 维度：上游全局 toolMutex 楔死是**时间性的**（~3min 自愈）——`budget_ms` 调用预算传导 MCP 层（此前恒落 SDK 60s 缺省事故）+ 超时类型化 `mcp_request_timeout:` + 教学 hint（Chrome 没死）。
+
+### 16.4 内部栈 sidecar 治理（BUG-08 决议 B，v1.26.0）
+
+chrome-devtools-mcp 栈（进程内 spawn，跨进程不可见）与台账（主键 port）两者不对应 → `chrome-stop --all` 返空 + deny-hook 正确拦 OS kill = 死锁。治理：spawn 即登记 sidecar + 任意 spawn 前孤儿扫除（判定序：pid 归并 → alive → 包串 → lstart 交叉核对 → owner 死；绝不触碰非 lasso 进程）+ `admin browser_recycle` 受控重启正门（永不动 detached Chrome；可组 `freshProfile:true` 换脸重启）。域隔离 tripwire：chrome-stop 零 headless-stack 符号。
+
+### 16.5 反爬逃生门与假数据面修正（BUG-08 决议 C/D，v1.26.0）
+
+- **freshProfile**：headless 被服务端指纹拉黑（静默假 0）后的逃生门——完整新一致身份（临时 profile 归属锚目录名 + 先杀后删 + 24h 陈年双闸防 BUG-03 垃圾重演 + stealth 宿主适用集确定性轮换 + 完整栈 respawn）；logged_in 永不支持。
+- **same-document 诚实化**：仅 hash 不同导航默认补 reload（URL 规范化判基 `new URL()` origin+pathname+search，空路径省略斜杠形态不漏检——审查轮 3f73331 封口）+ `evaluate url` = ensure-navigation（final_url 永远真实）——假数据面（比崩溃危险一个数量级）的系统性修正。
+
+### 16.6 测试基建自愈（BUG-08 F 组，v1.26.0）
+
+vitest 池显式钉死 `threads`（主进程死 = worker 线程随之死，forks 孤儿类结构性消灭——用户负载 188 实锤事故）+ `npm run gate` 对 vitest 树的超时追杀带（到点树根存活即整树 SIGKILL；E1 白盒实锤 spawnSync timeout 形态必漏杀忙 worker，已否决）。gate 运行纪律：后台化 + 60s 轮询读 log（防 180s stall 误判死）。
+
+## 17. 相关文档
 
 - [README.md](./README.md) — 用户手册（安装 / 配置 / 工具列表 / 隐私 / 故障排查）
 - [doc/README.md](./doc/README.md) — doc/ 目录导读（**七组结构**：usage / architecture / testing / governance / bugs / history / archive，2026-08-27 重整；旧全局编号 08/09/17-29 → 新路径映射表在此；决策时间线 + 新鲜度表）
@@ -482,8 +536,10 @@ $ lasso launch-chrome
 - [doc/usage/03-SELECTOR-MAINTENANCE.md](./doc/usage/03-SELECTOR-MAINTENANCE.md) — selector 债维护手册
 - [doc/governance/07 文档查缺补漏](./doc/governance/07-文档查缺补漏/gap-matrix.md) — 文档盘点矩阵（新鲜度档位 + F 编号映射真源）
 - [doc/governance/11 P2 处置台账](./doc/governance/11-P2处置台账.md) — 全面重审 46 项 P2 三档裁决全记录（20 修 / 25 留档 / 1 已偿）
-- [doc/bugs](./doc/bugs/) — BUG 档案（01 rust-helper 路径 / 02 外部消费与隐藏全生命周期——v1.18.4 / v1.18.6 修复轮的根因链）
+- [doc/governance/12 回告收口决议](./doc/governance/12-回告收口与交付物测试载体决议.md) — 交付物必须自带测试载体制度（deny-hook 样例落仓 + 文档同步锚）
+- [doc/bugs](./doc/bugs/) — BUG 档案（01 rust-helper 路径 / 02 外部消费与隐藏生命周期 / 03 hidden 档劫持 / 04 死锁与 chrome-status+附录E / 05 消费方台账 L1-L3 / 06 幽灵常驻 / 07 消费方台账 L4 / 08 商标马拉松五组）
+- [doc/渲染档设计决议](./doc/渲染档设计决议.md) 等根级渲染档文档组 7 件 — 决议/需求/对接契约/并行配方/perf-acc 裁决/stop 作用域提案/登记开项（索引见 doc/README.md ⑦）
 
 ---
 
-本文档是 Lasso v1.18.7 架构概览（user-first；2026-08-31 全量对齐刷新，事实基准 = HEAD `4a40b7e` 源码实核 + `tools/list` / `npm test` / `check-invariants` / `inv-selftest` / `cargo test` / `doctor` 实跑，20 条机械断言逐条对账零漂移）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)；v0.1 → v1.18.7 实施排期（含每 phase 决策记录）见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)。
+本文档是 Lasso 架构概览（user-first；2026-08-31 全量对齐刷新至 v1.18.7——事实基准 = HEAD `4a40b7e` 源码实核 + `tools/list` / `npm test` / `check-invariants` / `inv-selftest` / `cargo test` / `doctor` 实跑，20 条机械断言逐条对账零漂移；**2026-09-16 DocAudit 轮增补对齐至 v1.26.0 预写态**——头部横幅 / §2.1 渲染档与 sidecar / §9 三层防线 / §10 计数 / §11 INV 96 / §14 版本要点 / §15 主线 8-9 / 新 §16 五批新增面，实跑核验 = check-invariants 96/96）。深度架构基线（含 F 编号 / 不变量推导链 / 测试策略）见 [`doc/architecture/01`](./doc/architecture/01-功能架构.md)；v0.1 → v1.26.0 实施排期（含每 phase 决策记录）见 [`doc/architecture/02`](./doc/architecture/02-实施排期.md)。
