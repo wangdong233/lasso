@@ -25,6 +25,15 @@ import { McpClient, type StdioSpawnParams } from "./McpClient.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { logger } from "../util/logger.js";
 import { killTreeSync } from "../util/kill-tree.js";
+// BUG-08 决议 B-2（doc/bugs/08，2026-09-15）：内部栈 spawn 即登记 + 任意 spawn
+// 前孤儿扫除（sidecar 跨进程可见性；procs map 是进程内态，SIGKILL 崩溃后无人
+// 可见——marathon 两代栈并存实锤）。INV-7 保持：纯 lifecycle 编排，不读协议帧。
+import {
+  appendStackRecord,
+  removeStackRecords,
+  removeStackRecordsForOwner,
+  sweepOrphanStacks,
+} from "./headless-stack-ledger.js";
 // BUG-rust-helper-relative-path §4.3：缺 binary 的 fail-fast 错误文案单一真源
 // A1（对抗复审轮 1）：spawn 可行性门 + 不可 spawn 自诊断也走同一真源
 import {
@@ -373,6 +382,13 @@ export class SubprocessManager {
       seen.add(pid);
       this._killTreeSync(name, pid);
     }
+    // BUG-08 决议 B-2：exit 钩子顺带清本 ownerPid 的 sidecar 记录（best-effort
+    // 同步；崩溃路径未达此处时由下一 server 任意 spawn 前的 sweep 兜底）。
+    try {
+      removeStackRecordsForOwner(process.pid);
+    } catch {
+      // best-effort：进程即将退出
+    }
   }
 
   /**
@@ -468,6 +484,28 @@ export class SubprocessManager {
     const spec = this.specs.get(name);
     if (!spec) throw new Error(`Unknown subprocess spec: ${name}`);
 
+    // BUG-08 决议 B-2：任意 spawn 前孤儿栈扫除（触发面 = 全部 spec——陈旧记录
+    // 的清理收敛性不依赖同 spec 再被使用，Selenium Grid「周期扫除」的本义）。
+    // 判杀 = pid 归并 + 三重守卫 + lstart 交叉核对（headless-stack-ledger 单一
+    // 真源）；杀的对象恒为「lasso 登记过 + 无任何活 owner 认领 + cmdline 仍是
+    // 锁定上游 + 起始时间一致 + 全组 owner 已死」——任一不满足零动作。扫除自身
+    // 失败（sidecar 读写/ps 异常）不阻断 spawn（best-effort，台账容错同款）。
+    try {
+      const swept = sweepOrphanStacks({
+        expectedPackageToken: `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
+      });
+      if (swept.killed.length > 0) {
+        logger.warn({
+          evt: "headless_stack_sweep_spawn_prelude",
+          name,
+          killed: swept.killed,
+          cleared_only: swept.recordsClearedOnly,
+        });
+      }
+    } catch (e) {
+      logger.warn({ evt: "headless_stack_sweep_failed", error: String(e) });
+    }
+
     let attempt = 0;
     while (true) {
       try {
@@ -500,6 +538,25 @@ export class SubprocessManager {
         // W2-DEF-N2（v1.8.1）：lifecycle 登记永不清——优雅 _kill 清 map 后
         // exit 钩子仍能按 pid 树杀残留（npx shim 下层 node/Chrome 孤儿）。
         if (client.pid !== null) this.lifecyclePids.add(client.pid);
+        // BUG-08 决议 B-2：spawn 即登记 sidecar（与 lifecyclePids 同写点）——
+        // ownerPid = 本 server 进程（归属锚；同 pid 记录任一 owner 活 → sweep
+        // 整组豁免，多 lasso server 并存合法）。写失败 best-effort 不阻断 spawn。
+        if (client.pid !== null) {
+          try {
+            appendStackRecord({
+              specName: name,
+              pid: client.pid,
+              ownerPid: process.pid,
+              spawnedAt: now,
+            });
+          } catch (e) {
+            logger.warn({
+              evt: "headless_stack_register_failed",
+              name,
+              error: String(e),
+            });
+          }
+        }
         logger.info({
           evt: "subproc_spawned",
           name,
@@ -557,6 +614,16 @@ export class SubprocessManager {
     // G5：close 失败/不致死都不阻断树杀（SIGKILL 是唯一可靠致死原语）
     if (pid !== null) this._killTreeSync(name, pid);
     this.procs.delete(name);
+    // BUG-08 决议 B-2：优雅 kill 的 spec 同步清 sidecar 登记（该 pid 树已死，
+    // 记录变陈旧——不留给 sweep 判定；best-effort）。崩溃路径（本进程猝死）由
+    // sweep 的 owner-dead 分支 + killAllSync 的 owner 清账兜底。
+    if (pid !== null) {
+      try {
+        removeStackRecords([pid]);
+      } catch {
+        // best-effort
+      }
+    }
   }
 
   /** 判定 stdio client 背后的子进程是否还活着。 */

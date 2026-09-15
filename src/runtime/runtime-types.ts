@@ -191,4 +191,9 @@ export type AdminAction =
   // 10 枚举分类 + R1-R3 机械规则 + 上报包；INV-17 action-enum 折叠，免 reason）。
   // 永不给 agent kill 能力（INV-88：allowed_commands 无 kill 形态、chrome-stop
   // 只允许 --zombie-gate 门槛变体且仅僵尸分支）。
-  | "chrome_status";
+  | "chrome_status"
+  // BUG-08 决议 B-1（doc/bugs/08，2026-09-15）：browser_recycle —— 内部 MCP 栈
+  //（SubprocessManager 进程内资产）受控重启的单一正门（mutation 必传 reason +
+  // channel）。v1 只开 headless（logged_in 等价物 = 既有 profile_switch respawn
+  // 路径）。永不动 detached Chrome（那是 chrome-stop 的域——一个账本一个域）。
+  | "browser_recycle";

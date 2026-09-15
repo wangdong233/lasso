@@ -86,6 +86,11 @@ export const adminSchema = {
     // BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status —— 端口占用者归属鉴定
     // （只读；与 CLI chrome-status 共用 classifyPortOccupier 单一真源）
     "chrome_status",
+    // BUG-08 决议 B-1（doc/bugs/08，2026-09-15）：browser_recycle —— 内部 MCP
+    // 栈受控重启的单一正门（mutation 必传 reason + channel）。台账路线被否决
+    //（台账主键 port / 归属协议不同 / --all 杀面静默扩大三方红线）——进程内
+    // 资产的正门在进程内。
+    "browser_recycle",
   ]),
   name: z.string().min(1).optional(),
   /**
@@ -119,6 +124,13 @@ export const adminSchema = {
   cap: z.number().int().nonnegative().optional(),
   /** BUG-04 决议 A2：chrome_status 用（缺省 = config.cdpPort）。 */
   port: z.number().int().positive().optional(),
+  /**
+   * BUG-08 决议 B-1：browser_recycle 用。v1 只开 "headless"（logged_in 的等价
+   * 物 = 既有 profile_switch respawn 路径，不重复开面；未知 channel 显式拒）。
+   */
+  channel: z.enum(["headless"]).optional(),
+  /** BUG-08 决议 B-1 + C：browser_recycle 可选换脸深度（走 HeadlessChannel.freshProfile）。 */
+  freshProfile: z.boolean().optional(),
   /**
    * v0.8 新增（parse9 §3）：profile_switch / cookie_restore 用。
    *
@@ -198,6 +210,22 @@ export interface AdminToolDeps {
    * 只读 action（免 reason）。未注入 → configured:false（零回归，同惯例）。
    */
   chromeStatus?: (port?: number) => Promise<import("../doctor/chrome-status.js").ChromeStatusResult>;
+  /**
+   * BUG-08 决议 B-1（doc/bugs/08，2026-09-15）：browser_recycle 入口（包装
+   * SubprocessManager.restart("headless") / HeadlessChannel.freshProfile——
+   * 进程内真源一致：procs map、closed 标记、BUG-07 会话守卫按 McpClient 实例
+   * 身份自动重置）。未注入 → configured:false（零回归，同惯例）。永不动
+   * detached Chrome（chrome-stop 的域）。
+   */
+  browserRecycle?: (opts: {
+    freshProfile?: boolean;
+  }) => Promise<{
+    restarted: boolean;
+    spec: string;
+    pid: number | null;
+    freshProfile?: boolean;
+    note?: string;
+  }>;
 }
 
 // ============================================================
@@ -237,6 +265,9 @@ export function registerAdminTool(
           op?: "export" | "import";
           // BUG-04 决议 A2：chrome_status 用
           port?: number;
+          // BUG-08 决议 B-1：browser_recycle 用
+          channel?: "headless";
+          freshProfile?: boolean;
         };
         const action = args.action as AdminAction;
 
@@ -635,6 +666,50 @@ export function registerAdminTool(
               }
             }
 
+            // ---------- BUG-08 决议 B-1（doc/bugs/08）：browser_recycle ----------
+            // 内部 MCP 栈（SubprocessManager 进程内资产）受控重启的单一正门。
+            // mutation（必传 channel + reason）。marathon 死锁的正门化：状态损坏
+            // /被污染的内部 headless 栈此前谁也动不了（台账不认 + deny-hook 正确
+            // 拦 OS kill）。可选 freshProfile=true 走决议 C 换脸重启（一个正门
+            // 两个深度）。永不触碰 detached Chrome（chrome-stop 的域）。
+            case "browser_recycle": {
+              const err = requireArgs(action, args, ["channel", "reason"]);
+              if (err) return err;
+              if (args.channel !== "headless") {
+                return fail(
+                  action,
+                  `unsupported channel: ${args.channel} (v1 supports headless only; logged_in equivalents are profile_switch / respawn paths)`,
+                );
+              }
+              if (!deps.browserRecycle) {
+                return ok(action, { configured: false });
+              }
+              try {
+                const freshProfile = args.freshProfile === true;
+                const result = await deps.browserRecycle({ freshProfile });
+                audit(action, callerId, args.reason, {
+                  channel: args.channel,
+                  fresh_profile: freshProfile,
+                  spec: result.spec,
+                  pid: result.pid,
+                });
+                return ok(action, {
+                  channel: args.channel,
+                  fresh_profile: freshProfile,
+                  ...result,
+                  note:
+                    result.note ??
+                    "internal MCP stack recycled in-process (procs map / closed flag / session guards all reset by identity); detached Chrome is chrome-stop's domain and is never touched",
+                });
+              } catch (e) {
+                audit(action, callerId, args.reason, {
+                  channel: args.channel,
+                  error: String(e),
+                });
+                return fail(action, `browser_recycle failed: ${String(e)}`);
+              }
+            }
+
             default: {
               // 类型穷尽性守护（zod enum 已过滤，但 TS narrowing 兜底）
               const _exhaustive: never = action;
@@ -722,8 +797,10 @@ function requireArgs(
     // v0.8 新增：profile_switch / cookie_restore 用
     profile?: string;
     op?: "export" | "import";
+    // BUG-08 决议 B-1：browser_recycle 用
+    channel?: "headless";
   },
-  required: Array<"name" | "reason" | "callerId" | "cap" | "tos_ack" | "profile" | "op">,
+  required: Array<"name" | "reason" | "callerId" | "cap" | "tos_ack" | "profile" | "op" | "channel">,
 ): { content: Array<{ type: "text"; text: string }> } | null {
   for (const f of required) {
     if (args[f] === undefined || args[f] === null || args[f] === "") {
