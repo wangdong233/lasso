@@ -152,7 +152,11 @@ describe("HeadlessChannel — P0 stealth 接入（parse13 §3.4 值级 trace）"
     // W1-DEF-1c（v1.8）：注入时机 = navigate 之后——页面 JS 上下文随导航重置，
     // 导航前注入在新文档全部丢失（wave2 smoke 实证 navigator.webdriver 仍 true）。
     // callTool 调用序列：navigate_page → evaluate_script(UA) → evaluate_script(16路)
-    const evalCalls = stub.calls.filter((c) => c.name === "evaluate_script");
+    // BUG-08 决议 D-1：doNavigate 前多一次 location.href 预读（same-document 检测
+    // probe，非注入）——注入时序断言须排除该 probe
+    const evalCalls = stub.calls.filter(
+      (c) => c.name === "evaluate_script" && !String(c.args.function).includes("location.href"),
+    );
     const navCalls = stub.calls.filter((c) => c.name === "navigate_page");
     // 至少 2 次 evaluate（UA override + 16 路 SCRIPT）+ 1 次 navigate
     expect(evalCalls.length).toBeGreaterThanOrEqual(2);

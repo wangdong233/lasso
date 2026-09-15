@@ -46,7 +46,8 @@ function textContent(text: string, isError = false) {
 }
 
 function makeClient(
-  handlers: Record<string, (n: number) => unknown>,
+  // BUG-08 D-2：handler 增收 args（evaluate 的 href probe/执行体按 function 载荷分流）
+  handlers: Record<string, (n: number, args: Record<string, unknown>) => unknown>,
 ): { client: McpClient; calls: Array<{ name: string; args: Record<string, unknown> }> } {
   const counts = new Map<string, number>();
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -57,7 +58,7 @@ function makeClient(
       counts.set(name, n);
       const h = handlers[name];
       if (!h) return textContent(`stubbed ${name}`);
-      return h(n) as never;
+      return h(n, args) as never;
     }),
     listTools: vi.fn(async () => []),
     close: vi.fn(async () => {}),
@@ -201,16 +202,34 @@ describe("BUG-04B · browseSingle 被动自愈编排", () => {
   });
 
   it("7. evaluate 路径楔死（isError → eval_upstream_error:楔死签名）也触发 heal——检测点在错误文本签名", async () => {
+    // BUG-08 决议 D-2：evaluate 带 url 现有 href 预读（url=当前页时原地执行）。
+    // mock 按 function 载荷分流：href probe 返回与目标相等的当前页（→ 原地执行
+    // 零导航，本用例聚焦楔死路径）；执行体首次返回楔死 isError、heal 重试后 ok。
+    let execCount = 0;
     const { client, calls } = makeClient({
-      evaluate_script: (n) =>
-        n === 1
-          ? textContent(WEDGE_TEXT, true)
-          : textContent("Script ran on page and returned:\n```json\n\"ok\"\n```"),
+      evaluate_script: (_n, args) => {
+        const fn = String(args.function);
+        if (fn.includes("location.href")) {
+          return textContent(
+            "Script ran on page and returned:\n```json\n\"https://example.com/\"\n```",
+          );
+        }
+        if (fn === "() => 1") {
+          execCount++;
+          return execCount === 1
+            ? textContent(WEDGE_TEXT, true)
+            : textContent("Script ran on page and returned:\n```json\n\"ok\"\n```");
+        }
+        return textContent("```json\n0\n```");
+      },
     });
     const ch = new WedgeTestChannel(client);
     const r = await ch.browse("https://example.com/", "evaluate", { js: "() => 1" } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    expect(calls.filter((c) => c.name === "evaluate_script")).toHaveLength(2);
+    expect(execCount).toBe(2); // 首次楔死 → heal → 重试 ok
+    expect(
+      calls.filter((c) => c.name === "evaluate_script" && String(c.args.function) === "() => 1"),
+    ).toHaveLength(2);
   });
 
   it("8. heal 失败（null）→ 透明前缀 upstream_wedge_selected_page_closed + unknown（fallback-worthy）", async () => {
