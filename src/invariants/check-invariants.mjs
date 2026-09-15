@@ -1383,7 +1383,13 @@ const assertions = [
       );
       if (!shutdownMatch) return false;
       const shutdownBody = shutdownMatch[1];
-      if (!/this\._kill\s*\(/.test(shutdownBody)) return false;
+      // BUG-08 决议 C：MCP 全停走 _retire（= _kill + post-kill hook——fresh
+      // profile 先杀后删清理链）；锚接受 _kill 或 _retire，且 _retire 本体必须
+      // 委托 _kill（kill 语义不因 hook 包装漂移）
+      if (!/this\._kill\s*\(|this\._retire\s*\(/.test(shutdownBody)) return false;
+      const retireMatch = code.match(/private async _retire\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\s{2}\}\n/s);
+      if (!retireMatch) return false;
+      if (!/this\._kill\(name\)/.test(retireMatch[1])) return false;
       if (!/this\._killRust\s*\(/.test(shutdownBody)) return false;
 
       return true;
@@ -4222,8 +4228,10 @@ const assertions = [
       if (!/`--viewport=\$\{profile\.viewport\.width\}x\$\{profile\.viewport\.height\}`/.test(headlessCode)) {
         return false;
       }
-      // UA 取自 STEALTH_PROFILES（INV-30 顶级 const，不从 env/config 读）
-      if (!/STEALTH_PROFILES\[this\.profileName\]/.test(headlessCode)) return false;
+      // UA 取自 STEALTH_PROFILES（INV-30 顶级 const，不从 env/config 读）。
+      // BUG-08 决议 C：spec 组装迁 registerSpecWithIdentity(profileName 参数)——
+      // 锚随之（意图不变：值源是 STEALTH_PROFILES 顶级 const）
+      if (!/STEALTH_PROFILES\[profileName\]/.test(headlessCode)) return false;
 
       // ----- (e) 零裸哑 flag 形态 -----
       // 0.3.0 时代 --disable-blink-features 作为 mcp 参数直接传（unknown-flag 哑弹）。
@@ -5450,8 +5458,10 @@ const assertions = [
       if (!(isOwnedGateIdx < launchModeGateIdx)) return false;
 
       // ----- (e) A-7 写侧：onChromeUse 回调落盘 touchChromePort（不 gated on chromeReaper） -----
-      const touchIdx = indexCode.indexOf("chromeReaper?.touch(config.cdpPort)");
-      const diskIdx = indexCode.indexOf("void touchChromePort(config.cdpPort");
+      // BUG-08 决议 E-1：touch 收生效端口参数（自动发现换口后 touch 发现口——
+      // 不变意图：onChromeUse 回调 reaper touch + 落盘 touchChromePort 且不 gated）
+      const touchIdx = indexCode.indexOf("chromeReaper?.touch(port)");
+      const diskIdx = indexCode.indexOf("void touchChromePort(port");
       if (touchIdx < 0 || diskIdx < 0) return false;
       if (!(diskIdx > touchIdx && diskIdx - touchIdx < 200)) return false; // 同回调内
       if (!indexCode.includes('import { touchChromePort } from "./launcher/chrome-touch.js"'))
@@ -5532,7 +5542,8 @@ const assertions = [
       );
       if (!headlessDesc) return false;
       if (!/CURRENT-PAGE SCREENSHOT \(BUG-07\)/.test(headlessDesc[0])) return false;
-      if (!/url \(str, optional for action=screenshot = current-page mode/.test(headlessDesc[0]))
+      // BUG-08 决议 D-3：current-page 家族扩 wait（文案锚同步）
+      if (!/url \(str, optional for action=screenshot \/ wait = current-page mode/.test(headlessDesc[0]))
         return false;
       const loggedInDesc = descSrc.match(
         /BROWSE_LOGGED_IN_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
@@ -5552,8 +5563,9 @@ const assertions = [
         !/url !== undefined &&\s*\(\s*NAV_FIRST_ACTIONS\.has\(action\)/.test(browseSrc)
       )
         return false;
-      // CURRENT_PAGE_ACTIONS 顶级 const（NAV_FIRST house pattern 预留增项位）
-      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot"\]\)/.test(browseSrc))
+      // CURRENT_PAGE_ACTIONS 顶级 const（NAV_FIRST house pattern 预留增项位；
+      // BUG-08 决议 D-3：集扩 "wait"——screenshot 必在集内（BUG-07 契约不回退））
+      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait"\]\)/.test(browseSrc))
         return false;
       // needsFreshPageNav 前置 undefined 守卫（防 undefined 走 !== "about:blank" 隐性边）
       const freshFn = browseSrc.match(/private needsFreshPageNav\([\s\S]*?\n  \}/);
@@ -5677,6 +5689,115 @@ const assertions = [
         )
       )
         return false;
+
+      return true;
+    },
+  },
+
+  //  INV-96  bug08-stability-contract（BUG-08 五组决议 A-E 的机械化防线，2026-09-15）：
+  //    (1) McpClient.callTool timeout 透传符号（SDK RequestOptions；不传=缺省不变）
+  //    (2) doEvaluate 调用点传 timeout（禁裸 callTool——A-2 预算传导）
+  //    (3) headless-stack-ledger 判定序文本锚（pid 归并 → alive → 包串 → lstart
+  //        与 spawnedAt 一致 → owner 死）+ chrome-stop 零 headless-stack 符号
+  //       （一个账本一个域 tripwire）
+  //    (4) freshProfile 清理契约：全部 rmSync 经前缀守卫单出口；（即时路径）post-kill
+  //        hook 在 _kill 完成之后且 pre-kill reapHook 块零 rmSync/postKillHook
+  //        （先杀后删 tripwire）；（陈年路径）owner 活跳过 + age 24h 线双闸
+  //    (5) CURRENT_PAGE_ACTIONS 含 "wait"（D-3 current-page 家族不回退）
+  //    (6) FallbackDecider 耗尽路径 primary error 组装符号（A-3③ 归因保真）
+  {
+    id: "INV-96-bug08-stability-contract",
+    desc:
+      "BUG-08 五组决议防线：(1) callTool timeout 透传（不传=缺省字节级不变）；(2) doEvaluate 传预算（禁裸 callTool）；(3) 栈扫除判定序（pid 归并→alive→包串→lstart→owner 死）+ chrome-stop 零 headless-stack 符号（域隔离）；(4) fresh profile 删除单出口前缀守卫 + 先杀后删（post-kill 在 _kill 后；pre-kill 窗口零删除）+ 陈年双闸（owner 活跳过/age 线）；(5) wait 在 current-page 家族；(6) fallback 耗尽 error primary-first 复合串",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const mcpSrc = byPath(/^subprocess\/McpClient\.ts$/)?.text ?? "";
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+      const ledgerSrc = byPath(/^subprocess\/headless-stack-ledger\.ts$/)?.text ?? "";
+      const subprocSrc = byPath(/^subprocess\/SubprocessManager\.ts$/)?.text ?? "";
+      const chromeStopSrc = byPath(/^launcher\/chrome-stop\.ts$/)?.text ?? "";
+      const freshSrc = byPath(/^channels\/headless-fresh-profile\.ts$/)?.text ?? "";
+      const headlessSrc = byPath(/^channels\/HeadlessChannel\.ts$/)?.text ?? "";
+      const deciderSrc = byPath(/^fallback\/FallbackDecider\.ts$/)?.text ?? "";
+      if (!mcpSrc || !browseSrc || !ledgerSrc || !subprocSrc || !freshSrc || !headlessSrc || !deciderSrc)
+        return false;
+
+      // ----- (1) callTool timeout 透传（SDK RequestOptions；不传=undefined 不传参） -----
+      const callToolBody = mcpSrc.match(/async callTool\([\s\S]*?\n  \}/);
+      if (!callToolBody) return false;
+      if (!/timeoutMs\?: number/.test(callToolBody[0])) return false;
+      if (!/\{ timeout: timeoutMs \}/.test(callToolBody[0])) return false;
+      if (!/timeoutMs !== undefined \? /.test(callToolBody[0])) return false; // 不传=缺省路径
+
+      // ----- (2) doEvaluate 传预算（禁裸 callTool） -----
+      const evalFn = browseSrc.match(/async function doEvaluate\([\s\S]*?\n\}/);
+      if (!evalFn) return false;
+      if (!/opts\.budget_ms \?\? defaultEvalTimeoutMs\(\)/.test(evalFn[0])) return false;
+      if (!/evalTimeoutMs,\s*\)\) as EvaluateResult/.test(evalFn[0])) return false; // 第三参实传
+
+      // ----- (3) 栈扫除判定序文本锚 + 域隔离 tripwire -----
+      // 判定序（= 实现序）：pid 归并 → alive → 包串 → lstart → owner 死 → kill
+      //（锚在文件头「判杀算法」注释块——头注是唯一序声明处）
+      if (
+        !/pid 归并（同 pid 任一 owner 活 → 整组零动作）→ alive → 包串 →\s*\n\s*\*\s*lstart 与 spawnedAt 一致 → owner 死 → killTreeSync/.test(
+          ledgerSrc,
+        )
+      )
+        return false;
+      if (!/killTreeSync\(pid, "headless-stack-mutex"\)/.test(ledgerSrc)) return false;
+      // chrome-stop（detached Chrome 域）零 headless-stack 符号——一个账本一个域
+      if (chromeStopSrc.includes("headless-stack") || chromeStopSrc.includes("headlessStack"))
+        return false;
+
+      // ----- (4) fresh profile 删除契约 -----
+      // 4a 前缀守卫单出口：守卫抛错 + recursive rmSync 同函数；HeadlessChannel 禁
+      // 裸 rmSync（全部删除走 rmFreshProfileDir）
+      const guardFn = freshSrc.match(/export function rmFreshProfileDir\([\s\S]*?\n\}/);
+      if (!guardFn) return false;
+      if (!/startsWith\(HEADLESS_PROFILE_PREFIX\)/.test(guardFn[0])) return false;
+      if (!/fresh_profile_refuse_delete/.test(guardFn[0])) return false;
+      if (!/rmSync\(dir, \{ recursive: true, force: true \}\)/.test(guardFn[0])) return false;
+      if (/rmSync\(/.test(headlessSrc)) return false; // 通道层禁裸 rmSync
+      // 4b 先杀后删：_retire 内 await _kill 先于 postKillHook 调用；
+      // cleanupZombies 的 pre-kill reapHook 竞速块内零 postKillHook/rmSync
+      //（stripComments 后匹配——块内注释提及 postKillHook 不算违规，代码才算）
+      const subprocCode = stripComments(subprocSrc);
+      const retireFn = subprocCode.match(/private async _retire\([\s\S]*?\n  \}/);
+      if (!retireFn) return false;
+      const killIdx = retireFn[0].indexOf("await this._kill(name)");
+      const hookIdx = retireFn[0].indexOf("this.postKillHook(name)");
+      if (killIdx < 0 || hookIdx < 0 || killIdx > hookIdx) return false;
+      const cleanupFn = subprocCode.match(/async cleanupZombies\([\s\S]*?\n  \}/);
+      if (!cleanupFn) return false;
+      const reapIdx = cleanupFn[0].indexOf("this.reapHook(name)");
+      const retireCallIdx = cleanupFn[0].indexOf("this._retire(name)");
+      if (reapIdx < 0 || retireCallIdx < 0 || reapIdx > retireCallIdx) return false;
+      // pre-kill 窗口（reapHook 块到 _retire 调用之间）零 rmSync/postKillHook
+      const preKillWindow = cleanupFn[0].slice(reapIdx, retireCallIdx);
+      if (/rmSync|postKillHook/.test(preKillWindow)) return false;
+      // 4c 陈年双闸：owner 活跳过 + age 线（HEADLESS_STALE_PROFILE_MS = 24h）
+      const scanFn = freshSrc.match(/export function scanStaleFreshProfiles\([\s\S]*?\n\}/);
+      if (!scanFn) return false;
+      if (!/HEADLESS_STALE_PROFILE_MS\)/.test(scanFn[0])) return false;
+      if (!/deps\.isPidAlive\(ownerPid\)/.test(scanFn[0])) return false;
+      if (!/"owner_alive"/.test(scanFn[0])) return false;
+      if (!/age_below_24h/.test(scanFn[0])) return false;
+      // 陈年扫描必在 HeadlessChannel 消费（首 spawn 前）
+      if (!/scanStaleProfiles\(\)/.test(headlessSrc)) return false;
+
+      // ----- (5) wait 在 current-page 家族（D-3 不回退） -----
+      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait"\]\)/.test(browseSrc))
+        return false;
+
+      // ----- (6) FallbackDecider 耗尽 primary-first 复合串 -----
+      const exhaustBlock = deciderSrc.match(
+        /const lastChannel = chain\[chain\.length - 1\][\s\S]*?return budget \? budget\.flushInto\(exhausted\) : exhausted;/,
+      );
+      if (!exhaustBlock) return false;
+      if (!/actions_and_results\.find\(\s*\(h\) => h\.channel === plan\.primary/.test(exhaustBlock[0]))
+        return false;
+      if (!/\[fallback \$\{lastHop\.channel\}: /.test(exhaustBlock[0])) return false;
+      if (!/slice\(0, 120\)/.test(exhaustBlock[0])) return false; // 摘录钳制
 
       return true;
     },
