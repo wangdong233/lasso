@@ -834,8 +834,15 @@ describe("P31 · 隐藏保险丝异步化（server 请求路径零阻塞 + F1 �
       ...FAST_PROBE,
       ...makeMockFetchSafe(),
     });
-    // spawn + 探活 + 台账已过（FAST_PROBE 毫秒级），fuse 挂起在未 resolve 的 hide 上
-    await new Promise((r) => setTimeout(r, 15));
+    // 🔴 轮询等挂起点（2026-09-15 CI 假红收口）：原 setTimeout(15) 赌 spawn→探活
+    // →台账→hideFn 链已走到挂起——CI 慢环境（linux×threads×node20）15ms 不够，
+    // releaseHide 仍 null → "releaseHide is not a function"。轮询至赋值（上限 2s）
+    // ——赋值即证明 hide 已挂起（Promise 未 resolve），此时否定断言语义必然成立。
+    const deadline = Date.now() + 2_000;
+    while (releaseHide === null && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(releaseHide).not.toBeNull(); // 前置：确已到达挂起点
     expect(logs.some((p) => p.evt === "chrome_hide_fuse_ok")).toBe(false);
     expect(logs.some((p) => p.evt === "chrome_hide_fuse_denied")).toBe(false);
     releaseHide!(); // osascript 完成

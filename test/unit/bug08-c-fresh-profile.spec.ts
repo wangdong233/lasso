@@ -154,10 +154,18 @@ describe("BUG-08 C — freshProfile 执行体", () => {
     const r1 = await ch.freshProfile();
     const r2 = await ch.freshProfile();
     // 确定性：候选集内可复现（当前平台集合大小 ≤1 → 同名退化——决议 §7 残余 5 诚实形态）
+    // 🔴 平台分支（2026-09-15 CI linux 假红收口）：Linux 宿主适用集为空（决议：
+    // 无自洽 Chromium profile——空集=保持现状），includes 恒 false——空集分支
+    // 断言「保持默认（不硬换）」语义；非空集分支（darwin/win32）原断言不变。
     const set = hostApplicableStealthProfiles();
-    expect(set.includes(r1.stealthProfile)).toBe(true);
-    expect(nextHostApplicableProfile(r1.stealthProfile)).toBe(r2.stealthProfile);
-    // 目录必须每次全新（identity 真换）
+    if (set.length === 0) {
+      // 空集：freshProfile 仍换目录（identity 换），stealth 宿主保持传入/默认不硬换
+      expect(nextHostApplicableProfile(r1.stealthProfile)).toBe(r1.stealthProfile);
+    } else {
+      expect(set.includes(r1.stealthProfile)).toBe(true);
+      expect(nextHostApplicableProfile(r1.stealthProfile)).toBe(r2.stealthProfile);
+    }
+    // 目录必须每次全新（identity 真换）——两平台分支共同断言
     expect(r1.profileDir).not.toBe(r2.profileDir);
   });
 
