@@ -19,6 +19,13 @@
 //  ① build（tsc + dist 装配） ② vitest run（全量） ③ check-invariants
 //  ④ check-readme-sync（npm test 链的 README 漂移面）
 import { spawnSync } from "node:child_process";
+import {
+  vitestSummary,
+  parseGateVitestBeltMs,
+  runWithBelt,
+  chaseVitestTree,
+  DEFAULT_GATE_VITEST_BELT_MS,
+} from "./gate-lib.mjs";
 
 const run = (label, cmd, args) => {
   const r = spawnSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -26,24 +33,36 @@ const run = (label, cmd, args) => {
   return { label, ok: r.status === 0, status: r.status, out };
 };
 
-/** 显式计数断言：解析 vitest 汇总行，failed 必须为 0（不信退出码单源）。 */
-const vitestSummary = (out) => {
-  const files = out.split("\n").find((l) => /Test Files/.test(l)) ?? "";
-  const tests = out.split("\n").find((l) => /^\s*Tests\s/.test(l)) ?? "";
-  const failedFiles = Number((files.match(/(\d+) failed/) || [])[1] ?? 0);
-  const failedTests = Number((tests.match(/(\d+) failed/) || [])[1] ?? 0);
-  return { files: files.trim(), tests: tests.trim(), failedFiles, failedTests };
-};
-
 // 🔴 门序（2026-09-09 实锤修正）：build 必须先于 vitest——CLI 集成测试
 // （runDoctorCliViaDist 等）读 dist 产物，旧 dist 会假红（版本镜像断言
 // pkgVersion vs 旧 dist 的 lasso_version 不匹配）。原实现 vitest 先跑，
 // VERDICT 打印顺序对但执行顺序反。
 const build = run("npm run build", "npm", ["run", "build"]);
-const vitest = run("vitest run（全量）", "npx", ["vitest", "run"]);
+
+// 🔴 BUG-08 F（2026-09-15）vitest 树超时追杀带（belt）：vitest 步骤走 runWithBelt
+// （async spawn + 超时竞赛）——belt 到点在**树根仍活**时 killTreeSync 整树（E1 白盒
+// 实锤：spawnSync timeout 只 SIGTERM 直子 npx 且返回时根已死、pgrep -P 恒空 →
+// 忙 worker（孤儿事故形态）漏杀）。防「vitest 楔死 → gate 挂死」与「异常终态后
+// 测试自 spawn 子进程残留」两个面；健康跑（3-7min）永不触发。预算可调
+// LASSO_GATE_VITEST_TIMEOUT_MS（非法/非正 → 缺省）。
+const beltMs = parseGateVitestBeltMs(process.env.LASSO_GATE_VITEST_TIMEOUT_MS);
+const vitest = await runWithBelt("vitest run（全量）", "npx", ["vitest", "run"], {
+  beltMs,
+  log: (m) => console.log(`  [gate] ${m}`),
+});
+let beltNote = "";
+if (vitest.abnormal) {
+  // belt 已开火（超时路径）→ 树已在根活时整杀；belt 未开火而异常终态（外部击杀）
+  // → 树根或已死，best-effort 死后追杀（E1 已知残余：死根 pgrep 恒空）
+  const chased = vitest.beltFired
+    ? { chased: true, detail: `belt 在树根存活时已整树 SIGKILL（root pid=${vitest.pid}）` }
+    : await chaseVitestTree(vitest.pid, (m) => console.log(`  [gate] ${m}`));
+  beltNote = `vitest 异常终态（status=${vitest.status} signal=${vitest.signal ?? "none"} belt=${vitest.beltFired ? "开火" : "未开火"}）→ 追杀带 ${chased.chased ? "已执行" : "不可用"}（${chased.detail}；belt=${Math.round(beltMs / 1000)}s，LASSO_GATE_VITEST_TIMEOUT_MS 可调，缺省 ${Math.round(DEFAULT_GATE_VITEST_BELT_MS / 1000)}s）`;
+}
 const vSum = vitestSummary(vitest.out);
 // 双源判绿：退出码 AND 汇总行计数（任一红即红——汇总行是 §14 教训的权威源）
-const vitestOk = vitest.ok && vSum.failedFiles === 0 && vSum.failedTests === 0;
+// 异常终态（超时/被杀）无退出码可言 → 恒红
+const vitestOk = vitest.ok && !vitest.abnormal && vSum.failedFiles === 0 && vSum.failedTests === 0;
 
 const inv = run("check-invariants", "node", ["src/invariants/check-invariants.mjs"]);
 const readme = run("check-readme-sync", "node", ["scripts/check-readme-sync.mjs"]);
@@ -69,6 +88,7 @@ if (vSum.files || vSum.tests) {
   if (vSum.files) console.log(`    ${vSum.files}`);
   if (vSum.tests) console.log(`    ${vSum.tests}`);
 }
+if (beltNote) console.log(`  🔴 ${beltNote}`);
 const anyRed = [build, { ok: vitestOk }, inv, readme].some((g) => !g.ok);
 console.log(`\n判绿纪律：读上面汇总行（failed=0），不信管道退出码。`);
 console.log(anyRed ? "GATE RED —— 存在失败门，禁收编/交付" : "GATE GREEN —— build/vitest/invariants/readme 四面全绿");

@@ -33,12 +33,35 @@ const SLOW_SPECS = [
   // v1.19（渲染档设计决议 §8.1b）：render-guardian 进程级集成（真 spawn dist
   // index.js + >1s 存活观察窗 + 自退等待——r2 否定反查的唯一真闸门）
   "test/integration/render-guardian-process.spec.ts",
+  // BUG-08 F（2026-09-15 vitest 孤儿进程治理）：真实 spawn 嵌套 vitest + 杀主 +
+  // 树追杀验证（真机复刻用户事故形态，>5s 窗口）
+  "test/unit/vitest-orphan-governance.spec.ts",
 ];
+
+/**
+ * 🔴 BUG-08 F（2026-09-15）：pool 显式钉死 "threads"（两 project 同钉）——
+ * vitest 孤儿进程治理的结构层。
+ *
+ * 白盒实证（vitest 2.1.9 dist/config.js:99 `pool: "forks"`——CLI help 的
+ * "default: threads" 是误导文案，resolver 实际缺省 forks）：
+ *  - forks 池：worker = 独立子进程。主进程被 SIGKILL（agent 中断/门禁被杀）时，
+ *    **忙 worker 存活自旋**——用户机器实锤孤儿群把负载打到 188（单 worker 87% CPU）。
+ *    真机复刻：SIGKILL(vitest main) 后正在跑 120s sleep 的 worker 原样存活。
+ *  - threads 池：worker = 主进程内 worker_thread（probe 实测 worker pid == main
+ *    pid）。主进程死 = 线程随之死——孤儿 worker 类**结构性消灭**。运行期唯一子
+ *    进程是瞬时 esbuild service（stdin 连主进程，主死自退——两池同型，非孤儿源）。
+ * 隔离语义：threads + isolate:true（缺省）= 每测试文件新 worker 线程；
+ * worker 线程 process.env 是独立副本（Node 缺省非 SHARE_ENV）——逐文件 env
+ * 隔离与 forks 等价。兼容性全量验证 = gate 全绿（BUG-08 F 实施批实测）。
+ * 守卫锚：test/unit/vitest-orphan-governance.spec.ts 钉本常量（回退 forks 即红）。
+ */
+const ORPHAN_GUARD_POOL = "threads" as const;
 
 export default defineWorkspace([
   {
     test: {
       name: "default",
+      pool: ORPHAN_GUARD_POOL,
       include: ["test/**/*.spec.ts", "test/**/*.test.ts"],
       exclude: ["node_modules/**", "dist/**", ...SLOW_SPECS],
     },
@@ -46,6 +69,7 @@ export default defineWorkspace([
   {
     test: {
       name: "timing-sensitive",
+      pool: ORPHAN_GUARD_POOL,
       include: SLOW_SPECS,
       // 🔴 30s（2026-09-09 二次上调 15→30）：gate 串行 build 后 + 全量并发形态下
       // doctor-deep-probe 的 runDoctor{deep:true} 全 check 链可超 15s（实锤 1 failed

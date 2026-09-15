@@ -8,10 +8,10 @@
  *     （根因 2：诊断与故障源不再脱节）
  *  4. 确定性缺文件 fail fast：不进 5×backoff（~30s），错误附绝对路径 + env 覆盖提示
  *
- * 测试策略：DI 注入（env 形参 / 临时 chdir），CI 无 rust 环境可跑——
- * 不 spawn 真 helper，只断言路径解析与失败语义。
+ * 测试策略：DI 注入（env 形参 / process.cwd() spy——threads 池 worker 禁 chdir，BUG-08 F），
+ * CI 无 rust 环境可跑——不 spawn 真 helper，只断言路径解析与失败语义。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   chmodSync,
   existsSync,
@@ -53,14 +53,19 @@ describe("BUG §4.1 — 默认路径 import.meta.url 绝对解析（与 cwd 解�
 
   it("从非仓库 cwd（os.tmpdir）解析 → 路径不变（cwd 解耦，BUG 根因 1）", () => {
     const before = resolveRustHelperPath({}).path;
-    const origCwd = process.cwd();
+    // BUG-08 F（2026-09-15）：threads 池 worker 线程禁 process.chdir（Node 平台限制，
+    // gate 实锤 TypeError）——cwd 解耦改用 process.cwd() spy 等价实证：默认分支走
+    // import.meta.url 绝对解析、不读 cwd → mock 下路径不变；若回归为历史 BUG 形态
+    // （默认 = path.resolve 相对路径），path.resolve 消费假 cwd → 路径漂移 → 红。
+    const spy = vi.spyOn(process, "cwd").mockReturnValue(os.tmpdir());
     try {
-      process.chdir(os.tmpdir());
       const after = resolveRustHelperPath({}).path;
       expect(after).toBe(before);
       expect(path.isAbsolute(after)).toBe(true);
+      // 反向钉：cwd 敏感形态在本 mock 下必产出 tmpdir 锚定路径（≠ 仓库内默认）
+      expect(path.resolve("rust-helper/target/release/lasso-rust-helper")).not.toBe(after);
     } finally {
-      process.chdir(origCwd); // 恢复，不污染同 worker 内其他 spec
+      spy.mockRestore(); // 恢复，不污染同 worker 内其他 spec
     }
   });
 });
