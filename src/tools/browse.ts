@@ -80,6 +80,12 @@ const browseSchema = {
         })
         .optional(),
       no_cache: z.boolean().optional(),
+      // BUG-08 决议 D-1（doc/bugs/08，2026-09-15）：navigate 的 same-document
+      //（hash-only）形态 opt-out——true = 检测命中也只标注（same_document_
+      // navigated:true + same_document_reloaded:false）不补 reload。缺省
+      //（false/不填）= hash-only 导航默认 reload（数据正确性优先——SPA 状态
+      // 残留假数据根治）。仅 action=navigate 消费。
+      no_reload: z.boolean().optional(),
       // BUG-08 决议 C（doc/bugs/08，2026-09-15）：反爬逃生门——本次调用前换完整
       // 新一致身份（新临时 profile + stealth 宿主适用集确定性轮换 + 完整栈
       // respawn）。仅 browse_headless 生效（logged_in 传入即拒 didnt + 专用错误

@@ -132,7 +132,8 @@ describe("E④ · doEvaluate 双形态行为", () => {
       js: "() => document.title",
     } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    expect(calls.find((c) => c.name === "evaluate_script")!.args.function).toBe(
+    // BUG-08 D-2: wrapEvaluateEnsureNav 先导读 location.href（首个 evaluate_script）——执行体断言取最后一次调用
+    expect(calls.filter((c) => c.name === "evaluate_script").at(-1)!.args.function).toBe(
       "() => document.title",
     );
     expect(r.data?.preview).toBe("page-title");
@@ -147,7 +148,8 @@ describe("E④ · doEvaluate 双形态行为", () => {
       js: "return 42",
     } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    expect(calls.find((c) => c.name === "evaluate_script")!.args.function).toBe(
+    // BUG-08 D-2: wrapEvaluateEnsureNav 先导读 location.href（首个 evaluate_script）——执行体断言取最后一次调用
+    expect(calls.filter((c) => c.name === "evaluate_script").at(-1)!.args.function).toBe(
       "() => {\nreturn 42\n}",
     );
     expect(r.data?.preview).toBe("42");
@@ -270,7 +272,8 @@ describe("C1 · evaluate IIFE 第三形态", () => {
       js: "(async () => { const x = await Promise.resolve(7); return x; })()",
     } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    const fnArg = String(calls.find((c) => c.name === "evaluate_script")!.args.function);
+    // BUG-08 D-2：同上——执行体取最后一次 evaluate_script 调用
+    const fnArg = String(calls.filter((c) => c.name === "evaluate_script").at(-1)!.args.function);
     expect(fnArg).toMatch(/^\(\) => \(\n\(async/); // 包裹形态
     expect(r.data?.preview).toBe("7");
   });

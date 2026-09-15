@@ -199,7 +199,7 @@ describe("BUG-08 A-2 — evaluate 单调用预算（budget_ms 死键兑现）", 
       budget_ms: 300_000,
     } as BrowseOptions);
     expect(r.outcome).toBe("worked");
-    const evalCall = calls.find((c) => c.name === "evaluate_script");
+    const evalCall = calls.filter((c) => c.name === "evaluate_script").at(-1);
     expect(evalCall).toBeTruthy();
     expect(evalCall!.timeoutMs).toBe(300_000);
     // budget_ms 被 evaluate 消费 → 不进 ignored_options（A-2 兑现的核心断言）
@@ -216,21 +216,21 @@ describe("BUG-08 A-2 — evaluate 单调用预算（budget_ms 死键兑现）", 
     // env 缺省 → 常量
     let h = mk();
     await h.ch.browse("https://example.com/", "evaluate", { js: "() => 1" } as BrowseOptions);
-    expect(h.calls.find((c) => c.name === "evaluate_script")!.timeoutMs).toBe(
+    expect(h.calls.filter((c) => c.name === "evaluate_script").at(-1)!.timeoutMs).toBe(
       DEFAULT_EVAL_CALL_TIMEOUT_MS,
     );
     // env 覆盖
     process.env.LASSO_EVAL_TIMEOUT_MS = "90000";
     h = mk();
     await h.ch.browse("https://example.com/", "evaluate", { js: "() => 1" } as BrowseOptions);
-    expect(h.calls.find((c) => c.name === "evaluate_script")!.timeoutMs).toBe(90_000);
+    expect(h.calls.filter((c) => c.name === "evaluate_script").at(-1)!.timeoutMs).toBe(90_000);
     // budget_ms 恒赢 env
     h = mk();
     await h.ch.browse("https://example.com/", "evaluate", {
       js: "() => 1",
       budget_ms: 200_000,
     } as BrowseOptions);
-    expect(h.calls.find((c) => c.name === "evaluate_script")!.timeoutMs).toBe(200_000);
+    expect(h.calls.filter((c) => c.name === "evaluate_script").at(-1)!.timeoutMs).toBe(200_000);
   });
 
   it("T5 snapshot 传 budget_ms 仍进 ignored_options（非 evaluate action 消费面不变）", async () => {

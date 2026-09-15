@@ -157,6 +157,17 @@ export interface BrowseResult {
    * BrowseChannel CONSUMED_OPTIONS。空数组/无死键时省略（byte-identical）。
    */
   ignored_options?: string[];
+  /**
+   * BUG-08 决议 D-1（doc/bugs/08，2026-09-15）：navigate 命中 same-document
+   *（hash-only）形态时填 true（检测命中标注——调用方知情）。
+   */
+  same_document_navigated?: boolean;
+  /** D-1：是否补了 reload（no_reload:true 时 false——仅标注不重载）。 */
+  same_document_reloaded?: boolean;
+  /**
+   * BUG-08 决议 C：本次调用经 freshProfile 换过身份（browse_headless 审计可见）。
+   */
+  fresh_profile?: boolean;
 }
 
 // ============================================================
@@ -250,6 +261,12 @@ export interface BrowseOptions {
    * 身份服务后续调用直至 idle 回收/下次换脸/server 退出（非每调用一换）。
    */
   freshProfile?: boolean;
+  /**
+   * BUG-08 决议 D-1：navigate 的 same-document（hash-only）形态 opt-out——
+   * true = 检测命中也**只标注不重载**（SPA hash 路由由应用自处理、重载破坏
+   * 会话态的显式逃生；假数据风险交还调用方知情承担）。仅 action=navigate 消费。
+   */
+  no_reload?: boolean;
   // ============================================================
   // v1.1 新增（parse12 §1.3 + §2.2）—— MarkdownExtractor mode-aware 三模式
   // ============================================================

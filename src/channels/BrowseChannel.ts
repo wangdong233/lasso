@@ -158,7 +158,9 @@ export abstract class BrowseChannel extends UiChannel {
     ["click", doClick],
     ["fill", doFill],
     ["wait", doWait],
-    ["evaluate", doEvaluate],
+    // BUG-08 决议 D-2：evaluate 的 url = ensure-navigation 语义（先导导航）——
+    // wrapEvaluateEnsureNav 在 handler 外包一层（见该方法注释）
+    ["evaluate", this.wrapEvaluateEnsureNav(doEvaluate)],
     // v0.5 M0.5b/M0.5c（parse6 §2.1 + §3.3.3 + §3.4.2）：追加 pdf + console + network entry
     // INV-33 守：pdf/console/network 三 action 必经 dispatch Map，禁第二套 dispatch。
     // screenshot 复用既有 v0.1 entry（不动）；pdf 由 doPdf 实装（chrome-devtools-mcp `pdf`）；
@@ -203,6 +205,46 @@ export abstract class BrowseChannel extends UiChannel {
       // W1-DEF-1c：导航后注入（beforeNavigate 注入会随文档重置全部丢失）
       await this.afterNavigate(c);
       return r;
+    };
+  }
+
+  /**
+   * BUG-08 决议 D-2（doc/bugs/08，2026-09-15）：evaluate 的 url 语义定案 =
+   * **ensure-navigation（先导导航）**——url 显式传入 = 调用方声明「在这个页上
+   * 跑」；与当前页不同（或读不到当前页）→ 先走完整导航链（复用 wrapNavigate
+   * 的 Map entry——含 afterNavigate stealth 注入），再原地执行。相同 → 原地
+   * 执行零扰动（已导航会话传匹配 url 的存量模式不受影响——cc-control 先例）。
+   *
+   * 修正面（P1-2）：此前 evaluate 不在 NAV_FIRST/FRESH_PAGE_NAV 集——带 url 直
+   * 达 doEvaluate 不导航，JS 实际跑在当前页，而 browseSingle 的
+   * `partial.final_url ?? effUrl` 兜底**伪造目标 URL**（preview 是当前页、
+   * final_url 是目标 URL 的自相矛盾）。修复后 final_url 两路都是真实值：
+   * 先导导航的 final_url 或读到的当前 href——伪造路径对 evaluate 永不触发。
+   *
+   * 与 FRESH_PAGE_NAV（snapshot/extract 的空白门控）差异是有意的：evaluate 是
+   * 驱动/变异型 action（非观察型），显式目标就该到达。
+   */
+  private wrapEvaluateEnsureNav(handler: ActionHandler): ActionHandler {
+    return async (c, url, opts) => {
+      if (url === undefined || url === CURRENT_PAGE_URL_LITERAL) {
+        return handler(c, url, opts); // url 省略 = 当前页（现状）
+      }
+      const currentHref = await readCurrentHref(c);
+      if (currentHref === url) {
+        return handler(c, url, opts); // 原地执行零开销
+      }
+      // 不同或无页/读取失败 → 先导导航（wrapNavigate 链：before/afterNavigate 同享）
+      const nav = this.actionDispatch.get("navigate");
+      let navFinalUrl: string | undefined;
+      if (nav) navFinalUrl = (await nav(c, url, opts)).final_url;
+      // 与 dispatchAction 的导航写点同语义（BUG-07 会话守卫：先导导航后本
+      // client 即「已导航会话」——随后 current-page action 合法）
+      this.navSeenClients.add(c);
+      this.lastNavigatedClient = c;
+      const partial = await handler(c, url, opts);
+      // final_url 真实化：导航结果 ?? 读到的 href（两路皆真值；doEvaluate 自身
+      // 永不产 final_url，杜绝旧伪造路径）
+      return { ...partial, final_url: navFinalUrl ?? currentHref ?? url };
     };
   }
 
@@ -374,7 +416,8 @@ export abstract class BrowseChannel extends UiChannel {
       fallback_used: false,
       retrieval_method: this.retrievalMethod(),
       error: `url_required_for_action:${action}`,
-      hint: "url is optional only for action=screenshot (current-page mode); pass an explicit http(s) url",
+      // BUG-08 决议 D-3：current-page 家族扩 wait（hint 同步）
+      hint: "url is optional only for action=screenshot / wait (current-page mode); pass an explicit http(s) url",
     };
   }
 
@@ -565,16 +608,27 @@ export abstract class BrowseChannel extends UiChannel {
     // 落地**（throw → classifyBrowseError 无规则 → unknown → 熔断污染级联
     // + fallback_exhausted 吞 hint——§5.3 r1 发现 ② 的三级劣化）。
     // ==============================================================
-    /** no-session 完整 InteractResult（level-1 / level-2 / 自愈禁令共用形状）。 */
-    const noSessionResult = (): InteractResult<BrowseResult> => ({
-      outcome: "didnt",
-      data: null,
-      served_by: this.name,
-      fallback_used: false,
-      retrieval_method: "current_page_no_session",
-      error: "no_active_session:current_page_screenshot",
-      hint: "current-page screenshot requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first, or pass url for the one-step navigate+shoot form. Refusing to shoot a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), which would fabricate state.",
-    });
+    /**
+     * no-session 完整 InteractResult（level-1 / level-2 / 自愈禁令共用形状）。
+     * BUG-08 决议 D-3：action 感知——screenshot 保持 BUG-07 契约字节级不变
+     *（错误码/hint 被既有测试与 INV-95 锚定），wait 用自己的码（同族语义）。
+     */
+    const noSessionResult = (): InteractResult<BrowseResult> => {
+      const isWait = action === "wait";
+      return {
+        outcome: "didnt",
+        data: null,
+        served_by: this.name,
+        fallback_used: false,
+        retrieval_method: "current_page_no_session",
+        error: isWait
+          ? "no_active_session:current_page_wait"
+          : "no_active_session:current_page_screenshot",
+        hint: isWait
+          ? "current-page wait requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first, or pass url (wait then runs after navigation). Refusing to wait on a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), so waiting could never succeed honestly."
+          : "current-page screenshot requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first, or pass url for the one-step navigate+shoot form. Refusing to shoot a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), which would fabricate state.",
+      };
+    };
     // level-1 pre-check（不获取 client）：冷通道**不 spawn 浏览器子进程**就完成
     // 拒绝——「不静默新开」落到实处（headless 不拉 Chromium；logged_in 不拉 npx）。
     if (url === undefined && this.lastNavigatedClient === null) {
@@ -717,6 +771,14 @@ export abstract class BrowseChannel extends UiChannel {
           // 的单字段先例，保留兼容；include_refs 传给非 extract action 现在也进
           // ignored_options 超集标注，不冲突）。
           ...(ignored.length > 0 ? { ignored_options: ignored } : {}),
+          // BUG-08 决议 D-1：same-document（hash-only）导航标注透传（检测命中 +
+          // 是否补 reload——marathon 假数据形态的知情信号）
+          ...(partial.same_document_navigated
+            ? {
+                same_document_navigated: true,
+                same_document_reloaded: partial.same_document_reloaded ?? false,
+              }
+            : {}),
           // BUG-08 决议 C：该次调用确实换了身份（调用方审计可见）
           ...(freshApplied ? { fresh_profile: true } : {}),
         },
@@ -1113,11 +1175,56 @@ const NAV_ERROR_SIGNATURES =
 const HTTP_404_SIGNATURE =
   /\b404\b[\s:.\-–—]{0,40}not\s*found|not\s*found[\s:.\-–—]{0,40}\b404\b|http\s*404/i;
 
+/**
+ * BUG-08 决议 D-1（doc/bugs/08，2026-09-15）：same-document（hash-only）导航
+ * 判定——去 hash 后完全相等且完整串不同。marathon 假数据形态的根源检测：
+ * SPA 对 hash 路由按 same-document 处理（页面不重新执行查询，结果区留旧数据，
+ * URL 已新词——「哒哒=0 条干净」差点写进报告，真值 3718）。
+ * 导出供测试。
+ */
+export function isSameDocumentNavigation(
+  currentHref: string,
+  targetUrl: string,
+): boolean {
+  if (currentHref === targetUrl) return false; // 完整串相同 = 无导航事件（非本检测域）
+  const strip = (u: string) => {
+    const i = u.indexOf("#");
+    return i >= 0 ? u.slice(0, i) : u;
+  };
+  return strip(currentHref) === strip(targetUrl);
+}
+
+/** D-1：轻量读当前页真实 URL（quickSnapshot 式单次 evaluate；失败/空 → null 跳过检测）。 */
+async function readCurrentHref(c: McpClient): Promise<string | null> {
+  try {
+    const r = (await c.callTool("evaluate_script", {
+      function: "() => location.href",
+    })) as EvaluateResult;
+    const v = parseEvalResult(r);
+    return typeof v === "string" && v.length > 0 ? v : null;
+  } catch {
+    return null; // best-effort：与 verifyNavigatedPage 同哲学（检测失败不阻断导航）
+  }
+}
+
 async function doNavigate(
   c: McpClient,
   url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
+  // BUG-08 决议 D-1：导航前读当前页真实 href——hash-only 目标默认补 reload
+  //（安全方向裁决：宁可 reload——数据正确性优先于加载性能）。失败/空白页 →
+  // 跳过检测（现状路径字节级不变）。仅当两侧去 hash 相等才可能命中——常规
+  // 跨页导航零行为变化（多付一次 ~几十 ms 级 evaluate RTT）。
+  let currentHref: string | null = null;
+  try {
+    currentHref = await readCurrentHref(c);
+  } catch {
+    currentHref = null;
+  }
+  const sameDocument =
+    currentHref !== null && isSameDocumentNavigation(currentHref, url);
+
   let r: NavigateResult;
   try {
     r = (await c.callTool("navigate_page", {
@@ -1149,7 +1256,27 @@ async function doNavigate(
   // title/内容特征校验真实加载结果；校验通道自身失败不阻断（正常页仍 worked）。
   await verifyNavigatedPage(c, firstText(r) ?? "");
 
-  return { final_url: finalUrl, preview: "navigated" };
+  // D-1：same-document 导航 → 默认补 reload（上游原生 navigate_page type=reload；
+  // 上游 WaitForHelper 对 sameDocument 显式短路不重载——reload 后页面在目标 hash
+  // 上全量重执行，SPA 查询数据正确性恢复）。opt-out：no_reload:true（SPA hash
+  // 路由由应用自处理、重载破坏会话态的显式逃生——此时仅标注不重载，假数据
+  // 风险交还调用方知情承担）。
+  let reloaded = false;
+  if (sameDocument && opts.no_reload !== true) {
+    await c.callTool("navigate_page", {
+      type: "reload",
+      ignoreCache: opts.no_cache ?? false,
+    });
+    reloaded = true;
+  }
+
+  return {
+    final_url: finalUrl,
+    preview: "navigated",
+    ...(sameDocument
+      ? { same_document_navigated: true, same_document_reloaded: reloaded }
+      : {}),
+  };
 }
 
 /**
@@ -1868,7 +1995,10 @@ const NAV_FIRST_ACTIONS = new Set(["network", "screenshot", "pdf"]);
 // current-page action 集（对当前受管页面直接执行，零导航）。house pattern 同
 // NAV_FIRST_ACTIONS（顶级 const 预留增项位，未来 network/pdf 的 current-page
 // 形态=加一行，决议 §5.10 记档本期不开）。有 url → NAV_FIRST 照旧字节级不变。
-const CURRENT_PAGE_ACTIONS = new Set(["screenshot"]);
+// BUG-08 决议 D-3（doc/bugs/08）：+= "wait"——等当前页的异步渲染是高频需求
+//（此前被迫 evaluate+轮询绕行）；BUG-07 会话守卫（level-1/2）自动生效——无会话
+// 当前页 wait = no_active_session 拒（与 screenshot 同契约，不静默等空白页）。
+const CURRENT_PAGE_ACTIONS = new Set(["screenshot", "wait"]);
 
 // BUG-07 决议 A⁺（§5.2③）：current-page 模式的 data.url / final_url 字面量
 //（诚实+可 grep，不伪造 URL；上游 take_screenshot 本就无 url 参数——本决议
@@ -1911,7 +2041,8 @@ const FRESH_PAGE_NAV_ACTIONS = new Set(["snapshot", "extract"]);
  * 生效键）；其余单 action 传入 budget_ms 仍进 ignored_options（如实标注）。
  */
 const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  navigate: ["no_cache"],
+  /** BUG-08 决议 D-1：no_reload = same-document 检测命中的 opt-out（doNavigate 消费） */
+  navigate: ["no_cache", "no_reload"],
   /** 空白会话 needsFreshPageNav 先导导航时消费 no_cache（见上实施注） */
   snapshot: ["no_cache"],
   /** NAV_FIRST：先导航（消费 no_cache）再截屏（消费 screenshot.full/filePath） */
@@ -1920,8 +2051,9 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
   click: ["selectors"],
   fill: ["selectors"],
   wait: ["expect"],
-  /** BUG-08 决议 A-2：budget_ms = 单调用 MCP 超时（doEvaluate 传导 callTool） */
-  evaluate: ["js", "budget_ms"],
+  /** BUG-08 决议 A-2：budget_ms = 单调用 MCP 超时（doEvaluate 传导 callTool）；
+   * D-2：no_cache 经先导导航消费（url ≠ 当前页时 wrapEvaluateEnsureNav 导航链） */
+  evaluate: ["js", "budget_ms", "no_cache"],
   pdf: [
     "pdf_format",
     "pdf_landscape",
