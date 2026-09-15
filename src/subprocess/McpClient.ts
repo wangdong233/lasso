@@ -60,6 +60,41 @@ export function defaultHandshakeTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS;
 }
 
+// ============================================================
+// BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：evaluate 单调用预算
+// ============================================================
+/**
+ * 单次 evaluate 的 MCP callTool 超时缺省（ms）。
+ *
+ * 归因（marathon 白盒，doc/bugs/08 §1 P0-1）：McpClient.callTool 此前不传超时 →
+ * SDK Client.callTool 落 protocol.js DEFAULT_REQUEST_TIMEOUT_MSEC=60_000——**60s
+ * 不是设计值，是 SDK 缺省事故**。长批量 evaluate（20+ 次页内请求 + sleep）正常
+ * 就能超 60s，产生 -32001；且上游 chrome-devtools-mcp@1.7.0 一把全局 toolMutex
+ * 串行化所有工具，服务端继续跑的 evaluate 会让后续任何 action 排队各烧满 60s
+ * 逐个 -32001（「超时连坐」的时间性楔死）。
+ *
+ * 取值 = DEFAULT_CHAIN_BUDGET_MS 同值对齐（120s）——链级预算与单 evaluate 预算
+ * 同一数量级是既有设计事实（v0.3 起 chain 缺省即 120s），非新拍脑袋。env
+ * LASSO_EVAL_TIMEOUT_MS 覆盖（NaN/负/未设 → 回默认，defaultHandshakeTimeoutMs
+ * 同范式）；调用方可经 browse options.budget_ms（zod 上限 600s）逐调用覆盖
+ * （BrowseChannel doEvaluate 传导，A-1 接线）。其余 action 生命周期短，
+ * 60s 缺省是正确缺省——本常量只喂 evaluate 路径。
+ */
+export const DEFAULT_EVAL_CALL_TIMEOUT_MS = 120_000;
+
+/** LASSO_EVAL_TIMEOUT_MS 解析（纯函数，导出供测试；NaN/负/空 → 回默认）。 */
+export function parseEvalTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_EVAL_CALL_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_EVAL_CALL_TIMEOUT_MS;
+  return n;
+}
+
+/** 运行时缺省（env 覆盖）；doEvaluate 的 budget_ms 缺省档单一真源。 */
+export function defaultEvalTimeoutMs(): number {
+  return parseEvalTimeoutMs(process.env.LASSO_EVAL_TIMEOUT_MS);
+}
+
 /**
  * 给 Promise 加截止时间。超时抛 makeError(timeoutMs)；原 Promise 的晚到
  * reject 被 catch 吞掉（不产生 unhandledRejection）。resolve 晚到同理无害。
@@ -201,16 +236,29 @@ export class McpClient {
     return c;
   }
 
-  /** 调一个 MCP 工具；返回 SDK 标准返回（含 content / isError / structuredContent）。 */
+  /**
+   * 调一个 MCP 工具；返回 SDK 标准返回（含 content / isError / structuredContent）。
+   *
+   * BUG-08 决议 A-1（doc/bugs/08，2026-09-15）：可选 timeoutMs 透传 SDK
+   * RequestOptions.timeout（Client.callTool 第三参，SDK ^1.30 .d.ts 实读：
+   * `callTool(params, resultSchema?, options?: RequestOptions)`）。**不传 =
+   * 现状字节级不变**（SDK 60s 缺省——其余 action 生命周期短，该缺省正确）。
+   * 目前唯一接线面 = evaluate 路径（BrowseChannel doEvaluate，长批量 JS 的
+   * 调用层预算——超时是「结果没拿到」，绝不触发资源层处置，A-3②）。
+   */
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    timeoutMs?: number,
   ): Promise<Record<string, unknown>> {
     if (!this.connected) throw new Error("McpClient not connected");
-    return (await this.client.callTool({ name, arguments: args })) as Record<
-      string,
-      unknown
-    >;
+    const requestOptions =
+      timeoutMs !== undefined ? { timeout: timeoutMs } : undefined;
+    return (await this.client.callTool(
+      { name, arguments: args },
+      undefined,
+      requestOptions,
+    )) as Record<string, unknown>;
   }
 
   /** 列出远端工具——SubprocessManager.healthProbe 用它做活性探测。 */

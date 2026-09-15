@@ -337,6 +337,10 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   LASSO_CALLER_CAP_DEFAULT: 100,
   LASSO_PROVIDERS_FILE: "",
   LASSO_HEADLESS_IDLE_MS: 300000,
+  // BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：单次 evaluate 的 MCP 调用超时
+  // （缺省 120s = DEFAULT_EVAL_CALL_TIMEOUT_MS；NaN/负回默认）。config 文件值经
+  // index.ts 装配段单点同步进 process.env（McpClient 侧读取，单一消费真源）。
+  LASSO_EVAL_TIMEOUT_MS: 120000,
   // v1.10（parse18 §2.4 + §3）：台账 Chrome 用完即关 + 隐藏启动档
   LASSO_LAUNCH_MODE: "hidden",
   LASSO_LAUNCH_IDLE_MS: 60000,

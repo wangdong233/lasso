@@ -46,6 +46,8 @@ import type {
   Outcome,
 } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
+// BUG-08 决议 A-2（doc/bugs/08）：evaluate 单调用预算缺省（env 覆盖单一真源）
+import { defaultEvalTimeoutMs } from "../subprocess/McpClient.js";
 import { writeState, withOperation } from "../util/state-store.js";
 import { logger } from "../util/logger.js";
 import type { ExpectCondition } from "../types.js";
@@ -687,8 +689,23 @@ export abstract class BrowseChannel extends UiChannel {
         retrieval_method: this.retrievalMethod(),
       };
     } catch (e) {
-      const msg = String(e);
+      // BUG-08 决议 A-3①（doc/bugs/08，2026-09-15）：MCP 请求超时类型化——SDK
+      // McpError 文本（"McpError: MCP error -32001: Request timed out"）此前无规则
+      // 命中 → 裸 unknown，调用方对「上游楔死还是 Chrome 死了」零分辨力（marathon
+      // 误判「浏览器死亡」的直接机制）。窄匹配（-32001 / "Request timed out"）→
+      // mcp_request_timeout:<原文截断> 前缀，agent 透明可识别；outcome 维持
+      // unknown（可重试 + fallback-worthy，语义与现状一致，A-3③ 前零行为变化）。
+      const msg = typeMcpRequestTimeout(String(e));
       logger.warn({ evt: "browse_action_error", channel: this.name, action, error: msg });
+      // A-3② hint 教学（只教正门，不给 kill 指引）：真机证明 Chrome 未死、
+      // 服务端 evaluate 结束（≤180s puppeteer protocolTimeout）后 mutex 释放、
+      // 楔死时间性自解——任何 action 的 ensureRunning 懒 respawn 结构性覆盖真
+      // 死亡（不必只靠 navigate 触发）。
+      const timeoutHint = msg.startsWith("mcp_request_timeout:")
+        ? {
+            hint: "MCP request timed out at the client call layer — the upstream chrome-devtools-mcp serializes tools with one mutex, so a long in-flight call (usually a batch evaluate) wedges subsequent calls until it finishes (self-heals in ~3min; the browser is NOT dead). For long batch JS pass options.budget_ms explicitly (e.g. 300000); no restart of anything is needed.",
+          }
+        : {};
       return {
         outcome: classifyBrowseError(msg, action),
         data: null,
@@ -696,6 +713,7 @@ export abstract class BrowseChannel extends UiChannel {
         fallback_used: false,
         retrieval_method: this.retrievalMethod(),
         error: msg,
+        ...timeoutHint,
       };
     }
   }
@@ -1548,9 +1566,20 @@ async function doEvaluate(
   // 包成「函数体内的函数表达式语句」——求值不 return → **恒 undefined（静默错值）**。
   // 修复：函数表达式形态原样透传（上游自调用）；语句体形态维持包裹。双兼容，
   // 工具描述同步双例（descriptions.ts evaluate action）。
-  const r = (await c.callTool("evaluate_script", {
-    function: evaluateFunctionArg(opts.js),
-  })) as EvaluateResult;
+  //
+  // BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：单调用预算传导——此前 callTool
+  // 恒落 SDK 60s 缺省（缺省事故，见 McpClient.DEFAULT_EVAL_CALL_TIMEOUT_MS 归因），
+  // 长 evaluate 必 -32001 连坐。options.budget_ms（既有 zod 键，int>0 ≤600s）对
+  // evaluate 从死键兑现为生效键：budget_ms ?? env(LASSO_EVAL_TIMEOUT_MS) ?? 120s。
+  // 超时语义 = 「结果没拿到」（mcp_request_timeout 类型化，A-3①）——不 respawn、
+  // 不自动重试（Chrome 未死，服务端楔死 ≤180s 时间性自解，A-3②）。
+  const evalTimeoutMs =
+    opts.budget_ms ?? defaultEvalTimeoutMs();
+  const r = (await c.callTool(
+    "evaluate_script",
+    { function: evaluateFunctionArg(opts.js) },
+    evalTimeoutMs,
+  )) as EvaluateResult;
   // P5（v1.18.1，得到实战问题集 P5）：上游错误假成功治理——与 doWait
   // （W-DEF-R11-1 v1.17.1 同病同修）同范式：McpClient.callTool 对 is_error 不
   // throw，此前不检 → 协议超时（"Network.enable timed out"）/ 无页面
@@ -1841,8 +1870,9 @@ const FRESH_PAGE_NAV_ACTIONS = new Set(["snapshot", "extract"]);
  * 传 no_cache 属真死键 → 如实标注。
  *
  * 入口级消费（browse() 分流，非本表）：steps 非空 → StepEngine 链（steps 路径
- * 不走 browseSingle，无本标注）；budget_ms 仅 steps 路径消费——单 action 路径
- * 传入 budget_ms 会出现在 ignored_options（诚实标注）。
+ * 不走 browseSingle，无本标注）；budget_ms 在 steps 路径为链预算、在单 action
+ * evaluate 为单调用预算（BUG-08 决议 A-2 兑现——此前是「死键诚实标注」，现为
+ * 生效键）；其余单 action 传入 budget_ms 仍进 ignored_options（如实标注）。
  */
 const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   navigate: ["no_cache"],
@@ -1854,7 +1884,8 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
   click: ["selectors"],
   fill: ["selectors"],
   wait: ["expect"],
-  evaluate: ["js"],
+  /** BUG-08 决议 A-2：budget_ms = 单调用 MCP 超时（doEvaluate 传导 callTool） */
+  evaluate: ["js", "budget_ms"],
   pdf: [
     "pdf_format",
     "pdf_landscape",
@@ -1900,6 +1931,21 @@ export function computeIgnoredOptions(
   return Object.keys(options).filter((k) => !set.has(k));
 }
 
+/**
+ * BUG-08 决议 A-3①：MCP 请求超时签名（SDK McpError 文本实测形态：
+ * "McpError: MCP error -32001: Request timed out"）。窄匹配防误伤——
+ * NAV_ERROR_SIGNATURES 的 ERR_TIMED_OUT（大写 Chrome 错误码）/ "took too long
+ * to respond"（Chrome 错误页文案）/ wait_timeout / protocolTimeout evaluate
+ * isError 文本均不命中。
+ */
+const MCP_REQUEST_TIMEOUT_SIGNATURE = /-32001\b|Request timed out/;
+
+/** A-3①：命中签名 → `mcp_request_timeout:<原文截断 200>`；否则原文透传（导出供测试）。 */
+export function typeMcpRequestTimeout(msg: string): string {
+  if (!MCP_REQUEST_TIMEOUT_SIGNATURE.test(msg)) return msg;
+  return `mcp_request_timeout:${msg.slice(0, 200)}`;
+}
+
 function classifyBrowseError(msg: string, _action: string): Outcome {
   const m = msg.toLowerCase();
   if (m.includes("needs_manual_2fa")) return "didnt";
@@ -1928,6 +1974,11 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   //（页面被轮换/清空，重 snapshot 即恢复）——显式归 unknown（可重试档）+
   // session_rotated 前缀供 agent 透明识别下一步（重 snapshot），不再落泛 unknown
   if (m.includes("session_rotated")) return "unknown";
+  // BUG-08 决议 A-3①（doc/bugs/08）：MCP 请求超时（SDK 60s 缺省 / A-2 预算到点，
+  // 服务端 toolMutex 楔死期任何 action 的排队调用都会拿 -32001）是**通道级时间性
+  // 瞬态**——楔死 ≤180s 自解、Chrome 未死（真机 ×2 实证）→ unknown（可重试 +
+  // fallback-worthy，语义与旧裸 unknown 一致；类型化只为 agent 透明可识别）。
+  if (m.includes("mcp_request_timeout")) return "unknown";
   // BUG-04 决议 B（doc/bugs/04 §5）：上游选中页死锁（upstream_wedge_* 前缀：
   // selected_page_closed / unhealed）是**通道级瞬态**（选中页句柄失效，
   // heal/fallback 换通道可解）——unknown（可重试 + fallback-worthy），区别于

@@ -33,7 +33,8 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig, mergedEnv } from "./config/config.js";
+// BUG-08 决议 A-2：loadConfigFileEnv——LASSO_EVAL_TIMEOUT_MS config-file 值同步
+import { loadConfig, loadConfigFileEnv, mergedEnv } from "./config/config.js";
 import { getConfigFilePath, writeConfigTemplate } from "./config/config.js";
 import { logger } from "./util/logger.js";
 // v1.8 Phase E（D6）：fanout RPM 限频 per-process 单例
@@ -401,6 +402,16 @@ async function runMcpServer(): Promise<void> {
   const config = loadConfig({ runId });
   // ft-round1（FT-DEF-1）：doctor tool 感知 config 文件键的合并 env（与 CLI 同源）。
   const doctorServerEnv = mergedEnv(process.env);
+
+  // BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：LASSO_EVAL_TIMEOUT_MS 的
+  // config-file 可见性单点同步——McpClient.defaultEvalTimeoutMs 读 process.env
+  // （LASSO_MCP_HANDSHAKE_TIMEOUT_MS 同消费范式），config 文件值在此一次性抬进
+  // env（file→env，env 既有值恒赢——与 loadConfig 合并顺序同向，零双向写）。
+  // 不同步 = config-file 键变死键（INV-91 精神禁死键豁免）。
+  const fileOnlyEvalTimeout = loadConfigFileEnv(process.env).LASSO_EVAL_TIMEOUT_MS;
+  if (fileOnlyEvalTimeout && !process.env.LASSO_EVAL_TIMEOUT_MS) {
+    process.env.LASSO_EVAL_TIMEOUT_MS = fileOnlyEvalTimeout;
+  }
 
   // 让 state-store 知道 run_id + cache_dir（channel 写盘时用）
   setStateStoreContext({ runId, cacheDir: config.cacheDir });

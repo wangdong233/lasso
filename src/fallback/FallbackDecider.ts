@@ -331,13 +331,36 @@ export class FallbackDecider {
 
     // 所有 channel 耗尽 / 全部熔断：返回 didnt + fallback_exhausted
     const lastChannel = chain[chain.length - 1] ?? plan.primary;
+    /**
+     * BUG-08 决议 A-3③（doc/bugs/08，2026-09-15）：全链耗尽（所有 hop 非
+     * worked）时 terminal error 从固定串改为 **primary 错误为主** + last-hop
+     * 摘录为辅的复合串。归因保真：旧文案（"最后一跳错误" / 固定串）下，primary
+     * 通道的真实错误只剩 actions_and_results 审计行——marathon 事故里调用方据
+     * terminal error（logged_in 的 "Could not connect ... 9222"）误判「headless
+     * Chrome 死了」（实为 headless evaluate 超时 + fallback 污染）。
+     * `mcp_request_timeout:... [fallback browse_logged_in: Could not connect...]`
+     * ——两层事实都在 error 首字段可见。actions_and_results 审计链不动。
+     */
+    const primaryHop = actions_and_results.find(
+      (h) => h.channel === plan.primary,
+    );
+    const lastHop = actions_and_results.at(-1);
+    const hopErr = (h: (typeof actions_and_results)[number]) =>
+      h.error ?? h.outcome;
+    let exhaustedError = "all_channels_failed_or_skipped";
+    if (primaryHop) {
+      exhaustedError = hopErr(primaryHop);
+      if (lastHop && lastHop.channel !== plan.primary) {
+        exhaustedError = `${exhaustedError} [fallback ${lastHop.channel}: ${hopErr(lastHop).slice(0, 120)}]`;
+      }
+    }
     const exhausted: InteractResult<T> = {
       outcome: "didnt",
       data: null,
       served_by: lastChannel,
       fallback_used: chain.length > 1 || anyPolicyBlocked,
       retrieval_method: "fallback_exhausted",
-      error: "all_channels_failed_or_skipped",
+      error: exhaustedError,
       actions_and_results,
     };
     return budget ? budget.flushInto(exhausted) : exhausted;

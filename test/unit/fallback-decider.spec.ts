@@ -247,7 +247,7 @@ describe("FallbackDecider — executor 抛异常", () => {
     expect(exec).toHaveBeenCalledTimes(1);
   });
 
-  it("所有 channel 都抛 timeout → 耗尽 fallback_exhausted", async () => {
+  it("所有 channel 都抛 timeout → 耗尽 fallback_exhausted；error primary-first（BUG-08 A-3③）", async () => {
     const decider = new FallbackDecider(new Map());
     const exec = vi.fn(async () => {
       throw new Error("timeout");
@@ -255,7 +255,9 @@ describe("FallbackDecider — executor 抛异常", () => {
     const r = await decider.runWithFallback(PLAN_THREE, exec);
     expect(r.outcome).toBe("didnt");
     expect(r.retrieval_method).toBe("fallback_exhausted");
-    expect(r.error).toBe("all_channels_failed_or_skipped");
+    // A-3③：primary 错误打头 + last-hop 摘录在尾（归因保真——调用方先看到
+    // primary 的真实错误，不再被 fallback 尾跳文案污染归因）
+    expect(r.error).toBe("timeout [fallback tertiary: timeout]");
     expect(r.actions_and_results).toHaveLength(3);
     expect(r.actions_and_results!.every((a) => a.outcome === "error")).toBe(true);
   });
@@ -364,25 +366,62 @@ describe("FallbackDecider — breaker 副作用", () => {
 // fallback_exhausted
 // ============================================================
 describe("FallbackDecider — 全部 fallback 耗尽", () => {
-  it("primary + secondary 都 unknown+timeout → didnt + fallback_exhausted", async () => {
+  it("primary + secondary 都 unknown+timeout → didnt + fallback_exhausted；error=primary 打头 + last-hop 摘录尾（A-3③）", async () => {
     const decider = new FallbackDecider(new Map());
     const exec = vi.fn(async () => unknown("x", "timeout"));
     const r = await decider.runWithFallback(PLAN_TWO, exec);
     expect(r.outcome).toBe("didnt");
     expect(r.retrieval_method).toBe("fallback_exhausted");
-    expect(r.error).toBe("all_channels_failed_or_skipped");
+    // A-3③ 复合串：primary 错误为主 + [fallback <last_channel>: <摘录 120 字符>]
+    expect(r.error).toBe("timeout [fallback secondary: timeout]");
     expect(r.served_by).toBe("secondary"); // 链尾
     expect(r.fallback_used).toBe(true);
     expect(r.actions_and_results).toHaveLength(2);
     expect(r.data).toBe(null);
   });
 
-  it("primary 单链 unknown+timeout → 耗尽（无 fallback）", async () => {
+  it("primary 单链 unknown+timeout → 耗尽（无 fallback）→ error=primary 错误本体（无自引用括号）", async () => {
     const decider = new FallbackDecider(new Map());
     const exec = vi.fn(async () => unknown("x", "timeout"));
     const r = await decider.runWithFallback(PLAN_PRIMARY_ONLY, exec);
     expect(r.outcome).toBe("didnt");
     expect(r.retrieval_method).toBe("fallback_exhausted");
+    expect(r.error).toBe("timeout");
     expect(r.fallback_used).toBe(false); // 只有一个 channel
+  });
+
+  it("BUG-08 A-3③ marathon 形态：headless mcp_request_timeout + logged_in 连接失败 → error 首段是 headless 自身错误", async () => {
+    const decider = new FallbackDecider(new Map());
+    const exec = vi.fn(async (name: string) => {
+      if (name === "browse_headless") {
+        return unknown(
+          "browse_headless",
+          "mcp_request_timeout:McpError: MCP error -32001: Request timed out",
+        );
+      }
+      return unknown(
+        "browse_logged_in",
+        "Could not connect to Chrome http://localhost:9222/json/version: fetch failed",
+      );
+    });
+    const r = await decider.runWithFallback(
+      { primary: "browse_headless", fallbacks: ["browse_logged_in"], cross_modal: false },
+      exec,
+    );
+    expect(r.retrieval_method).toBe("fallback_exhausted");
+    // 归因保真核心：调用方一眼看到两层事实——primary 超时为主 + fallback 尾跳
+    // 摘录为辅（marathon 误判「headless Chrome 死了」的机制消灭）
+    expect(r.error!.startsWith("mcp_request_timeout:")).toBe(true);
+    expect(r.error).toContain("[fallback browse_logged_in: Could not connect to Chrome");
+    // 摘录 120 字符钳制
+    const tail = r.error!.slice(r.error!.indexOf("[fallback"));
+    expect(tail.length).toBeLessThanOrEqual("[fallback browse_logged_in: ".length + 120 + 1);
+  });
+
+  it("A-3③ 边：hop 无 error 字段 → outcome 兜底词（unknown），不产出 undefined 串", async () => {
+    const decider = new FallbackDecider(new Map());
+    const exec = vi.fn(async () => unknown("x")); // error: undefined
+    const r = await decider.runWithFallback(PLAN_TWO, exec);
+    expect(r.error).toBe("unknown [fallback secondary: unknown]");
   });
 });

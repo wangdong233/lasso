@@ -502,3 +502,29 @@ describe("writeConfigTemplate — init 模板生成", () => {
     expect(existsSync(nested)).toBe(true);
   });
 });
+
+// ============================================================
+// BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：LASSO_EVAL_TIMEOUT_MS
+// ============================================================
+describe("LASSO_EVAL_TIMEOUT_MS — evaluate 单调用预算键（BUG-08 A-2）", () => {
+  it("CONFIG_TEMPLATE 含键 + 缺省 120000（与 DEFAULT_EVAL_CALL_TIMEOUT_MS 对齐）", () => {
+    expect(Object.keys(CONFIG_TEMPLATE)).toContain("LASSO_EVAL_TIMEOUT_MS");
+    expect(CONFIG_TEMPLATE.LASSO_EVAL_TIMEOUT_MS).toBe(120000);
+  });
+
+  it("config 文件值经 loadConfigFileEnv 规范化为字符串（number → String 同 LASSO_CDP_PORT）", async () => {
+    writeFileSync(configFile, JSON.stringify({ LASSO_EVAL_TIMEOUT_MS: 300000 }));
+    const env = loadConfigFileEnv({ LASSO_CONFIG_PATH: configFile });
+    expect(env.LASSO_EVAL_TIMEOUT_MS).toBe("300000");
+  });
+
+  it("三态：合法值原样 / 非法值与未设回默认 120s", async () => {
+    const { parseEvalTimeoutMs } = await import(
+      "../../src/subprocess/McpClient.js"
+    );
+    expect(parseEvalTimeoutMs(undefined)).toBe(120_000);
+    expect(parseEvalTimeoutMs("300000")).toBe(300_000);
+    expect(parseEvalTimeoutMs("not-a-number")).toBe(120_000);
+    expect(parseEvalTimeoutMs("-1")).toBe(120_000);
+  });
+});
