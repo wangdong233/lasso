@@ -161,7 +161,12 @@ if (!ssrfResult.allowed) {
       served_by: "fetch_url",
       fallback_used: false,
       retrieval_method: "undici_keepalive",
-      error: msg,
+      // BUG-08 决议 E-2（doc/bugs/08，2026-09-15）：失败细分——undici 的裸
+      // "TypeError: fetch failed" 把 e.cause（ENOTFOUND/ECONNREFUSED/ETIMEDOUT/
+      // CERT_* 等真实 errno）全丢弃，DNS/CONNECT/TLS/拦截不可分辨（marathon：
+      // github.com fetch failed vs tm-api 网络通被内容层拦——何时通何时不通不可
+      // 预测）。outcome 语义零变化（Y2 裁决：恒 unknown 可重试）；只换 error 串。
+      error: classifyFetchFailure(e),
     };
   }
   clearTimeout(timer);
@@ -346,6 +351,47 @@ function outcomeFromFetchError(_e: unknown): "didnt" | "unknown" {
   // v1.18.2（doc/governance/10 Y2）：全部 fetch 异常均为环境瞬态 → unknown（可重试）。
   // 保留函数形状（tri-state 注释契约 + 上游 isFallbackWorthy 排除集不变）。
   return "unknown";
+}
+
+/**
+ * BUG-08 决议 E-2（doc/bugs/08，2026-09-15）：fetch 失败细分（error 字段信息
+ * 加法，outcome 语义零变化）。解 undici `TypeError: fetch failed` 的 e.cause——
+ * 调用方由此分辨「本机代理/DNS 环境」（dns_failed/connect_*）vs「目标站拒绝」
+ *（内容层拦截在 2xx body，不在此面）。cause 缺失 → other 不猜。
+ *
+ * kind ∈ dns_failed（ENOTFOUND/EAI_AGAIN）/ connect_refused（ECONNREFUSED）/
+ * connect_timeout（ETIMEDOUT/UND_ERR_CONNECT_TIMEOUT）/ tls_failed（CERT_ 系、
+ * SELF_SIGNED_ 系、ERR_TLS_ 系）/ aborted_timeout（AbortError——timeout_ms 到
+ * 点）/ other。导出供测试。
+ */
+export function classifyFetchFailure(e: unknown): string {
+  // AbortError：本工具的 timeout_ms 到点（controller.abort）——undici 抛
+  // DOMException[name=AbortError]（无 cause.code）
+  if (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { name?: string }).name === "AbortError"
+  ) {
+    return "fetch_failed:aborted_timeout:opts.timeout_ms reached";
+  }
+  const cause = (e as { cause?: { code?: string } } | null)?.cause;
+  const code = typeof cause?.code === "string" ? cause.code : undefined;
+  if (code === undefined) {
+    return `fetch_failed:other:${String(e).slice(0, 120)}`;
+  }
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    return `fetch_failed:dns_failed:${code}`;
+  }
+  if (code === "ECONNREFUSED") {
+    return "fetch_failed:connect_refused:ECONNREFUSED";
+  }
+  if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") {
+    return `fetch_failed:connect_timeout:${code}`;
+  }
+  if (/^(CERT_|SELF_SIGNED_|ERR_TLS_)/.test(code) || code.includes("_TLS_")) {
+    return `fetch_failed:tls_failed:${code}`;
+  }
+  return `fetch_failed:other:${code}`;
 }
 
 // ============================================================

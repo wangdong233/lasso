@@ -85,7 +85,8 @@ export class LoggedInChannel extends BrowseChannel {
    * 触发口：admin action tab_restore（显式）/ server 停机 / idle 回收 logged_in
    * spec 时（SubprocessManager reap hook，index.ts 装配段接线）。
    */
-  private readonly tabSession: TabSession;
+  /** BUG-08 E-1：自动发现换口时重建（readonly 解除——唯一重建点 respawnOnDiscoveredPort）。 */
+  private tabSession: TabSession;
 
   /**
    * v0.8：CookieStore 工厂（按 profile 名新建实例；多 profile 隔离用）。
@@ -99,8 +100,20 @@ export class LoggedInChannel extends BrowseChannel {
    * v1.10（parse18 §2.6 机制一）：browse 活动回调（index.ts 注入 reaper touch）。
    * 每次 getMcpClient 成功路径调用——活动源与 browse 频度天然同步；
    * 台账 Chrome 的 idle 回收因此不误杀 in-flight 会话。
+   * BUG-08 决议 E-1：签名扩 (port)——自动发现换口后 touch 生效端口（被发现的
+   * 台账 Chrome 不因旧口无活动被 idle 收割；既有零参回调仍类型兼容）。
    */
-  private readonly onChromeUse?: () => void;
+  private readonly onChromeUse?: (port: number) => void;
+
+  /**
+   * BUG-08 决议 E-1（doc/bugs/08，2026-09-15）：运行时自动发现后的生效端口
+   *（初始 = 构造 cdpPort）。唯一写点 = tryAutoDiscoverPort 成功路径（单写者）。
+   */
+  private effectiveCdpPort: number;
+  /** E-1：自动发现是否已发生过（每会话至多一次——反复换口属配置问题，该显式配）。 */
+  private autoDiscoveredOnce = false;
+  /** E-1：LASSO_CDP_PORT 是否被显式配置（显式恒赢，自动发现永不介入）。 */
+  private readonly cdpPortExplicit: boolean;
 
   /**
    * v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate 的 elicitation 端口。
@@ -134,13 +147,21 @@ export class LoggedInChannel extends BrowseChannel {
     /** v0.8：tab LRU cap（生产默认 10；测试可传更小值）。 */
     tabCap?: number,
     /** v1.10（parse18 §2.6）：browse 活动回调（chrome-idle-reaper touch 注入点）。 */
-    onChromeUse?: () => void,
+    onChromeUse?: (port: number) => void,
+    /**
+     * BUG-08 决议 E-1：LASSO_CDP_PORT 显式标记（index.ts 由 mergedEnv 键存在性
+     * 计算）。显式 = 恒赢，自动发现永不介入；缺省 false（9222 缺省 + 台账最新
+     * launch 才可能被发现——三层解析第 2 层）。
+     */
+    cdpPortExplicit?: boolean,
   ) {
     super();
     this.cookieStoreFactory = cookieStoreFactory;
     this.tabs = new TabRegistry(tabCap);
     this.tabSession = new TabSession(cdpPort);
     this.onChromeUse = onChromeUse;
+    this.effectiveCdpPort = cdpPort;
+    this.cdpPortExplicit = cdpPortExplicit ?? false;
   }
 
   /**
@@ -180,7 +201,8 @@ export class LoggedInChannel extends BrowseChannel {
         "--prefer-offline",
         "-y",
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
-        `--browser-url=http://localhost:${this.cdpPort}`,
+        // BUG-08 决议 E-1：effectiveCdpPort（自动发现换口后随动）
+        `--browser-url=http://localhost:${this.effectiveCdpPort}`,
         // v1.11（round1 T1）：1.7.0 默认采集使用统计 → 显式关闭（隐私不倒退）。
         "--no-usage-statistics",
       ],
@@ -192,10 +214,24 @@ export class LoggedInChannel extends BrowseChannel {
   protected async getMcpClient(): Promise<McpClient> {
     // v0.8：按当前 profile 注册/切 spec（parse9 §3.2）
     await this.ensureProfileSpec();
-    const c = await this.subproc.ensureRunning(this.lastSpecName!);
+    let c: McpClient;
+    try {
+      c = await this.subproc.ensureRunning(this.lastSpecName!);
+    } catch (e) {
+      // BUG-08 决议 E-1：三层解析第 2 层——默认 9222 attach 失败（上游
+      // chrome-devtools-mcp 连不上 CDP 即退出，_spawnWithBackoff 烧完退避后
+      // throw；marathon 形态 = 用户自开 Chrome 占着 9222 无 CDP）→ 运行时
+      // 自动发现台账最新 launch 的非 render Chrome 并整 respaw 复试一次。
+      // 显式 LASSO_CDP_PORT 恒赢（第 1 层）；发现失败 → 原错误如实（第 3 层，
+      // 不被自动发现污染）。
+      const rescued = await this.respawnOnDiscoveredPort();
+      if (rescued === null) throw e;
+      c = rescued;
+    }
     // v1.10（parse18 §2.6 机制一）：browse 活动打点（reaper touch；先于快照/预建——
-    // touch 是回收判定输入，必须最先落）。
-    this.onChromeUse?.();
+    // touch 是回收判定输入，必须最先落）。BUG-08 E-1：touch 生效端口（自动发现
+    // 换口后被发现的台账 Chrome 也有活动源，不被 idle 收割误杀）。
+    this.onChromeUse?.(this.effectiveCdpPort);
     // v1.10（parse18 §4.3 机制三）：hidden 台账 Chrome 零 page target 时预建一个
     // background tab（绕开 chrome-devtools-mcp 0.3.0 new_page 的默认激活路径；
     // 失败 warn 降级——MCP 走自建页并如实承担激活，parse18 §4.2）。
@@ -243,7 +279,7 @@ export class LoggedInChannel extends BrowseChannel {
         logger.warn({
           evt: "upstream_wedge_proactive_heal_failed",
           error: String(e),
-          cdp_port: this.cdpPort,
+          cdp_port: this.effectiveCdpPort,
         });
       } else {
         logger.warn({ evt: "logged_in_tab_reconcile_failed", error: String(e) });
@@ -277,6 +313,89 @@ export class LoggedInChannel extends BrowseChannel {
     if (this.lastSpecName) this.subproc.touch(this.lastSpecName);
   }
 
+  // ============================================================
+  // BUG-08 决议 E-1：运行时端口自动发现（三层解析第 2 层）
+  // ============================================================
+  /**
+   * CDP /json/version 探活（chrome-status defaultCdpVersionFn 同款：200+JSON
+   * 才算活；2s 超时）。只绑 127.0.0.1（与 --remote-debugging-port 一致）。
+   */
+  private async probeCdpAlive(port: number): Promise<boolean> {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(2_000),
+      });
+      if (!resp.ok) return false;
+      await resp.json();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * E-1：默认 9222 attach 失败时的有标注自救。条件（全过才介入，失败方向 =
+   * 零动作原错误如实）：
+   *  1. 显式 LASSO_CDP_PORT 未配置（显式恒赢）且当前生效口 = 9222 缺省；
+   *  2. 本会话未自动发现过（至多一次）；
+   *  3. 9222 CDP 探活确不可达（防瞬态慢启动误切换）；
+   *  4. 台账有更新 launchedAt 的**非 render** 记录且该 port CDP 探活通过
+   *（渲染档确定性红线——browse 流量会污染消费方 golden；userTakenAt 记录
+   * 允许——attach 非生命周期操作）。
+   *
+   * 成功：整 spec respawn 到发现口 + TabSession 重建 + 本次结果携带
+   * retrieval_method 加法标注 auto_discovered_port:<port>。失败返 null。
+   */
+  private async respawnOnDiscoveredPort(): Promise<McpClient | null> {
+    if (this.cdpPortExplicit) return null;
+    if (this.cdpPort !== 9222) return null;
+    if (this.autoDiscoveredOnce) return null;
+    try {
+      // 条件 3：9222 确认无 CDP
+      if (await this.probeCdpAlive(this.effectiveCdpPort)) return null;
+      // 条件 4：台账最新非 render 记录（launchedAt 降序）逐个探活
+      const candidates = readLedgerSync()
+        .filter((r) => r.launchMode !== "render")
+        .sort((a, b) => b.launchedAt - a.launchedAt);
+      let discovered: number | null = null;
+      for (const rec of candidates) {
+        if (rec.port === this.effectiveCdpPort) continue;
+        if (await this.probeCdpAlive(rec.port)) {
+          discovered = rec.port;
+          break;
+        }
+      }
+      if (discovered === null) return null;
+      // 换口整 respaw：清旧 spec（树杀 + post-kill 链）→ effectiveCdpPort 迁移
+      // → spec 强制重建（lastSpecName 置空驱动 ensureProfileSpec）→ ensureRunning
+      const oldSpec = this.lastSpecName;
+      if (oldSpec) {
+        try {
+          await this.subproc.forgetSpec(oldSpec);
+        } catch {
+          // 旧 spawn 尝试已在失败路径——best-effort
+        }
+      }
+      this.autoDiscoveredOnce = true;
+      this.effectiveCdpPort = discovered;
+      this.tabSession = new TabSession(discovered);
+      this.lastSpecName = null;
+      await this.ensureProfileSpec();
+      const c = await this.subproc.ensureRunning(this.lastSpecName!);
+      this.noteRetrieval(`auto_discovered_port:${discovered}`);
+      logger.warn({
+        evt: "logged_in_auto_discovered_port",
+        from_port: 9222,
+        to_port: discovered,
+        note: "default 9222 attach failed (no CDP); ledger auto-discovery engaged — set LASSO_CDP_PORT to pin explicitly",
+      });
+      return c;
+    } catch (e) {
+      logger.warn({ evt: "logged_in_auto_discover_failed", error: String(e) });
+      return null;
+    }
+  }
+
   /**
    * v1.10（parse18 §4.3 机制三）：hidden 台账 Chrome 预建首 background tab。
    *
@@ -295,19 +414,19 @@ export class LoggedInChannel extends BrowseChannel {
   private async precreateBackgroundTabIfHidden(): Promise<void> {
     try {
       // 1. 台账判定：本 port 绑定的 Chrome 是否 lasso 起的 hidden 档
-      const rec = readLedgerSync().find((r) => r.port === this.cdpPort);
+      const rec = readLedgerSync().find((r) => r.port === this.effectiveCdpPort);
       if (!rec || rec.launchMode !== "hidden") return;
       // 2. 零 page target 判定（复用 TabSession /json/list 探针）
       const pages = await this.tabSession.listPages();
       if (pages === null || pages.length > 0) return;
       // 3. 预建 background tab（失败返 null 走降级）
-      const cdp = new CdpClient(this.cdpPort);
+      const cdp = new CdpClient(this.effectiveCdpPort);
       try {
         const targetId = await cdp.createBackgroundTarget("about:blank");
         if (targetId) {
           logger.info({
             evt: "chrome_bg_tab_precreated",
-            port: this.cdpPort,
+            port: this.effectiveCdpPort,
             targetId,
           });
         }
@@ -319,7 +438,7 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({
         evt: "chrome_bg_tab_precreate_failed",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     }
   }
@@ -362,14 +481,14 @@ export class LoggedInChannel extends BrowseChannel {
         this.tabs.resetOwnPages();
       }
       // 1. 判定门：lasso 台账 Chrome（hidden 有 precreate；visible 是「看着干」语义）
-      if (readLedgerSync().some((r) => r.port === this.cdpPort)) return;
+      if (readLedgerSync().some((r) => r.port === this.effectiveCdpPort)) return;
       // 2. 幂等：上游当前选中页已是 lasso 自建页 → 完成
       const before = await this.listUpstreamPages(c);
       if (before === null) return; // 列表不可解析 → 降级（parseUpstreamPageEntries 同步 warn）
       const sel = before.find((p) => p.selected);
       if (sel && sel.pageId === this.ownPageId) return;
       // 3. 自建后台 tab（E7 零抢焦唯一钥匙；失败返 null 内部已 warn）
-      const cdp = new CdpClient(this.cdpPort);
+      const cdp = new CdpClient(this.effectiveCdpPort);
       let targetId: string | null = null;
       try {
         targetId = await cdp.createBackgroundTarget("about:blank");
@@ -392,7 +511,7 @@ export class LoggedInChannel extends BrowseChannel {
           logger.warn({
             evt: "logged_in_own_page_ambiguous",
             new_pages: news.length,
-            cdp_port: this.cdpPort,
+            cdp_port: this.effectiveCdpPort,
           });
           return;
         }
@@ -402,7 +521,7 @@ export class LoggedInChannel extends BrowseChannel {
         logger.warn({
           evt: "logged_in_own_page_not_visible",
           targetId,
-          cdp_port: this.cdpPort,
+          cdp_port: this.effectiveCdpPort,
         });
         return;
       }
@@ -422,13 +541,13 @@ export class LoggedInChannel extends BrowseChannel {
         evt: "logged_in_own_page_selected",
         pageId: fresh.pageId,
         targetId,
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     } catch (e) {
       logger.warn({
         evt: "logged_in_own_page_select_failed",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     }
   }
@@ -456,7 +575,7 @@ export class LoggedInChannel extends BrowseChannel {
       const before = await this.listUpstreamPages(c);
       const beforeIds = new Set((before ?? []).map((p) => p.pageId));
       // 2. CDP 预建 background tab（失败返 null → 诚实 false）
-      const cdp = new CdpClient(this.cdpPort);
+      const cdp = new CdpClient(this.effectiveCdpPort);
       let targetId: string | null = null;
       try {
         targetId = await cdp.createBackgroundTarget("about:blank");
@@ -477,7 +596,7 @@ export class LoggedInChannel extends BrowseChannel {
           logger.warn({
             evt: "no_page_selfheal_ambiguous",
             new_pages: news.length,
-            cdp_port: this.cdpPort,
+            cdp_port: this.effectiveCdpPort,
           });
           return false;
         }
@@ -486,7 +605,7 @@ export class LoggedInChannel extends BrowseChannel {
         logger.warn({
           evt: "no_page_selfheal_not_visible",
           targetId,
-          cdp_port: this.cdpPort,
+          cdp_port: this.effectiveCdpPort,
         });
         return false;
       }
@@ -496,7 +615,7 @@ export class LoggedInChannel extends BrowseChannel {
         evt: "no_page_selfheal_selected",
         pageId: fresh.pageId,
         targetId,
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
       // BUG-07 决议 A⁺（§5.3 r1 ③ 第三穿透口）：自愈把选中页换成新建 about:blank
       // tab——对 current-page 截图即空白页伪造。返回 true 前失效 current-page
@@ -507,7 +626,7 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({
         evt: "no_page_selfheal_failed",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
       return false;
     }
@@ -553,7 +672,7 @@ export class LoggedInChannel extends BrowseChannel {
         logger.info({
           evt: "upstream_wedge_healed_new_page",
           pageId: sel?.pageId,
-          cdp_port: this.cdpPort,
+          cdp_port: this.effectiveCdpPort,
         });
         // BUG-07 决议 A⁺（§5.3 r1 ① 自愈穿透口）：层 1 返回**原 client** 但选中页
         // 已被换成新空白页——client 身份型守卫不可见。返回前失效 current-page
@@ -564,13 +683,13 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({
         evt: "upstream_wedge_heal_layer1_is_error",
         detail: text.slice(0, 120),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     } catch (e) {
       logger.warn({
         evt: "upstream_wedge_heal_layer1_error",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     }
     // ---- 层 2：respawn upstream spec（只杀 npx 子进程，永不触碰 Chrome）----
@@ -579,7 +698,7 @@ export class LoggedInChannel extends BrowseChannel {
       this.lastClient = c2;
       this.ownPageId = null;
       this.tabs.resetOwnPages();
-      logger.info({ evt: "upstream_wedge_healed_respawn", cdp_port: this.cdpPort });
+      logger.info({ evt: "upstream_wedge_healed_respawn", cdp_port: this.effectiveCdpPort });
       // BUG-07 决议 A⁺（§5.3 r1 ②）：respawn 换新 client = 新浏览器空白页——
       // 同层 1 返回前失效 current-page 会话。
       this.invalidateCurrentPageSession();
@@ -588,7 +707,7 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({
         evt: "upstream_wedge_heal_failed",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
       return null;
     }
@@ -636,7 +755,7 @@ export class LoggedInChannel extends BrowseChannel {
         logger.warn({
           evt: "logged_in_2fa_detected",
           keyword: hit,
-          cdp_port: this.cdpPort,
+          cdp_port: this.effectiveCdpPort,
         });
       } else {
         this.twoFaPending = false;
@@ -646,7 +765,7 @@ export class LoggedInChannel extends BrowseChannel {
       logger.warn({
         evt: "logged_in_2fa_probe_failed",
         error: String(e),
-        cdp_port: this.cdpPort,
+        cdp_port: this.effectiveCdpPort,
       });
     }
   }
@@ -725,7 +844,7 @@ export class LoggedInChannel extends BrowseChannel {
     profile: string;
   }> {
     const profile = this.profiles.getCurrent().name;
-    const cdp = new CdpClient(this.cdpPort);
+    const cdp = new CdpClient(this.effectiveCdpPort);
     try {
       const cookies = await cdp.getAllCookies();
       const store = this.cookieStoreFactory(profile);
@@ -763,7 +882,7 @@ export class LoggedInChannel extends BrowseChannel {
     const profile = this.profiles.getCurrent().name;
     const store = this.cookieStoreFactory(profile);
     const cookies = await store.import();
-    const cdp = new CdpClient(this.cdpPort);
+    const cdp = new CdpClient(this.effectiveCdpPort);
     let imported = 0;
     let failed = 0;
     try {

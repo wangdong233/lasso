@@ -577,10 +577,15 @@ async function runMcpServer(): Promise<void> {
     profileRegistry,
     cookieStoreFactory,
     undefined,
-    () => {
-      chromeReaper?.touch(config.cdpPort);
-      void touchChromePort(config.cdpPort, (p) => logger.info(p)).catch(() => {});
+    (port: number) => {
+      // BUG-08 决议 E-1：touch 生效端口（自动发现换口后被发现的台账 Chrome 也有
+      // 活动源——不被 idle 收割误杀）
+      chromeReaper?.touch(port);
+      void touchChromePort(port, (p) => logger.info(p)).catch(() => {});
     },
+    // BUG-08 决议 E-1：LASSO_CDP_PORT 显式标记（file→env 合并视图键存在性——
+    // 显式恒赢，自动发现永不介入）
+    "LASSO_CDP_PORT" in doctorServerEnv,
   );
   // v1.9（parse17 §4.4 机制三）：idle 回收 logged_in spec 前 hook —— 机制一回收
   // logged_in 的 mcp 子进程前先恢复用户 tab 列表（「浏览器用完收尾」完整语义）。

@@ -128,6 +128,26 @@ export abstract class BrowseChannel extends UiChannel {
   protected abstract getMcpClient(): Promise<McpClient>;
 
   /**
+   * BUG-08 决议 E-1（doc/bugs/08，2026-09-15）：retrieval_method 加法标注的
+   * 待消费 note（子类写入，browseSingle 读后即清——单写单读，无共享 mutable
+   * state 耦合面）。唯一现役写者 = LoggedInChannel 自动发现（auto_discovered_
+   * port:<port>——调用方可见「这次结果来自哪个口」）。
+   */
+  private pendingRetrievalNote: string | null = null;
+
+  /** E-1：子类写入口（protected；读消费在 browseSingle）。 */
+  protected noteRetrieval(note: string): void {
+    this.pendingRetrievalNote = note;
+  }
+
+  /** E-1：读后即清（"" = 无标注；retrieval_method 后缀拼接）。 */
+  private consumeRetrievalNote(): string {
+    const n = this.pendingRetrievalNote;
+    this.pendingRetrievalNote = null;
+    return n ? `+${n}` : "";
+  }
+
+  /**
    * v1.9（parse17 §2.2 (d) 机制一）：action/step dispatch 后的保活 touch。
    *
    * 默认 no-op（cloud 通道无本地子进程）；HeadlessChannel / LoggedInChannel
@@ -784,7 +804,9 @@ export abstract class BrowseChannel extends UiChannel {
         },
         served_by: this.name,
         fallback_used: false,
-        retrieval_method: this.retrievalMethod(),
+        // BUG-08 决议 E-1：retrieval_method 加法标注（auto_discovered_port:<port>
+        // 等——单次调用可见，读后即清）
+        retrieval_method: this.retrievalMethod() + this.consumeRetrievalNote(),
       };
     } catch (e) {
       // BUG-08 决议 A-3①（doc/bugs/08，2026-09-15）：MCP 请求超时类型化——SDK
@@ -809,7 +831,7 @@ export abstract class BrowseChannel extends UiChannel {
         data: null,
         served_by: this.name,
         fallback_used: false,
-        retrieval_method: this.retrievalMethod(),
+        retrieval_method: this.retrievalMethod() + this.consumeRetrievalNote(),
         error: msg,
         ...timeoutHint,
       };
