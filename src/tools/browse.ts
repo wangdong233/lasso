@@ -80,6 +80,12 @@ const browseSchema = {
         })
         .optional(),
       no_cache: z.boolean().optional(),
+      // BUG-08 决议 C（doc/bugs/08，2026-09-15）：反爬逃生门——本次调用前换完整
+      // 新一致身份（新临时 profile + stealth 宿主适用集确定性轮换 + 完整栈
+      // respawn）。仅 browse_headless 生效（logged_in 传入即拒 didnt + 专用错误
+      // 码——用户真实 Chrome 红线）。身份服务后续调用直至 idle 回收/下次换脸/
+      // server 退出。缺省 false/缺省不填 = 现状字节级不变。
+      freshProfile: z.boolean().optional(),
       // v1.18.2（doc/governance/10 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
       // （慢站/长 SPA/多步表单等合法长链显式放宽；预算耗尽终止语义=unknown 可重试）。
       budget_ms: z.number().int().positive().max(600_000).optional(),

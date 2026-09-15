@@ -24,6 +24,8 @@
  * parse9 §3.2 + §3.3 接口签名。
  */
 import { BrowseChannel } from "./BrowseChannel.js";
+// BUG-08 决议 C：freshProfile 拒绝语义的类型面
+import type { BrowseResult, InteractResult } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
@@ -248,6 +250,23 @@ export class LoggedInChannel extends BrowseChannel {
       }
     }
     return c;
+  }
+
+  /**
+   * BUG-08 决议 C（doc/bugs/08）：freshProfile 显式拒——用户真实 Chrome 红线，
+   * 永不重造身份（专用错误码固定，测试钉）。didnt 策略确定性拒（不 throw 不
+   * 进熔断污染面），hint 指路 headless。
+   */
+  protected override async applyFreshProfile(): Promise<InteractResult<BrowseResult> | null> {
+    return {
+      outcome: "didnt",
+      data: null,
+      served_by: this.name,
+      fallback_used: false,
+      retrieval_method: "fresh_profile_not_supported",
+      error: "fresh_profile_not_supported_on_logged_in",
+      hint: "browse_logged_in reuses YOUR real Chrome profile — identity rotation is a headless-only escape hatch (use browse_headless with options.freshProfile)",
+    };
   }
 
   /**

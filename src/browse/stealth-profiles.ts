@@ -248,6 +248,46 @@ export function defaultHeadlessProfileForHost(): StealthProfileName {
   return process.platform === "darwin" ? "mac_chrome" : "windows_chrome_120";
 }
 
+/**
+ * BUG-08 决议 C（doc/bugs/08，2026-09-15）：freshProfile 的 stealth 轮换候选集——
+ * **宿主自洽**的 profile 名单（确定性取下一个，禁随机——可复现性）。
+ *
+ * 自洽判定依据 = v1.12 T2-1 的 client-hints 实测（E1）：chrome-devtools-mcp
+ * 1.7.0 不暴露 setExtraHTTPHeaders，sec-ch-ua-platform 发**宿主真值**——
+ * windows profile 在 mac 宿主 = 「UA 称 Windows、hints 招供 macOS」的 OS 级
+ * shape 矛盾（FP-Block 身份自洽铁则下的「部分变异」——本身就是被检测信号）。
+ * Safari/Firefox profile 同理被否（引擎是 Chromium，hints 招供 Chromium 品牌）。
+ *
+ * 后果（决议 §7 残余 5 诚实声明）：单平台宿主候选集常只有 1 个 → 轮换退化为
+ * 仅 profile 目录换新（指纹层同旧）；本函数返回 current 本身，绝不跨宿主硬换。
+ */
+export function hostApplicableStealthProfiles(): StealthProfileName[] {
+  // 构造期确定性（process.platform 只读；非 env/config 可配——INV-30 面）
+  switch (process.platform) {
+    case "darwin":
+      return ["mac_chrome"];
+    case "win32":
+      return ["windows_chrome_120"];
+    default:
+      // Linux 宿主无自洽 Chromium profile（hints 招供 Linux）——空集 = 保持现状
+      return [];
+  }
+}
+
+/**
+ * BUG-08 决议 C：确定性轮换——候选集内取 current 的下一个（环形）；候选集
+ * 空 / current 不在集内（历史配置）→ 返回 current（诚实退化，不硬换）。
+ */
+export function nextHostApplicableProfile(
+  current: StealthProfileName,
+): StealthProfileName {
+  const set = hostApplicableStealthProfiles();
+  if (set.length === 0) return current;
+  const idx = set.indexOf(current);
+  if (idx < 0) return current;
+  return set[(idx + 1) % set.length]!;
+}
+
 // ============================================================
 // STEALTH_INJECTION_SCRIPT 顶级 const（parse5 §3.3.1 + v1.5 parse13 §3.1 16 路）
 // ============================================================

@@ -276,6 +276,20 @@ export abstract class BrowseChannel extends UiChannel {
     }
 
     // --------------------------------------------------------------
+    // BUG-08 决议 C（doc/bugs/08，2026-09-15）：options.freshProfile 入口拦截
+    //（getMcpClient 之前——身份先换、请求后跑）。仅 HeadlessChannel 支持；其余
+    // 通道（含 LoggedInChannel——用户真实 Chrome 红线，永不重造）经
+    // applyFreshProfile 默认实现拒（didnt，不 throw——同 urlRequiredResult 的
+    // 策略确定性拒纪律，不进熔断/fallback 污染面）。
+    // --------------------------------------------------------------
+    let freshApplied = false;
+    if (options.freshProfile === true) {
+      const rejection = await this.applyFreshProfile();
+      if (rejection) return rejection;
+      freshApplied = true;
+    }
+
+    // --------------------------------------------------------------
     // v0.3 入口分流：options.steps 非空 → StepEngine.runChain
     // --------------------------------------------------------------
     if (Array.isArray(options.steps) && options.steps.length > 0) {
@@ -325,8 +339,26 @@ export abstract class BrowseChannel extends UiChannel {
     // --------------------------------------------------------------
     const resourceId = `${this.name}:${url ?? CURRENT_PAGE_URL_LITERAL}`;
     return withOperation(resourceId, 0, async () =>
-      this.browseSingle(url, action, options),
+      this.browseSingle(url, action, options, freshApplied),
     );
+  }
+
+  /**
+   * BUG-08 决议 C：freshProfile 请求的通道能力钩子。
+   * 默认 = 拒绝（didnt——策略确定性拒，不 throw 不进熔断；云通道/BrowseChannel
+   * 直用者继承此语义）。HeadlessChannel override 执行换脸后返 null（放行）；
+   * LoggedInChannel override 固定专用错误码（用户真实 Chrome 红线，永不重造）。
+   */
+  protected async applyFreshProfile(): Promise<InteractResult<BrowseResult> | null> {
+    return {
+      outcome: "didnt",
+      data: null,
+      served_by: this.name,
+      fallback_used: false,
+      retrieval_method: "fresh_profile_not_supported",
+      error: `fresh_profile_not_supported:${this.name}`,
+      hint: "options.freshProfile is supported on browse_headless only; this channel keeps a persistent real-browser identity by design",
+    };
   }
 
   /**
@@ -510,6 +542,8 @@ export abstract class BrowseChannel extends UiChannel {
     url: string | undefined,
     action: string,
     options: BrowseOptions,
+    /** BUG-08 C：本次调用经 freshProfile 换过身份（browse() 入口写入，data 标注用）。 */
+    freshApplied = false,
   ): Promise<InteractResult<BrowseResult>> {
     const handler = this.actionDispatch.get(action);
     if (!handler) {
@@ -683,6 +717,8 @@ export abstract class BrowseChannel extends UiChannel {
           // 的单字段先例，保留兼容；include_refs 传给非 extract action 现在也进
           // ignored_options 超集标注，不冲突）。
           ...(ignored.length > 0 ? { ignored_options: ignored } : {}),
+          // BUG-08 决议 C：该次调用确实换了身份（调用方审计可见）
+          ...(freshApplied ? { fresh_profile: true } : {}),
         },
         served_by: this.name,
         fallback_used: false,
@@ -1910,6 +1946,13 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
 const NAV_ONLY_OPTION_KEYS = new Set(["no_cache"]);
 
 /**
+ * BUG-08 决议 C：browse() 入口消费的 options 键（freshProfile 在 getMcpClient
+ * 之前被入口拦截——支持通道上全 action 生效，不落 per-action 消费表）。仅在
+ * worked 出口的 ignored_options 计算里豁免；拒绝路径（didnt）本就不标注。
+ */
+const ENTRY_CONSUMED_OPTION_KEYS = new Set(["freshProfile"]);
+
+/**
  * BUG-05 决议 D1：计算「传入但该 action 未消费」的 options 键（导出供测试）。
  * 只对 worked 出口调用（didnt/unknown 路径不标——错误已自解释）。
  *
@@ -1928,7 +1971,10 @@ export function computeIgnoredOptions(
   if (mode === "current_page") {
     for (const k of NAV_ONLY_OPTION_KEYS) set.delete(k);
   }
-  return Object.keys(options).filter((k) => !set.has(k));
+  // BUG-08 C：入口消费键（freshProfile）不计 ignored（支持通道 worked 路径真实消费）
+  return Object.keys(options).filter(
+    (k) => !set.has(k) && !ENTRY_CONSUMED_OPTION_KEYS.has(k),
+  );
 }
 
 /**

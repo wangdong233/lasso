@@ -242,6 +242,14 @@ export interface BrowseOptions {
    * 最新消息——limit 让最新消息保形。缺省全量。
    */
   console_limit?: number;
+  /**
+   * BUG-08 决议 C（doc/bugs/08，2026-09-15）：反爬逃生门——browse() 入口消费
+   * （getMcpClient 之前拦截）。仅 browse_headless 支持（换完整新一致身份：临时
+   * profile + stealth 确定性轮换 + 完整栈 respawn）；browse_logged_in 传入即拒
+   * （didnt + fresh_profile_not_supported_on_logged_in——用户真实 Chrome 红线）。
+   * 身份服务后续调用直至 idle 回收/下次换脸/server 退出（非每调用一换）。
+   */
+  freshProfile?: boolean;
   // ============================================================
   // v1.1 新增（parse12 §1.3 + §2.2）—— MarkdownExtractor mode-aware 三模式
   // ============================================================

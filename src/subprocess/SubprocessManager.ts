@@ -149,6 +149,19 @@ export class SubprocessManager {
    */
   private reapHook: ((name: string) => Promise<void>) | null = null;
   /**
+   * BUG-08 决议 C（doc/bugs/08，2026-09-15）：**树杀完成后**回调 hook（与
+   * pre-kill reapHook 语义分离：pre-kill 只做「需要目标活着」的收尾（tab
+   * restore），post-kill 只做「需要目标死了」的清理（fresh profile rmSync——
+   * 活体 Chromium 写盘（LevelDB journal/lockfile）与 rmSync 目录遍历竞态会
+   * 删一半留一半，cleanupRenderProfile「先杀后删」顺序的直译，chrome-stop.ts:351
+   * 同序先例）。不进 3s race（树已死无竞态；重试安全）。
+   *
+   * 触发点 = **退役性 kill**（cleanupZombies idle 回收 / forgetSpec / shutdown）
+   * ——restart（同 spec respawn = 身份延续，profile 保留）不触发。INV-7 保持：
+   * 纯 lifecycle 编排点，不关心回调内容。
+   */
+  private postKillHook: ((name: string) => Promise<void>) | null = null;
+  /**
    * v0.2 连接池（parse2 §3.6.2 / F3.5.7）—— review-r1 迁出：
    * undici Agent 池与子进程管理零语义关系，已抽 util/http-pool.ts（模块级
    * Map 单一真源 + acquireHttpClient / closeAllHttpAgents）。本类只管子进程。
@@ -164,9 +177,26 @@ export class SubprocessManager {
 
   /** 测试 / 显式重置用：移除一个规格 + kill 它的进程。 */
   forgetSpec(name: string): Promise<void> {
-    return this._kill(name).then(() => {
+    return this._retire(name).then(() => {
       this.specs.delete(name);
     });
+  }
+
+  /**
+   * BUG-08 决议 C：退役性 kill = _kill + post-kill hook（树杀完成后）。
+   * 调用面：forgetSpec / cleanupZombies idle 回收 / shutdown——均为「该 spec 的
+   * 当前进程树生命周期终结」语义；restart 不走此路（respawn = 身份延续）。
+   */
+  private async _retire(name: string): Promise<void> {
+    await this._kill(name);
+    if (this.postKillHook) {
+      try {
+        await this.postKillHook(name);
+      } catch (e) {
+        // best-effort：清理失败不阻断调用方（交陈年兜底）
+        logger.warn({ evt: "post_kill_hook_error", name, error: String(e) });
+      }
+    }
   }
 
   /**
@@ -256,7 +286,9 @@ export class SubprocessManager {
             logger.warn({ evt: "reap_hook_error", name, error: String(e) });
           }
         }
-        await this._kill(name);
+        // BUG-08 决议 C：退役性 kill 走 _retire（树杀完成后 post-kill hook——
+        // fresh profile 的 rmSync 一律在树杀完成之后，禁 pre-kill 窗口删除）
+        await this._retire(name);
       }
     }
   }
@@ -280,6 +312,14 @@ export class SubprocessManager {
    */
   setReapHook(hook: ((name: string) => Promise<void>) | null): void {
     this.reapHook = hook;
+  }
+
+  /**
+   * BUG-08 决议 C：设置/清除树杀完成后回调（fresh profile 清理路径①③ 的
+   * 接线点；pre-kill reapHook 零改动——语义分离见字段注释）。传 null 恢复零行为。
+   */
+  setPostKillHook(hook: ((name: string) => Promise<void>) | null): void {
+    this.postKillHook = hook;
   }
 
   // ============================================================
@@ -337,7 +377,8 @@ export class SubprocessManager {
       clearInterval(this.zombieTimer);
       this.zombieTimer = null;
     }
-    await Promise.all([...this.procs.keys()].map((n) => this._kill(n)));
+    // BUG-08 决议 C：退役性 kill（post-kill hook 在树杀后清理 fresh profile）
+    await Promise.all([...this.procs.keys()].map((n) => this._retire(n)));
     // v0.3.5：也 join 所有 Rust helper 子进程（parse4 §3.5.2）。
     await Promise.all(
       [...this.rustProcs.keys()].map((n) => this._killRust(n)),

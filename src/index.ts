@@ -594,6 +594,17 @@ async function runMcpServer(): Promise<void> {
   // v1.9：reaper 在 setReapHook 之后启动（§7.2-31 装配顺序）
   startIdleWatchdog();
 
+  // BUG-08 决议 C（doc/bugs/08，2026-09-15）：headless 栈树杀完成后的 fresh
+  // profile 清理接线（SubprocessManager post-kill hook——退役性 kill 点：
+  // idle/zombie 回收、forgetSpec、shutdown；restart 不触发=身份延续）。先杀后删
+  // 顺序铁则的机械化：活体 Chromium 写盘与 rmSync 竞态封死（cleanupRenderProfile
+  // 同序先例）。pre-kill reapHook（tab restore，需 Chrome 活着）零改动。
+  subproc.setPostKillHook(async (name) => {
+    if (name === "headless") {
+      await headless.afterHeadlessStackKilled();
+    }
+  });
+
   // ----- v0.2 装配 BraveChannel（若 BRAVE_API_KEYS 配置）+ SearchCache -----
   // parse2 §3.3.4 / §3.4：brave 从 registry 取 QuotaLedger（INV-10：禁直读 env），
   //                       cache 走 config.searchCacheDir。
@@ -1256,6 +1267,24 @@ async function runMcpServer(): Promise<void> {
     // BUG-04 决议 A2（doc/bugs/04 §4）：chrome_status 只读归属鉴定（admin 入口）——
     // 与 CLI chrome-status 共用 classifyPortOccupier 单一真源（三处分类收敛）。
     chromeStatus: (port?: number) => classifyPortOccupier(port ?? config.cdpPort),
+    // BUG-08 决议 B-1+C（doc/bugs/08）：browser_recycle 正门执行体——freshProfile
+    // 缺省 = 受控重启（SubprocessManager.restart，同 spec respawn）；true = 决议 C
+    // 换脸重启（完整新一致身份）。BUG-07 会话守卫按新 McpClient 实例身份自动
+    // 重置（navSeenClients WeakSet / lastNavigatedClient 失配即拒）。
+    browserRecycle: async (opts: { freshProfile?: boolean }) => {
+      if (opts.freshProfile) {
+        const r = await headless.freshProfile();
+        return {
+          restarted: true,
+          spec: r.spec,
+          pid: r.pid,
+          freshProfile: true,
+          note: `full fresh identity: new profile dir (owner-anchored) + deterministic stealth rotation (${r.stealthProfile}); serves subsequent calls until idle reap / next freshProfile / server exit`,
+        };
+      }
+      const c = await subproc.restart("headless");
+      return { restarted: true, spec: "headless", pid: c.pid };
+    },
   });
 
   // ---- 5b. doctor tool opts 注入 runtimeState provider（parse7 §2.2 + §6.2）----
@@ -1481,6 +1510,14 @@ async function runMcpServer(): Promise<void> {
       // best-effort：exit 钩子绝不能抛
     }
     subproc.killAllSync();
+    // BUG-08 决议 C 清理路径②（同步兜底）：exit 钩子零 await——异步 post-kill
+    // hook 不可达，fresh profile 的 rmSync 在树杀（killAllSync）完成后同步收尾
+    //（顺序本就先杀后删，保持）。
+    try {
+      headless.cleanupFreshProfilesSync();
+    } catch {
+      // best-effort：交 24h 陈年兜底
+    }
   });
 }
 
