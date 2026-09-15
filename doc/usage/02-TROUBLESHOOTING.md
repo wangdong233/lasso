@@ -403,3 +403,56 @@ lasso launch-chrome --port 9223 --idle-ms 0 --no-hard-cap
 # 或全局：export LASSO_LAUNCH_IDLE_MS=0（影响所有 launched Chrome，粒度粗；
 # 硬顶可用 LASSO_LAUNCH_HARD_CAP_MS 调/禁（0=部署级禁用））
 ```
+
+## 10. 9222 被占 / 自有 Chrome 在别的口 / browse_headless 被反爬拉黑（v1.26.0，BUG-08）
+
+场景来自商标查询马拉松（3 小时反爬站实战，doc/bugs/08）：用户自己的 Chrome（无 CDP 参数）占着 9222、lasso 起的 Chrome 在 9223、headless 实例被服务端指纹拉黑（查询静默返回 0 结果，无验证码无报错）。
+
+### 10.1 「9222 被占」三步配方
+
+```bash
+# ① 鉴定端口归属（谁占着 9222、能不能动——永不建议代杀用户资产）
+lasso chrome-status                  # 或 admin {action:"chrome_status"}
+
+# ② 起自己的 Chrome 到空闲口（首登用 --mode visible，登完 chrome-hide）
+lasso launch-chrome --port 9223
+lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解）
+
+# ③ browse_logged_in 附加它——三层解析自动生效：
+#    显式 LASSO_CDP_PORT 恒赢 > 默认 9222 失败时自动发现台账最新非 render 口
+#    > 均失败原错误如实。自动发现命中时结果带 retrieval_method "+auto_discovered_port:9223"
+```
+
+要钉死端口（禁自动发现）：`LASSO_CDP_PORT=9223`（env 或 `~/.lasso/config.json` 同名键）。
+
+### 10.2 headless 被拉黑：freshProfile 换脸逃生门
+
+被服务端指纹拉黑后重新 navigate / `no_cache` / 等待全部无效（惩罚按浏览器上下文隔离）。正解是整套换身份：
+
+```json
+// browse_headless 单工具调用，带一个键即可：
+{ "url": "https://target.example/", "action": "snapshot", "options": { "freshProfile": true } }
+```
+
+- 该次调用前换**完整新一致身份**（新临时 profile + stealth 宿主适用集确定性轮换 + 完整栈 respawn），成功回显 `data.fresh_profile: true`；
+- 新身份服务后续所有调用（直到 idle 回收 / 下次 freshProfile / server 退出——**不是每调用一换**，会话内频繁换脸本身是异常流量信号）；
+- 临时 profile 用后即清（受控回收/退出/下次换脸三路即时 + 24h 陈年兜底），不堆积垃圾；
+- `browse_logged_in` 永不支持（你的真实 Chrome 身份永不轮换）。
+
+状态损坏的内部 headless 栈可受控重启：`admin {action:"browser_recycle", channel:"headless", reason:"..."}`（可选 `freshProfile:true` 直接换脸；永不触碰 detached Chrome——那是 chrome-stop 的域）。
+
+### 10.3 长 evaluate 超时（-32001）不是浏览器死了
+
+`MCP error -32001: Request timed out` = **调用层超时，Chrome 没死**：上游 chrome-devtools-mcp 用一把全局互斥锁串行化所有工具，一个长 evaluate 在服务端继续跑时，后续任何 action 排队各烧满超时——楔死在服务端 evaluate 结束（≤180s）后自愈。
+
+```json
+// 长批量 JS（20+ 次页内请求 + sleep）显式放宽单调用预算（zod 上限 600000）：
+{ "url": "https://target.example/", "action": "evaluate",
+  "options": { "js": "(async () => { ... })()", "budget_ms": 300000 } }
+```
+
+全局默认 120s（`LASSO_EVAL_TIMEOUT_MS` 可调）。超时错误带 `mcp_request_timeout:` 前缀 + 教学 hint；错误首段永远是主通道自身错误（fallback 尾跳摘录在尾部，不再污染归因）。
+
+### 10.4 fetch_url 失败细分
+
+网络层错误现在是 `fetch_failed:<kind>:<detail>`：`dns_failed`（本机 DNS/代理环境） / `connect_refused` / `connect_timeout` / `tls_failed`（证书） / `aborted_timeout`（你传的 timeout_ms 到点） / `other`。用它区分「我的代理/DNS 坏了」和「目标站拒绝」——反爬拦截通常回 2xx + 滑块内容，不在这层报错。

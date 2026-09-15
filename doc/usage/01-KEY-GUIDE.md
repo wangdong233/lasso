@@ -317,6 +317,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
 | `LASSO_RENDER_IDLE_MS` | 渲染档 Chrome（`render-chrome --ensure` 拉起的确定性 headless 实例）空闲回收阈值；消费方用 `touch` 心跳文件续命（见 README 渲染档节） | `600000`（10 分钟） | 渲染会话密集可放宽；渲染档是无人值守资源，**不建议 0**（不回收=泄漏面） |
 | `LASSO_MCP_HANDSHAKE_TIMEOUT_MS` | 浏览器引擎子进程（chrome-devtools-mcp）冷启动握手预算；超时即树杀该次尝试并按退避重试 | `20000`（20 秒） | 网络极慢的首装环境若频繁报 `mcp_handshake_timeout` → 适当放宽（如 `60000`）。默认 20s 已覆盖实测首装极值 17.2s，一般不用动 |
+| `LASSO_EVAL_TIMEOUT_MS` | 单次 `action=evaluate` 的 MCP 调用超时（BUG-08 A-2；长批量 JS 的调用层预算）；调用级 `options.budget_ms`（≤600000）逐次覆盖恒赢 | `120000`（120 秒） | 长批量 evaluate（20+ 次页内请求 + sleep）显式传 `budget_ms: 300000` 更精准；全局调本键。超时 = 「结果没拿到」（`mcp_request_timeout:` 前缀 + 教学 hint），浏览器没死、楔死 ~3min 自愈——不要重启任何东西 |
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
 | `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 不做 idle 回收——但 **BUG-06 起仍受 24h 硬顶管辖**（见 `LASSO_LAUNCH_HARD_CAP_MS`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `LASSO_LAUNCH_HARD_CAP_MS` | 日常档回收硬顶天花板（BUG-06 新增，2026-09-10）：`--idle-ms 0` 记录的兜底回收上限，自最近活动（touch 续命）起算 | `86400000`（24 小时） | 显式 `0` = 部署级禁用硬顶（真·无限常驻的部署面出口）；NaN/负数自动回退 24h。单次 launch 豁免用 CLI 双旗 `--idle-ms 0 --no-hard-cap`。渲染档 `LASSO_RENDER_IDLE_MS` 不受此键影响 |
