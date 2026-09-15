@@ -94,10 +94,14 @@ beforeEach(() => {
   tempBase = mkdtempSync(path.join(os.tmpdir(), "lasso-b08c-base-"));
   tempCache = mkdtempSync(path.join(os.tmpdir(), "lasso-b08c-cache-"));
   setStateStoreContext({ runId: newRunId(), cacheDir: tempCache });
+  // B-2 sidecar 隔离：真子进程用例（顺序/restart）经 _spawnWithBackoff 登记——
+  // 不隔离会写真实 ~/.cache/lasso/headless-stacks.json
+  process.env.LASSO_HEADLESS_STACKS_PATH = path.join(tempCache, "headless-stacks.json");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  delete process.env.LASSO_HEADLESS_STACKS_PATH;
   rmSync(tempBase, { recursive: true, force: true });
   rmSync(tempCache, { recursive: true, force: true });
 });
