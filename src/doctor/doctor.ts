@@ -1048,8 +1048,14 @@ function nextStepTextForClassification(res: ChromeStatusResult): string {
  * checkCdp9222 的 detail 如实区分实测形态——不再把一切笼统写成 HTTP 404 / 裸 String(e)
  * （事故现场实测是「连接接受但空响应」，误导排查方向）。
  *
+ * C5（doc/bugs/09 决议 C5，2026-09-16）：失败 detail 一律带当前生效端口前缀
+ * `CDP :<port> ...`——check 名 `cdp_9222_logged_in` 是历史稳定契约（消费方按名
+ * 匹配，不改名），但实探端口经三层解析可配（LASSO_CDP_PORT/config > 默认 9222，
+ * BUG-08 E-1），名里的 9222 与实探口可能不一致——detail 是如实报口的面
+ * （成功路径 detail 本就带口 `... on CDP port <port>`）。
+ *
  * /json/version 面四形态（fetchFn DI 注入断言）：
- *  - `CDP /json/version returned HTTP <status> — ...`（有 HTTP 应答但非 2xx；r1 起
+ *  - `CDP :<port> /json/version returned HTTP <status> — ...`（有 HTTP 应答但非 2xx；r1 起
  *    附实测形态解读：HTTP 有人应答≠健康 CDP——坏死 DevTools 端点/非 CDP HTTP 服务
  *    都长这样，归属/pid 证据指向 next_step——「文案未跟上」回告的收口）
  *  - `connection accepted, empty/invalid body`（200 但 body 空/坏——不引入
@@ -1059,7 +1065,7 @@ function nextStepTextForClassification(res: ChromeStatusResult): string {
  *
  * /json（tabs）面同规（r1 补漏——初版该探测面无 !ok/坏 body 分支，错误落进外层
  * catch 被误标成 /json/version 形态，生成点漏改）：
- *  - `CDP /json (tabs) returned HTTP <status>` / `empty/invalid body` / `request failed`
+ *  - `CDP :<port> /json (tabs) returned HTTP <status>` / `empty/invalid body` / `request failed`
  *
  * next_step 走 chrome-status 分类器（决议 A4——补齐真实 pid 证据面）。
  */
@@ -1080,8 +1086,9 @@ async function checkCdp9222(
         name: "cdp_9222_logged_in",
         status: "fail",
         // C3-r1：非 2xx 不写裸状态码——附形态解读与证据去向（回告「文案未跟上」收口）
+        // C5：detail 带实探口（check 名 9222 是稳定契约，实探口可能不同）
         detail:
-          `CDP /json/version returned HTTP ${versionResp.status} — ` +
+          `CDP :${port} /json/version returned HTTP ${versionResp.status} — ` +
           "HTTP answered but not a healthy CDP endpoint (a wedged DevTools endpoint or a " +
           "non-CDP HTTP server can answer like this); ownership/pid evidence: see next_step",
         next_step: await classifyPortOccupierNextStep(port, deps),
@@ -1094,7 +1101,7 @@ async function checkCdp9222(
       return {
         name: "cdp_9222_logged_in",
         status: "fail",
-        detail: "CDP /json/version: connection accepted, empty/invalid body",
+        detail: `CDP :${port} /json/version: connection accepted, empty/invalid body`,
         next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
@@ -1107,7 +1114,7 @@ async function checkCdp9222(
           name: "cdp_9222_logged_in",
           status: "fail",
           detail:
-            `CDP /json (tabs) returned HTTP ${tabsResp.status} — ` +
+            `CDP :${port} /json (tabs) returned HTTP ${tabsResp.status} — ` +
             "/json/version was healthy but the tab list is not; ownership/pid evidence: see next_step",
           next_step: await classifyPortOccupierNextStep(port, deps),
         };
@@ -1119,7 +1126,7 @@ async function checkCdp9222(
           name: "cdp_9222_logged_in",
           status: "fail",
           detail:
-            "CDP /json (tabs): connection accepted, empty/invalid body — /json/version was healthy",
+            `CDP :${port} /json (tabs): connection accepted, empty/invalid body — /json/version was healthy`,
           next_step: await classifyPortOccupierNextStep(port, deps),
         };
       }
@@ -1128,7 +1135,7 @@ async function checkCdp9222(
           name: "cdp_9222_logged_in",
           status: "fail",
           detail:
-            "CDP /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy",
+            `CDP :${port} /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy`,
           next_step: await classifyPortOccupierNextStep(port, deps),
         };
       }
@@ -1136,7 +1143,7 @@ async function checkCdp9222(
       return {
         name: "cdp_9222_logged_in",
         status: "warn",
-        detail: `CDP /json (tabs) request failed: ${String(e).slice(0, 100)} — /json/version was healthy`,
+        detail: `CDP :${port} /json (tabs) request failed: ${String(e).slice(0, 100)} — /json/version was healthy`,
         next_step: await classifyPortOccupierNextStep(port, deps),
       };
     }
@@ -1151,12 +1158,13 @@ async function checkCdp9222(
     };
   } catch (e) {
     // C3：错误形态如实分类（timeout 与拒连是不同排查方向；其余原样）
+    // C5：三形态 detail 都带实探口前缀
     const msg = String(e);
     const detail = /abort.*timeout|timeout.*abort|aborted/i.test(msg)
-      ? "CDP /json/version: fetch aborted (timeout)"
+      ? `CDP :${port} /json/version: fetch aborted (timeout)`
       : /ECONNREFUSED|connection refused/i.test(msg)
-        ? "CDP /json/version: connection refused"
-        : `CDP /json/version fetch failed: ${msg.slice(0, 120)}`;
+        ? `CDP :${port} /json/version: connection refused`
+        : `CDP :${port} /json/version fetch failed: ${msg.slice(0, 120)}`;
     return {
       name: "cdp_9222_logged_in",
       status: "warn",
