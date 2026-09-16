@@ -54,6 +54,7 @@ import type { ExpectCondition } from "../types.js";
 import type { Step, StepPartial, ChainResult } from "../browse/steps-types.js";
 import {
   expectPoll,
+  validateCondition,
   type ConditionSnapshot,
   type ExpectPollOptions,
 } from "../browse/ExpectPoll.js";
@@ -990,7 +991,10 @@ export abstract class BrowseChannel extends UiChannel {
       // 已删（doNavigate 从不读，r2 审查实证），step.timeout_ms 的等待语义
       // 由 step.expect.timeout_ms（ExpectPoll 消费）承载。
       // wait step：expect 就是等待目标（等到了 postcondition 自然成立）——
-      // 不剥则链内 wait 永远报 "opts.expect.text required"（wave2 smoke 实证）。
+      // 不剥则链内 wait 拿不到等待条件。决议 C1（doc/bugs/09）后 doWait 与
+      // 顶层/链内 postcondition 同一三键契约（text/selector/url_contains），
+      // 此剥离规则不再造成「链内 wait 比顶层少支持键」的分裂（P2-A 现象一
+      // 修复面）。
       // 其余 action 仍剥 expect（防 doWait 误把 postcondition 当 wait 目标）。
       ...(step.action === "wait" && step.expect
         ? { expect: step.expect }
@@ -1760,27 +1764,47 @@ async function doWait(
   _url: string,
   opts: BrowseOptions,
 ): Promise<Partial<BrowseResult>> {
-  const text = opts.expect?.text;
-  if (!text) throw new Error("wait: opts.expect.text required");
-  // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text 契约是
-  // array(string).min(1)（McpPage.waitForTextOnPage 对 text.flatMap）——单条 string
-  // 会被 zod 拒。0.3.0 时代相反（要 string）——W1-DEF-2 随版本迁移翻转，INV-76 (b) 同步。
-  //
-  // W-DEF-R11-1（v1.17.1 ft-round1 R11 真机修，probe2 W1/W2 实证）：
-  //  ① expect.timeout_ms 透传 wait_for.timeout（上游 ms 整数；此前被静默忽略，
-  //    恒烧上游默认 30s）；
-  //  ② 上游超时以 isError 响应返回（McpClient.callTool 对 is_error 不 throw——
-  //    与 doPdf 的 isError 检查同范式）——此前不检 → 文本从未出现仍报 worked
-  //    （假成功）。isError → throw wait_timeout → classifyBrowseError 落 unknown
-  //    （可 fallback：页面慢是可重试语义，非「明确不可得」）。
-  const r = (await c.callTool("wait_for", {
-    text: [text],
-    ...(opts.expect?.timeout_ms ? { timeout: opts.expect.timeout_ms } : {}),
-  })) as { isError?: boolean };
-  if (r.isError) {
-    throw new Error(`wait_timeout:${JSON.stringify(text).slice(0, 80)}`);
+  const cond = opts.expect;
+  if (!cond) throw new Error("wait: opts.expect required");
+  // 决议 C1（doc/bugs/09，2026-09-16）：wait 的 expect 三键统一——与链内
+  // postcondition（ExpectPoll.validateCondition）同一契约：text / selector /
+  // url_contains 至少一项。修复 P2-A 现象一：steps 里 wait 步传
+  // expect:{selector} 报 "wait: opts.expect.text required" 而顶层接受三键——
+  // 同一动作两套校验的分裂消灭。
+  validateCondition(cond);
+  // text-only（非 gone）→ 上游 wait_for 原生快路（byte-compatible 既有行为：
+  // 1.7.0 wait_for.text = array(string).min(1) 契约 + isError → wait_timeout
+  // 假成功治理，W-DEF-R11-1）
+  if (cond.text && cond.gone !== true) {
+    // v1.11（round1 T1）：chrome-devtools-mcp 1.7.0 wait_for.text 契约是
+    // array(string).min(1)（McpPage.waitForTextOnPage 对 text.flatMap）——单条
+    // string 会被 zod 拒。0.3.0 时代相反（要 string）——W1-DEF-2 随版本迁移
+    // 翻转，INV-76 (b) 同步。
+    //
+    // W-DEF-R11-1（v1.17.1 ft-round1 R11 真机修，probe2 W1/W2 实证）：
+    //  ① expect.timeout_ms 透传 wait_for.timeout（上游 ms 整数；此前被静默忽略，
+    //    恒烧上游默认 30s）；
+    //  ② 上游超时以 isError 响应返回（McpClient.callTool 对 is_error 不 throw——
+    //    与 doPdf 的 isError 检查同范式）——此前不检 → 文本从未出现仍报 worked
+    //    （假成功）。isError → throw wait_timeout → classifyBrowseError 落 unknown
+    //    （可 fallback：页面慢是可重试语义，非「明确不可得」）。
+    const r = (await c.callTool("wait_for", {
+      text: [cond.text],
+      ...(cond.timeout_ms ? { timeout: cond.timeout_ms } : {}),
+    })) as { isError?: boolean };
+    if (r.isError) {
+      throw new Error(`wait_timeout:${JSON.stringify(cond.text).slice(0, 80)}`);
+    }
+    return { preview: `waited for "${cond.text}"` };
   }
-  return { preview: `waited for "${text}"` };
+  // selector / url_contains / gone → ExpectPoll 轮询（与 steps postcondition
+  // 同引擎：100ms poll + 三态；gone:true 反向语义原生 wait_for 表达不了）。
+  // 超时同 wait_timeout 前缀（classifyBrowseError 落 unknown——可重试语义一致）。
+  const verdict = await expectPoll(c, cond);
+  if (verdict === "failed") {
+    throw new Error(`wait_timeout:${JSON.stringify(cond).slice(0, 80)}`);
+  }
+  return { preview: `waited for ${JSON.stringify(cond).slice(0, 80)}` };
 }
 
 async function doEvaluate(
