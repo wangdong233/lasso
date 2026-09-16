@@ -116,6 +116,11 @@ export interface LassoConfig {
    * 出口）。env LASSO_HEADED_HARD_CAP_MS（默认 24h；0 = 部署级禁用）。
    */
   headedHardCapMs: number;
+  /**
+   * C3（doc/bugs/09 决议 C3）：browse_headless→browse_logged_in 跨通道 fallback
+   * 逃生门（env LASSO_FALLBACK_CROSS_CHANNEL；默认 false = 边已移除）。
+   */
+  crossChannelFallback: boolean;
 }
 
 export interface LoadConfigOptions {
@@ -219,6 +224,19 @@ export function parseHeadedHardCapMs(raw: string | undefined): number {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 0) return DEFAULT_HEADED_HARD_CAP_MS;
   return n;
+}
+
+/**
+ * C3（doc/bugs/09 决议 C3）：跨通道 fallback 逃生门（**默认关**）。
+ * browse_headless 的 FallbackPlan 默认不再含 browse_logged_in（语义越权——
+ * 登录态通道须用户显式选择 + 无 9222 环境必死加时 + fallback 污染旧账
+ * D-ε：headless evaluate 超时被 logged_in 连接错误串染，FallbackDecider.ts
+ * 既有注释登记的债务）。env LASSO_FALLBACK_CROSS_CHANNEL=1 / config.json
+ * 同名键 true 可恢复 v1.26.0 行为（可机械判读的一键恢复开关，§6 红线）。
+ */
+export function parseCrossChannelFallback(raw: string | undefined): boolean {
+  const v = (raw ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 /**
@@ -405,6 +423,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // （态一未接管 idle 收割 30min / 态二接管粘滞 + 24h 硬顶兜底）
   LASSO_HEADED_IDLE_MS: 1800000,
   LASSO_HEADED_HARD_CAP_MS: 86400000,
+  // C3（doc/bugs/09 决议 C3）：browse_headless→browse_logged_in 跨通道 fallback
+  // 逃生门（默认 false = 边已移除；true 恢复 v1.26.0 行为）
+  LASSO_FALLBACK_CROSS_CHANNEL: false,
 };
 
 /**
@@ -524,6 +545,10 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   // W2（doc/bugs/09 决议 A.4⑤r1 + C3）：headed 档两态生命周期阈值 + 跨通道逃生门
   const headedIdleMs = parseHeadedIdleMs(env.LASSO_HEADED_IDLE_MS);
   const headedHardCapMs = parseHeadedHardCapMs(env.LASSO_HEADED_HARD_CAP_MS);
+  // C3（doc/bugs/09 决议 C3）：跨通道 fallback 逃生门（默认关）
+  const crossChannelFallback = parseCrossChannelFallback(
+    env.LASSO_FALLBACK_CROSS_CHANNEL,
+  );
 
   return {
     runId: opts.runId,
@@ -542,5 +567,6 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     autoHideAfterLoginDelayMs,
     headedIdleMs,
     headedHardCapMs,
+    crossChannelFallback,
   };
 }

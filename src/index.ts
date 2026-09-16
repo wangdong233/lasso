@@ -934,7 +934,17 @@ async function runMcpServer(): Promise<void> {
     // （未注入则 content_blocks 参数诚实忽略，零回归 byte-identical）
     contentHopDeps,
   );
-  registerBrowseTools(server, headless, logged_in, decider, ssrfConfig, callerTier);
+  registerBrowseTools(
+    server,
+    headless,
+    logged_in,
+    decider,
+    ssrfConfig,
+    callerTier,
+    // C3（doc/bugs/09 决议 C3）：跨通道 fallback 逃生门（默认关——
+    // headless→logged_in 边默认移除；LASSO_FALLBACK_CROSS_CHANNEL=1 恢复）
+    config.crossChannelFallback,
+  );
   // W2（doc/bugs/09 决议 A.4⑥r1）：browse_headed 注册（默认注册、终端通道、
   // SSRF/caller-tier 同范式；consent 契约在 description 首行 + 驱逐 hint）
   registerHeadedTool(server, headed, decider, ssrfConfig, callerTier);
@@ -959,12 +969,13 @@ async function runMcpServer(): Promise<void> {
   // 与 browse_headless 同 SSRF guard；不经浏览器、不挂 fallback 链（INV-23 衍生：caller-tier）
   registerFetchUrlTool(server, ssrfConfig);
   // v0.5 M0.5b：screenshot + pdf 独立工具（parse6 §3.2 + §3.3）
-  // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
+  // 经 HeadlessChannel.browse 入口（终端直达——不挂 fallback 链；C3 后
+  // headless→logged_in 跨通道边默认已移除，本注释同步纠正历史表述）
   // screenshot 走既有 v0.1 dispatch entry（doScreenshot）；pdf 走新加 entry（doPdf from cdp-actions）
   registerScreenshotTool(server, headless, ssrfConfig);
   registerPdfTool(server, headless, ssrfConfig);
   // v0.5 M0.5c：network 独立工具（parse6 §3.4）
-  // 经 HeadlessChannel.browse 入口（隐式享受 headless→logged_in fallback；守 INV-33）
+  // 经 HeadlessChannel.browse 入口（终端直达——不挂 fallback 链；C3 同步纠正）
   // network 走新加 entry（doNetwork from cdp-actions；v1.11 起 1.7.0 原生 list_network_requests 直调）
   registerNetworkTool(server, headless, ssrfConfig);
   // v1.8 Phase D（D1）：read_text 注册（@oN 续页；readOnly + 非 openWorld，INV-5）
