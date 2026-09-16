@@ -212,7 +212,7 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 ## Install
 
-**Current version v1.26.0** (changelog in the collapsed block at the end of this section).
+**Current version v1.27.0** (changelog in the collapsed block at the end of this section).
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
