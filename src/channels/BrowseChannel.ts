@@ -449,8 +449,11 @@ export abstract class BrowseChannel extends UiChannel {
       retrieval_method: this.retrievalMethod(),
       error: `url_required_for_action:${action}`,
       // BUG-08 决议 D-3：current-page 家族扩 wait；决议 B（doc/bugs/09）再扩
-      // evaluate（hint 同步——三 action 现族）
-      hint: "url is optional only for action=screenshot / wait / evaluate (current-page mode); pass an explicit http(s) url",
+      // evaluate（hint 同步——三 action 现族）。
+      // doc/usage/04 决议 C（2026-09-16）：家族清单从 CURRENT_PAGE_ACTIONS 动态
+      // 派生（增项即同步）+ 追加正确形态 call shape（errors-as-teaching——
+      // 不让调用者自己重试猜形态）。
+      hint: `url is optional only for action=${[...CURRENT_PAGE_ACTIONS].join(" / ")} (current-page mode); pass an explicit http(s) url. e.g. browse_headless({url:"https://example.com", action:"${action}"})`,
     };
   }
 
@@ -676,7 +679,11 @@ export abstract class BrowseChannel extends UiChannel {
    * 措辞对齐。
    */
   protected evictionHint(): string {
-    return "suspected eviction OR unattributed cross-host move (not confirmed — a site redirect, an earlier click's side effect, or a user click are indistinguishable here); snapshot may still work via L1 atomic read (extract/snapshot with url); for JS residency ASK THE USER FIRST, then retry with browse_headed (opens a real on-screen window)";
+    // doc/usage/04 决议 C/E9（2026-09-16）：在 consent 指令后内嵌可复制 call
+    // shape 片段（errors-as-teaching）。🔴 语序红线：ASK THE USER FIRST 必须在
+    // browse_headed({ 之前——truth spec（errors-as-teaching + INV-98(e)）双钉。
+    // 片段内禁双引号（INV-98 源锚捕获 [^"]+），故用单引号形参。
+    return "suspected eviction OR unattributed cross-host move (not confirmed — a site redirect, an earlier click's side effect, or a user click are indistinguishable here); snapshot may still work via L1 atomic read (extract/snapshot with url); for JS residency ASK THE USER FIRST, then retry with browse_headed({url, action:'snapshot'}) (opens a real on-screen window)";
   }
 
   /** A.5r2-2：驱逐信号唯一写径（R-INT-07 单逻辑写者；同窗重复检出覆盖不叠加）。 */
@@ -863,6 +870,10 @@ export abstract class BrowseChannel extends UiChannel {
         fallback_used: false,
         retrieval_method: this.retrievalMethod(),
         error: `unknown_action:${action}`,
+        // doc/usage/04 决议 C（errors-as-teaching，2026-09-16）：合法值从 dispatch
+        // 运行时派生（Map 增删 action，hint 自动同步——drift-free by construction）
+        // + 半句 current-page 家族指路（省 url 语义的唯一正典入口）。
+        hint: `unknown action '${action}'. Legal: ${[...this.actionDispatch.keys()].join(" | ")}. screenshot / wait / evaluate also accept an omitted url (current-page mode); every other action requires url.`,
       };
     }
 
@@ -897,10 +908,10 @@ export abstract class BrowseChannel extends UiChannel {
             ? "no_active_session:current_page_evaluate"
             : "no_active_session:current_page_screenshot",
         hint: isWait
-          ? "current-page wait requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first. Note: passing url to a wait does NOT navigate (wait always runs on the current page) — establish the session with navigate or snapshot instead. Refusing to wait on a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), so waiting could never succeed honestly."
+          ? "current-page wait requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first. Note: passing url to a wait does NOT navigate (wait always runs on the current page) — establish the session with navigate or snapshot instead. Refusing to wait on a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), so waiting could never succeed honestly. Recovery: browse_headless({url:\"https://example.com\", action:\"snapshot\"}) first, then omit url for the wait."
           : isEval
-            ? "current-page evaluate requires an active session on this channel: run any url-bearing action (navigate / snapshot / ...) first, or pass url for the ensure-navigation form (navigates first when it differs from the current page, echoing did_navigate). Refusing to run JS on a blank page — the previous page is gone (closed / rotated by self-heal / cold channel)."
-            : "current-page screenshot requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first, or pass url for the one-step navigate+shoot form. Refusing to shoot a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), which would fabricate state.",
+            ? "current-page evaluate requires an active session on this channel: run any url-bearing action (navigate / snapshot / ...) first, or pass url for the ensure-navigation form (navigates first when it differs from the current page, echoing did_navigate). Refusing to run JS on a blank page — the previous page is gone (closed / rotated by self-heal / cold channel). Recovery: browse_headless({url:\"https://example.com\", action:\"evaluate\", options:{js:\"() => document.title\"}}), or navigate first then omit url."
+            : "current-page screenshot requires an active session on this channel: run any url-bearing action (navigate / snapshot / evaluate / ...) first, or pass url for the one-step navigate+shoot form. Refusing to shoot a blank page — the previous page is gone (closed / rotated by self-heal / cold channel), which would fabricate state. Recovery: screenshot({url:\"https://example.com\"}) is the one-step form, or navigate first then screenshot({}).",
       };
     };
     // level-1 pre-check（不获取 client）：冷通道**不 spawn 浏览器子进程**就完成
@@ -2489,7 +2500,38 @@ const ENSURE_NAV_ACTIONS = new Set([
 // 驱动的最高频形态；descriptions 自 BUG-08 起就承诺 omit url = current page
 //（此前被入口 gate 拒 = 描述谎言，本次修复）。会话守卫同族自动生效
 //（no_active_session:current_page_evaluate）。
-const CURRENT_PAGE_ACTIONS = new Set(["screenshot", "wait", "evaluate"]);
+// doc/usage/04 决议 D.1（2026-09-16）：export——schema describe / 动态 hint /
+// truth spec 三方消费的运行时真源之一（url 可省略族）。
+export const CURRENT_PAGE_ACTIONS = new Set(["screenshot", "wait", "evaluate"]);
+
+// ============================================================
+// doc/usage/04 决议 D.1（2026-09-16）：全部合法 browse action 单一真源
+// ============================================================
+/**
+ * frozen 列表（顺序 = actionDispatch 插入序）。三方消费：
+ *  (a) tools/browse.ts schema `action` / `steps[].action` 的 .describe()；
+ *  (b) unknown_action 动态 hint（hint 本体从 actionDispatch keys 运行时派生
+ *      ——Map 增删 action，hint 自动同步，drift-free by construction）；
+ *  (c) test/unit/tool-examples-truth.spec（示例合法值锚 + 与 dispatch keys
+ *      的相等性断言）。
+ *
+ * 注：actionDispatch Map 字面量保持 INV-91(a) 源锚形态（不在构造期改由本
+ * 列表重建）——列表与 Map 的同源性由 truth spec 的相等性断言钉死（新增
+ * action 必须两处同 commit，漏一处即红）。
+ */
+export const BROWSE_ACTIONS: readonly string[] = Object.freeze([
+  "navigate",
+  "snapshot",
+  "screenshot",
+  "extract",
+  "click",
+  "fill",
+  "wait",
+  "evaluate",
+  "pdf",
+  "console",
+  "network",
+]);
 
 // BUG-07 决议 A⁺（§5.2③）：current-page 模式的 data.url / final_url 字面量
 //（诚实+可 grep，不伪造 URL；上游 take_screenshot 本就无 url 参数——本决议
@@ -2528,7 +2570,10 @@ const CURRENT_PAGE_URL_LITERAL = "current-page";
  * evaluate 为单调用预算（BUG-08 决议 A-2 兑现——此前是「死键诚实标注」，现为
  * 生效键）；其余单 action 传入 budget_ms 仍进 ignored_options（如实标注）。
  */
-const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+// doc/usage/04 决议 D.1 r1（2026-09-16）：export——options 作用域类 describe
+//（budget_ms / freshProfile / no_reload / screenshot.filePath 等）与 truth spec
+// 闸 4 的派生源（消费表仍是单一真源，模式变体不落表）。
+export const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   /** BUG-08 决议 D-1：no_reload = same-document 检测命中的 opt-out（doNavigate 消费） */
   navigate: ["no_cache", "no_reload"],
   /** ensure-nav 先导导航分支消费 no_cache/no_reload（见上实施注 + I-3 注） */
@@ -2564,14 +2609,16 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
  * no_cache/no_reload；无导航即死键）。current-page 模式下运行时从
  * CONSUMED_OPTIONS 表派生剔除（消费表仍是单一真源，模式变体不落表）。
  */
-const NAV_ONLY_OPTION_KEYS = new Set(["no_cache", "no_reload"]);
+/** 同上（doc/usage/04 D.1 r1）：export 供 schema describe 派生 + truth spec。 */
+export const NAV_ONLY_OPTION_KEYS = new Set(["no_cache", "no_reload"]);
 
 /**
  * BUG-08 决议 C：browse() 入口消费的 options 键（freshProfile 在 getMcpClient
  * 之前被入口拦截——支持通道上全 action 生效，不落 per-action 消费表）。仅在
  * worked 出口的 ignored_options 计算里豁免；拒绝路径（didnt）本就不标注。
  */
-const ENTRY_CONSUMED_OPTION_KEYS = new Set(["freshProfile"]);
+/** 同上（doc/usage/04 D.1 r1）：export 供 schema describe 派生 + truth spec。 */
+export const ENTRY_CONSUMED_OPTION_KEYS = new Set(["freshProfile"]);
 
 /**
  * BUG-05 决议 D1：计算「传入但该 action 未消费」的 options 键（导出供测试）。

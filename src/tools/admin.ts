@@ -127,10 +127,17 @@ export const adminSchema = {
   /**
    * BUG-08 决议 B-1：browser_recycle 用。v1 只开 "headless"（logged_in 的等价
    * 物 = 既有 profile_switch respawn 路径，不重复开面；未知 channel 显式拒）。
+   * doc/usage/04 决议 D.6（2026-09-16）：L2 describe。
    */
-  channel: z.enum(["headless"]).optional(),
+  channel: z
+    .enum(["headless"])
+    .optional()
+    .describe('browser_recycle target channel; v1 opens "headless" only (unknown channel is rejected)'),
   /** BUG-08 决议 B-1 + C：browser_recycle 可选换脸深度（走 HeadlessChannel.freshProfile）。 */
-  freshProfile: z.boolean().optional(),
+  freshProfile: z
+    .boolean()
+    .optional()
+    .describe("browser_recycle depth: true = full new identity (HeadlessChannel.freshProfile)"),
   /**
    * v0.8 新增（parse9 §3）：profile_switch / cookie_restore 用。
    *
@@ -145,8 +152,12 @@ export const adminSchema = {
    * 必填 when action=cookie_restore；其他 action 忽略。
    */
   op: z.enum(["export", "import"]).optional(),
-  /** mutation action 强制（handler 层校验） */
-  reason: z.string().min(1).optional(),
+  /** mutation action 强制（handler 层校验）；doc/usage/04 决议 D.6：L2 describe。 */
+  reason: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("REQUIRED for every mutation action (audit log — forced thinking)"),
 };
 
 // ============================================================

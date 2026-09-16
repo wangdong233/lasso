@@ -42,10 +42,73 @@ import {
   BROWSE_HEADLESS_DESCRIPTION,
   BROWSE_LOGGED_IN_DESCRIPTION,
 } from "./descriptions.js";
+// doc/usage/04 决议 D（2026-09-16）：L2 schema describe 的作用域枚举一律从
+// BrowseChannel 运行时真源派生（合法 action 表 / 消费表 / 白名单），禁手写
+// 字符串——真源增删，describe 自动同步（drift-free by construction）。
+import {
+  BROWSE_ACTIONS,
+  CONSUMED_OPTIONS,
+  CURRENT_PAGE_ACTIONS,
+  ENTRY_CONSUMED_OPTION_KEYS,
+} from "../channels/BrowseChannel.js";
 import {
   browseHeadlessAnnotations,
   browseLoggedInAnnotations,
 } from "./annotations.js";
+
+// ============================================================
+// L2 describe 派生层（doc/usage/04 决议 D.1/D.2，单一真源拼装）
+// ============================================================
+/** 反查：消费某 option 键的 action 集（CONSUMED_OPTIONS 单一真源）。 */
+const actionsConsuming = (key: string): string[] =>
+  Object.entries(CONSUMED_OPTIONS)
+    .filter(([, keys]) => keys.includes(key))
+    .map(([a]) => a);
+
+/** D.2：合法 action 表 + url 可省略族（第二句是杀 url_required 猜错环的最高价值一行）。 */
+const BROWSE_ACTION_DESCRIBE = `one of: ${BROWSE_ACTIONS.join(" | ")}. url-optional (current-page) actions: ${[...CURRENT_PAGE_ACTIONS].join(" | ")}`;
+
+/** D.3：url 三态语义（省略=current-page / 在场=ensure-navigation）。 */
+const BROWSE_URL_DESCRIBE = `omit + ${[...CURRENT_PAGE_ACTIONS].join("/")} = act on the page this channel already manages (active session required); present = ensure-navigation (navigates only if different; echoes data.did_navigate)`;
+
+/** D.4：js 三形态如实（house 惯例先行——与 BROWSE_HEADLESS 描述同一断言双层锚）。 */
+const JS_DESCRIBE =
+  "THREE forms all work: function expression () => document.title (passed through, upstream auto-invokes); IIFE (async () => {...})() (wrapped as expression body, its result returned); statement body return document.title (wrapped and invoked)";
+
+/** D.5：freshProfile（入口级消费键，从 ENTRY_CONSUMED_OPTION_KEYS 拼作用域）。 */
+const FRESH_PROFILE_DESCRIBE = `entry-level option (${[...ENTRY_CONSUMED_OPTION_KEYS].join(" | ")} — consumed at browse() entry before dispatch, all actions on supporting channels); headless-only: browse_logged_in rejects it (your real Chrome identity is never rotated)`;
+
+/** D.5：no_reload（作用域从 CONSUMED_OPTIONS 反查拼出）。 */
+const NO_RELOAD_DESCRIBE = `hash-only same-document opt-out for navigation (default = reload on hash-only targets); consumed by: ${actionsConsuming("no_reload").join(" | ")}; no-navigation calls (current-page / same-url) echo it in data.ignored_options`;
+
+/** D.5：budget_ms 双语义（steps 链预算 + 单 action evaluate 的 MCP 超时——
+ * 作用域从 CONSUMED_OPTIONS 反查拼出；r1 修正：禁「仅 steps 链」谎言）。 */
+const BUDGET_MS_DESCRIBE = `steps-chain time budget AND single-action MCP timeout for: ${actionsConsuming("budget_ms").join(" | ")} (default 120s, env LASSO_EVAL_TIMEOUT_MS, zod cap 600s); other single actions echo it in data.ignored_options`;
+
+/** E14（BUG-05 决议 A3）：screenshot.filePath 作用域（L2 半行）。 */
+const SCREENSHOT_FILEPATH_DESCRIBE = `output path for the PNG; the screenshot sub-object is consumed only by: ${actionsConsuming("screenshot").join(" | ")} — other actions echo it in data.ignored_options`;
+
+/** selectors 作用域（uid 映射）。 */
+const SELECTORS_DESCRIBE = `uid map from a prior snapshot, e.g. {click:"<uid>"}; consumed by: ${actionsConsuming("selectors").join(" | ")}`;
+
+// expect 四条件共享字段（原 options.expect 与 steps[].expect 两处内联重复的同
+// 形状抽出——R-CI-02 同一 schema 单一真源；describe 的条件枚举从本对象派生）。
+const expectConditionFields = {
+  text: z.string().optional(),
+  selector: z.string().optional(),
+  url_contains: z.string().optional(),
+  gone: z.boolean().optional(),
+  timeout_ms: z.number().int().positive().optional(),
+};
+
+/** D.5：expect 四条件 + timeout_ms（条件键从共享字段对象派生）。 */
+const EXPECT_DESCRIBE = `wait/postcondition: at least one of ${Object.keys(expectConditionFields)
+  .filter((k) => k !== "timeout_ms")
+  .join(" / ")} (+ timeout_ms, default 5s); consumed by action=wait and as step postconditions`;
+
+/** steps 链语义（入口分流——非空即取代单 action 路径）。 */
+const STEPS_DESCRIBE =
+  "multi-step chain (runs instead of the single action when non-empty; chain semantics as qualified in the tool description)";
 
 // ============================================================
 // Schema
@@ -62,12 +125,12 @@ export const browseSchema = {
   // 守 byte-identical 断言）。有 url = 决议 B 统一 ensure-navigation 语义
   //（≠当前页先导航 → did_navigate:true；=当前页零导航直执行 → did_navigate:
   // false——NAV_FIRST 时代的无条件 reload 消灭）。
-  url: z.string().url().optional(),
-  action: z.string().default("snapshot"),
+  url: z.string().url().optional().describe(BROWSE_URL_DESCRIBE),
+  action: z.string().default("snapshot").describe(BROWSE_ACTION_DESCRIBE),
   options: z
     .object({
-      selectors: z.record(z.string()).optional(),
-      js: z.string().optional(),
+      selectors: z.record(z.string()).optional().describe(SELECTORS_DESCRIBE),
+      js: z.string().optional().describe(JS_DESCRIBE),
       // review-r2：wait_until / screenshot.element / timeout_ms 已从 schema 删除——
       // 三者自 v0.1 起「schema 接受 → channel 零消费」（doNavigate 只读 no_cache、
       // doScreenshot 只读 screenshot.full；grep waitUntil 全 src=0），调用方传
@@ -83,7 +146,12 @@ export const browseSchema = {
           // 消费**（doScreenshot；该 action NAV_FIRST 先导航后截屏 = 一步导航+截图）；
           // navigate 等其余 action 传入零消费 → 响应 data.ignored_options 诚实标注
           //（消费表单一真源 = BrowseChannel CONSUMED_OPTIONS，INV-91）。
-          filePath: z.string().min(1).optional(),
+          // doc/usage/04 E14：作用域半行走 L2 describe（派生自消费表）。
+          filePath: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(SCREENSHOT_FILEPATH_DESCRIBE),
         })
         .optional(),
       no_cache: z.boolean().optional(),
@@ -92,39 +160,44 @@ export const browseSchema = {
       // navigated:true + same_document_reloaded:false）不补 reload。缺省
       //（false/不填）= hash-only 导航默认 reload（数据正确性优先——SPA 状态
       // 残留假数据根治）。仅 action=navigate 消费。
-      no_reload: z.boolean().optional(),
+      no_reload: z.boolean().optional().describe(NO_RELOAD_DESCRIBE),
       // BUG-08 决议 C（doc/bugs/08，2026-09-15）：反爬逃生门——本次调用前换完整
       // 新一致身份（新临时 profile + stealth 宿主适用集确定性轮换 + 完整栈
       // respawn）。仅 browse_headless 生效（logged_in 传入即拒 didnt + 专用错误
       // 码——用户真实 Chrome 红线）。身份服务后续调用直至 idle 回收/下次换脸/
       // server 退出。缺省 false/缺省不填 = 现状字节级不变。
-      freshProfile: z.boolean().optional(),
-      // v1.18.2（doc/governance/10 F3+Y1）：steps chain 时间预算（ms），默认 120s，钳制上限 600s
-      // （慢站/长 SPA/多步表单等合法长链显式放宽；预算耗尽终止语义=unknown 可重试）。
-      budget_ms: z.number().int().positive().max(600_000).optional(),
+      freshProfile: z.boolean().optional().describe(FRESH_PROFILE_DESCRIBE),
+      // v1.18.2（doc/governance/10 F3+Y1）+ BUG-08 决议 A-2：双语义时间预算（ms）——
+      // steps 链 = 整链预算（缺省 120s，钳制上限 600s；慢站/长 SPA/多步表单等
+      // 合法长链显式放宽，预算耗尽终止语义=unknown 可重试）；单 action evaluate
+      // = 本次调用的 MCP 超时（budget_ms ?? LASSO_EVAL_TIMEOUT_MS ?? 120s，
+      // BrowseChannel.doEvaluate 传导 callTool）。其余单 action 传入 →
+      // data.ignored_options 诚实回显（消费表单一真源，CONSUMED_OPTIONS.evaluate）。
+      //（doc/usage/04 决议 D.1 r1：本注释原只写「steps 链预算」——过时注释正是
+      // D.5 初稿事实错误的衍生源，随 L2 describe 一并修正。）
+      budget_ms: z
+        .number()
+        .int()
+        .positive()
+        .max(600_000)
+        .optional()
+        .describe(BUDGET_MS_DESCRIBE),
       // v1.8 Phase D（D2）：steps 多步链入参。BrowseChannel v0.3 起已实装 steps 分流
       // （browse() 入口 options.steps 非空 → StepEngine.runChain），但 MCP schema 缺此键
       // → zod strip → U-03 多步链经 MCP 不可达。形状对照 src/browse/steps-types.ts Step。
       steps: z
         .array(
           z.object({
-            action: z.string(),
+            action: z.string().describe(BROWSE_ACTION_DESCRIBE),
             selectors: z.record(z.string()).optional(),
             js: z.string().optional(),
-            expect: z
-              .object({
-                text: z.string().optional(),
-                selector: z.string().optional(),
-                url_contains: z.string().optional(),
-                gone: z.boolean().optional(),
-                timeout_ms: z.number().int().positive().optional(),
-              })
-              .optional(),
+            expect: z.object(expectConditionFields).optional(),
             timeout_ms: z.number().int().positive().optional(),
             label: z.string().optional(),
           }),
         )
-        .optional(),
+        .optional()
+        .describe(STEPS_DESCRIBE),
       // v1.1（parse12 §1.3 + §3.3.1）：extract action 的 markdown 抽取模式。
       // .optional() 无 default（防 zod 自动注入致 raw byte-identical 断言失真）。
       // 仅 action="extract" 读此字段；snapshot/navigate/screenshot 等忽略。
@@ -138,15 +211,7 @@ export const browseSchema = {
       // selector/url_contains/gone 走 100ms evaluate 轮询，text-only 走上游
       // wait_for）；其余 action 忽略。steps 内的 expect 是 step 自有字段
       //（StepEngine 三态消费）。
-      expect: z
-        .object({
-          text: z.string().optional(),
-          selector: z.string().optional(),
-          url_contains: z.string().optional(),
-          gone: z.boolean().optional(),
-          timeout_ms: z.number().int().positive().optional(),
-        })
-        .optional(),
+      expect: z.object(expectConditionFields).optional().describe(EXPECT_DESCRIBE),
       // ============================================================
       // D2（BUG-05 决议 D，doc/bugs/05 §6）：schema 反向补全——types.ts
       // BrowseOptions 已有且 channel 真消费、但 schema 未声明（MCP 入参被 zod

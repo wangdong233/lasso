@@ -42,11 +42,14 @@ export const screenshotSchema = {
   // browse_headless 经同一 HeadlessChannel 单例子进程，「当前页」两入口指向
   // 同一页面）。禁 .default()（absent=undefined；有 url = 现状 NAV_FIRST
   // 字节级不变）。
-  url: z.string().url().optional(),
+  // doc/usage/04 决议 D.6（2026-09-16）：url 三态语义走 L2 describe。
+  // 注：链式保持单行——INV-95 源锚正则匹配 `url: z.string().url().optional()`
+  // 的单行形态（prettier 多行链会拆散锚，inv-selftest 实证）。
+  url: z.string().url().optional().describe("omit = current-page mode (shoot this tool's managed headless session's current frame, zero navigation — needs an active session); present = navigate then shoot"),
   options: z
     .object({
       // 整页截图（透传 doScreenshot 的 opts.screenshot.full）
-      full_page: z.boolean().default(false),
+      full_page: z.boolean().default(false).describe("true = capture the entire scroll height (not just the viewport)"),
     })
     .default({}),
 };
