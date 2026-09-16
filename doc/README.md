@@ -31,6 +31,7 @@ doc/
 | [`usage/01-KEY-GUIDE.md`](usage/01-KEY-GUIDE.md) | 每个 key 用在哪、去哪申请、免费额度口径（90 天时效标注制度） | 活（轻核对至 v1.18.4；下次重核 ≈2026-11） |
 | [`usage/02-TROUBLESHOOTING.md`](usage/02-TROUBLESHOOTING.md) | FAQ + error_kind 释义 + 浏览器静默/看门狗/reaper 排障（§2.16 rust-helper 四态门、§9 chrome-hide/粘滞看门狗） | 活（对齐 v1.18.7；P2 轮修 §2.13 死链） |
 | [`usage/03-SELECTOR-MAINTENANCE.md`](usage/03-SELECTOR-MAINTENANCE.md) | selector 债维护手册（生命周期 + 改版检测 + 升级流程） | 活（内容债见 governance/07 §2.6） |
+| [`usage/04-工具示例体系.md`](usage/04-工具示例体系.md) | 工具示例体系设计决议（示例正典 B 表 = 全仓唯一真源；L1/L2/L3 分层放置 + truth spec 防漂移） | 决议（2026-09-16；实施分期 P0-P2 见文内） |
 
 另有根级 [`../README.md`](../README.md)（用户手册：安装 / 配置 / 17 工具清单 / 隐私 / changelog，中英双语）。
 
