@@ -41,6 +41,7 @@ import type {
   ActionResult,
   StoppedAt,
   ChainResult,
+  ChainEntryNav,
 } from "./steps-types.js";
 import type { BrowseChannel } from "../channels/BrowseChannel.js";
 
@@ -115,14 +116,62 @@ export class StepEngine {
    *   - data.actions_and_results: Skyvern 审计链
    *   - data.stopped_at: 终止边界（worked 时不填）
    *   - data.budget_used_ms: 整 chain 实际耗时
+   *   - data.final_url: §8.B 种子（等值守卫后；链尾真值读在 channel 层覆盖）
+   *   - data.did_navigate: §8.B 链级导航回显（entryNav ∨ worked navigate step）
    */
   async runChain(
     url: string,
     steps: Step[],
     onProgress?: ProgressCallback,
+    /**
+     * §8.B（doc/bugs/09 尾款轮）：先导导航透传（browse() steps 分支的
+     * action:"navigate" 先导结果——W1-DEF-2b 路径此前直接丢弃）。参与
+     * final_url 种子链（等值守卫后）+ 链级 did_navigate 判定。
+     */
+    entryNav?: ChainEntryNav,
+  ): Promise<InteractResult<ChainResult>> {
+    const r = await this.runChainInner(url, steps, onProgress, entryNav);
+    // §8.B 链级导航回显：entryNav 在场 ∨ 任一 worked navigate step ⇒ true
+    //（含 stopped 路径——链死前的导航事实不因终止而消失）。
+    if (r.data) {
+      r.data.did_navigate =
+        entryNav != null ||
+        r.data.actions_and_results.some((e) =>
+          e.results.some(
+            (row) => row.action === "navigate" && row.outcome === "worked",
+          ),
+        );
+    }
+    return r;
+  }
+
+  /**
+   * runChain 实体（§8.B 拆出：外层包装做 did_navigate 后处理——stop() 七个
+   * 早退点无需逐点穿参，单一 choke point）。
+   */
+  private async runChainInner(
+    url: string,
+    steps: Step[],
+    onProgress: ProgressCallback | undefined,
+    entryNav: ChainEntryNav | undefined,
   ): Promise<InteractResult<ChainResult>> {
     const actions_and_results: ChainResult["actions_and_results"] = [];
     const tChainStart = Date.now();
+
+    // ----------------------------------------------------------
+    // §8.B final_url 种子链（doc/bugs/09 尾款轮，R2-1 行为面）：
+    //   种子候选 = 最后携带 final_url 的 step partial → entryNav.final_url；
+    //   链尾真值读（BrowseChannel.applyChainUrlTruth）覆盖种子；尾读失败时
+    //   种子是唯一回显来源。
+    //   种子等值守卫（INV-100 锚）：候选 === 链请求串 ⇒ 视同缺席——doNavigate
+    //   自身 `extractFinalUrl(r) ?? url` 在上游散文解析失败时回退请求串，
+    //   不经守卫会把「请求串回显」洗白进链级真值（消谎目标被旁路）；
+    //   种子=请求串时无法区分真值与回显，诚实 prefers 缺席。
+    // ----------------------------------------------------------
+    let seedFinalUrl: string | undefined = undefined;
+    const seedGuard = (candidate: string | undefined): string | undefined =>
+      candidate !== undefined && candidate !== url ? candidate : undefined;
+    seedFinalUrl = seedGuard(entryNav?.final_url);
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
@@ -194,6 +243,14 @@ export class StepEngine {
       }
       const duration_ms = Date.now() - tStepStart;
       this.budget.spend(duration_ms);
+      // §8.B：handler partial 携带 final_url（navigate step）→ 记种子（最后
+      // 携带者胜出；等值守卫内联——候选=请求串视同缺席）。
+      if (
+        partial.final_url !== undefined &&
+        partial.final_url !== url
+      ) {
+        seedFinalUrl = partial.final_url;
+      }
 
       const result: ActionResult = {
         action: step.action,
@@ -327,7 +384,11 @@ export class StepEngine {
     const chainResult: ChainResult = {
       actions_and_results,
       final_state_id: lastResult?.state_id,
-      final_url: url,
+      // §8.B（doc/bugs/09 尾款轮）：final_url = 种子（最后携带 final_url 的
+      // step partial / entryNav，等值守卫后）——链尾真值读在 BrowseChannel
+      // 层覆盖；**永不回显请求串**（R2-1：旧 `final_url: url` 在残留页形态
+      // 谎称目标页——已消灭，INV-100 grep 锚）。
+      final_url: seedFinalUrl,
       budget_used_ms: Date.now() - tChainStart,
     };
     return this.budget.flushInto({

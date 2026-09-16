@@ -44,6 +44,28 @@ export interface StepPartial {
   error?: string;
   /** act 前的快照（仅 step.expect 存在时抓）；runExpect 用它判 preexisting */
   preSnapshot?: ConditionSnapshot;
+  /**
+   * §8.B 开放项 5（doc/bugs/09 尾款轮，R2-1 行为面）：handler partial 携带的
+   * final_url 透传（navigate step 的 doNavigate 返回真实落点 URL）。StepEngine
+   * 以此构成链级 final_url 的**种子**（最后携带者胜出）——链尾真值读
+   * （BrowseChannel.applyChainUrlTruth）覆盖种子；种子等于链请求串时视同缺席
+   * （等值守卫——doNavigate `extractFinalUrl(r) ?? url` 的请求串回退无法与
+   * 真值区分，诚实 prefers 缺席）。非 navigate step 的 handler 通常不产
+   * final_url（undefined——不参与种子链）。
+   */
+  final_url?: string;
+}
+
+/**
+ * §8.B（doc/bugs/09 尾款轮）：browse() steps 分支先导导航（action:"navigate" +
+ * steps）的结果透传形状——现状（W1-DEF-2b）该 partial 被直接丢弃，链级回显
+ * 因此拿不到先导导航的落点与 same-document 双标注。
+ */
+export interface ChainEntryNav {
+  final_url?: string;
+  /** BUG-08 D-1 双标注（I-2 单 action 组合形态的同款透传） */
+  same_document_navigated?: boolean;
+  same_document_reloaded?: boolean;
 }
 
 // ============================================================
@@ -129,7 +151,21 @@ export interface StoppedAt {
 export interface ChainResult {
   actions_and_results: Array<{ step: Step; results: ActionResult[] }>;
   final_state_id?: string;
+  /**
+   * §8.B 真值化（doc/bugs/09 尾款轮）：链级 final_url **不再回显请求串**
+   * （R2-1：StepEngine 曾恒写 `final_url: url`——残留页形态谎称目标页）。
+   * 值来源优先级：① 链尾真值读（BrowseChannel.applyChainUrlTruth——地面真值）
+   * → ② 种子（最后携带 final_url 的 step partial / entryNav.final_url，经
+   * 等值守卫）→ 省略（undefined——诚实 prefers 缺席）。
+   */
   final_url?: string;
+  /**
+   * §8.B 链级导航回显：entryNav 在场（先导导航执行）∨ 任一 worked navigate
+   * step ⇒ true；纯残留页/同页链 ⇒ false。wrapChainResult 传播至
+   * data.did_navigate（单 action did_navigate 契约的链形态对齐——消灭
+   * 「steps chains carry no did_navigate」的描述限定）。
+   */
+  did_navigate?: boolean;
   stopped_at?: StoppedAt;
   budget_used_ms?: number;
   /** 若整体结果超 48KiB（F3.2.20），data 替换为 { bounded_output, preview_only } */

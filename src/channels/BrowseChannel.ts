@@ -51,7 +51,12 @@ import { defaultEvalTimeoutMs } from "../subprocess/McpClient.js";
 import { writeState, withOperation } from "../util/state-store.js";
 import { logger } from "../util/logger.js";
 import type { ExpectCondition } from "../types.js";
-import type { Step, StepPartial, ChainResult } from "../browse/steps-types.js";
+import type {
+  Step,
+  StepPartial,
+  ChainResult,
+  ChainEntryNav,
+} from "../browse/steps-types.js";
 import {
   expectPoll,
   validateCondition,
@@ -337,12 +342,23 @@ export abstract class BrowseChannel extends UiChannel {
         // （此前 steps 分支丢弃 action，链跑在 about:blank 上——expectPoll 在
         // 空白页 30s 全 false，wave2 smoke 实证）。链内首 step 为 navigate 的
         // 旧范式（U-03-1）不受影响（StepEngine 自行处理）。
+        //
+        // §8.B（doc/bugs/09 尾款轮，开放项 5）：先导导航 partial **不再丢弃**
+        // ——entryNav 透传进 runChain（final_url 种子 + did_navigate），
+        // same-document 双标注经 wrapChainResult 回显（I-2 单 action 组合
+        // 形态的同款透传）。
+        let entryNav: ChainEntryNav | undefined;
         if (action === "navigate" && stepsUrl) {
           const nav = this.actionDispatch.get("navigate");
           if (nav) {
             try {
               const c = await this.getMcpClient();
-              await nav(c, stepsUrl, options);
+              const navPartial = await nav(c, stepsUrl, options);
+              entryNav = {
+                final_url: navPartial.final_url,
+                same_document_navigated: navPartial.same_document_navigated,
+                same_document_reloaded: navPartial.same_document_reloaded,
+              };
             } catch (e) {
               // 导航失败（404 / DNS / 落盘类 didnt）→ 整链诚实终止
               const outcome = classifyBrowseError(String(e), action);
@@ -362,8 +378,13 @@ export abstract class BrowseChannel extends UiChannel {
           options.steps as Step[],
           // v1.18.2（doc/governance/10 F3+Y1）：budget_ms 显式放宽（钳制 600s；缺省 DEFAULT 120s）
           clampChainBudgetMs(options.budget_ms),
+          entryNav,
         );
-        return this.wrapChainResult(chain);
+        // §8.B 链尾真值读：无论链经何路径到达（先导导航/链内导航/残留页），
+        // 尾读是地面真值，覆盖种子；尾读失败 → 种子（等值守卫后）已是回显
+        // 上限，缺席即省略——**永不回显请求串**（R2-1 消谎本体）。
+        await this.applyChainUrlTruth(chain);
+        return this.wrapChainResult(chain, entryNav);
       });
     }
 
@@ -877,13 +898,15 @@ export abstract class BrowseChannel extends UiChannel {
     steps: Step[],
     /** v1.18.2（doc/governance/10 F3+Y1）：可选预算覆盖（已钳制；缺省 DEFAULT_CHAIN_BUDGET_MS）。 */
     budgetMs: number = DEFAULT_CHAIN_BUDGET_MS,
+    /** §8.B（doc/bugs/09 尾款轮）：先导导航透传（final_url 种子 + did_navigate + sd 双标注）。 */
+    entryNav?: ChainEntryNav,
   ): Promise<InteractResult<ChainResult>> {
     // v1.18.2（doc/governance/10 F3+Y1）：默认 120s 维持，但调用方可经 options.budget_ms 放宽
     // （钳 600s——见 BudgetTracker.clampChainBudgetMs）；预算耗尽终止语义=unknown。
     const budget = new BudgetTracker(budgetMs);
     const gate = this.createHighRiskGate();
     const engine = new StepEngine(this, budget, gate);
-    return engine.runChain(url, steps);
+    return engine.runChain(url, steps, undefined, entryNav);
   }
 
   /**
@@ -895,12 +918,44 @@ export abstract class BrowseChannel extends UiChannel {
   }
 
   /**
+   * §8.B（doc/bugs/09 尾款轮，开放项 5）：链尾真值读——browse() steps 分支
+   * 收尾处调用（wrapChainResult 前）。链结束后一次 readCurrentHref：
+   *   - 读到（非 null）⇒ chain.data.final_url = 尾读真值（覆盖种子——无论链
+   *     经何路径到达：先导导航 / 链内 navigate step / 残留页，尾读是地面真值；
+   *     残留页形态因此把「链实际跑在哪个页」暴露给调用方——R2-1 本体）；
+   *   - 读失败（evaluate 抛错 / 围栏解析失败 / spawn 失败）⇒ 种子（StepEngine
+   *     等值守卫后的最后携带者）保持为回显上限；种子缺席 ⇒ final_url 省略
+   *     ——**永不回显请求串**。
+   * best-effort：本方法自身任何失败都不影响链结果（只影响 final_url 回显档）。
+   */
+  private async applyChainUrlTruth(
+    chain: InteractResult<ChainResult>,
+  ): Promise<void> {
+    if (!chain.data) return; // 链异常路径（data=null）：无回显面
+    let tail: string | null = null;
+    try {
+      const c = await this.getMcpClient();
+      tail = await readCurrentHref(c);
+    } catch {
+      tail = null; // best-effort：与 verifyNavigatedPage 同哲学
+    }
+    if (tail !== null) {
+      chain.data.final_url = tail;
+    }
+  }
+
+  /**
    * 把 ChainResult 包装成 BrowseResult 形状，再走 boundedOutput envelope。
    * - chain 成功 → data 含完整 actions_and_results（可能触发 48KiB 落盘）
    * - chain 失败 → data.stopped_at 暴露终止边界；CC 据此判断是否换路径
+   * - §8.B（doc/bugs/09 尾款轮）：链级 did_navigate 传播至 data.did_navigate
+   *   （单 action 回显契约的链形态对齐）；entryNav 的 same-document 双标注
+   *   透传（I-2 单 action 组合形态同款——先导导航命中 hash-only 时调用方
+   *   可见，含补 reload 事实）。
    */
   private wrapChainResult(
     chain: InteractResult<ChainResult>,
+    entryNav?: ChainEntryNav,
   ): InteractResult<BrowseResult> {
     if (!chain.data) {
       // chain 异常路径（不应发生，但兜底）：保留 outcome + error
@@ -950,6 +1005,15 @@ export abstract class BrowseChannel extends UiChannel {
         // preview 始终走 v0.2 的 4000-char 上限契约；完整 chain 数据走 data.chain / data.bounded_output
         preview: truncatePreview(envelope.preview),
         final_url: chain.data.final_url,
+        // §8.B 链级导航回显（含 stopped 路径——链死前的导航事实不消失）
+        did_navigate: chain.data.did_navigate ?? false,
+        // §8.B 先导导航 same-document 双标注透传（I-2 单 action 组合形态同款）
+        ...(entryNav?.same_document_navigated
+          ? {
+              same_document_navigated: true,
+              same_document_reloaded: entryNav.same_document_reloaded ?? false,
+            }
+          : {}),
         // chain 专属字段（v0.3 扩展；v0.2 调用方不读）
         ...(chain.data.stopped_at ? { stopped_at: chain.data.stopped_at } : {}),
         ...(envelope.truncated ? { bounded_output: envelope } : {}),
@@ -1027,6 +1091,11 @@ export abstract class BrowseChannel extends UiChannel {
         preview: partial.preview,
         state_id: stored.state_id,
         content_path: stored.content_path,
+        // §8.B（doc/bugs/09 尾款轮）：handler partial 的 final_url 透传进
+        // StepPartial——navigate step 的落点真值构成链级 final_url 种子
+        //（StepEngine 等值守卫后记录；链尾真值读覆盖）。其余 action 的
+        // handler 不产 final_url（undefined——不参与种子链）。
+        final_url: partial.final_url,
         preSnapshot,
       };
     } catch (e) {
