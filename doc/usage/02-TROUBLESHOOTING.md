@@ -179,6 +179,14 @@ lasso doctor
 
 **签名链**（macOS）：无 Apple Developer 账号时 build 末段自动 ad-hoc 重签（`scripts/ad-hoc-sign-helper.mjs`）——TCC 授权绑定的身份以「当前 ad-hoc 签名」为准；升级后 TCC 失效跑 `lasso doctor` 的 tcc 检查项按 `next_step` 重授权即可。
 
+### 2.17 `page_redirect_eviction_suspected`（站点驱逐无头自动化，v1.27.0）
+
+**症状**：`evaluate` 秒级死于 `Execution context was destroyed`（错误被改写为 `page_redirect_eviction_suspected:<原文>`）；或任意 browse 调用返回体多出 `data.eviction_suspected:{from, to, at_ms}` + `hint` 字段（一次性 advisory，读后即清）。
+
+**含义**：通道层观测到「lasso 自己导航 settle 之后，页面漂移到了异 host」——典型形态是站点反爬 SDK 在页面加载 2-3 秒后执行重定向驱逐无头自动化（商标库/查询库形态）。这是**疑似信号不是定论**（早前 click 的副作用跳转、headed 档用户自己的点击，在通道层不可分辨——hint 是双假设措辞）。`browse_logged_in` 显式不开此信号（SSO 跨域流转在那边是合法常态）。
+
+**处置**（按 hint 指引）：① 快照需求先试 **L1 原子抢读**——`extract`/`snapshot` 带 url 单次调用内「导航→load→抢读」，驱逐窗口内往往来得及；② 需要页面驻留 JS（驱动搜索框+轮询结果）→ **先征得用户明确同意，再转 `browse_headed`**（会在屏幕弹真实窗口——惊讶面必须经同意，lasso 绝不自动升级通道）；③ 同 host 重定向形态不触发信号（host 级判据的已知盲区）——若 evaluate 死于 context destroyed 而无信号，按症状判读同上处置。全案见 [`bugs/09`](../bugs/09-2026-09-16-反爬根治通道与url语义统一决议.md) §8.A。
+
 ## 3. FAQ
 
 ### Q1：`npx lasso-mcp` 启动报 "command not found"
