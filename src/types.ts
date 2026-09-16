@@ -168,6 +168,14 @@ export interface BrowseResult {
    * BUG-08 决议 C：本次调用经 freshProfile 换过身份（browse_headless 审计可见）。
    */
   fresh_profile?: boolean;
+  /**
+   * 决议 B（doc/bugs/09，2026-09-16）B.1-4：本次单 action 调用是否真的执行了
+   * 导航——ensure-nav 族 url≠当前页先导导航 / navigate 本尊 = true；current-page
+   * 模式、url=当前页零导航直执行、current-page 动作族（wait/click/fill）/console
+   * = false。消灭「url 是装饰」：调用方对任何 action 都可机械判读导航是否发生
+   * （extract+url 读残留页假数据形态的判读钥匙）。
+   */
+  did_navigate?: boolean;
 }
 
 // ============================================================

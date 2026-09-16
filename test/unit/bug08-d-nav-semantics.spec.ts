@@ -252,16 +252,16 @@ describe("BUG-08 D-2 — evaluate 先导导航语义", () => {
     expect(r.data!.preview).toBe("42");
   });
 
-  it("url 省略 → 现状字节级不变（gate 拒 url_required_for_action:evaluate——D-2 不动 current-page 家族）", async () => {
+  it("url 省略 → 决议 B（doc/bugs/09）新契约：evaluate 加入 current-page 家族——冷通道 no_active_session:current_page_evaluate 拒（P1-A 修复：此前 url_required_for_action:evaluate 与 descriptions「omit url to run on the current page」承诺矛盾）", async () => {
     const { client, calls } = makeClient({
       evaluate_script: () => fencedEval(JSON.stringify("done")),
     });
     const ch = new TestBrowseChannel(client);
     const r = await ch.browse(undefined, "evaluate", { js: "() => 1" });
-    // 现状：evaluate 不在 CURRENT_PAGE_ACTIONS（BUG-07 家族）——url 省略在
-    // browse() 入口 gate 即拒（D-2 决议「url 省略路径字节级不变」即此形态）
+    // level-1 会话守卫（BUG-07 家族自动生效——同 screenshot/wait 契约）
     expect(r.outcome).toBe("didnt");
-    expect(r.error).toBe("url_required_for_action:evaluate");
+    expect(r.error).toBe("no_active_session:current_page_evaluate");
+    expect(r.hint).toBeTruthy();
     expect(names(calls, "evaluate_script")).toHaveLength(0); // wrapper 未触达
   });
 
@@ -332,13 +332,13 @@ describe("BUG-08 D-3 — wait 支持当前页", () => {
     expect(r.hint).toBeTruthy();
   });
 
-  it("url_required hint 文案更新（screenshot / wait）", async () => {
+  it("url_required hint 文案更新（screenshot / wait / evaluate——决议 B 三 action 现族）", async () => {
     const { client } = makeClient({});
     const ch = new TestBrowseChannel(client);
     const r = await ch.browse(undefined, "extract", {});
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("url_required_for_action:extract");
-    expect(r.hint).toContain("screenshot / wait");
+    expect(r.hint).toContain("screenshot / wait / evaluate");
   });
 
   it("有 url 的 wait 路径不变（wait 非 NAV_FIRST——作用于当前页语义保持）", async () => {

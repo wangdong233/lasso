@@ -49,12 +49,22 @@ function makeStubClient(): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
 } {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  // 决议 B（doc/bugs/09）：ENSURE_NAV 门 probe（location.href）状态化应答
+  let navigatedTo: string | null = null;
   const client: McpClient = {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
-      if (name === "navigate_page") return textContent("navigated");
+      if (name === "navigate_page") {
+        if (args.type !== "reload") navigatedTo = String(args.url ?? navigatedTo);
+        return textContent("navigated");
+      }
       // W1-DEF-1b 真实契约：evaluate_script 返 ```json 围栏、take_screenshot 返 image block
-      if (name === "evaluate_script") return mockEvalResponse("injected");
+      if (name === "evaluate_script") {
+        if (String(args.function ?? "").trim() === "() => location.href") {
+          return mockEvalResponse(navigatedTo ?? "about:blank");
+        }
+        return mockEvalResponse("injected");
+      }
       if (name === "take_screenshot") return mockScreenshotResponse();
       if (name === "list_pages")
         return textContent("browserbase session page\nhttps://example.com/");
@@ -271,7 +281,7 @@ describe("BrowserbaseChannel — StealthEngine beforeNavigate hook", () => {
     expect(args[1]).toBe("windows_chrome_120"); // 默认 profile
   });
 
-  it("snapshot action → beforeNavigate 不调（仅 navigate hook；空白会话门控导航除外——review-r3 F3）", async () => {
+  it("snapshot action → beforeNavigate 不调（仅 navigate hook；决议 B 同页跳过——url=当前页零导航）", async () => {
     const stub = makeStubClient();
     const { subproc } = makeMockSubproc(stub.client);
     const stealth = new StealthEngine();
@@ -280,8 +290,8 @@ describe("BrowserbaseChannel — StealthEngine beforeNavigate hook", () => {
       sessionProvider: makeMockSessionProvider(),
     });
 
-    // review-r3 F3：先 navigate 暖会话（空白会话的 snapshot 会门控先导航 →
-    // 合法触发 hook——那是 navigate 语义）；暖会话后 snapshot 本身不触发 hook
+    // 决议 B（doc/bugs/09）：先 navigate 暖会话（probe 状态化为已导航 URL）；
+    // 暖会话后 snapshot(url=当前页) 同页跳过零导航 → hook 不触发
     await ch.browse("https://example.com/", "navigate", {});
     expect(spy).toHaveBeenCalledTimes(1);
     await ch.browse("https://example.com/", "snapshot", {});

@@ -167,9 +167,9 @@ function makeHeadlessWithStub(): {
 describe("BrowseChannel.browse — 5 步链 happy path", () => {
   it("navigate → click → evaluate → fill → snapshot 全过", async () => {
     const { channel, getCalls } = makeHeadlessWithStub();
-    // 注意：跳过 wait —— executeStep 显式剥 expect（防 doWait 误把 postcondition
-    // 当 wait 目标），所以 wait 在 chain 中会因缺 expect.text 而 fail。
-    // 用 evaluate 替代作为第 3 步（验证多个 action 类型）。
+    // 注：wait 步的三键形态（expect:{selector/url_contains}）自决议 C1
+    //（doc/bugs/09）起在链内合法（bug09-c1-wait-three-key.spec 钉）；本用例
+    // 用 evaluate 作为第 3 步验证多 action 类型（历史形态保持）。
     const steps: Step[] = [
       { action: "navigate" },
       { action: "click", selectors: { click: "uid-btn" } },

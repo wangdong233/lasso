@@ -3865,9 +3865,18 @@ const assertions = [
       if (/JSON\.parse\(\s*text\s*\)/.test(stripComments(hrg.text))) return false;
 
       // ----- (n) v1.8.1 wave2 修复（W2-DEF-N1/N2/W2-DEF-1）-----
-      // N1：URL 驱动采集 action 必先导航（network 恒 0 entries 教训）
-      if (!/NAV_FIRST_ACTIONS/.test(bc.text)) return false;
-      if (!/"network",\s*"screenshot",\s*"pdf"/.test(bc.text)) return false;
+      // N1：URL 驱动采集 action 必先导航（network 恒 0 entries 教训）——决议 B
+      //（doc/bugs/09）泛化为 ENSURE_NAV_ACTIONS 六 action 统一 ensure-nav 门
+      //（旧 NAV_FIRST_ACTIONS 三集分裂已灭；network/screenshot/pdf 仍在收敛集内，
+      // 且 url≠当前页一律先导航——语义增强不回退）
+      if (!/ENSURE_NAV_ACTIONS/.test(bc.text)) return false;
+      {
+        const setMatch = bc.text.match(/const ENSURE_NAV_ACTIONS = new Set\(\[([\s\S]*?)\]\)/);
+        if (!setMatch) return false;
+        for (const a of ["network", "screenshot", "pdf"]) {
+          if (!new RegExp(`"${a}"`).test(setMatch[1])) return false;
+        }
+      }
       // N2：lifecycle 登记永不清 + 树杀（pgrep -P 递归；SIGKILL 单 pid 杀不死 shim 下层）
       const sub = byPath(/^subprocess\/SubprocessManager\.ts$/);
       if (!sub) return false;
@@ -5524,7 +5533,7 @@ const assertions = [
   {
     id: "INV-95-current-page-screenshot-contract",
     desc:
-      "BUG-07 决议 A⁺：url 省略 + action=screenshot = current-page 截图（零导航；有 url=NAV_FIRST 字节级不变）——schema↔description 同 commit；dispatch 门 url-definiteness；错误契约四重形状锚（early-return 合取 + 禁 throw ±3 行 + classify 兜底先于 upstream_wedge + isFallbackWorthy 排除集）；tools 层 fallbacks=[] 通道钉定；current-page 禁自愈重试（catch 内早退先于两钩子）；自愈换页三 return 点 + r2 ensureOwnPageSelected 换页 commit 点（第 4 穿透口）invalidateCurrentPageSession",
+      "BUG-07 决议 A⁺：url 省略 + action=screenshot = current-page 截图（零导航）；决议 B（doc/bugs/09）后有 url = 统一 ensure-navigation（url≠当前页先导航 / url=当前页零导航，NAV_FIRST 三分裂已灭）——schema↔description 同 commit（三 action 现族：screenshot/wait/evaluate）；dispatch 门 url-definiteness + ENSURE_NAV_ACTIONS 收敛集 + did_navigate 三态回显 + about:blank 永不导航；错误契约四重形状锚（early-return 合取 + 禁 throw ±3 行 + classify 兜底先于 upstream_wedge + isFallbackWorthy 排除集）；tools 层 fallbacks=[] 通道钉定；current-page 禁自愈重试（catch 内早退先于两钩子）；自愈换页三 return 点 + r2 ensureOwnPageSelected 换页 commit 点（第 4 穿透口）invalidateCurrentPageSession；navSeenClients/lastNavigatedClient 三写点邻近赋值",
     check: () => {
       const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
       const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
@@ -5542,8 +5551,9 @@ const assertions = [
       );
       if (!headlessDesc) return false;
       if (!/CURRENT-PAGE SCREENSHOT \(BUG-07\)/.test(headlessDesc[0])) return false;
-      // BUG-08 决议 D-3：current-page 家族扩 wait（文案锚同步）
-      if (!/url \(str, optional for action=screenshot \/ wait = current-page mode/.test(headlessDesc[0]))
+      // BUG-08 决议 D-3：current-page 家族扩 wait（文案锚同步）；决议 B
+      //（doc/bugs/09）再扩 evaluate——三 action 现族
+      if (!/url \(str, optional for action=screenshot \/ wait \/ evaluate = current-page mode/.test(headlessDesc[0]))
         return false;
       const loggedInDesc = descSrc.match(
         /BROWSE_LOGGED_IN_DESCRIPTION = \[[\s\S]*?\]\.join\("\\n"\);/,
@@ -5558,19 +5568,45 @@ const assertions = [
       if (!shotDesc) return false;
       if (!/CURRENT-PAGE MODE \(BUG-07\)/.test(shotDesc[0])) return false;
 
-      // ----- (2) dispatch 门源锚（url-definiteness 加法守卫） -----
+      // ----- (2) dispatch 门源锚（决议 B 统一 ensure-navigation 门） -----
+      // 旧 NAV_FIRST 三分裂门已删（NAV_FIRST_ACTIONS / FRESH_PAGE_NAV_ACTIONS /
+      // needsFreshPageNav 全灭——决议 B 四族收敛）；新单一门形：
+      // url !== undefined && … ENSURE_NAV_ACTIONS.has(action)（url-definiteness
+      // 加法守卫保留——current-page 在 browseSingle 早退，undefined 永不进门）
       if (
-        !/url !== undefined &&\s*\(\s*NAV_FIRST_ACTIONS\.has\(action\)/.test(browseSrc)
+        !/url !== undefined &&[\s\S]{0,180}ENSURE_NAV_ACTIONS\.has\(action\)/.test(browseSrc)
       )
         return false;
-      // CURRENT_PAGE_ACTIONS 顶级 const（NAV_FIRST house pattern 预留增项位；
-      // BUG-08 决议 D-3：集扩 "wait"——screenshot 必在集内（BUG-07 契约不回退））
-      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait"\]\)/.test(browseSrc))
+      // ENSURE_NAV_ACTIONS 六 action 收敛集（单一真源；evaluate/snapshot/extract/
+      // screenshot/network/pdf——navigate/wait/click/fill/console 不在集内）
+      const ensureSet = browseSrc.match(/const ENSURE_NAV_ACTIONS = new Set\(\[([\s\S]*?)\]\)/);
+      if (!ensureSet) return false;
+      for (const a of ["evaluate", "snapshot", "extract", "screenshot", "network", "pdf"]) {
+        if (!new RegExp(`"${a}"`).test(ensureSet[1])) return false;
+      }
+      if (ensureSet[1].includes("navigate") || ensureSet[1].includes("wait")) return false;
+      // about:blank 占位永不导航（forest 调度器缺 subtitle 兜底值——对它导航
+      // 只会把受管页面洗成空白页；needsFreshPageNav 时代同款守卫泛化到全族）
+      const dispatchBody = browseSrc.match(/private async dispatchAction\([\s\S]*?\n  \}/);
+      if (!dispatchBody) return false;
+      if (!/url !== "about:blank"/.test(dispatchBody[0])) return false;
+      // 决议 B B.1-4：did_navigate 回显三态（导航分支 true / 同页跳过 false /
+      // current-page 族 false + navigate 本尊 true）
+      const trueCount = (dispatchBody[0].match(/did_navigate: true/g) || []).length;
+      const falseCount = (dispatchBody[0].match(/did_navigate: false/g) || []).length;
+      if (trueCount !== 2 || falseCount !== 2) return false;
+      // CURRENT_PAGE_ACTIONS 顶级 const（ENSURE_NAV house pattern 预留增项位；
+      // BUG-08 D-3：+= wait；决议 B：+= evaluate——screenshot 必在集内（BUG-07
+      // 契约不回退））
+      if (
+        !/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait", "evaluate"\]\)/.test(
+          browseSrc,
+        )
+      )
         return false;
-      // needsFreshPageNav 前置 undefined 守卫（防 undefined 走 !== "about:blank" 隐性边）
-      const freshFn = browseSrc.match(/private needsFreshPageNav\([\s\S]*?\n  \}/);
-      if (!freshFn) return false;
-      if (!/url !== undefined &&/.test(freshFn[0])) return false;
+      // 旧三分裂 Set 残留 = 语义分裂数复活（决议 B 净减一个概念不回退）
+      if (/NAV_FIRST_ACTIONS|FRESH_PAGE_NAV_ACTIONS|needsFreshPageNav/.test(browseSrc))
+        return false;
 
       // ----- (3a) early-return 合取锚（browseSingle 内同一 return 对象字面量） -----
       const singleBody = browseSrc.match(/private async browseSingle[\s\S]*?\n  \}/);
@@ -5643,15 +5679,17 @@ const assertions = [
         return false;
       if (!/private lastNavigatedClient: McpClient \| null = null;/.test(browseSrc))
         return false;
-      // 与 navSeenClients 同写点（dispatchAction 两处 add 邻近赋值）
-      const dispatchBody = browseSrc.match(/private async dispatchAction\([\s\S]*?\n  \}/);
-      if (!dispatchBody) return false;
-      const addIdxs = [...dispatchBody[0].matchAll(/this\.navSeenClients\.add\(c\);/g)].map(
+      // 与 navSeenClients 同写点（决议 B 起 dispatchAction 三处 add：ensure-nav
+      // 先导导航 / 同页跳过（页面确证存活在目标 URL）/ navigate 本尊——每个
+      // add 后 200 字节内必有 lastNavigatedClient 邻近赋值）
+      const dispatchWrites = browseSrc.match(/private async dispatchAction\([\s\S]*?\n  \}/);
+      if (!dispatchWrites) return false;
+      const addIdxs = [...dispatchWrites[0].matchAll(/this\.navSeenClients\.add\(c\);/g)].map(
         (m) => m.index,
       );
-      if (addIdxs.length !== 2) return false;
+      if (addIdxs.length !== 3) return false;
       for (const i of addIdxs) {
-        const after = dispatchBody[0].slice(i, i + 200);
+        const after = dispatchWrites[0].slice(i, i + 200);
         if (!/this\.lastNavigatedClient = c;/.test(after)) return false;
       }
       const healBody = loggedInSrc.match(
@@ -5785,8 +5823,12 @@ const assertions = [
       // 陈年扫描必在 HeadlessChannel 消费（首 spawn 前）
       if (!/scanStaleProfiles\(\)/.test(headlessSrc)) return false;
 
-      // ----- (5) wait 在 current-page 家族（D-3 不回退） -----
-      if (!/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait"\]\)/.test(browseSrc))
+      // ----- (5) wait + evaluate 在 current-page 家族（D-3 / 决议 B 不回退） -----
+      if (
+        !/const CURRENT_PAGE_ACTIONS = new Set\(\["screenshot", "wait", "evaluate"\]\)/.test(
+          browseSrc,
+        )
+      )
         return false;
 
       // ----- (6) FallbackDecider 耗尽 primary-first 复合串 -----
