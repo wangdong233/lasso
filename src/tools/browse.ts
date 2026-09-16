@@ -53,8 +53,12 @@ const browseSchema = {
   // BUG-07 决议 A⁺（doc/bugs/07 §5.2①）：url 可选化——省略 + action=screenshot
   // = current-page 模式（对当前受管页面直接截屏，零导航）；省略 + 其它任何
   // action = 显式拒 url_required_for_action:<action>（channel browse() 门）。
+  // BUG-08 决议 D-3：白名单 += wait；决议 B（doc/bugs/09）：+= evaluate
+  //（「导航完立即对当前页跑 JS」SPA 驱动主形态；descriptions 早已承诺）。
   // 禁 .default()（absent 必须=undefined，不得注入 ""——extract_mode 同款纪律，
-  // 守 byte-identical 断言）。有 url = 现状 NAV_FIRST 字节级不变。
+  // 守 byte-identical 断言）。有 url = 决议 B 统一 ensure-navigation 语义
+  //（≠当前页先导航 → did_navigate:true；=当前页零导航直执行 → did_navigate:
+  // false——NAV_FIRST 时代的无条件 reload 消灭）。
   url: z.string().url().optional(),
   action: z.string().default("snapshot"),
   options: z
@@ -126,8 +130,11 @@ const browseSchema = {
       // byte-identical，INV-66 手法）。markdown* 档注入 data-lasso-uid ref +
       // 附录；raw 档运行时忽略 + ignored_include_refs:true 标注（冲突 #8）。
       include_refs: z.boolean().optional(),
-      // action=wait 消费（doWait 读 expect.text，必需；BrowseChannel doWait）；
-      // 其余 action 忽略。steps 内的 expect 是 step 自有字段（StepEngine 三态消费）。
+      // action=wait 消费（doWait 读 expect——决议 C1 三键统一：text/selector/
+      // url_contains 至少一项，与 ExpectPoll.validateCondition 同一契约；
+      // selector/url_contains/gone 走 100ms evaluate 轮询，text-only 走上游
+      // wait_for）；其余 action 忽略。steps 内的 expect 是 step 自有字段
+      //（StepEngine 三态消费）。
       expect: z
         .object({
           text: z.string().optional(),

@@ -94,15 +94,25 @@ function makeStubClient(htmlFixture: string): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
 } {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  // 决议 B（doc/bugs/09）：ENSURE_NAV 门 probe（location.href）→ 当前页 URL
+  //（状态化：导航前 about:blank，导航后 = 目标）
+  let navigatedTo: string | null = null;
   const stub: McpClient = {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
+      if (name === "navigate_page") {
+        if (args.type !== "reload") navigatedTo = String(args.url ?? navigatedTo);
+        return textContent("navigated");
+      }
       if (name === "take_snapshot") {
         return textContent(
           "Test Page\n\nHello World\nThis is the main content.",
         );
       }
       if (name === "evaluate_script") {
+        if (String(args.function ?? "").trim() === "() => location.href") {
+          return mockEvalResponse(navigatedTo ?? "about:blank");
+        }
         // markdown 路径：doExtract 注入的脚本 return JSON.stringify({html,url,title})；
         // W1-DEF-1b 真实契约：上游把该字符串再 JSON.stringify 后包 ```json 围栏
         // （parseEvalResult 双层解码回对象）
@@ -202,14 +212,18 @@ describe("browse extract — raw 默认 byte-identical v1.0（INV-66 硬验收�
     const { channel, calls } = makeHeadlessWithStub(HTML_FIXTURE);
     // review-r3 F3：先 navigate 暖会话（空白会话 extract 会门控先导航——那是
     // navigate 的合法 evaluate 开销，不属于 raw 抽取管线；暖会话后本测试钉的
-    // 「raw 管线自身零 evaluate_script」断言语义不变）
+    // 「raw 管线自身零 evaluate_script」断言语义不变）。决议 B（doc/bugs/09）：
+    // ENSURE_NAV 门 probe（location.href 载荷）是导航门机制调用，非内容抽取
+    // ——断言排除 probe 后 raw 管线零 evaluate 仍成立
     await channel.browse("https://example.com/", "navigate", {});
     const warmLen = calls.length;
     const r = await channel.browse("https://example.com/", "extract", {});
     expect(r.outcome).toBe("worked");
     expect(r.data!.preview).toContain("Hello World");
     // raw 档必走 take_snapshot（不走 evaluate_script outerHTML）
-    const toolNames = calls.slice(warmLen).map((c) => c.name);
+    const isProbe = (c: { name: string; args: Record<string, unknown> }) =>
+      c.name === "evaluate_script" && String(c.args.function).trim() === "() => location.href";
+    const toolNames = calls.slice(warmLen).filter((c) => !isProbe(c)).map((c) => c.name);
     expect(toolNames).toContain("take_snapshot");
     expect(toolNames).not.toContain("evaluate_script");
     // raw 档不填 markdown 元数据
@@ -229,12 +243,15 @@ describe("browse extract — raw 默认 byte-identical v1.0（INV-66 硬验收�
     // 输出 byte-identical
     expect(r1.data!.preview).toBe(r2.data!.preview);
     expect(r1.data!.title).toBe(r2.data!.title);
-    // 工具调用一致（都走 take_snapshot；暖会话后的 extract 段零 evaluate_script）
-    expect(calls1.slice(warm1).map((c) => c.name)).toEqual(
-      calls2.slice(warm2).map((c) => c.name),
+    // 工具调用一致（都走 take_snapshot；暖会话后的 extract 段排除决议 B probe
+    // 后零内容 evaluate_script）
+    const isProbe = (c: { name: string; args: Record<string, unknown> }) =>
+      c.name === "evaluate_script" && String(c.args.function).trim() === "() => location.href";
+    expect(calls1.slice(warm1).filter((c) => !isProbe(c)).map((c) => c.name)).toEqual(
+      calls2.slice(warm2).filter((c) => !isProbe(c)).map((c) => c.name),
     );
-    expect(calls2.slice(warm2).map((c) => c.name)).toContain("take_snapshot");
-    expect(calls2.slice(warm2).map((c) => c.name)).not.toContain("evaluate_script");
+    expect(calls2.slice(warm2).filter((c) => !isProbe(c)).map((c) => c.name)).toContain("take_snapshot");
+    expect(calls2.slice(warm2).filter((c) => !isProbe(c)).map((c) => c.name)).not.toContain("evaluate_script");
   });
 });
 

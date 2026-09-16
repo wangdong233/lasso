@@ -32,10 +32,14 @@ function makeStubClient(): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
 } {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  // 决议 B（doc/bugs/09）：ENSURE_NAV 门 probe 读 location.href——stub 状态化
+  // 模拟真实浏览器（导航前 about:blank，导航后 = 目标 URL）
+  let navigatedTo: string | null = null;
   const stub: McpClient = {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
       if (name === "navigate_page") {
+        if (args.type !== "reload") navigatedTo = String(args.url ?? navigatedTo);
         return textContent("navigated to https://example.com/");
       }
       if (name === "take_snapshot") {
@@ -50,8 +54,14 @@ function makeStubClient(): {
       if (name === "click") return textContent("clicked");
       if (name === "fill_form") return textContent("filled");
       if (name === "wait_for") return textContent("text appeared");
-      // W1-DEF-1b 真实契约：```json 围栏包裹
-      if (name === "evaluate_script") return mockEvalResponse(42);
+      // W1-DEF-1b 真实契约：```json 围栏包裹；决议 B probe（location.href）→
+      // 当前页真实 URL（about:blank / 已导航目标）
+      if (name === "evaluate_script") {
+        if (String(args.function ?? "").trim() === "() => location.href") {
+          return mockEvalResponse(navigatedTo ?? "about:blank");
+        }
+        return mockEvalResponse(42);
+      }
       return textContent(`stubbed ${name}`);
     }),
     listTools: vi.fn(async () => [
@@ -187,8 +197,10 @@ describe("HeadlessChannel.browse — action 分发", () => {
     const navCount = getCalls().filter((c) => c.name === "navigate_page").length;
     const r = await channel.browse("https://example.com/", "snapshot", {});
     expect(r.outcome).toBe("worked");
-    // navigate 之后的 snapshot 不再触发 navigate_page——navigate → click →
-    // extract/snapshot 的点击后观察态不被回灌导航破坏（interact forest 同享）
+    // 决议 B（doc/bugs/09）：url=当前页 → 零导航直执行（ENSURE_NAV 门 probe
+    // 判等命中跳过）——navigate 之后的 snapshot 不再触发 navigate_page，
+    // navigate → click → extract/snapshot 的点击后观察态不被回灌导航破坏
+    //（interact forest 同享）
     expect(
       getCalls().filter((c) => c.name === "navigate_page").length,
     ).toBe(navCount);

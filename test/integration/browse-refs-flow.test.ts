@@ -72,14 +72,24 @@ function makeStubClient(stubs: RefStubs = {}): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
 } {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  // 决议 B（doc/bugs/09）：ENSURE_NAV 门 probe（location.href）→ 当前页 URL
+  //（状态化：导航前 about:blank，导航后 = 目标——与 browse-channel.spec 同款）
+  let navigatedTo: string | null = null;
   const stub: McpClient = {
     callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
+      if (name === "navigate_page") {
+        if (args.type !== "reload") navigatedTo = String(args.url ?? navigatedTo);
+        return textContent("navigated");
+      }
       if (name === "take_snapshot") {
         return textContent("Ref Page\n\nMain content. Submit Search…");
       }
       if (name === "evaluate_script") {
         const fn = String(args.function ?? "");
+        if (fn === "() => location.href") {
+          return mockEvalResponse(navigatedTo ?? "about:blank");
+        }
         if (fn.includes("data-lasso-uid") && fn.includes("querySelectorAll")) {
           return mockEvalResponse({
             html: HTML_FIXTURE,
@@ -181,7 +191,15 @@ describe("include_refs 缺省关 — byte-identical 基线", () => {
     await channel.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
     const warmLen = calls.length;
     await extract(channel, { extract_mode: "markdown" });
-    const evalCalls = calls.slice(warmLen).filter((c) => c.name === "evaluate_script");
+    // 决议 B：ENSURE_NAV 门 probe 也是 evaluate_script（location.href 载荷）——
+    // 内容断言排除 probe，只数 extract 注入 expr
+    const evalCalls = calls
+      .slice(warmLen)
+      .filter(
+        (c) =>
+          c.name === "evaluate_script" &&
+          String(c.args.function).trim() !== "() => location.href",
+      );
     expect(evalCalls).toHaveLength(1);
     const fn = String(evalCalls[0].args.function);
     expect(fn).not.toContain("data-lasso-uid");
@@ -222,7 +240,14 @@ describe("extract_mode=markdown + include_refs=true — refs 附录", () => {
     await channel.browse("https://example.com/", "navigate", {}); // review-r3 F3 暖会话
     const warmLen = calls.length;
     await extract(channel, { extract_mode: "markdown", include_refs: true });
-    const evalCalls = calls.slice(warmLen).filter((c) => c.name === "evaluate_script");
+    // 决议 B：probe（location.href）不计入内容 expr 断言
+    const evalCalls = calls
+      .slice(warmLen)
+      .filter(
+        (c) =>
+          c.name === "evaluate_script" &&
+          String(c.args.function).trim() !== "() => location.href",
+      );
     expect(evalCalls).toHaveLength(1);
     const fn = String(evalCalls[0].args.function);
     expect(fn).toContain("data-lasso-uid");
@@ -288,7 +313,15 @@ describe("extract_mode=raw + include_refs=true — 运行时忽略 + 诚实标�
     const r = await extract(channel, { include_refs: true });
     expect(r.outcome).toBe("worked");
     expect(r.data!.ignored_include_refs).toBe(true);
-    const names = calls.slice(warmLen).map((c) => c.name);
+    // 决议 B：probe（location.href）是导航门机制调用，非内容抽取——raw 档
+    // 「内容不走 evaluate」断言排除 probe 后仍成立
+    const names = calls
+      .slice(warmLen)
+      .filter(
+        (c) =>
+          !(c.name === "evaluate_script" && String(c.args.function).trim() === "() => location.href"),
+      )
+      .map((c) => c.name);
     expect(names).toContain("take_snapshot");
     expect(names).not.toContain("evaluate_script");
     // preview 与 raw 基线一致（忽略 = 不改变输出内容本身）
