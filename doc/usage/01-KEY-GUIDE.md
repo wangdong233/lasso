@@ -311,7 +311,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源：Brave 计量计费属 L4 会被排除；machine_mcp 复用是 L1 零成本、**永远保留**（v1.17 起 registry 内唯一 API 源是 Brave，L1/L2/L3 档由 machine_mcp 兜底；无机器 MCP 时诚实返空结果） |
 | `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
 | `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
-| `LASSO_ALLOW_FILE_FROM` | `file://` 导航目录白名单（**冒号分隔**；仅 `browse_headless` / `browse_logged_in` 两工具生效） | 空（`file://` 默认拒） | 测本地单文件 HTML 交付物时配，如 `LASSO_ALLOW_FILE_FROM=/Users/you/Documents/project`。只放行指定目录**子树**（realpath 规范化 + 边界匹配：`../` 穿越 / symlink 逃逸 / 目录前缀伪造全封口；不存在条目装载时丢弃）；`fetch_url` / `screenshot` 等其余工具保持 http(s)-only。拒绝 payload 带 opt-in hint；`lasso doctor` 的 `ssrf_config` 回显 `fileFrom=<n>`，丢弃条目会降级 warn 提示 |
+| `LASSO_ALLOW_FILE_FROM` | `file://` 导航目录白名单（**冒号分隔**；仅 `browse_headless` / `browse_logged_in` / `browse_headed` 三工具生效（W2 起含 headed 档）） | 空（`file://` 默认拒） | 测本地单文件 HTML 交付物时配，如 `LASSO_ALLOW_FILE_FROM=/Users/you/Documents/project`。只放行指定目录**子树**（realpath 规范化 + 边界匹配：`../` 穿越 / symlink 逃逸 / 目录前缀伪造全封口；不存在条目装载时丢弃）；`fetch_url` / `screenshot` 等其余工具保持 http(s)-only。拒绝 payload 带 opt-in hint；`lasso doctor` 的 `ssrf_config` 回显 `fileFrom=<n>`，丢弃条目会降级 warn 提示 |
 | `LASSO_SCREENSHOT_DIR` | `options.screenshot.filePath` 截图落盘**写根**（冒号分隔；仅 browse 两工具的截图 action 生效） | 空（显式 filePath 恒拒；缺省管理路径 `/tmp/lasso-screenshot-*.png` 不受影响） | 要自定截图落盘位置时配，如 `LASSO_SCREENSHOT_DIR=/Users/you/shots`。默认拒是收紧「任意路径写盘」暴露面（防注入的 agent 覆写 `~/.zshrc` 类文件）；写根内嵌套父目录自动创建；写根外 / `../` 出根 / symlink 逃逸全拒。`lasso doctor` 回显 `shotDir=<n>` |
 | `LASSO_RECORD_SEARCH` | 是否落盘搜索结果快照（做回归用） | `false` | 想做搜索回归 / 调试 |
 | `LASSO_HEADLESS_IDLE_MS` | 无头浏览器空闲多少毫秒后自动回收 | `300000`（5 分钟） | 高频连用想免冷启动 → 配 `3600000`（1 小时）；配 `0` 完全禁用（浏览器常驻到 server 退出） |
@@ -321,6 +321,9 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_LAUNCH_MODE` | `launch-chrome` 启动档：`hidden`（零窗口零打扰）/ `visible`（v1.9 可见行为） | `hidden` | 想看着它干活配 `visible`；非法值自动回退 `hidden` |
 | `LASSO_LAUNCH_IDLE_MS` | launch-chrome 起的 Chrome「用完即关」空闲阈值（server 进程内 15s 周期回收） | `60000`（60 秒） | 想回退 5 分钟配 `300000`；要逼近瞬时配 `1000`（轻交互场景会频繁付 ~11s 重冷启动）；配 `0` 不做 idle 回收——但 **BUG-06 起仍受 24h 硬顶管辖**（见 `LASSO_LAUNCH_HARD_CAP_MS`）。注意与 `LASSO_HEADLESS_IDLE_MS` 分工不同：这个管 launch-chrome 起的独立 Chrome，那个管无头浏览器子进程 |
 | `LASSO_LAUNCH_HARD_CAP_MS` | 日常档回收硬顶天花板（BUG-06 新增，2026-09-10）：`--idle-ms 0` 记录的兜底回收上限，自最近活动（touch 续命）起算 | `86400000`（24 小时） | 显式 `0` = 部署级禁用硬顶（真·无限常驻的部署面出口）；NaN/负数自动回退 24h。单次 launch 豁免用 CLI 双旗 `--idle-ms 0 --no-hard-cap`。渲染档 `LASSO_RENDER_IDLE_MS` 不受此键影响 |
+| `LASSO_HEADED_IDLE_MS` | `browse_headed` 有头档（W2 新增，doc/bugs/09）**未接管**态的 idle 回收阈值 | `1800000`（30 分钟） | 有头窗口是屏幕上的显式可见事件，默认宽于无头档 5 分钟（覆盖「用户正走向电脑」竞态）。一旦用户聚焦窗口（hasFocus 探测命中）该会话标记为已接管、**永不 idle 回收**（关窗即回收）；想缩短未接管窗口的回收时间可调小 |
+| `LASSO_HEADED_HARD_CAP_MS` | 有头档**已接管**态的兜底硬顶（孤儿舰队防线，BUG-06 同型） | `86400000`（24 小时） | 显式 `0` = 部署级禁用硬顶；NaN/负数自动回退 24h。接管粘滞的有头窗口只能由用户关窗 / 该硬顶回收 |
+| `LASSO_FALLBACK_CROSS_CHANNEL` | `browse_headless` 失败时是否自动回退到 `browse_logged_in`（跨通道边，C3 改判默认**关**） | `false`（边已移除） | 回退 v1.26.0 行为配 `1`。默认关的理由：登录态通道须你显式选择 + 无 9222 环境必死加时 + 跨通道错误串染（headless 超时被 logged_in 连接错误掩盖，marathon 误判事故根） |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |
 | `LASSO_CALLER_CAP_DEFAULT` | 单个 Claude Code 会话 60s 内最多调用 Lasso 工具的次数（自控防失控循环） | **不限制**（`Infinity`，v1.18.1 起） | 担心失控循环烧配额时显式设一个数（如 `120`）；计数照常记录（`admin` 可查），只是默认不再拦截 |
 | `ZHIPU_ENDPOINT` | ~~智谱端点覆盖~~ **已退役（v1.17）** | ——（不再被消费） | 无；历史配置静默忽略（与 `ZHIPU_API_KEY` 同批退役，`zhipu_keys_retired` 提示删除） |
