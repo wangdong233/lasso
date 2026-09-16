@@ -45,7 +45,7 @@ export const screenshotSchema = {
   // doc/usage/04 决议 D.6（2026-09-16）：url 三态语义走 L2 describe。
   // 注：链式保持单行——INV-95 源锚正则匹配 `url: z.string().url().optional()`
   // 的单行形态（prettier 多行链会拆散锚，inv-selftest 实证）。
-  url: z.string().url().optional().describe("omit = current-page mode (shoot this tool's managed headless session's current frame, zero navigation — needs an active session); present = navigate then shoot"),
+  url: z.string().url().optional().describe("omit = current-page mode (shoot the managed headless session's current frame, zero navigation — active session required); present = navigate then shoot"),
   options: z
     .object({
       // 整页截图（透传 doScreenshot 的 opts.screenshot.full）

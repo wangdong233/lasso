@@ -55,7 +55,9 @@ export const readTextAnnotations: ToolAnnotations = {
 // ============================================================
 // Schema
 // ============================================================
-const readTextSchema = {
+// doc/usage/04 决议 E 闸 1d（2026-09-16）：export——truth spec 的
+// call-shape ⊆ schema 锚需要 read_text 的 zod 键集（E11 金标准示例的消费面）。
+export const readTextSchema = {
   ref: z
     .string()
     .regex(/^@o\d+$/, "ref must match @oN (e.g. @o3)"),

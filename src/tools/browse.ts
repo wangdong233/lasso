@@ -69,17 +69,17 @@ const actionsConsuming = (key: string): string[] =>
 const BROWSE_ACTION_DESCRIBE = `one of: ${BROWSE_ACTIONS.join(" | ")}. url-optional (current-page) actions: ${[...CURRENT_PAGE_ACTIONS].join(" | ")}`;
 
 /** D.3：url 三态语义（省略=current-page / 在场=ensure-navigation）。 */
-const BROWSE_URL_DESCRIBE = `omit + ${[...CURRENT_PAGE_ACTIONS].join("/")} = act on the page this channel already manages (active session required); present = ensure-navigation (navigates only if different; echoes data.did_navigate)`;
+const BROWSE_URL_DESCRIBE = `omit + ${[...CURRENT_PAGE_ACTIONS].join("/")} = act on the current page (active session required); present = ensure-navigation (navigates only if different; echoes data.did_navigate)`;
 
 /** D.4：js 三形态如实（house 惯例先行——与 BROWSE_HEADLESS 描述同一断言双层锚）。 */
 const JS_DESCRIBE =
-  "THREE forms all work: function expression () => document.title (passed through, upstream auto-invokes); IIFE (async () => {...})() (wrapped as expression body, its result returned); statement body return document.title (wrapped and invoked)";
+  "THREE forms all work: function expression () => document.title (passed through); IIFE (async () => {...})() (wrapped, its result returned); statement body return document.title (wrapped and invoked)";
 
 /** D.5：freshProfile（入口级消费键，从 ENTRY_CONSUMED_OPTION_KEYS 拼作用域）。 */
 const FRESH_PROFILE_DESCRIBE = `entry-level option (${[...ENTRY_CONSUMED_OPTION_KEYS].join(" | ")} — consumed at browse() entry before dispatch, all actions on supporting channels); headless-only: browse_logged_in rejects it (your real Chrome identity is never rotated)`;
 
 /** D.5：no_reload（作用域从 CONSUMED_OPTIONS 反查拼出）。 */
-const NO_RELOAD_DESCRIBE = `hash-only same-document opt-out for navigation (default = reload on hash-only targets); consumed by: ${actionsConsuming("no_reload").join(" | ")}; no-navigation calls (current-page / same-url) echo it in data.ignored_options`;
+const NO_RELOAD_DESCRIBE = `hash-only same-document opt-out (default = reload on hash-only targets); consumed by: ${actionsConsuming("no_reload").join(" | ")}; no-navigation calls echo it in data.ignored_options`;
 
 /** D.5：budget_ms 双语义（steps 链预算 + 单 action evaluate 的 MCP 超时——
  * 作用域从 CONSUMED_OPTIONS 反查拼出；r1 修正：禁「仅 steps 链」谎言）。 */
@@ -102,13 +102,13 @@ const expectConditionFields = {
 };
 
 /** D.5：expect 四条件 + timeout_ms（条件键从共享字段对象派生）。 */
-const EXPECT_DESCRIBE = `wait/postcondition: at least one of ${Object.keys(expectConditionFields)
+const EXPECT_DESCRIBE = `at least one of ${Object.keys(expectConditionFields)
   .filter((k) => k !== "timeout_ms")
-  .join(" / ")} (+ timeout_ms, default 5s); consumed by action=wait and as step postconditions`;
+  .join(" / ")} (+ timeout_ms); action=wait + step postconditions`;
 
 /** steps 链语义（入口分流——非空即取代单 action 路径）。 */
 const STEPS_DESCRIBE =
-  "multi-step chain (runs instead of the single action when non-empty; chain semantics as qualified in the tool description)";
+  "multi-step chain (replaces the single action when non-empty; semantics as in the tool description)";
 
 // ============================================================
 // Schema
@@ -147,11 +147,9 @@ export const browseSchema = {
           // navigate 等其余 action 传入零消费 → 响应 data.ignored_options 诚实标注
           //（消费表单一真源 = BrowseChannel CONSUMED_OPTIONS，INV-91）。
           // doc/usage/04 E14：作用域半行走 L2 describe（派生自消费表）。
-          filePath: z
-            .string()
-            .min(1)
-            .optional()
-            .describe(SCREENSHOT_FILEPATH_DESCRIBE),
+          // 注：链式保持单行——e2-screenshot-dual-path spec 7 的源锚正则匹配
+          // `filePath: z.string().min(1).optional()` 单行形态。
+          filePath: z.string().min(1).optional().describe(SCREENSHOT_FILEPATH_DESCRIBE),
         })
         .optional(),
       no_cache: z.boolean().optional(),
