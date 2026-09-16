@@ -668,10 +668,7 @@ export abstract class BrowseChannel extends UiChannel {
    * client 身份不匹配（respawn）⇒ 丢弃不附——陈旧会话的驱逐不污染新会话
    * （与检测侧 G-client 同判据、双独立应用：检测挡假信号，消费挡假回显）。
    */
-  private consumeEviction(client: McpClient | null): {
-    eviction_suspected: { from: string; to: string; at_ms: number };
-    hint: string;
-  } | null {
+  private consumeEviction(client: McpClient | null): { eviction_suspected: { from: string; to: string; at_ms: number }; hint: string } | null {
     const p = this.pendingEviction;
     this.pendingEviction = null;
     if (p === null) return null;

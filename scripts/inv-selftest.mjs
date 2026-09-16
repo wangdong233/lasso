@@ -296,13 +296,15 @@ const VIOLATION_SAMPLES = [
   {
     // BUG-05 决议 D1 r1：INV-91 (b)——network 表项抹掉真消费键 network_filter
     //（消费表≠实际消费键 = ignored_options 机制对死键豁免回潮）→ 红。
+    // 锚点随 bug09 对抗复审 I-3 更新：network 表项 += "no_reload"（ensure-nav
+    // 先导导航分支消费，误标谎报治理——锚点不同步即「样本注入失败」假红）。
     inv: "INV-91",
     desc: "network 消费表项抹掉 network_filter（表项≠实际消费键）",
     file: "channels/BrowseChannel.ts",
     mutation: {
       replace: [
-        'network: ["network_filter", "no_cache"],',
-        'network: ["no_cache"],',
+        'network: ["network_filter", "no_cache", "no_reload"],',
+        'network: ["no_cache", "no_reload"],',
       ],
     },
   },
@@ -369,6 +371,44 @@ const VIOLATION_SAMPLES = [
       replace: [
         "    if (policy.stickyExempt && m.userTaken) return null;",
         "    // sticky exemption removed by selftest mutation",
+      ],
+    },
+  },
+  {
+    // 尾款轮（doc/bugs/09 §8.A）：INV-98 (a)——pendingEviction 出现第二非空
+    // 赋值径（绕过 markEviction 单写者 = R-INT-07 多消费者 mutable state 耦合
+    // 面回潮）→ 红。
+    inv: "INV-98",
+    desc: "pendingEviction 出现第二非空赋值径（绕过 markEviction 单写者）",
+    file: "channels/BrowseChannel.ts",
+    mutation: {
+      append:
+        '\nfunction evilInv98SecondWriter(this: { pendingEviction: unknown }): void {\n  this.pendingEviction = { from: "", to: "", at_ms: 0 };\n}\n',
+    },
+  },
+  {
+    // 尾款轮（doc/bugs/09 §8.A）：INV-98 (b)——S1 窗定时器丢 unref（窗口句柄
+    // 阻止进程退出 = 后台 server 生命周期被哨兵拖住）→ 红。
+    inv: "INV-98",
+    desc: "S1 窗定时器丢 unref（驱逐哨兵窗口阻止进程退出）",
+    file: "channels/BrowseChannel.ts",
+    mutation: {
+      replace: [
+        "    timer.unref?.();",
+        "    // unref removed by selftest mutation",
+      ],
+    },
+  },
+  {
+    // 尾款轮（doc/bugs/09 §8.A）：INV-98 (d)——LoggedInChannel 丢失驱逐哨兵
+    // opt-out（真实 profile 的 SSO 跨域流转全部误报 = 信号噪音淹没价值）→ 红。
+    inv: "INV-98",
+    desc: "LoggedInChannel 驱逐哨兵 opt-out 被翻为启用（SSO 噪音面回潮）",
+    file: "channels/LoggedInChannel.ts",
+    mutation: {
+      replace: [
+        "  protected override evictionSentinelEnabled(): boolean {\n    return false;\n  }",
+        "  protected override evictionSentinelEnabled(): boolean {\n    return true;\n  }",
       ],
     },
   },
