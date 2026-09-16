@@ -11,8 +11,9 @@
  *  - BROWSE_LOGGED_IN_DESCRIPTION Args 段「as in browse_headless」交叉引用
  *    未显式限定（第 5 处）。
  *
- * 本 spec 把 af765ef 的三处限定 + 回炉 2 处 + R2-2 症状化全部钉死：摘除任一
- * 限定（还原全称断言）或复活 page_evicted 前向引用（全库无发射点）即红。
+ * 本 spec 把 af765ef 的三处限定 + 回炉 2 处钉死：摘除任一限定（还原全称断言）
+ * 即红。R2-2 组随 WT4 驱逐哨兵落地（doc/bugs/09 §8.A A.5r2-5）翻转为三组
+ * 正向断言（信号句 ∧ 症状兜底句 ∧ consent 语言——摘任一即红）。
  * 行为面真值化在 doc/bugs/09 §5r2 开放项 5（独立小决议），不在本 spec。
  */
 import { describe, it, expect } from "vitest";
@@ -65,11 +66,37 @@ describe("对抗复审 r2 — R2-1/R2-2 描述真值钉", () => {
     });
   });
 
-  describe("R2-2：page_evicted 前向引用不得复活（全库无发射点/类型/测试）", () => {
-    it("BROWSE_HEADED_DESCRIPTION：症状判读形态在位、信号形态缺席", () => {
-      expect(BROWSE_HEADED_DESCRIPTION).not.toContain("page_evicted");
+  describe("R2-2→§8.A：驱逐哨兵信号形态落地（WT4 合并）——companion 双形态共存", () => {
+    it("① 信号句在场：companion 块以 data.eviction_suspected 信号形态为主（摘除即红）", () => {
+      expect(BROWSE_HEADED_DESCRIPTION).toContain(
+        "when a browse response carries data.eviction_suspected",
+      );
+      expect(BROWSE_HEADED_DESCRIPTION).toContain("NOT confirmed");
+    });
+
+    it("② 症状兜底句在场：evaluate 死于 'Execution context was destroyed' 的判读形态（同 host 盲区/异常路径）保留", () => {
       expect(BROWSE_HEADED_DESCRIPTION).toContain(
         "Execution context was destroyed",
+      );
+      expect(BROWSE_HEADED_DESCRIPTION).toContain(
+        "signal unavailable when the redirect stays on-host",
+      );
+    });
+
+    it("③ consent 语言钉（r3 硬钉）：companion 块含 ASK THE USER FIRST——症状路径是唯一教 agent 从症状转 headed 的静态文本，摘除即红（与 INV-98(e) 描述/运行时双钉）", () => {
+      expect(BROWSE_HEADED_DESCRIPTION).toMatch(/ASK THE USER FIRST/);
+    });
+
+    it("旧名 page_evicted 不得复活（r3 更名 eviction_suspected——认识论诚实：S1/S2 无归因能力，未发版窗口零迁移）", () => {
+      expect(BROWSE_HEADED_DESCRIPTION).not.toContain("page_evicted");
+    });
+
+    it("BROWSE_HEADLESS_DESCRIPTION Returns 段同步信号面：data.eviction_suspected 说明 + ask-user 指引在场", () => {
+      expect(BROWSE_HEADLESS_DESCRIPTION).toContain(
+        "data.eviction_suspected {from,to,at_ms}",
+      );
+      expect(BROWSE_HEADLESS_DESCRIPTION).toMatch(
+        /ASK THE USER FIRST, then retry with\s+browse_headed/,
       );
     });
   });

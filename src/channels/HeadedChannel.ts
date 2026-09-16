@@ -328,6 +328,16 @@ export class HeadedChannel extends BrowseChannel {
     return "chrome_devtools_mcp_headed";
   }
 
+  /**
+   * 尾款轮 A.5r2-3（r3，doc/bugs/09 §8.A）：驱逐 hint 变体——纯观察形态。
+   * headed 之上无档：「retry with browse_headed」在此为事实错误（本通道即
+   * headed），故无升级指令；用户点击是该通道设计内行为（hasFocus 探针 +
+   * userTaken 粘滞）——只指认双假设、指引查证据字段后继续。
+   */
+  protected override evictionHint(): string {
+    return "unattributed cross-host move observed (user click or site redirect suspected); there is no tier above headed — inspect data.eviction_suspected.from/to and continue";
+  }
+
   /** 机制一保活：action/step dispatch 后刷 lastUsedAt（态一 idle 不误杀 in-flight）。 */
   protected override touchKeepalive(): void {
     this.subproc.touch(this.specName);

@@ -5855,8 +5855,9 @@ const assertions = [
   // ============================================================
   // W2（doc/bugs/09 决议 A.4/A.7，2026-09-16）新增
   //  INV-97  HeadedChannel 平级断言（L2 有头档——spawn 形态/stealth 取舍/装配四处/consent）
-  //  INV-98  【保留位：驱逐哨兵契约——WT4（哨兵代码落地）时按决议 A.7③ 编号落此；
-  //           编号已在决议 A.7 固定为 98，勿挪作他用】
+  //  INV-98  驱逐哨兵契约（尾款轮 §8.A，决议 A.5r2——WT4 落地，编号从保留位转实装）：
+  //          三信号单写者 / 5s 窗守卫（读后复检）/ 消费点=3 / LoggedInChannel opt-out /
+  //          hint 双形态（consent 钉）/ 三硬守卫先于判等 / settle 写点穷举=2 / 不自动升级
   //  INV-99  两态生命周期契约（reapPolicy 判定序/探测器并发安全/存量 spec 字节级不变/C3 逃生门）
   // ============================================================
   //  INV-97  headed-channel-peer-contract：
@@ -5939,6 +5940,159 @@ const assertions = [
       if (!/from "\.\/browse\.js"/.test(toolCode)) return false; // schema 单一真源复用
       if (!/fallbacks:\s*\[\]\s*as string\[\]/.test(toolCode)) return false; // 终端通道
       if (!/window_opened:\s*true/.test(toolCode)) return false; // 归属锚②回显
+
+      return true;
+    },
+  },
+
+  //  INV-98  eviction-sentinel-contract（尾款轮 §8.A，决议 A.5r2，2026-09-16）：
+  //    (a) markEviction 是 pendingEviction 唯一非空赋值径（R-INT-07 单逻辑写者）
+  //        + consumeEviction 读后即清（唯一 null 清空点）
+  //    (b) S1 窗守卫齐备且读后复检序在场：unref + 重起先 clearTimeout + client
+  //        闭包捕获 + actSeq/client 读后复检（guard set 在 mark 前评，非到点一次评）
+  //    (c) consumeEviction 消费点=3（browseSingle 成功/错误 + 链返回 finalize）
+  //    (d) LoggedInChannel 显式 opt-out（F4：SSO 跨域流转=合法常态，信号纯噪音）
+  //    (e) hint 双形态钉：基类 evictionHint 含 suspected 双假设措辞 + ASK THE
+  //        USER FIRST + browse_headed（N3-r1 consent 契约钉）∧ HeadedChannel
+  //        override 在场且为观察形态（无升级指令——headed 之上无档）
+  //    (f) 三硬守卫 grep 锚（在 S2/S3 host 判等前可见）：G-placeholder（httpHostKey
+  //        null ⇒ no-signal + settle 重置）/ G-client（settle.client ≠ 当前 ⇒ 同前）
+  //        / same-URL 吸收（isSameUrlAfterNormalize 命中 ⇒ no-signal + settle 刷新）
+  //    (g) lastNavSettled 写点穷举=2（wrapNavigate 返回点 + 门 same-URL 确证分支）
+  //    另：S3 typed error 前缀 + classify 自持规则先于 eval_upstream_error（F5
+  //    didnt 档）；哨兵方法族零 FallbackDecider/spawn（A.6.1 不自动升级红线）；
+  //    types.ts eviction_suspected 字段在场
+  {
+    id: "INV-98-eviction-sentinel-contract",
+    desc:
+      "尾款轮 §8.A（doc/bugs/09，决议 A.5r2）：驱逐哨兵契约——(a) markEviction 唯一非空赋值径+consumeEviction 读后即清；(b) 5s 窗 unref+重起先清+client 闭包+actSeq/client 读后复检（读后评非到点评）；(c) 消费点=3（browseSingle×2+链返回）；(d) LoggedInChannel 显式 opt-out（SSO 噪音）；(e) hint 双形态（基类 suspected+双假设+ask-user+browse_headed ∧ headed 观察形态无升级指令）；(f) 三硬守卫（G-placeholder/G-client/same-URL 吸收）在 S2/S3 判等前；(g) lastNavSettled 写点穷举=2；S3 typed error+classify didnt 自持；零 FallbackDecider/spawn（不自动升级红线）",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const browse = byPath(/^channels\/BrowseChannel\.ts$/);
+      const headed = byPath(/^channels\/HeadedChannel\.ts$/);
+      const loggedIn = byPath(/^channels\/LoggedInChannel\.ts$/);
+      const typesF = byPath(/^types\.ts$/);
+      if (!browse || !headed || !loggedIn || !typesF) return false;
+      const b = stripComments(browse.text);
+      const h = stripComments(headed.text);
+      const li = stripComments(loggedIn.text);
+      const typesText = typesF.text;
+
+      // ----- (a) 单写者：pendingEviction 非空赋值恰 1 处且在 markEviction 内 -----
+      if ((b.match(/this\.pendingEviction = \{/g) ?? []).length !== 1) return false;
+      const markFn = b.match(/private markEviction\([\s\S]*?\n  \}/);
+      if (!markFn) return false;
+      if (!/this\.pendingEviction = \{/.test(markFn[0])) return false;
+      // 读后即清：唯一 null 清空写点在 consumeEviction 内
+      if ((b.match(/this\.pendingEviction = null/g) ?? []).length !== 1) return false;
+      const consumeFn = b.match(/private consumeEviction\([\s\S]*?\n  \}/);
+      if (!consumeFn || !/this\.pendingEviction = null/.test(consumeFn[0]))
+        return false;
+      if (!/eviction_suspected: \{ from: p\.from, to: p\.to, at_ms: p\.at_ms \}/.test(consumeFn[0]))
+        return false; // 回显形状（A.5r2-3 扁平证据对象）
+      if (!/p\.client !== client/.test(consumeFn[0])) return false; // respawn 丢弃（双独立 G-client）
+
+      // ----- (b) S1 窗守卫：unref + 重起先清 + client 闭包捕获 + 读后复检序 -----
+      const armFn = b.match(/private armEvictionWindow\([\s\S]*?\n  \}/);
+      if (!armFn) return false;
+      if (!/setTimeout\(/.test(armFn[0])) return false;
+      if (!/unref\?\.\(\)/.test(armFn[0])) return false;
+      if (!/clearTimeout\(this\.evictionWindowTimer\)/.test(armFn[0])) return false;
+      if (!/this\.sampleEvictionWindow\(client, seq\)/.test(armFn[0])) return false;
+      const sampleFn = b.match(/private async sampleEvictionWindow\([\s\S]*?\n  \}/);
+      if (!sampleFn) return false;
+      const s1Read = sampleFn[0].indexOf("await readCurrentHref(client)");
+      const s1Client = sampleFn[0].indexOf("settle.client !== client");
+      const s1Seq = sampleFn[0].indexOf("this.evictionActSeq !== armSeq");
+      const s1Host = sampleFn[0].indexOf("httpHostKey(observed)");
+      const s1Mark = sampleFn[0].indexOf("this.markEviction(");
+      if (s1Read < 0 || s1Client < 0 || s1Seq < 0 || s1Host < 0 || s1Mark < 0)
+        return false;
+      // 读后复检（非到点一次评）：读在守卫前、守卫在 host 判等前、判等在 mark 前
+      if (!(s1Read < s1Client && s1Read < s1Seq && s1Read < s1Host && s1Host < s1Mark))
+        return false;
+
+      // ----- (c) 消费点=3（browseSingle 成功/错误 + 链返回）-----
+      if ((b.match(/this\.consumeEviction\(/g) ?? []).length !== 3) return false;
+      const singleBody = b.match(/private async browseSingle[\s\S]*?\n  \}/);
+      if (!singleBody) return false;
+      if ((singleBody[0].match(/this\.consumeEviction\(/g) ?? []).length !== 2)
+        return false;
+      const finalizeFn = b.match(/private finalizeChainEviction\([\s\S]*?\n  \}/);
+      if (!finalizeFn || !/this\.consumeEviction\(/.test(finalizeFn[0])) return false;
+
+      // ----- (d) LoggedInChannel 显式 opt-out（F4）-----
+      if (!/override evictionSentinelEnabled\(\): boolean \{\s*return false/.test(li))
+        return false;
+
+      // ----- (e) hint 双形态钉（N3-r1 consent 契约）-----
+      const baseHint = b.match(/protected evictionHint\(\): string \{\s*return "([^"]+)"/);
+      if (!baseHint) return false;
+      if (!/suspected eviction OR unattributed cross-host move/.test(baseHint[1]))
+        return false; // 双假设措辞（认识论诚实——r3 更名语义）
+      if (!/not confirmed/.test(baseHint[1])) return false;
+      if (!/ASK THE USER FIRST/.test(baseHint[1])) return false;
+      if (!/browse_headed/.test(baseHint[1])) return false;
+      const headedHint = h.match(
+        /protected override evictionHint\(\): string \{\s*return "([^"]+)"/,
+      );
+      if (!headedHint) return false;
+      if (/browse_headed|ASK THE USER FIRST/.test(headedHint[1])) return false; // 观察形态：无升级指令
+      if (!/no tier above headed/.test(headedHint[1])) return false;
+
+      // ----- (f) 三硬守卫在 S2 判等前（dispatchAction 门读四步前置序）-----
+      const dispatchBody = b.match(/private async dispatchAction\([\s\S]*?\n  \}/);
+      if (!dispatchBody) return false;
+      const gPh = dispatchBody[0].indexOf("httpHostKey(currentHref)");
+      const gCl = dispatchBody[0].indexOf("settle.client !== c");
+      const gSame = dispatchBody[0].indexOf("isSameUrlAfterNormalize(currentHref, url)");
+      const gMark = dispatchBody[0].indexOf("this.markEviction(");
+      if (gPh < 0 || gCl < 0 || gSame < 0 || gMark < 0) return false;
+      if (!(gPh < gCl && gCl < gSame && gSame < gMark)) return false;
+      // G-placeholder / G-client 的 reset-to-null 双写点在场（旧基线对新会话无意义）
+      if ((dispatchBody[0].match(/this\.lastNavSettled = null/g) ?? []).length !== 2)
+        return false;
+
+      // ----- (g) settle 写点穷举=2（wrapNavigate 返回点 + 门 same-URL 确证分支）-----
+      if ((b.match(/this\.lastNavSettled = \{/g) ?? []).length !== 2) return false;
+      const wrapFn = b.match(/private wrapNavigate\([\s\S]*?\n  \}/);
+      if (!wrapFn || !/this\.lastNavSettled = \{/.test(wrapFn[0])) return false;
+      if (!/this\.lastNavSettled = \{/.test(dispatchBody[0])) return false;
+
+      // ----- S3 合取：G-client/G-placeholder 先于 host 判等 + typed error 前缀 -----
+      const s3Fn = b.match(/private async confirmEvictionFromError\([\s\S]*?\n  \}/);
+      if (!s3Fn) return false;
+      const s3Cl = s3Fn[0].indexOf("settle.client !== c");
+      const s3Ph = s3Fn[0].indexOf("httpHostKey(observed)");
+      const s3Host = s3Fn[0].indexOf("toHost === settle.host");
+      const s3Mark = s3Fn[0].indexOf("this.markEviction(");
+      if (s3Cl < 0 || s3Ph < 0 || s3Host < 0 || s3Mark < 0) return false;
+      if (!(s3Cl < s3Host && s3Ph < s3Host && s3Host < s3Mark)) return false;
+      if (!/page_redirect_eviction_suspected:/.test(s3Fn[0])) return false;
+
+      // ----- classify 自持规则（F5：didnt 档）先于 eval_upstream_error -----
+      const classifyBody = b.match(/function classifyBrowseError[\s\S]*?\n\}/);
+      if (!classifyBody) return false;
+      const evIdx = classifyBody[0].indexOf(
+        'm.includes("page_redirect_eviction_suspected")',
+      );
+      const evalIdx = classifyBody[0].indexOf('m.includes("eval_upstream_error")');
+      if (evIdx < 0 || evalIdx < 0 || evIdx > evalIdx) return false;
+
+      // ----- 不自动升级（A.6.1 红线）：哨兵方法族零 FallbackDecider/spawn -----
+      const sentinelFns = [
+        markFn[0],
+        armFn[0],
+        sampleFn[0],
+        consumeFn[0],
+        s3Fn[0],
+        finalizeFn[0],
+      ].join("\n");
+      if (/FallbackDecider|spawn/.test(sentinelFns)) return false;
+
+      // ----- types 面：eviction_suspected 扁平证据对象字段 -----
+      if (!/eviction_suspected\?: \{ from: string; to: string; at_ms: number \}/.test(typesText))
+        return false;
 
       return true;
     },
