@@ -291,7 +291,8 @@ export const BROWSE_HEADLESS_DESCRIPTION = [
   "       data.ignored_options (honest, never silently dropped).",
   "",
   "Returns: InteractResult<BrowseResult> as JSON text. Every url-aware action",
-  "         echoes data.did_navigate (true/false) — see UNIFIED URL SEMANTICS above.",
+  "         echoes data.did_navigate (true/false) in single-action calls — see",
+  "         UNIFIED URL SEMANTICS above (steps chains carry no did_navigate).",
   ].join("\n");
 
 // ============================================================
@@ -382,7 +383,8 @@ export const BROWSE_LOGGED_IN_DESCRIPTION = [
   "                               mode; required otherwise) — http(s) URL (file:// only via",
   "                               LASSO_ALLOW_FILE_FROM). Unified ensure-navigation",
   "                               semantics + data.did_navigate echo as in",
-  "                               browse_headless.",
+  "                               browse_headless (single-action calls; steps",
+  "                               chains — carve-out as qualified there).",
   "       action (str, default 'snapshot')",
   "       options (object, optional)",
   "",
