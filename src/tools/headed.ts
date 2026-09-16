@@ -27,13 +27,15 @@ import {
   callerCapExceededResult,
 } from "../runtime/CallerTierTracker.js";
 import { ssrfGuard, ssrfDenial, type SsrfConfig } from "../ssrf/ssrf-guard.js";
-import { isFileProtocol, checkFileUrl } from "../ssrf/file-guard.js";
+import { isFileProtocol, checkFileUrl, fileGuardHint } from "../ssrf/file-guard.js";
 import { browseSchema } from "./browse.js";
 import { BROWSE_HEADED_DESCRIPTION } from "./descriptions.js";
 import { browseHeadedAnnotations } from "./annotations.js";
 
-function ssrfBlocked(reason: string) {
+function ssrfBlocked(reason: string, hint?: string) {
   // v1.18.2（doc/governance/10 F1）同款：策略拒 = didnt（browse.ts 单一范式复刻）
+  // 对抗复审 r3 F3：file: 族拒绝补 fileGuardHint（BUG-05 B3 同款 opt-in 指引——
+  // 与 browse_headless 入口字节一致；hint 是 additive 字段）。
   const d = ssrfDenial(reason);
   const payload: InteractResult<never> = {
     outcome: d.outcome,
@@ -42,6 +44,7 @@ function ssrfBlocked(reason: string) {
     fallback_used: false,
     retrieval_method: d.retrieval_method,
     error: d.error,
+    ...(hint ? { hint } : {}),
   };
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
@@ -106,11 +109,12 @@ export function registerHeadedTool(
       // SSRF 守门（file: 路由 + ssrfGuard；url 缺省 = current-page 零导航面，
       // BUG-07 A⁺ 同款跳过语义——browse.ts 单一范式复刻）
       if (url !== undefined) {
+        const fileAllow = ssrfConfig.fileAllowFrom ?? [];
         const result = isFileProtocol(url)
-          ? checkFileUrl(url, ssrfConfig.fileAllowFrom ?? [])
+          ? checkFileUrl(url, fileAllow)
           : await ssrfGuard(url, ssrfConfig);
         if (!result.allowed) {
-          return ssrfBlocked(result.reason);
+          return ssrfBlocked(result.reason, fileGuardHint(result.reason, fileAllow));
         }
       }
 
