@@ -231,16 +231,20 @@ export class StepEngine {
 
         if (expectErrored) {
           // result.outcome 已是 partial.outcome（构造时赋值；此处不覆写——不掠美也不冤枉）
+          // C2：chain 级 error 文本先捕获——下方行级规范化会把 worked 行的 error
+          // 迁入 warnings，chain 终止原因（step_error 的 detail/error）不随之丢失。
+          const errText = result.error;
+          this.normalizeWorkedResult(result);
           actions_and_results.push({ step, results: [result] });
           this.budget.recordPartial({
             channel: this.channel.name,
-            error: result.error ?? "expect_error",
+            error: errText ?? "expect_error",
           });
           return this.budget.flushInto(
             this.stop("step_error", i, actions_and_results, step, {
               chainOutcome: "unknown",
-              detail: `expect_error: ${result.error ?? "(no error)"}`,
-              error: result.error,
+              detail: `expect_error: ${errText ?? "(no error)"}`,
+              error: errText,
             }),
           );
         }
@@ -262,6 +266,8 @@ export class StepEngine {
         }
         if (verdict === "verified") {
           // 已验证交付 → outcome=worked（即便 handler 原本报 unknown 也升级）
+          // C2（doc/bugs/09 决议 C2）：升级时 handler 瞬态 error 若在场，由下方
+          // 落链前规范化迁入 warnings——worked 行不再同时挂 error（喵虎 P2-A 现象二）
           result.outcome = "worked";
         }
         // preexisting → 保留原 outcome（不掠美：channel 没造成它但成立）
@@ -270,6 +276,9 @@ export class StepEngine {
       // ----------------------------------------------------------
       // 5. 推入审计链 + 进度回调
       // ----------------------------------------------------------
+      // C2：行落链前规范化（单一 choke point——verified→worked 升级 / handler
+      // 直返 worked+error / preexisting 保留 worked 全经此收口）
+      this.normalizeWorkedResult(result);
       actions_and_results.push({ step, results: [result] });
       onProgress?.({
         actions_and_results: [...actions_and_results],
@@ -328,6 +337,33 @@ export class StepEngine {
       fallback_used: false,
       retrieval_method: "chrome_devtools_mcp.chain",
     });
+  }
+
+  // ============================================================
+  // C2：worked 行规范化（doc/bugs/09 决议 C2，2026-09-16）
+  // ============================================================
+  /**
+   * 审计行落链前收口：**outcome=worked ⇒ error 必空**（消费方契约）。
+   *
+   * 背景（喵虎报告 P2-A 现象二）：wait 步 `outcome:"worked"` + `expect_check:
+   * "verified"` + `error` 非空三字段并存——worked 与 error 语义互斥，消费方
+   * 不知道该信哪个。成因：expect verified 把 outcome 升级/保留为 worked 时，
+   * handler 的瞬态 error 仍留在行上（:262-266 覆写点只改 outcome）。
+   *
+   * 处置：瞬态诊断信息不丢弃——非空 error 迁入 `warnings: string[]`，error
+   * 字段删除（含空串——契约绝对化）。非 worked 行零动作（didnt/unknown 的
+   * error 语义不变）。
+   *
+   * 单一 choke point：所有落链路径（verified 升级 / handler 直返 worked+error /
+   * expectErrored 分支）都调用本方法——同类收口一种做法（R-CI-02）。
+   */
+  private normalizeWorkedResult(result: ActionResult): void {
+    if (result.outcome !== "worked" || result.error === undefined) return;
+    const text = result.error.trim();
+    if (text) {
+      result.warnings = [...(result.warnings ?? []), text];
+    }
+    delete result.error;
   }
 
   // ============================================================

@@ -63,6 +63,14 @@ export interface ActionResult {
   state_id?: string;
   content_path?: string;
   error?: string;
+  /**
+   * C2（doc/bugs/09 决议 C2，2026-09-16）：worked 行的瞬态诊断信息迁入地。
+   * 消费方契约：**outcome=worked ⇒ error 必空**（worked+error 并存是喵虎报告
+   * P2-A 现象二的状态机自相矛盾——expect verified 升级 worked 时 handler 的
+   * 瞬态 error 仍挂在行上，消费方不知道该信哪个）。瞬态信息不丢弃，降级为
+   * warnings 数组保留。非 worked 行不受影响（error 语义不变）。
+   */
+  warnings?: string[];
   duration_ms?: number;
   /** expect 后置条件检查结果（F3.2.18；"error"= v1.18.2 doc/governance/10 Y3：检查器自身抛错——基础设施异常，非后置条件为假） */
   expect_check?: "verified" | "preexisting" | "failed" | "skipped" | "error";

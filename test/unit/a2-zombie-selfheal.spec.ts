@@ -354,7 +354,7 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
       fastDeps(async () => new Response("nope", { status: 503 })),
     );
     expect(r.detail).toBe(
-      "CDP /json/version returned HTTP 503 — HTTP answered but not a healthy CDP endpoint " +
+      "CDP :9222 /json/version returned HTTP 503 — HTTP answered but not a healthy CDP endpoint " +
         "(a wedged DevTools endpoint or a non-CDP HTTP server can answer like this); " +
         "ownership/pid evidence: see next_step",
     );
@@ -366,7 +366,7 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
       9222,
       fastDeps(async () => new Response("", { status: 200 })),
     );
-    expect(r.detail).toBe("CDP /json/version: connection accepted, empty/invalid body");
+    expect(r.detail).toBe("CDP :9222 /json/version: connection accepted, empty/invalid body");
     expect(r.status).toBe("fail");
   });
 
@@ -374,14 +374,14 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
     const r = await checkCdp9222(9222, fastDeps(async () => {
       throw new Error("This operation was aborted due to timeout");
     }));
-    expect(r.detail).toBe("CDP /json/version: fetch aborted (timeout)");
+    expect(r.detail).toBe("CDP :9222 /json/version: fetch aborted (timeout)");
   });
 
   it("3d. 拒连 → `connection refused`（空闲端口形态）", async () => {
     const r = await checkCdp9222(9222, fastDeps(async () => {
       throw new Error("fetch failed: Error: connect ECONNREFUSED 127.0.0.1:9222");
     }));
-    expect(r.detail).toBe("CDP /json/version: connection refused");
+    expect(r.detail).toBe("CDP :9222 /json/version: connection refused");
   });
 
   it("3e. 健康路径（200 + 合法 body + tabs>0）→ pass（措辞变更零回归）", async () => {
@@ -409,7 +409,7 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
       ),
     );
     expect(r.detail).toBe(
-      "CDP /json (tabs) returned HTTP 503 — /json/version was healthy but the tab list is not; " +
+      "CDP :9222 /json (tabs) returned HTTP 503 — /json/version was healthy but the tab list is not; " +
         "ownership/pid evidence: see next_step",
     );
     expect(r.status).toBe("fail");
@@ -424,7 +424,7 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
       ),
     );
     expect(r.detail).toBe(
-      "CDP /json (tabs): connection accepted, empty/invalid body — /json/version was healthy",
+      "CDP :9222 /json (tabs): connection accepted, empty/invalid body — /json/version was healthy",
     );
     expect(r.status).toBe("fail");
   });
@@ -437,7 +437,7 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
       ),
     );
     expect(r.detail).toBe(
-      "CDP /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy",
+      "CDP :9222 /json (tabs): connection accepted, empty/invalid body (non-array) — /json/version was healthy",
     );
     expect(r.status).toBe("fail");
   });
@@ -457,10 +457,10 @@ describe("C3 · doctor checkCdp9222 detail 四形态", () => {
     );
     expect(r.status).toBe("warn");
     expect(r.detail).toBe(
-      "CDP /json (tabs) request failed: Error: fetch failed: socket hang up — /json/version was healthy",
+      "CDP :9222 /json (tabs) request failed: Error: fetch failed: socket hang up — /json/version was healthy",
     );
     // 误标类回潮的专项负锚（detail 尾注 "/json/version was healthy" 是合法在场，
     // 禁的是把它标成 version 面的错误形态前缀）
-    expect(r.detail).not.toMatch(/CDP \/json\/version (fetch failed|returned HTTP)/);
+    expect(r.detail).not.toMatch(/CDP :\d+ \/json\/version (fetch failed|returned HTTP)/);
   });
 });

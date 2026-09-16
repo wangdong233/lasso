@@ -21,6 +21,8 @@
  *  - partial_failures 累加（非 worked 步）
  *  - high-risk gate=null（headless 默认）→ 不调用 gate
  *  - onProgress 进度回调
+ *  - C2（doc/bugs/09 决议 C2）：worked ⇒ error 必空——verified 升级 / handler 直返 /
+ *    preexisting 保留三路径的瞬态 error 迁入 warnings；非 worked 行 error 原样
  */
 import { describe, it, expect, vi } from "vitest";
 import { StepEngine, type HighRiskGateLike } from "../../src/browse/StepEngine.js";
@@ -321,10 +323,12 @@ describe("StepEngine — expect 后置条件", () => {
     expect(r.outcome).toBe("unknown");
     expect(r.data!.stopped_at?.reason).toBe("step_error");
     expect(r.data!.actions_and_results[0].results[0].expect_check).toBe("error");
-    // 错误透传
-    expect(r.data!.actions_and_results[0].results[0].error).toContain(
-      "expect_error",
-    );
+    // C2（doc/bugs/09 决议 C2）：行 outcome=worked ⇒ error 必空——瞬态错误文本
+    // 迁入 warnings；chain 级 error（终止原因）仍原样携带
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.error).toBeUndefined();
+    expect(row.warnings!.join(" ")).toContain("expect_error");
+    expect(r.error).toContain("expect_error");
   });
 
   it("无 expect 的 step → runExpect 不被调", async () => {
@@ -546,6 +550,108 @@ describe("StepEngine — 异常兜底", () => {
     expect(r.outcome).toBe("unknown");
     expect(r.data!.stopped_at?.reason).toBe("step_error");
     expect(r.data!.actions_and_results[0].results[0].error).toContain("boom");
+  });
+});
+
+// ============================================================
+// C2 · worked ⇒ error 必空 契约（doc/bugs/09 决议 C2，2026-09-16）
+// ============================================================
+// 喵虎报告 P2-A 现象二复现锚：wait 步 outcome=worked + expect_check=verified +
+// error 非空三字段并存（状态机自相矛盾）。修复后瞬态 error 迁入 warnings。
+describe("StepEngine — C2 worked ⇒ error 必空", () => {
+  it("expect verified 升级 worked → handler 瞬态 error 迁入 warnings（现象二本体复现）", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "unknown", error: "wait_timeout_soft", expectVerdict: "verified" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [
+      step("wait", { expect: { selector: "input" } }),
+    ]);
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.outcome).toBe("worked");
+    expect(row.expect_check).toBe("verified");
+    // 契约三面：error 必空 + warnings 保留瞬态信息 + chain 不受污染
+    expect(row.error).toBeUndefined();
+    expect(row.warnings).toEqual(["wait_timeout_soft"]);
+    expect(r.outcome).toBe("worked");
+  });
+
+  it("handler 直返 worked+error（无 expect）→ 落链前同样收口", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "worked", error: "transient_warn" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [step("navigate")]);
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.outcome).toBe("worked");
+    expect(row.error).toBeUndefined();
+    expect(row.warnings).toEqual(["transient_warn"]);
+  });
+
+  it("expect preexisting 保留 worked → worked 行同样不挂 error", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "worked", error: "soft_note", expectVerdict: "preexisting" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [
+      step("click", { expect: { text: "already-there" } }),
+    ]);
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.outcome).toBe("worked");
+    expect(row.expect_check).toBe("preexisting");
+    expect(row.error).toBeUndefined();
+    expect(row.warnings).toEqual(["soft_note"]);
+  });
+
+  it("worked 行 error 为空串 → 直接删除，不产生空 warnings 条目", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "worked", error: "", expectVerdict: "verified" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [
+      step("click", { expect: { text: "x" } }),
+    ]);
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.outcome).toBe("worked");
+    expect(row.error).toBeUndefined();
+    expect(row.warnings).toBeUndefined();
+  });
+
+  it("非 worked 行零动作：didnt/unknown 的 error 原样保留（契约不越界）", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "didnt", error: "404" },
+      { outcome: "unknown", error: "timeout" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [
+      step("navigate"),
+    ]);
+    // didnt 步终止 chain；两行 error 语义不变
+    const row = r.data!.actions_and_results[0].results[0];
+    expect(row.outcome).toBe("didnt");
+    expect(row.error).toBe("404");
+    expect(row.warnings).toBeUndefined();
+  });
+
+  it("全链回归锚：多步全 worked 无 error → 全链行零 warnings 零 error", async () => {
+    const { channel } = makeMockChannel([
+      { outcome: "worked" },
+      { outcome: "worked" },
+      { outcome: "worked" },
+    ]);
+    const engine = new StepEngine(channel, new BudgetTracker());
+    const r = await engine.runChain("https://example.com/", [
+      step("navigate"),
+      step("wait", { expect: { text: "ready" } }),
+      step("snapshot"),
+    ]);
+    expect(r.outcome).toBe("worked");
+    for (const entry of r.data!.actions_and_results) {
+      const row = entry.results[0];
+      expect(row.outcome).toBe("worked");
+      expect(row.error).toBeUndefined();
+      expect(row.warnings).toBeUndefined();
+    }
   });
 });
 
