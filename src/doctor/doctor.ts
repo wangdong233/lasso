@@ -140,6 +140,11 @@ import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 // v1.3 Phase A：config 文件机制（#35 config_file doctor check）
 // 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
 import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
+// W2（doc/bugs/09）：headed 档生命周期阈值解析（单一真源 config.ts）
+import {
+  parseHeadedHardCapMs,
+  parseHeadedIdleMs,
+} from "../config/config.js";
 // BUG-03 决议 A2/E①/C（doc/bugs/03）：checkCdp9222 端口占用三分类归因——
 // 台账读 + cmdline 归属验证（chrome-stop 同源红线，纯读绝不 kill）。
 // BUG-04 决议 A4（doc/bugs/04 §4）：归因升级为消费 chrome-status 单一真源
@@ -572,6 +577,10 @@ export async function runDoctor(
 
   // v1.11（round1 T10）：proxy 配置回显（LASSO_PROXY；只回显不探活）
   checks.push(checkProxyConfig(opts.proxy ?? process.env.LASSO_PROXY ?? ""));
+
+  // W2（doc/bugs/09 决议 A.4⑤r1，2026-09-16）：headed 档生命周期配置回显
+  //（LASSO_HEADED_IDLE_MS / LASSO_HEADED_HARD_CAP_MS 生效值；只回显不探活）
+  checks.push(checkHeadedTierConfig());
 
   // 10. invariants
   checks.push(
@@ -1266,6 +1275,30 @@ function checkProxyConfig(proxy: string): DoctorCheck {
     detail: trimmed
       ? `LASSO_PROXY=${trimmed}（browse_headless --proxy-server + Steel proxyUrl 生效；browse_logged_in 不读取）`
       : "LASSO_PROXY 未配置（默认直连；配置后 headless/Steel 走代理出口）",
+  };
+}
+
+/**
+ * W2（doc/bugs/09 决议 A.4⑤r1，2026-09-16）：headed 档两态生命周期配置回显。
+ * 只回显生效阈值（解析真源 config.ts；file→env 合并视图同 doctor 语义），
+ * 不 spawn / 不探活——browse_headed 懒启动，doctor 零打扰（S1 静默守则）。
+ */
+function checkHeadedTierConfig(): DoctorCheck {
+  const fileEnv = loadConfigFileEnv();
+  const idleMs = parseHeadedIdleMs(
+    process.env.LASSO_HEADED_IDLE_MS ?? fileEnv.LASSO_HEADED_IDLE_MS,
+  );
+  const hardCapMs = parseHeadedHardCapMs(
+    process.env.LASSO_HEADED_HARD_CAP_MS ?? fileEnv.LASSO_HEADED_HARD_CAP_MS,
+  );
+  const fmt = (ms: number) => (ms > 0 ? `${Math.round(ms / 60_000)}min` : "disabled(0)");
+  return {
+    name: "headed_tier_config",
+    status: "pass",
+    detail: `browse_headed L2 有头档：态一 idle 收割 ${fmt(idleMs)}（LASSO_HEADED_IDLE_MS）；态二接管粘滞（hasFocus 30s 探测→永不 idle 收割）+ 硬顶 ${fmt(hardCapMs)}（LASSO_HEADED_HARD_CAP_MS，0=部署级禁用）`,
+    next_step: hardCapMs <= 0
+      ? "硬顶已部署级禁用——接管粘滞的有头窗口将仅能由用户关窗/显式 stop 回收，确认这是有意的部署策略"
+      : undefined,
   };
 }
 

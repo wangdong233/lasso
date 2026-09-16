@@ -297,8 +297,75 @@ describe("search → browse_headless 跨模态 fallback（验收 #5）", () => {
   });
 });
 
-describe("browse_headless → browse_logged_in fallback（验收 #3）", () => {
-  it("headless unknown + logged_in worked → fallback_used=true + served_by=browse_logged_in", async () => {
+describe("browse_headless → browse_logged_in fallback（验收 #3；C3 改判，doc/bugs/09 决议 C3）", () => {
+  it("默认：headless unknown → 不再跨通道 fallback（terminal；logged_in 未被调）", async () => {
+    const headless = makeStubBrowse("browse_headless", {
+      browse: vi.fn(async () => ({
+        outcome: "unknown",
+        data: null,
+        served_by: "browse_headless",
+        fallback_used: false,
+        retrieval_method: "chrome_devtools_mcp",
+        error: "navigation timeout",
+      })),
+    });
+
+    const loggedInBrowse = vi.fn(async () => ({
+      outcome: "worked",
+      data: {
+        url: "https://private.site/dashboard",
+        action: "snapshot",
+        state_id: "abc",
+        content_path: "/tmp/abc",
+        preview: "Dashboard",
+      },
+      served_by: "browse_logged_in",
+      fallback_used: false,
+      retrieval_method: "chrome_devtools_mcp",
+    }));
+    const logged_in = makeStubBrowse("browse_logged_in", {
+      browse: loggedInBrowse,
+    });
+
+    const decider = new FallbackDecider(
+      new Map([
+        ["browse_headless", new CircuitBreaker()],
+        ["browse_logged_in", new CircuitBreaker()],
+      ]),
+    );
+
+    const { client, shutdown } = await startServer((server) => {
+      registerBrowseTools(
+        server,
+        headless as HeadlessChannel,
+        logged_in as LoggedInChannel,
+        decider,
+        ALWAYS_OK_SSRF,
+        // C3 默认（未传第 7 参 = false）：跨通道边已移除
+      );
+    });
+
+    try {
+      const resp = (await client.callTool({
+        name: "browse_headless",
+        arguments: { url: "https://private.site/dashboard", action: "snapshot" },
+      })) as { content: Array<{ type: string; text: string }> };
+      const result = parseToolResult(resp.content[0]!.text) as InteractResult<BrowseResult>;
+      // C3：登录态通道须用户显式选择——headless unknown 不再自动升 logged_in。
+      // 终端语义走 FallbackDecider 既有耗尽契约（didnt + fallback_exhausted +
+      // primary 归因 error——BUG-08 A-3③ 归因保真；consum 方可机械判读非跨通道）
+      expect(result.outcome).toBe("didnt");
+      expect(result.retrieval_method).toBe("fallback_exhausted");
+      expect(result.fallback_used).toBe(false);
+      expect(result.served_by).toBe("browse_headless");
+      expect(result.error).toBe("navigation timeout"); // primary 错误为主（非 logged_in 串染）
+      expect(loggedInBrowse).not.toHaveBeenCalled();
+    } finally {
+      await shutdown();
+    }
+  });
+
+  it("逃生门开（crossChannelFallback=true）：headless unknown → fallback_used=true + served_by=browse_logged_in（v1.26.0 行为恢复）", async () => {
     const headless = makeStubBrowse("browse_headless", {
       browse: vi.fn(async () => ({
         outcome: "unknown",
@@ -340,6 +407,9 @@ describe("browse_headless → browse_logged_in fallback（验收 #3）", () => {
         logged_in as LoggedInChannel,
         decider,
         ALWAYS_OK_SSRF,
+        null,
+        // C3 逃生门：LASSO_FALLBACK_CROSS_CHANNEL=1（装配层传 true）
+        true,
       );
     });
 

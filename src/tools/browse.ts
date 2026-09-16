@@ -4,8 +4,9 @@
  * 注册两个 tool：browse_headless / browse_logged_in。
  *
  *  - browse_headless:
- *      SSRF guard → fallback 链 [browse_headless → browse_logged_in]（cross_modal=false）
- *      headless JS 渲染不全 /被封 /超时 → 自动升真实 Chrome
+ *      SSRF guard → fallback 链默认 [browse_headless]（terminal；C3，
+ *      doc/bugs/09 决议 C3：headless→logged_in 跨通道边默认移除——登录态
+ *      通道须用户显式选择；LASSO_FALLBACK_CROSS_CHANNEL=1 可恢复旧行为）
  *
  *  - browse_logged_in:
  *      SSRF guard → 终端通道（无下一跳；2FA 检测命中时 outcome=didnt
@@ -49,7 +50,9 @@ import {
 // ============================================================
 // Schema
 // ============================================================
-const browseSchema = {
+// W2（doc/bugs/09）：export 供 tools/headed.ts 复用（browse_headed 与
+// browse_headless 同 action surface——R-CI-02 同一 schema 单一真源，禁复制漂移）。
+export const browseSchema = {
   // BUG-07 决议 A⁺（doc/bugs/07 §5.2①）：url 可选化——省略 + action=screenshot
   // = current-page 模式（对当前受管页面直接截屏，零导航）；省略 + 其它任何
   // action = 显式拒 url_required_for_action:<action>（channel browse() 门）。
@@ -263,6 +266,19 @@ function callerTierGate(
  * @param logged_in LoggedInChannel（chrome-devtools-mcp --browser-url :9222）
  * @param decider   单一 fallback 引擎
  * @param ssrfConfig  SSRF allowRanges / denyRanges（从 env 加载）
+ * @param callerTier
+ *        v1.8 Phase E（W1-DEF-10）：CallerTierTracker per-caller 滑动窗配额。
+ *        未注入 / null / undefined → 无事前 gate（零回归，byte-identical v1.7）。
+ *        注入          → 两个 handler 入口 tryAcquire（callerId 取 request
+ *                       _meta.callerId，CC 不传则 "anonymous"）；超额 → tri-state
+ *                       didnt + retrieval_method="caller_cap_exceeded" 透明返回。
+ * @param crossChannelFallback
+ *        C3（doc/bugs/09 决议 C3，2026-09-16）：browse_headless→browse_logged_in
+ *        跨通道 fallback 逃生门。**默认（false/未传）边已移除**——登录态通道
+ *        须用户显式选择（INV-23 精神扩展）+ 无 9222 环境必死加时 + fallback
+ *        污染旧账（D-ε：headless evaluate 超时被 logged_in 连接错误串染）。
+ *        LASSO_FALLBACK_CROSS_CHANNEL=1 可恢复 v1.26.0 行为（index.ts 装配层
+ *        传 config.crossChannelFallback）。
  */
 export function registerBrowseTools(
   server: McpServer,
@@ -270,14 +286,8 @@ export function registerBrowseTools(
   logged_in: LoggedInChannel,
   decider: FallbackDecider,
   ssrfConfig: SsrfConfig,
-  /**
-   * v1.8 Phase E（W1-DEF-10）：CallerTierTracker per-caller 滑动窗配额。
-   * 未注入 / null / undefined → 无事前 gate（零回归，byte-identical v1.7）。
-   * 注入          → 两个 handler 入口 tryAcquire（callerId 取 request
-   *                 _meta.callerId，CC 不传则 "anonymous"）；超额 → tri-state
-   *                 didnt + retrieval_method="caller_cap_exceeded" 透明返回。
-   */
   callerTier?: CallerTierTracker | null,
+  crossChannelFallback: boolean = false,
 ): void {
   // ----- browse_headless -----
   server.tool(
@@ -314,7 +324,11 @@ export function registerBrowseTools(
 
       const plan = {
         primary: "browse_headless",
-        fallbacks: url === undefined ? [] : ["browse_logged_in"],
+        // C3（doc/bugs/09 决议 C3）：跨通道边默认移除；url 缺省（current-page）
+        // 本就钉通道（BUG-07 A⁺）。逃生门 = LASSO_FALLBACK_CROSS_CHANNEL=1
+        //（config.crossChannelFallback，装配层注入——一键恢复 v1.26.0 行为）。
+        fallbacks:
+          url !== undefined && crossChannelFallback ? ["browse_logged_in"] : [],
         cross_modal: false,
       };
 

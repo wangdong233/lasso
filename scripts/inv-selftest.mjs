@@ -345,6 +345,33 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  {
+    // W2（doc/bugs/09 决议 A.4③/A.7①）：INV-97 (b)——spawn 形态丢
+    // --ignoreDefaultChromeArg=--enable-automation（automation 面两抹缺一：
+    // puppeteer 默认 infobar 族 flag 泄漏回潮）→ 红。
+    inv: "INV-97",
+    desc: "headed spec 丢 --ignoreDefaultChromeArg=--enable-automation（automation 面抹除缺一）",
+    file: "channels/HeadedChannel.ts",
+    mutation: {
+      replace: [
+        '        "--ignoreDefaultChromeArg=--enable-automation",',
+        '        // ignoreDefaultChromeArg removed by selftest mutation',
+      ],
+    },
+  },
+  {
+    // W2（doc/bugs/09 决议 A.4⑤r1/A.7②）：INV-99 (b)——态二粘滞豁免分支被删
+    //（用户接管中的有头窗口回到 idle 收割面 = never-kill 防线回退）→ 红。
+    inv: "INV-99",
+    desc: "_reapReason 态二粘滞豁免分支被删（接管粘滞 idle 豁免回退）",
+    file: "subprocess/SubprocessManager.ts",
+    mutation: {
+      replace: [
+        "    if (policy.stickyExempt && m.userTaken) return null;",
+        "    // sticky exemption removed by selftest mutation",
+      ],
+    },
+  },
 ];
 
 // ============================================================
