@@ -355,6 +355,44 @@ export const BROWSE_LOGGED_IN_DESCRIPTION = [
 ].join("\n");
 
 // ============================================================
+// BROWSE_HEADED（W2，doc/bugs/09 决议 A.4/A.2r1，2026-09-16）
+// ============================================================
+/**
+ * S2 介入型工具（调用即弹真实窗口）：description 首行钉死 consent 契约
+ * （决议 A.4⑥r1——N3 复核确认免部署级解锁门、但每次调用的 consent 语言
+ * 是最小介入面治理；agent 无视 consent 语言的实测证据出现时回写决议升门）。
+ */
+export const BROWSE_HEADED_DESCRIPTION = [
+  "opens a real on-screen window — call only after explicit user consent.",
+  "Headed (visible) Chromium tier (L2 of the anti-bot ladder, doc/bugs/09):",
+  "for sites that evict headless automation when you need JS residency",
+  "(drive a search box + poll results). WT0 spike verified the premise: a",
+  "headed window survives ≥20s where headless is evicted in 2-3s.",
+  "",
+  "Same action surface / options / SSRF guard as browse_headless; spawns",
+  "chrome-devtools-mcp WITHOUT --headless, lasso-owned --user-data-dir (fresh",
+  "identity per spawn epoch), NO stealth injection — a real headed environment",
+  "is the real fingerprint; injection traces are themselves detection signals",
+  "(opposite tradeoff vs headless, by design). data.window_opened:true echoes",
+  "the visible-window fact on every success.",
+  "",
+  "Two-state lifecycle: untouched windows are idle-reaped after",
+  "LASSO_HEADED_IDLE_MS (default 30min); once the USER focuses the window",
+  "(30s hasFocus probe) the session is marked user-taken and NEVER",
+  "idle-reaped (sticky) — close it yourself with the X button; a 24h hard",
+  "cap (LASSO_HEADED_HARD_CAP_MS) is the only automatic backstop.",
+  "",
+  "Eviction companion: when browse_headless reports page_evicted, ASK THE",
+  "USER FIRST, then retry here for JS-resident needs.",
+  "",
+  "      url (str, optional) — target; omitted = current-page of this channel",
+  "      action (str, default 'snapshot')",
+  "      options (object, optional) — same shape as browse_headless",
+  "",
+  "Returns: InteractResult<BrowseResult> as JSON text.",
+].join("\n");
+
+// ============================================================
 // DOCTOR
 // ============================================================
 export const DOCTOR_DESCRIPTION = [

@@ -49,7 +49,9 @@ import {
 // ============================================================
 // Schema
 // ============================================================
-const browseSchema = {
+// W2（doc/bugs/09）：export 供 tools/headed.ts 复用（browse_headed 与
+// browse_headless 同 action surface——R-CI-02 同一 schema 单一真源，禁复制漂移）。
+export const browseSchema = {
   // BUG-07 决议 A⁺（doc/bugs/07 §5.2①）：url 可选化——省略 + action=screenshot
   // = current-page 模式（对当前受管页面直接截屏，零导航）；省略 + 其它任何
   // action = 显式拒 url_required_for_action:<action>（channel browse() 门）。

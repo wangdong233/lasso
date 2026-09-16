@@ -41,6 +41,12 @@ export const browseLoggedInAnnotations: ToolAnnotations = {
   openWorldHint: true,
 };
 
+/** W2（doc/bugs/09 A.4⑥）：有头档——调用即弹真实窗口（S2 介入型，consent 在 description）。 */
+export const browseHeadedAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: true,
+};
+
 export const doctorAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: false,

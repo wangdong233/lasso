@@ -56,6 +56,8 @@ import { MachineMcpSearchChannel } from "./channels/MachineMcpSearchChannel.js";
 // v1.4 Phase A：detectMachineSearchMcp（只读 ~/.claude.json，永不 log key 值）
 import { detectMachineSearchMcp } from "./search/MachineMcpDetector.js";
 import { HeadlessChannel } from "./channels/HeadlessChannel.js";
+// W2（doc/bugs/09 决议 A.4，2026-09-16）：L2 有头强力档（反爬防御梯）
+import { HeadedChannel } from "./channels/HeadedChannel.js";
 // review-r1：defaultHeadlessProfileForHost 迁至 browse/stealth-profiles.ts（单一真源）
 import { defaultHeadlessProfileForHost } from "./browse/stealth-profiles.js";
 // review-r1：undici keep-alive 池自 SubprocessManager 迁出（util/http-pool 单一真源）
@@ -86,6 +88,8 @@ import { runDoctor } from "./doctor/doctor.js";
 import { buildDoctorCliOptions } from "./doctor/doctor-cli.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerBrowseTools } from "./tools/browse.js";
+// W2（doc/bugs/09 决议 A.4⑥r1）：browse_headed 工具（S2 介入型，consent 在 description 首行）
+import { registerHeadedTool } from "./tools/headed.js";
 // v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate elicitation 端口（SDK 1.30.0 elicitInput）
 import { SdkElicitationPort } from "./interact/ElicitationPort.js";
 import { registerBrowserbaseTool } from "./tools/browserbase.js";
@@ -596,6 +600,23 @@ async function runMcpServer(): Promise<void> {
       await logged_in.restoreTabs();
     }
   });
+
+  // W2（doc/bugs/09 决议 A.4，2026-09-16）：HeadedChannel —— L2 有头强力档。
+  // 默认装配（无解锁门，A.4⑥r1：本机工具族先例 browse_logged_in 同默认注册；
+  // S2 介入面由 browse_headed description 首行 consent 契约治理）。构造零磁盘
+  // 副作用——profile 目录/spec 注册懒到首次 getMcpClient（弹窗只发生在用户
+  // 显式调 browse_headed 时）。两态生命周期阈值走 config（A.4⑤r1）。
+  const headed = new HeadedChannel(subproc, {
+    idleMs: config.headedIdleMs,
+    hardCapMs: config.headedHardCapMs,
+  });
+  logger.info({
+    evt: "headed_channel_wired",
+    idle_ms: config.headedIdleMs,
+    hard_cap_ms: config.headedHardCapMs,
+    note: "browse_headed L2 tier — consent-first (opens a real on-screen window)",
+  });
+
   // v1.9：reaper 在 setReapHook 之后启动（§7.2-31 装配顺序）
   startIdleWatchdog();
 
@@ -607,6 +628,11 @@ async function runMcpServer(): Promise<void> {
   subproc.setPostKillHook(async (name) => {
     if (name === "headless") {
       await headless.afterHeadlessStackKilled();
+    }
+    // W2（doc/bugs/09 决议 A.4②r1）：headed 栈树杀后的 lasso-owned profile 清理
+    //（先杀后删铁则同 headless；spec 不在此重建——HeadedChannel 懒分配新 epoch）
+    if (name === "headed") {
+      await headed.afterHeadedStackKilled();
     }
   });
 
@@ -706,6 +732,8 @@ async function runMcpServer(): Promise<void> {
     ["serp_http", new CircuitBreaker()],
     ["browse_headless", new CircuitBreaker()],
     ["browse_logged_in", new CircuitBreaker()],
+    // W2（doc/bugs/09 决议 A.4）：L2 有头档熔断（per-channel 60s 短熔断族）
+    ["browse_headed", new CircuitBreaker()],
     ["desktop.ax", new CircuitBreaker()],
     ["desktop.appleScript", new CircuitBreaker()],
     ["desktop.cgEvent", new CircuitBreaker()],
@@ -907,6 +935,9 @@ async function runMcpServer(): Promise<void> {
     contentHopDeps,
   );
   registerBrowseTools(server, headless, logged_in, decider, ssrfConfig, callerTier);
+  // W2（doc/bugs/09 决议 A.4⑥r1）：browse_headed 注册（默认注册、终端通道、
+  // SSRF/caller-tier 同范式；consent 契约在 description 首行 + 驱逐 hint）
+  registerHeadedTool(server, headed, decider, ssrfConfig, callerTier);
 
   // ----- v1.17 Phase E（parse24 §6.1 C1）：HighRiskGate elicitation 端口注入 -----
   // logged_in 构造早于 McpServer（装配序），此处 setter 补注入。端口内部预检
@@ -1032,6 +1063,7 @@ async function runMcpServer(): Promise<void> {
   const CHANNEL_TO_SPEC: Record<string, string | null> = {
     browse_headless: "headless",
     browse_logged_in: "logged_in",
+    browse_headed: "headed", // W2（doc/bugs/09 决议 A.4）：L2 有头档 subprocess spec
     browse_cloud_browserbase: "browserbase",
     browse_cloud_stagehand: null,
     browse_cloud_steel: "steel", // v1.6（parse14 §3.3）：Steel CDP subprocess spec
@@ -1047,6 +1079,7 @@ async function runMcpServer(): Promise<void> {
     search: "search",
     browse_headless: "browse_headless",
     browse_logged_in: "browse_logged_in",
+    browse_headed: "browse_headed", // W2（doc/bugs/09 决议 A.4）：L2 有头档
     browserbase: "browse_cloud_browserbase",
     steel: "browse_cloud_steel", // v1.6（parse14 §3.4）
     desktop: "desktop",
@@ -1092,6 +1125,9 @@ async function runMcpServer(): Promise<void> {
     // channels（无 dot）
     "browse_headless",
     "browse_logged_in",
+    // W2（doc/bugs/09 决议 A.4⑥r1）：headed 默认注册 = 默认 enabled（零回归式
+    // 纯新增通道；bag.disable("browse_headed") → shutdownOne("headed") 可停）
+    "browse_headed",
     "desktop",
   ];
   if (cloudEnv.enabled && cloudEnv.browserbaseKey) {
@@ -1199,6 +1235,7 @@ async function runMcpServer(): Promise<void> {
     // v1.15 Phase A：search.bing 长熔断已删（Bing 死层清除；INV-54 墓碑守卫）
     "browse_headless",
     "browse_logged_in",
+    "browse_headed", // W2（doc/bugs/09 决议 A.4）：L2 有头档长熔断
     "browse_cloud_browserbase",
     "browse_cloud_stagehand",
     "browse_cloud_steel", // v1.6（parse14 §3.3）：Steel 长熔断
@@ -1418,6 +1455,10 @@ async function runMcpServer(): Promise<void> {
     chromeReaper?.stop();
     // P27（v1.18.3）：停粘滞复隐看门狗（best-effort；幂等）
     desiredHideWatchdog?.stop();
+    // W2（doc/bugs/09 决议 A.4⑤r1）：停 headed 接管探测器 timer（同步零 await；
+    // headed 栈本体不走 forgetSpec 优雅退役——W2-DEF-N2 同因 client.close() 悬挂，
+    // 树杀 + profile 清理走 exit 钩子同步路径，与 headless 同款）
+    headed.stopTakeoverProbeForShutdown();
     // v0.7：停 ResourceMonitor timer（避免 timer 残留；INV-7 衍生 lifecycle 纯净性）
     resourceMonitor.stop();
     // v1.8 Phase B（D5）：停机路径 best-effort 释放 Steel session
@@ -1520,6 +1561,13 @@ async function runMcpServer(): Promise<void> {
     //（顺序本就先杀后删，保持）。
     try {
       headless.cleanupFreshProfilesSync();
+    } catch {
+      // best-effort：交 24h 陈年兜底
+    }
+    // W2（doc/bugs/09 决议 A.4②r1）：headed lasso-owned profile 同步收尾
+    //（先杀后删：killAllSync 已完成；失败交 24h 陈年兜底双闸）
+    try {
+      headed.cleanupHeadedProfilesSync();
     } catch {
       // best-effort：交 24h 陈年兜底
     }
