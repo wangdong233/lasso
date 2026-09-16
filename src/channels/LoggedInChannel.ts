@@ -306,6 +306,17 @@ export class LoggedInChannel extends BrowseChannel {
   }
 
   /**
+   * 尾款轮 A.5r2-3（doc/bugs/09 §8.A，F4）：驱逐哨兵显式 opt-out。
+   * 本通道跑在用户真实 profile 上——跨域流转是合法常态（SSO IdP 链跳转 /
+   * SPA 外链跳转 / 用户自己点开的站），host 漂移信号在这里是纯噪音，会淹没
+   * 价值（每次假阳性 = 一次多余的 consent 询问惊扰）。headless / headed /
+   * 未来通道默认启用（基类缺省 true）。
+   */
+  protected override evictionSentinelEnabled(): boolean {
+    return false;
+  }
+
+  /**
    * v1.9（parse17 §2.2 (d) 机制一）：action/step dispatch 后刷新 lastUsedAt，
    * 防 idle watchdog（默认 5min）误杀 in-flight 长 browse。spec 名取当前 profile。
    */

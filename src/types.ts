@@ -178,6 +178,16 @@ export interface BrowseResult {
    * （extract+url 读残留页假数据形态的判读钥匙）。
    */
   did_navigate?: boolean;
+  /**
+   * 尾款轮 A.5r2-3（doc/bugs/09 §8.A，2026-09-16）：驱逐哨兵信号——S1/S2/S3
+   * 三漏斗合取后的通道层观测。认识论诚实：suspected 非完成时断言（S1/S2 是
+   * 无归因漂移观测——站点跳转 / 早前 click 副作用 / 用户点击在通道层不可分
+   * 辨）。仅在场时发射：一次性消费（附着一次即清），from = 本 lasso 导航
+   * settled url，to = 观测到的 url，at_ms = 检出时刻。advisory 信号——consent
+   * 指令在并列的 hint 字段（绝不自动升级通道）。LoggedInChannel 显式 opt-out
+   * 不发射（SSO 跨域流转是合法常态）。
+   */
+  eviction_suspected?: { from: string; to: string; at_ms: number };
 }
 
 // ============================================================

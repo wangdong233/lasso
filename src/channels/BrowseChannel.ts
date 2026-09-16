@@ -226,6 +226,18 @@ export abstract class BrowseChannel extends UiChannel {
       const r = await handler(c, url, opts);
       // W1-DEF-1c：导航后注入（beforeNavigate 注入会随文档重置全部丢失）
       await this.afterNavigate(c);
+      // —— 尾款轮 A.5r2-2（doc/bugs/09 §8.A，F2）：驱逐哨兵 settle 写点 ① ——
+      // wrapNavigate 是 INV-6 全导航唯一 choke 点（单 action 闸门导航 / navigate
+      // 本尊 / 链先导导航 / 链内 navigate step 四路径全经此）——导航成功即建立
+      // host 基线（真值优先：partial.final_url 优于请求串）。占位目标（非
+      // http(s)/空 host——如 about:blank）不构成有意义的 settle，跳过。
+      if (this.evictionSentinelEnabled()) {
+        const settledUrl = r.final_url ?? url;
+        const settledHost = httpHostKey(settledUrl);
+        if (settledHost !== null) {
+          this.lastNavSettled = { host: settledHost, url: settledUrl, client: c };
+        }
+      }
       return r;
     };
   }
@@ -291,6 +303,9 @@ export abstract class BrowseChannel extends UiChannel {
     action: string,
     options: BrowseOptions,
   ): Promise<InteractResult<BrowseResult>> {
+    // 尾款轮 A.5r2-2（doc/bugs/09 §8.A）：归因守卫计数——每次 browse 入口 bump
+    // 单调计数，S1 窗读后复检 actSeq 不等即放弃（新调用已到场，S2/新窗自会接手）。
+    this.evictionActSeq++;
     // --------------------------------------------------------------
     // BUG-07 决议 A⁺（doc/bugs/07 §5.2②，2026-09-10）：url 省略分发语义门。
     // browse() 是唯一入口（tools / forest dispatcher / serp 全经此）——steps
@@ -363,7 +378,12 @@ export abstract class BrowseChannel extends UiChannel {
           // v1.18.2（doc/governance/10 F3+Y1）：budget_ms 显式放宽（钳制 600s；缺省 DEFAULT 120s）
           clampChainBudgetMs(options.budget_ms),
         );
-        return this.wrapChainResult(chain);
+        // 尾款轮 A.5r2-2（doc/bugs/09 §8.A）：链返回的驱逐信号附着（消费点 ③）+
+        // S1 窗（「或链返回」形态）。S 单元对 browse() 的全部触面仅此一处——
+        // steps 真值化（§8.B，T 单元）rebase 时手工核对。
+        const wrapped = this.wrapChainResult(chain);
+        this.finalizeChainEviction(wrapped);
+        return wrapped;
       });
     }
 
@@ -464,6 +484,33 @@ export abstract class BrowseChannel extends UiChannel {
       ENSURE_NAV_ACTIONS.has(action)
     ) {
       const currentHref = await readCurrentHref(c);
+      // —— 尾款轮 A.5r2-1 S2（doc/bugs/09 §8.A）：闸门漂移复核 ——
+      // 判据面 = 既有门读（零新增读，只加比较）。四步前置序（三硬守卫先于
+      // 判等）：(i) G-placeholder / (ii) G-client / (iii) same-URL 吸收 /
+      // (iv) navigate 分支 host 判等。click/fill/wait 不进 ENSURE_NAV_ACTIONS
+      //（不进门、无 href 读、settle 不刷新——副作用导航的合法形态，诚实边界 ④）。
+      if (this.evictionSentinelEnabled() && currentHref !== null) {
+        const observedHost = httpHostKey(currentHref);
+        const settle = this.lastNavSettled;
+        if (observedHost === null) {
+          // (i) G-placeholder：about:blank/data:/chrome-error: 占位页（解析失败/
+          // 非 http(s)/空 host）是 heal 面 observation——重置 settle，不产出信号
+          this.lastNavSettled = null;
+        } else if (settle !== null && settle.client !== c) {
+          // (ii) G-client：respawn/楔死自愈换 client——旧基线对新会话无意义
+          this.lastNavSettled = null;
+        } else if (isSameUrlAfterNormalize(currentHref, url)) {
+          // (iii) same-URL 吸收：页面确证存活在调用方目标上——调用方自己知道
+          // 页面在哪，漂移对调用方非意外（「agent 跟随自己 click 到达的页」形态
+          // 在此消灭）。settle 写点 ②：与 navSeenClients/lastNavigatedClient
+          // （下方同页跳过分支两行）同语义的「页面确证存活」刷新。
+          this.lastNavSettled = { host: observedHost, url: currentHref, client: c };
+        } else if (settle !== null && observedHost !== settle.host) {
+          // (iv) navigate 分支（url ≠ 当前页，即将先导导航）且观测 host 偏离
+          // settle ⇒ mark（消费点在 browseSingle 返回组装——附本次返回）
+          this.markEviction(settle.url, currentHref, c);
+        }
+      }
       if (currentHref !== null && isSameUrlAfterNormalize(currentHref, url)) {
         // 规则 2：已在目标页 → 零导航直执行。会话标记：页面确证存活在目标
         // URL 上（与导航写点同语义——随后 current-page action 合法）。
@@ -541,6 +588,179 @@ export abstract class BrowseChannel extends UiChannel {
    * 语义 =「client 身份 ∧ 未被 heal 换页」。
    */
   private lastNavigatedClient: McpClient | null = null;
+
+  // ============================================================
+  // 尾款轮 A.5r2（doc/bugs/09 §8.A，2026-09-16）：驱逐哨兵（eviction sentinel）
+  //
+  // 三信号漏斗（S1 静默窗采样 / S2 闸门漂移复核 / S3 错误串合取）汇入唯一
+  // 私有 markEviction()（R-INT-07 单逻辑写者）。三硬守卫（G-placeholder /
+  // G-client / S1 读后复检）是判据的一部分而非实现细节——缺席任一，楔死自愈
+  // 重试的首读 about:blank、respawn 后首调用、heal 面占位页都会产出假驱逐
+  // 信号。host 级判等（scheme+host）：同 host 路径/hash 跳转天然不误报。
+  //
+  // 红线（决议 A.5/A.6.1）：**只供信号，绝不自动升级通道**——弹真实窗口的
+  // 惊讶面必须经用户同意。哨兵路径零 FallbackDecider 调用、零 spawn、零通道
+  // 切换副作用；consent 指令只存在于 hint 文案（evictionHint）。
+  //
+  // 诚实边界（文档标注，§8.A 判据定案）：①同 host 驱逐形态仅 S3 档可捕；
+  // ②www↔apex 同注册域异 host 会误报（advisory 信号可容忍——假阳性代价=一次
+  // 多余 consent 询问，假阴性代价=回到「完全没办法」）；③agent 自身 JS 改页
+  // 可能 S1 误报（actSeq 缓解只对窗内有效）；④无归因跨 host 移动的三类合法
+  // 形态（click/fill 副作用 / agent 跟随自己 click / headed 用户点击）通道层
+  // 结构性不可归因——命名（eviction_suspected，非完成时断言）与 hint 双假设
+  // 措辞承载认识论状态，归因交还知道真相的 agent。
+  // ============================================================
+  /** A.5r2-2：待发驱逐信号（唯一非空赋值径 = markEviction；consumeEviction 读后即清）。 */
+  private pendingEviction: {
+    from: string;
+    to: string;
+    at_ms: number;
+    client: McpClient;
+  } | null = null;
+
+  /**
+   * A.5r2-2：最后一次「本 lasso 导航 settle」的基线（S1/S2/S3 判等的 from 侧）。
+   * 写点穷举 = 2：① wrapNavigate 成功返回点（全导航 choke 点）；② dispatchAction
+   * 门 same-URL 确证分支（页面确证存活在调用方目标上——与 navSeenClients/
+   * lastNavigatedClient 同语义的刷新）。reset-to-null 写点 = S2 前置门 (i)(ii)
+   * （占位页 / client 不匹配——旧基线对新会话无意义）。consumeRetrievalNote
+   * 同款先例：通道私有，子类零接触。
+   */
+  private lastNavSettled: { host: string; url: string; client: McpClient } | null =
+    null;
+
+  /** A.5r2-2：S1 静默窗定时器（重起 = clear + 新起；unref 不阻进程退出）。 */
+  private evictionWindowTimer: NodeJS.Timeout | null = null;
+
+  /** A.5r2-2：browse() 入口 bump 的单调计数（S1 读后复检的归因守卫）。 */
+  private evictionActSeq = 0;
+
+  /**
+   * 尾款轮 A.5r2-2：哨兵启用开关（默认开——headless/headed/未来通道）。
+   * LoggedInChannel override 显式 opt-out（F4：真实 profile 的跨域流转——
+   * SSO IdP 链 / SPA 外链——是合法常态，host 漂移信号在该通道是纯噪音）。
+   */
+  protected evictionSentinelEnabled(): boolean {
+    return true;
+  }
+
+  /**
+   * 尾款轮 A.5r2-3（r3）：驱逐 hint 组装点（beforeNavigate/afterNavigate 同款
+   * house pattern 的 protected override 点）。
+   *
+   * 基类默认（headless 域）= 双假设措辞（认识论诚实——通道层无归因能力）+
+   * consent 指令 + browse_headed 指针。HeadedChannel override 为纯观察形态
+   * （headed 之上无档，「retry with browse_headed」在那边是事实错误）。
+   * 首句「suspected … not confirmed」与 S3 typed error 的 `..._suspected`
+   * 措辞对齐。
+   */
+  protected evictionHint(): string {
+    return "suspected eviction OR unattributed cross-host move (not confirmed — a site redirect, an earlier click's side effect, or a user click are indistinguishable here); snapshot may still work via L1 atomic read (extract/snapshot with url); for JS residency ASK THE USER FIRST, then retry with browse_headed (opens a real on-screen window)";
+  }
+
+  /** A.5r2-2：驱逐信号唯一写径（R-INT-07 单逻辑写者；同窗重复检出覆盖不叠加）。 */
+  private markEviction(from: string, to: string, client: McpClient): void {
+    this.pendingEviction = { from, to, at_ms: Date.now(), client };
+  }
+
+  /**
+   * A.5r2-2：一次性消费（读后即清；consumeRetrievalNote 同款先例）。
+   * client 身份不匹配（respawn）⇒ 丢弃不附——陈旧会话的驱逐不污染新会话
+   * （与检测侧 G-client 同判据、双独立应用：检测挡假信号，消费挡假回显）。
+   */
+  private consumeEviction(client: McpClient | null): {
+    eviction_suspected: { from: string; to: string; at_ms: number };
+    hint: string;
+  } | null {
+    const p = this.pendingEviction;
+    this.pendingEviction = null;
+    if (p === null) return null;
+    if (client === null || p.client !== client) return null;
+    return {
+      eviction_suspected: { from: p.from, to: p.to, at_ms: p.at_ms },
+      hint: this.evictionHint(),
+    };
+  }
+
+  /**
+   * A.5r2-1 S1：静默窗采样——browse 调用成功返回且 did_navigate=true（或链
+   * 返回）后起 5s 一次性窗。覆盖「驱逐后跟随的 current-page 调用静默读错页」
+   * （无 url → 无闸门读、无错误——S1 是唯一覆盖）。每次导航 ≤1 次额外 href 读
+   * （toolMutex 约束下不做密集轮询）。
+   */
+  private armEvictionWindow(client: McpClient): void {
+    if (!this.evictionSentinelEnabled()) return;
+    if (this.evictionWindowTimer) clearTimeout(this.evictionWindowTimer); // 新导航重起窗可再标
+    const seq = this.evictionActSeq;
+    const timer = setTimeout(
+      () => void this.sampleEvictionWindow(client, seq),
+      EVICTION_WINDOW_MS,
+    );
+    timer.unref?.(); // 必 unref：不阻止进程退出
+    this.evictionWindowTimer = timer;
+  }
+
+  /**
+   * A.5r2-1 S1 窗到点采样。守卫全集（读后复检——readCurrentHref 是 async
+   * evaluate，读期间新调用可 bump actSeq / settle 换 client，故在 mark 前
+   * 评而非到点一次评）：读成功 ∧ actSeq 未变 ∧ settle 未换 ∧ G-placeholder
+   * （占位页是 heal 面 observation，不是驱逐证据）全过才进 host 判等。
+   */
+  private async sampleEvictionWindow(
+    client: McpClient,
+    armSeq: number,
+  ): Promise<void> {
+    this.evictionWindowTimer = null;
+    if (!this.evictionSentinelEnabled()) return;
+    const observed = await readCurrentHref(client);
+    // —— 读后复检（guard set evaluated after the async read）——
+    const settle = this.lastNavSettled;
+    if (settle === null) return; // 无基线（冷通道 / 前置门已重置）
+    if (settle.client !== client) return; // G-client：arm 后 respawn/换 client
+    if (this.evictionActSeq !== armSeq) return; // 归因守卫：新 browse 调用已入场——S2/新窗自会接手
+    if (observed === null) return; // 读失败：无观测
+    const toHost = httpHostKey(observed);
+    if (toHost === null) return; // G-placeholder：占位页非驱逐证据（S1 路不重置——S2/S3 前置门属地）
+    if (toHost === settle.host) return; // host 级判等：同 host 路径/hash 跳转不标
+    this.markEviction(settle.url, observed, client);
+  }
+
+  /**
+   * A.5r2-1 S3：错误串合取确认读——「Execution context was destroyed」（含
+   * eval_upstream_error 前缀形态）∧ URL 偏离（G-placeholder + G-client 合取
+   * 再合取——占位页上的 context 销毁是 heal/respawn 面，不是驱逐）⇒ 错误重写
+   * 为 typed 形态 + mark。合取缺一 ⇒ 维持原错误形态（真值永远住在拥有知识的
+   * 通道层，不押在错误串上——WebSocket close 1006 反例）。
+   */
+  private async confirmEvictionFromError(
+    c: McpClient,
+    msg: string,
+  ): Promise<string> {
+    const settle = this.lastNavSettled;
+    if (settle === null || settle.client !== c) return msg; // G-client：自愈/换 client 后的 context 销毁是 heal 面
+    const observed = await readCurrentHref(c);
+    if (observed === null) return msg; // 确认读失败：证据不足，维持原形态
+    const toHost = httpHostKey(observed);
+    if (toHost === null) return msg; // G-placeholder：占位页上的销毁不是驱逐
+    if (toHost === settle.host) return msg; // 合取缺一：host 未偏 ⇒ 原形态（同 host 盲区仅症状兜底可判读）
+    this.markEviction(settle.url, observed, c);
+    return `page_redirect_eviction_suspected:${msg.slice(0, 200)}`;
+  }
+
+  /**
+   * A.5r2-2：browse() 链返回收尾——驱逐信号消费点 ③（失败/成功链返回自身
+   * 揭示驱逐）+ S1 窗重起（「或链返回」形态；链内导航经 wrapNavigate 已
+   * settle，用其 client 起窗）。
+   */
+  private finalizeChainEviction(result: InteractResult<BrowseResult>): void {
+    const settleClient = this.lastNavSettled?.client ?? null;
+    const ev = this.consumeEviction(settleClient);
+    if (ev) {
+      if (result.data) result.data.eviction_suspected = ev.eviction_suspected;
+      result.hint = ev.hint;
+    }
+    if (settleClient !== null) this.armEvictionWindow(settleClient);
+  }
 
   /**
    * BUG-07 决议 A⁺（§5.3 r1 铁则 (b)）：current-page 会话失效通知。
@@ -671,8 +891,12 @@ export abstract class BrowseChannel extends UiChannel {
       return noSessionResult();
     }
 
+    // 尾款轮 A.5r2-1 S3（doc/bugs/09 §8.A）：catch 侧确认读的 client 基准——
+    // getMcpClient 自身抛错时无 client（无驱逐观测面），保持 null 哨兵。
+    let evClient: McpClient | null = null;
     try {
       const c = await this.getMcpClient();
+      evClient = c;
       // level-2 复核（获取 client 后）：`lastNavigatedClient === c && navSeenClients
       // .has(c)` 不满足 → 同错误契约。封 respawn 边（上游子进程重启换 McpClient
       // 实例=新浏览器空白页）和 heal 换页边（invalidation 置 null——同 client 但
@@ -780,6 +1004,12 @@ export abstract class BrowseChannel extends UiChannel {
           : undefined,
       );
 
+      // 尾款轮 A.5r2-2/A.5r2-3（doc/bugs/09 §8.A）：驱逐信号消费点 ①（成功路，
+      // S2 的 mark 附本次返回）+ S1 静默窗（本次 did_navigate=true——「browse
+      // 调用成功返回且本次 did_navigate=true 后起 5s 窗」）。
+      const ev = this.consumeEviction(c);
+      if (partial.did_navigate === true) this.armEvictionWindow(c);
+
       return {
         outcome: "worked",
         data: {
@@ -825,12 +1055,16 @@ export abstract class BrowseChannel extends UiChannel {
           // 调用是否真的执行了导航（current-page 模式 / 同页跳过 / current-page
           // 动作族恒 false；navigate 本尊与先导导航恒 true）。
           did_navigate: partial.did_navigate === true,
+          // 尾款轮 A.5r2-3（doc/bugs/09 §8.A）：驱逐信号——仅在场时发射
+          //（一次性消费，下一返回即清；认识论诚实：suspected 非完成时断言）。
+          ...(ev ? { eviction_suspected: ev.eviction_suspected } : {}),
         },
         served_by: this.name,
         fallback_used: false,
         // BUG-08 决议 E-1：retrieval_method 加法标注（auto_discovered_port:<port>
         // 等——单次调用可见，读后即清）
         retrieval_method: this.retrievalMethod() + this.consumeRetrievalNote(),
+        ...(ev ? { hint: ev.hint } : {}),
       };
     } catch (e) {
       // BUG-08 决议 A-3①（doc/bugs/08，2026-09-15）：MCP 请求超时类型化——SDK
@@ -839,7 +1073,18 @@ export abstract class BrowseChannel extends UiChannel {
       // 误判「浏览器死亡」的直接机制）。窄匹配（-32001 / "Request timed out"）→
       // mcp_request_timeout:<原文截断> 前缀，agent 透明可识别；outcome 维持
       // unknown（可重试 + fallback-worthy，语义与现状一致，A-3③ 前零行为变化）。
-      const msg = typeMcpRequestTimeout(String(e));
+      let msg = typeMcpRequestTimeout(String(e));
+      // 尾款轮 A.5r2-1 S3（doc/bugs/09 §8.A）：错误串合取——「Execution context
+      // was destroyed」（含 eval_upstream_error 前缀形态）+ 确认读 URL 偏离 ⇒
+      // typed error 重写（消费方首次能机械区分「我的调用错了」vs「站点杀了无头」）。
+      // 合取缺一维持原形态（同 host 盲区走症状判读兜底——descriptions 双形态）。
+      if (
+        evClient !== null &&
+        this.evictionSentinelEnabled() &&
+        EVICTION_CONTEXT_DESTROYED_RE.test(msg)
+      ) {
+        msg = await this.confirmEvictionFromError(evClient, msg);
+      }
       logger.warn({ evt: "browse_action_error", channel: this.name, action, error: msg });
       // A-3② hint 教学（只教正门，不给 kill 指引）：真机证明 Chrome 未死、
       // 服务端 evaluate 结束（≤180s puppeteer protocolTimeout）后 mutex 释放、
@@ -850,6 +1095,12 @@ export abstract class BrowseChannel extends UiChannel {
             hint: "MCP request timed out at the client call layer — the upstream chrome-devtools-mcp serializes tools with one mutex, so a long in-flight call (usually a batch evaluate) wedges subsequent calls until it finishes (self-heals in ~3min; the browser is NOT dead). For long batch JS pass options.budget_ms explicitly (e.g. 300000); no restart of anything is needed.",
           }
         : {};
+      // 尾款轮 A.5r2-2：驱逐信号消费点 ②（错误路——失败调用自身揭示驱逐；
+      // S3 的 mark 在同 catch 内即被消费，hint 即 S3 的「+ hint」面）。
+      const ev =
+        evClient !== null && this.evictionSentinelEnabled()
+          ? this.consumeEviction(evClient)
+          : null;
       return {
         outcome: classifyBrowseError(msg, action),
         data: null,
@@ -858,6 +1109,7 @@ export abstract class BrowseChannel extends UiChannel {
         retrieval_method: this.retrievalMethod() + this.consumeRetrievalNote(),
         error: msg,
         ...timeoutHint,
+        ...(ev ? { hint: ev.hint } : {}),
       };
     }
   }
@@ -1293,6 +1545,42 @@ async function readCurrentHref(c: McpClient): Promise<string | null> {
     return null; // best-effort：与 verifyNavigatedPage 同哲学（检测失败不阻断导航）
   }
 }
+
+// ============================================================
+// 尾款轮 A.5r2（doc/bugs/09 §8.A，2026-09-16）：驱逐哨兵模块级判据件
+// ============================================================
+/** A.5r2-1 S1：静默窗时长（5s 一次性；导出供测试 vi.useFakeTimers 驱动）。 */
+export const EVICTION_WINDOW_MS = 5_000;
+
+/**
+ * A.5r2-1：host 级判等键（scheme+host，非全 URL）——同 host 路径/hash 跳转
+ * 天然不误报，异 host（前置门与守卫全过后）必报。同时是 G-placeholder 前置门
+ * 的判据本体：观测 URL 解析失败 / scheme ∉ {http,https} / host 为空
+ * （about:blank、data:、chrome-error: 占位页）⇒ null（heal 面 observation，
+ * 不是驱逐证据）。导出供测试。
+ */
+export function httpHostKey(u: string): string | null {
+  try {
+    const p = new URL(u);
+    if (
+      (p.protocol !== "http:" && p.protocol !== "https:") ||
+      p.host === ""
+    ) {
+      return null;
+    }
+    return `${p.protocol}//${p.host}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A.5r2-1 S3：evaluate 执行上下文被销毁的上游错误签名（喵虎本体场景——站点
+ * JS 层驱逐在途 evaluate）。doEvaluate 的 isError 路抛 `eval_upstream_error:`
+ * 前缀形态、SDK 直 throw 为裸形态——一律以包含匹配捕（真值判据在通道层的
+ * URL 合取上，错误串只做触发器）。
+ */
+const EVICTION_CONTEXT_DESTROYED_RE = /Execution context was destroyed/;
 
 async function doNavigate(
   c: McpClient,
@@ -2308,6 +2596,12 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   // 重试/fallback 都无济于事）→ didnt。此前落 unknown 假可重试——steps 链里
   // pdf step 死后整链 unknown（extract-batch1.mjs 实测 chain_failed:unknown:*）。
   if (m.includes("upstream_unsupported:")) return "didnt";
+  // 尾款轮 A.5r2-1 S3（doc/bugs/09 §8.A，F5）：驱逐 typed error 自持规则——
+  // 确定性站点条件（页面被站点条件性跳走），维持 didnt 档：不盲重试、不进
+  // fallback churn（换通道救不了「该通道形态被该站点驱逐」的判定面交给
+  // agent——hint 已给 consent 指引）。必须先于 eval_upstream_error 规则
+  //（S3 重写串保留原前缀，显式规则自持可读不依赖前缀存活截断）。
+  if (m.includes("page_redirect_eviction_suspected")) return "didnt";
   // BUG-04 决议 C2（doc/bugs/04 §7，报告 §9-②b）：调用方坏 JS（脚本语法/执行错、
   // 协议超时类 evaluate 上游错）是**确定性不可得**——换通道救不了坏 JS，fallback
   // 只会拉响备用通道空转（复验报告实测「主通道因调用方坏 JS 失败也拉响 headless」）。
