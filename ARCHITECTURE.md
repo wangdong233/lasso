@@ -4,7 +4,7 @@
 >
 > **现状对齐增补（2026-09-16，DocAudit 轮，基准 HEAD `7ab999b` = v1.26.0 预写态 / npm latest 1.25.0）**：v1.19.0→v1.26.0 共九版（渲染档 + BUG-03~08 五批）的架构面以**增量段落**对齐——§2 渲染档行、§9 浏览器主权三层防线、§11 INV 84→96、新 §16 五批新增面、§14 版本要点、§15 主线第 8-9 条；本实跑核验 = `check-invariants`（96/96 PASS），测试计数引自 BUG-08 gate 实跑（2997+1，见 README v1.26.0 changelog ⑥）——本轮未重跑全量 npm test，全文其余计数仍为 2026-08-31 基准。
 >
-> **现状对齐增补（2026-09-16，BUG-09 批，基准 HEAD `5db1656` = v1.27.0 预写态 / npm latest 1.26.0）**：反爬根治通道 + url 语义统一批（doc/bugs/09）——§1 工具面 17→18（`browse_headed` 默认注册）、§2/§3.1 通道树加 HeadedChannel、§11 INV 编号至 99（收卷时实装 98，INV-98 为哨兵保留位）、新 §16.7 反爬防御梯与 url 单一导航语义、§14 v1.27.0 预写行、§15 主线第 10 条；实跑核验 = `check-invariants`（98/98 PASS）+ vitest 全量（计数见 §10 表，收卷轮实跑）。**尾款轮增补（2026-09-16 下午，doc/bugs/09 §8.A）**：WT4 驱逐哨兵已落地——`eviction_suspected` 三信号漏斗（S1 静默窗 / S2 闸门漂移复核 / S3 错误串合取）+ typed error `page_redirect_eviction_suspected:`，INV-98 转真锚（实装 99/99，3109 tests / 191 files）。
+> **现状对齐增补（2026-09-16，BUG-09 批，基准 HEAD `5db1656` = v1.27.0 预写态 / npm latest 1.26.0）**：反爬根治通道 + url 语义统一批（doc/bugs/09）——§1 工具面 17→18（`browse_headed` 默认注册）、§2/§3.1 通道树加 HeadedChannel、§11 INV 编号至 99（收卷时实装 98，INV-98 为哨兵保留位）、新 §16.7 反爬防御梯与 url 单一导航语义、§14 v1.27.0 预写行、§15 主线第 10 条；实跑核验 = `check-invariants`（98/98 PASS）+ vitest 全量（计数见 §10 表，收卷轮实跑）。**尾款轮+合并轮增补（2026-09-16 下午，doc/bugs/09 §8）**：WT4 驱逐哨兵已落地——`eviction_suspected` 三信号漏斗（S1 静默窗 / S2 闸门漂移复核 / S3 错误串合取）+ typed error `page_redirect_eviction_suspected:`，INV-98 转真锚（§8.A/8.F）；steps 链 final_url/did_navigate 真值化（§8.B/8.E.1，INV-100）+ macOS occlusion 真机定案（§8.E.2，A.4④ 维持 `8,40`）；S/T 双 worktree（bug09-wt4-a/b）合并轮收卷（实装 100/100，3120 passed + 1 skipped / 192 files）。
 
 ## 1. 项目定位
 
@@ -332,9 +332,9 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 
 | 层 | 工具 | 覆盖 | 规模（v1.26.0 预写态，2026-09-16 对齐：INV/gate 为 BUG-08 批实跑口径） |
 |---|---|---|---|
-| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..99 编号域静态 grep + 形状测 | **实装 99 条**（85-96 = BUG-03~08 五批；97/99 = BUG-09 批；**INV-98 = 驱逐哨兵契约，尾款轮 §8.A 转真锚**——2026-09-16 实跑 99/99 PASS） |
+| 架构不变量 | `check-invariants.mjs`（自写） | INV-1..100 编号域静态 grep + 形状测 | **实装 100 条**（85-96 = BUG-03~08 五批；97/99 = BUG-09 批；**INV-98 = 驱逐哨兵契约，尾款轮 §8.A/8.F 转真锚；INV-100 = 链真值契约，尾款轮 §8.B/8.E.1**——2026-09-16 合并轮实跑 100/100 PASS） |
 | INV 自测 | `inv-selftest.mjs`（`npm run inv-selftest`） | 抽样 INV 做「注入违规 → 必红」复证 | **样本覆盖 20/84 时代口径 + 26 个 pin 红翻转实证**（外部契约类全覆盖；85-96 批次自带形状测） |
-| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak / render / bug03-09 批次 spec 等 | **3109 passed + 1 skipped**（191 文件，BUG-09 尾款轮 §8.A 实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
+| TS 单测 | vitest | channel / fallback / forest / doctor / launcher / outline-contract / replay-baseline / stealth / lifecycle / cdp-actions / search-local / content-second-hop / elicitation / extract-refs / quality / http-serp / fetch-feed / tool-descriptions-no-leak / render / bug03-09 批次 spec 等 | **3120 passed + 1 skipped**（192 文件，BUG-09 尾款轮+合并轮实跑；1 skip = linux-only ResourceMonitor 在 macOS 对称跳过） |
 | Rust 单测 | cargo test | ax / applescript / cgevent(+keymap) / screenshot / tcc / windows / protocol / role-map | **207 测试**（cargo test 实跑；`rust-helper/src/*.rs` 自 v1.13 零改——v1.18.4 仅动 `build/sign.sh` ad-hoc 签名链） |
 | 跨平台编译 | cargo check --target | Windows (x86_64-pc-windows-msvc) + Linux (x86_64-unknown-linux-gnu) | 本地手测（CI 为 JS 门禁三件套，不含 Rust 步骤——r4 轮改真口径） |
 | 录制回放回归 | npm run replay-baseline | fixtures/serp-baseline/ 三引擎录制基线 | 6 条 HTML fixture（baidu/bing/google ×2；doctor #32 实跑 detail） |
@@ -342,7 +342,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | 全量功能测试 | doc/testing/01 清单 + ft 执行记录 | 四面板（search / browse / infra / perf）~170 用例真机 | ft-round1 **ALL-CLEAN**（2026-08-18） |
 | 契约锁 | chrome-devtools-mcp@**1.7.0** version pin（`LOCKED_CDP_MCP_VERSION` 单一真源） | 上游小版本升级不破 Lasso；迁移要点见 §2.1 | SubprocessManager.ts |
 
-## 11. 不变量（实装 98 条，编号至 99）分类
+## 11. 不变量（实装 100 条，编号至 100）分类
 
 | 范畴 | INV 编号 | 守的是什么 |
 |---|---|---|
@@ -367,7 +367,7 @@ engine=auto（默认）→ 多源扇出（machine_mcp + brave 两 API 源）
 | v1.24 幽灵常驻根治（BUG-06） | **94** | 日常档 idle-0 的 24h 硬顶契约（cap 谓词顺序 + render 三文件零 hard-cap tripwire + CLI_USAGE + isUserOwnedRecord 前置短路 + onChromeUse touch 写侧 + 两装配点显式传参） |
 | v1.25 当前页截图（BUG-07） | **95** | url 省略 + action=screenshot = current-page 截图（零导航；有 url 字节级不变）——schema↔description 同 commit 等 A⁺ 六面 |
 | v1.26 马拉松稳定性（BUG-08） | **96** | 五组防线：callTool timeout 透传 / doEvaluate 传预算 / 栈扫除判定序 + chrome-stop 域隔离 / fresh profile 先杀后删 + 陈年双闸 / wait current-page 家族 / fallback 耗尽 primary-first 复合串 |
-| v1.27 反爬通道与 url 统一（BUG-09，预写态） | **97 / 98 / 99** | HeadedChannel 平级契约（spawn 无 --headless + lasso-owned `--user-data-dir` + 无 StealthEngine 注入 + 装配四处）/ 驱逐哨兵契约（**尾款轮 §8.A 已实装**：三信号漏斗 + INV-98 a-g 全组）/ 两态生命周期（reapPolicy 判定序 + 探测器并发安全 + 存量 spec 字节级不变回归锚 + C3 逃生门） |
+| v1.27 反爬通道与 url 统一（BUG-09，预写态） | **97 / 98 / 99 / 100** | HeadedChannel 平级契约（spawn 无 --headless + lasso-owned `--user-data-dir` + 无 StealthEngine 注入 + 装配四处）/ 驱逐哨兵契约（**尾款轮 §8.A/8.F 已实装**：三信号漏斗 + INV-98 a-g 全组）/ 链真值契约（尾款轮 §8.B/8.E.1：尾读真值 + 种子等值守卫 + INV-100）/ 两态生命周期（reapPolicy 判定序 + 探测器并发安全 + 存量 spec 字节级不变回归锚 + C3 逃生门） |
 
 完整 INV 列表 + 释义见 `src/invariants/check-invariants.mjs` 顶部注释。
 
@@ -455,7 +455,7 @@ $ lasso launch-chrome
 | Launcher | src/launcher/{launch-chrome,chrome-paths,chrome-stop,chrome-idle-reaper,chrome-ledger,chrome-hide,chrome-hideshow-cli,chrome-touch,desired-hide-state,desired-hide-watchdog,desired-hide-enforcer}.ts（INV-64 不引新 npm dep；chrome-touch / desired-hide-* = v1.18.3~v1.18.6 bug02 链） | 11 文件共 ~2900 |
 | Render 档 | src/render/{render-chrome,render-launcher,render-flags,render-guardian,render-doctor}.ts（v1.19-1.20 五文件；冻结旗标单一真源 + detached 执守 + reused 四条件门，见 §16.2） | — |
 | Doctor | src/doctor/doctor.ts（doctor CLI 默认 34 项实跑核；MCP doctor tool / DesktopChannel 装配 desktopChecks:true 时加 #15-#21 共 41 项；--deep 加 #11b brave_deep_probe；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / zhipu_keys_retired） | ~3060 |
-| Invariants | src/invariants/check-invariants.mjs（实装 98 条 INV；85-96 = BUG-03~08 五批，97/99 = BUG-09 批（98 保留位），2026-09-16 实跑全 PASS） | ~6070 |
+| Invariants | src/invariants/check-invariants.mjs（实装 100 条 INV；85-96 = BUG-03~08 五批，97-100 = BUG-09 批（98 驱逐哨兵真锚 + 100 链真值），2026-09-16 合并轮实跑全 PASS） | ~6320 |
 | INV 自测 | scripts/inv-selftest.mjs（20 样本红转复证） | ~410 |
 | Subprocess | src/subprocess/SubprocessManager.ts（`LOCKED_CDP_MCP_VERSION = "1.7.0"`）；rust-helper-path.ts（模块锚定：`new URL("../../rust-helper/...", import.meta.url)` 与宿主 cwd 解耦——v1.18.4 根治「非仓库根目录启动 desktop 全报 rust_helper_crashed」） | ~750 |
 | Rust helper | rust-helper/src/{ax,uia,atspi,applescript,applescript_whitelist,cgevent,cgevent_keymap,screenshot,tcc,windows,protocol,main,lib,ax_role_map,app_bundle_map}.rs（15 文件）；build/sign.sh（v1.18.4 ad-hoc 兜底签名进构建链） | ~5000；src/*.rs 自 v1.13 零改 |
@@ -484,7 +484,7 @@ $ lasso launch-chrome
   - **v1.18.7**：架构重审落地——browse 族接口面死参数清扫（诚实化）+ doctor/channels 解耦（INV-84）+ firstText 单一定义（INV-83）+ 文档改真 + INV 82→84；随后 P2 处置轮（doc/governance/11）46 项三档裁决 + `launch-chrome --help` 误启动修复 + CI actions 升 checkout@v7 / setup-node@v6 并加 Node 24
 - **doctor readiness 现状（如实）**：任一 check fail → `ready:false`。**#15 `rust_helper_signed` 现行语义 = ad-hoc 签名 → warn**（2026-08-31 用户裁决降级：ad-hoc 是官方免费合法方案、功能正常，唯一代价 rebuild 后 TCC 重授权；FAIL 把正常配置判成 ready:false 属噪音。Developer ID 长期方案保留在 next_step；Developer ID 正签仍 pass、未签仍 warn——回归测试 rust-helper-signed-warn.spec 三态锚定）
 - **跨平台 backend**：macOS 本机全证；Win/Linux 编译可证 + 契约可证，真机执行待社区反馈
-- **门禁（本地）**：`npm run build` / `npm test`（**2026-09-16 尾款轮基准：3109 passed + 1 skipped，191 文件 + readme-sync**——BUG-09 §8.A 实跑口径）/ `npm run check-invariants`（**99 实装全 PASS**，编号至 99 全实装，2026-09-16 实跑）/ `npm run inv-selftest` + `cargo test`（207，CI 不含）；`npm run gate` 后台化 + 60s 轮询读 log（180s stall 防误判；vitest 树超时追杀带 `LASSO_GATE_VITEST_TIMEOUT_MS`，doc/bugs/08 §12）
+- **门禁（本地）**：`npm run build` / `npm test`（**2026-09-16 尾款轮+合并轮基准：3120 passed + 1 skipped，192 文件 + readme-sync**——BUG-09 §8 实跑口径）/ `npm run check-invariants`（**100 实装全 PASS**，编号至 100 全实装，2026-09-16 实跑）/ `npm run inv-selftest` + `cargo test`（207，CI 不含）；`npm run gate` 后台化 + 60s 轮询读 log（180s stall 防误判；vitest 树超时追杀带 `LASSO_GATE_VITEST_TIMEOUT_MS`，doc/bugs/08 §12）
 - **CI（.github/workflows/ci.yml 实况）**：ubuntu-latest × Node **20/22/24** 矩阵（20=下限锚点 / 22=maintenance LTS / 24=active LTS——search-local 的 `node:sqlite` 依赖 NODE_MAJOR>=23，加 24 后该文件 40 测在 CI 真跑）；actions checkout@v7 / setup-node@v6；步骤 = npm ci → build → test → check-invariants（**JS 门禁三件套，无 cargo 步骤**——Rust 面靠本地 cargo test/check 守）
 
 ## 15. 质量与决策主线（doc/governance/01 → doc/governance/06 → doc/testing/01）
@@ -500,7 +500,7 @@ $ lasso launch-chrome
 7. **全面重审与 P2 处置**（2026-08-31，wf_c02ef3df 15-agent 五路 review + doc/governance/11 台账）：首轮五路 34 + 复审 22 = 56 原始 P2 去重合并 46 项，三档裁决 **20 fixed / 25 deferred / 1 rejected（已被 r3 轮修复偿）**；fixed 批次含 types.ts 死字段清理、doctor.spec flake 抬 15s、CI actions 升级 + Node 24 矩阵、`launch-chrome --help` 误启动短路；deferred 项全部留档可追。
 8. **渲染档 + BUG-03~08 五批实战驱动线**（2026-09-01 → 09-15，doc/渲染档文档组 + doc/bugs/03-08）：确定性渲染档（v1.19-1.20，media-gen-mcp 消费方托付浏览器生命周期）→ 浏览器主权根治（BUG-03 事故：用户 Chrome 被裸 kill）→ 归属鉴定 chrome-status（BUG-04，消费方实战）→ 消费方台账 L1-L4 两批（BUG-05/07，novel-engine）→ 幽灵常驻 24h 硬顶（BUG-06，用户 12h 实锤）→ 反爬马拉松稳定性（BUG-08，3 小时商标库实战 + F 组用户负载 188 实锤）。每批 = 事故/台账驱动 → 设计决议 → 实施 → 对抗复审 clean 闭环；INV 84 → 96。
 9. **BUG-08 审查循环（2026-09-16，Gauntlet 对抗复核）**：主对象 `git diff 92200d3..7ab999b`（16 commit/43 files）+ 五批累计架构漂移面——R-INT-06 证据修订后记（testing/01 §6：BrowseChannel.ts 磁石效应五批中四批落点 14 commit、doEvaluate 85 行 ≥4 职责类，**下批触碰 navigate/evaluate 语义须抽导航语义模块**，doc/testing/01 表后记）等。
-10. **BUG-09 反爬根治批（2026-09-16，喵虎核验报告驱动，doc/bugs/09）**：消费方核心诉求「强力反爬就完全没办法」→ 四路线裁决矩阵（stealth patch REJECTED〔D-α/β 实效反证〕/ 有头通道采纳为 L2〔WT0 spike 前置定生死 + tm 真机四轮 6/6〕/ 分层防御梯采纳）+ url 语义统一（三分裂 Set 收敛单一 ensure-navigation，P1 假数据面根治）+ P2 批 C1-C5；三 worktree 并行（WT1/2/3）+ WT0 spike + 三轮对抗复审 clean（r3 变异 6 kill 1 存活归类 + 真机六探针）+ 尾款轮（§8）：WT4 驱逐哨兵清偿（A.5r2 三信号漏斗，INV-98 真锚）。**未竟**：R-INT-06「抽导航语义模块」义务触发未执行（doc/bugs/09 §7.2 #6 登记，移交下批）。
+10. **BUG-09 反爬根治批（2026-09-16，喵虎核验报告驱动，doc/bugs/09）**：消费方核心诉求「强力反爬就完全没办法」→ 四路线裁决矩阵（stealth patch REJECTED〔D-α/β 实效反证〕/ 有头通道采纳为 L2〔WT0 spike 前置定生死 + tm 真机四轮 6/6〕/ 分层防御梯采纳）+ url 语义统一（三分裂 Set 收敛单一 ensure-navigation，P1 假数据面根治）+ P2 批 C1-C5；三 worktree 并行（WT1/2/3）+ WT0 spike + 三轮对抗复审 clean（r3 变异 6 kill 1 存活归类 + 真机六探针）+ 尾款轮（§8）：§7.2 移交项 1/2/3 全清偿——WT4 驱逐哨兵（A.5r2 三信号漏斗，INV-98 真锚）+ steps 链真值化（INV-100）+ macOS occlusion 定案（A.4④ 维持 8,40）。**未竟**：R-INT-06「抽导航语义模块」义务触发未执行（doc/bugs/09 §7.2 #6 登记，移交下批）。
 
 方法学沉淀（供复用）：裁决官不采信文档（关键声称白盒双源亲验）；证据阶梯 L0-L3；mutation 即验收；「先拿事实再加参数」；收敛协议前置；零基视角才可见方案级盲区；决策分级（GO/DECISION/WATCH/NOGO）交用户裁决而非默认全做。
 

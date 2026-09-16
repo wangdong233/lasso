@@ -6191,6 +6191,102 @@ const assertions = [
       return true;
     },
   },
+
+  //  INV-100  chain-url-truth-contract（bug09 §8.B 开放项 5——steps 链 final_url/
+  //  did_navigate 真值化，R2-1 行为本体的机械化防线，2026-09-16 尾款轮）：
+  //    (1) StepEngine `final_url: url` 请求串回显模式消灭（grep 锚——注释剥离后
+  //        代码域零命中；残留页形态谎称目标页的旧谎本体）
+  //    (2) 链种子等值守卫在场（seedGuard：候选 === 链请求串 ⇒ 视同缺席——
+  //        doNavigate `extractFinalUrl(r) ?? url` 的请求串回退不得经种子路
+  //        洗白进链级真值）+ step partial 种子记录同款等值内联守卫
+  //    (3) 链尾真值读在位（applyChainUrlTruth：readCurrentHref 一次读到覆盖
+  //        种子；S/T 合并收尾序〔2026-09-16 合并轮〕= 尾读→wrap(entryNav)→
+  //        finalizeChainEviction 附着→return）——worked 链 data.final_url 的来源
+  //        绝不=请求串回显（来源判据非值判据：页面真落于请求 URL 时尾读=
+  //        请求串属真值，非违约）
+  //    (4) 先导导航透传（browse() steps 分支捕获 nav partial → runChain 第
+  //        四参 entryNav；sd 双标注经 wrapChainResult 回显）
+  //    (5) 链级 did_navigate（runChain 后处理：entryNav 在场 ∨ worked navigate
+  //        step；wrapChainResult 传播至 data.did_navigate）
+  //    (6) 类型面：StepPartial.final_url / ChainEntryNav / ChainResult.did_navigate
+  //    (7) 描述面：链级回显真值语义在位 + 旧缺席措辞「steps chains carry no
+  //        did_navigate」不得复活（行为真值钉的字面锚）
+  {
+    id: "INV-100-chain-url-truth-contract",
+    desc:
+      "bug09 §8.B 链真值契约：(1) StepEngine 请求串回显模式消灭；(2) 种子等值守卫（seedGuard + partial 内联）；(3) 链尾真值读（applyChainUrlTruth 覆盖种子）；(4) 先导导航 entryNav 透传 + sd 双标注；(5) 链级 did_navigate 传播；(6) 类型面三件；(7) 描述链语义真值钉",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const stepSrc = byPath(/^browse\/StepEngine\.ts$/)?.text ?? "";
+      const stepsTypesSrc = byPath(/^browse\/steps-types\.ts$/)?.text ?? "";
+      const browseSrc = byPath(/^channels\/BrowseChannel\.ts$/)?.text ?? "";
+      const descSrc = byPath(/^tools\/descriptions\.ts$/)?.text ?? "";
+      if (!stepSrc || !stepsTypesSrc || !browseSrc || !descSrc) return false;
+
+      // ----- (1) `final_url: url` 请求串回显模式消灭（代码域——注释剥离） -----
+      const stepCode = stripComments(stepSrc);
+      if (/final_url:\s*url\b/.test(stepCode)) return false;
+
+      // ----- (2) 种子等值守卫 -----
+      // seedGuard 本体：候选 === 链请求串 ⇒ 视同缺席
+      if (!/candidate !== undefined && candidate !== url/.test(stepCode)) return false;
+      // seedGuard 实际作用于 entryNav 种子
+      if (!/seedGuard\(entryNav\?\.final_url\)/.test(stepCode)) return false;
+      // step partial 种子记录的等值内联守卫（最后携带者胜出 + 等值即弃）
+      if (
+        !/partial\.final_url !== undefined &&\s*\n\s*partial\.final_url !== url/.test(stepCode)
+      )
+        return false;
+
+      // ----- (3) 链尾真值读 -----
+      if (!/private async applyChainUrlTruth\(/.test(browseSrc)) return false;
+      const truthFn = browseSrc.match(
+        /private async applyChainUrlTruth\([\s\S]*?\n  \}/,
+      );
+      if (!truthFn) return false;
+      if (!/readCurrentHref\(c\)/.test(truthFn[0])) return false; // 真值来源=尾读
+      if (!/chain\.data\.final_url = tail/.test(truthFn[0])) return false; // 尾读覆盖种子
+      if (!/if \(tail !== null\)/.test(truthFn[0])) return false; // 读失败保种子（省略非回显）
+      // 调用序（尾款轮 S/T 合并序，2026-09-16 合并轮钉）：尾读 → wrap(entryNav)
+      // → 驱逐附着（finalizeChainEviction——S 单元消费点③，信号须落最终形状）
+      // → return——尾读仍先于回显（种子→尾读→回显单一收尾序不变）
+      const stepsBranch = browseSrc.match(
+        /await this\.applyChainUrlTruth\(chain\);\s*\n\s*const wrapped = this\.wrapChainResult\(chain, entryNav\);\s*\n\s*this\.finalizeChainEviction\(wrapped\);\s*\n\s*return wrapped;/,
+      );
+      if (!stepsBranch) return false;
+
+      // ----- (4) 先导导航透传 -----
+      if (!/entryNav = \{\s*\n\s*final_url: navPartial\.final_url/.test(browseSrc))
+        return false;
+      if (!/same_document_navigated: navPartial\.same_document_navigated/.test(browseSrc))
+        return false;
+      // runChain 第四参实传
+      if (!/engine\.runChain\(url, steps, undefined, entryNav\)/.test(stripComments(browseSrc)))
+        return false;
+      // wrapChainResult 的 sd 双标注透传
+      if (!/entryNav\?\.same_document_navigated/.test(browseSrc)) return false;
+
+      // ----- (5) 链级 did_navigate -----
+      if (!/entryNav != null \|\|/.test(stepCode)) return false;
+      if (!/row\.action === "navigate" && row\.outcome === "worked"/.test(stepCode))
+        return false;
+      if (!/did_navigate: chain\.data\.did_navigate \?\? false/.test(browseSrc))
+        return false;
+
+      // ----- (6) 类型面 -----
+      if (!/final_url\?: string;/.test(stripComments(stepsTypesSrc))) return false; // StepPartial
+      if (!/export interface ChainEntryNav/.test(stepsTypesSrc)) return false;
+      if (!/did_navigate\?: boolean;/.test(stripComments(stepsTypesSrc))) return false; // ChainResult
+
+      // ----- (7) 描述面真值钉 -----
+      if (descSrc.includes("steps chains carry no did_navigate")) return false;
+      if (!descSrc.includes("Chain-level echo IS provided")) return false;
+      if (!descSrc.includes("tail-read truth of where the chain actually ran"))
+        return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

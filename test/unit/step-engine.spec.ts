@@ -54,6 +54,8 @@ interface StepPlan {
   error?: string;
   preview?: string;
   state_id?: string;
+  /** §8.B：handler partial 的 final_url（种子链输入——navigate step 形态） */
+  final_url?: string;
   /** expect 后 verdict；若 undefined 表示该 step 无 expect */
   expectVerdict?: "verified" | "preexisting" | "failed";
   expectError?: boolean; // runExpect 抛错
@@ -85,6 +87,7 @@ function makeMockChannel(
         error: plan.error,
         preview: plan.preview ?? `preview-${stepIdx - 1}`,
         state_id: plan.state_id ?? `state-${stepIdx - 1}`,
+        final_url: plan.final_url,
         preSnapshot: step.expect ? { captured_at: Date.now() } : undefined,
       };
     },

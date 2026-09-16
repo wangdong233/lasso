@@ -109,9 +109,14 @@ export interface HeadedChannelOptions {
   /** profile 基目录（测试隔离注入；缺省 headedProfileBaseDir()）。 */
   profileBase?: string;
   /**
-   * 窗口位置/尺寸（决议 A.4④）。当前取「角落小窗完全可见」——边缘滑出形态
-   * 待开放项 1（macOS occlusion L3：屏幕外窗口 visibilityState:hidden 可能
-   * 反成行为评分负信号）验证后收敛；此为显式保守选择非缺省遗漏。
+   * 窗口位置/尺寸（决议 A.4④，终值已落定——§8.C L3 实验 2026-09-16）：
+   * 「角落小窗完全可见」维持为默认。原假设（屏幕外窗口会被 macOS 判
+   * occluded → visibilityState:hidden + rAF 节流）**被真机实验证伪**——
+   * -2000,-2000 全藏位形 visibilityState 恒 visible、rAF 满速（480 帧/8s）。
+   * 维持可见默认的理由（非假设）：consent 契约钉「real on-screen window」
+   * （不可见窗=对用户隐藏的浏览器活动，重造 doc/bugs/03 隐藏劫持误判面）；
+   * 屏幕外窗 hasFocus() 恒 true 会污染接管探测器语义。实验数据与判定规则
+   * 应用见 doc/bugs/09 §8.E 附录。
    */
   windowPosition?: string;
   windowSize?: string;
@@ -183,7 +188,7 @@ export class HeadedChannel extends BrowseChannel {
         // A.4②r1：显式 lasso-owned user-data-dir 替代裸 --isolated
         //（上游缺省形态落共享持久 profile；本路径同时是归属锚+清理点）
         `--chromeArg=--user-data-dir=${profileDir}`,
-        // A.4④：角落小窗完全可见（边缘滑出待开放项 1 L3 后收敛）
+        // A.4④ 终值（§8.C L3）：角落小窗完全可见（假设已证伪，维持理由=consent/归属锚）
         `--chromeArg=--window-position=${this.windowPosition}`,
         `--chromeArg=--window-size=${this.windowSize}`,
       ],
