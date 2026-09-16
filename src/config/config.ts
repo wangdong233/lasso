@@ -105,6 +105,17 @@ export interface LassoConfig {
   autoHideAfterLogin: boolean;
   /** C2：登录墙消失后的等待窗 ms（env LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS；默认 10_000）。 */
   autoHideAfterLoginDelayMs: number;
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1）：HeadedChannel 态一（未接管）idle 收割阈值。
+   * env LASSO_HEADED_IDLE_MS（默认 30min）。独立于 headlessIdleMs（5min）——
+   * 有头窗口是显式可见事件，勿互抄（三套 idle 勿互抄的既训）。
+   */
+  headedIdleMs: number;
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1）：HeadedChannel 硬顶（态二接管粘滞的唯一兜底
+   * 出口）。env LASSO_HEADED_HARD_CAP_MS（默认 24h；0 = 部署级禁用）。
+   */
+  headedHardCapMs: number;
 }
 
 export interface LoadConfigOptions {
@@ -142,7 +153,6 @@ function parseHeadlessIdleMs(raw: string | undefined): number {
  * 配 300000 即回退「5min 才关」语义（5min 保留给用户，parse18 §2.4）。
  */
 export const DEFAULT_LAUNCH_IDLE_MS = 60_000;
-
 /**
  * 解析 LASSO_LAUNCH_IDLE_MS：parseInt；负数 / NaN / 未设 → 回退默认；
  * 0 → 禁用（index.ts 不启动 chrome-idle-reaper——台账 Chrome 常驻到 chrome-stop）。
@@ -170,6 +180,44 @@ export function parseLaunchHardCapMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return LAUNCH_HARD_CAP_DEFAULT_MS;
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < 0) return LAUNCH_HARD_CAP_DEFAULT_MS;
+  return n;
+}
+
+// ============================================================
+// W2（doc/bugs/09 决议 A.4⑤r1 + C3，2026-09-16）：headed 档生命周期 + 跨通道 fallback 逃生门
+// ============================================================
+/**
+ * HeadedChannel（browse_headed）态一（未接管）idle 收割阈值。
+ * env LASSO_HEADED_IDLE_MS / config.json 同名键（默认 1_800_000 = 30min）。
+ *
+ * **默认 30min 的依据（决议 A.4⑤r1 原文）**：有头窗口弹出是屏幕上的显式可见事件，
+ * 回收窗口须宽于 headless 域 5min（LASSO_HEADLESS_IDLE_MS）以覆盖「用户正走向
+ * 电脑」竞态；数值对齐 ledger 域宽窗语义而非 headless 域（引错域 = 用户接管中的
+ * 窗口 5min 无调用被树杀——doc/bugs/03 F4 同型事故）。
+ */
+export const DEFAULT_HEADED_IDLE_MS = 1_800_000;
+
+/** 解析 LASSO_HEADED_IDLE_MS：parseInt；负数/NaN/未设 → 回退默认；不设上限 clamp。 */
+export function parseHeadedIdleMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HEADED_IDLE_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return DEFAULT_HEADED_IDLE_MS;
+  return n;
+}
+
+/**
+ * HeadedChannel 硬顶天花板（态二·已接管粘滞的唯一兜底出口；BUG-06 式防孤儿
+ * 舰队——media-gen-mcp P0 教训）。env LASSO_HEADED_HARD_CAP_MS（默认
+ * 86_400_000 = 24h；显式 0 = 部署级禁用硬顶——失效方向必须显式，防笔误静默
+ * 拆安全网，parseLaunchHardCapMs 同范式）。
+ */
+export const DEFAULT_HEADED_HARD_CAP_MS = 86_400_000;
+
+/** 解析 LASSO_HEADED_HARD_CAP_MS：未设/NaN/负数 → 回退 24h；显式 0 → 0（部署级禁用）。 */
+export function parseHeadedHardCapMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HEADED_HARD_CAP_MS;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0) return DEFAULT_HEADED_HARD_CAP_MS;
   return n;
 }
 
@@ -353,6 +401,10 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // v1.11（round1 T10）：浏览器出口代理（browse_headless + Steel 生效；
   // browse_logged_in 永不读取——用户真实 Chrome 出口原样）
   LASSO_PROXY: "",
+  // W2（doc/bugs/09 决议 A.4⑤r1，2026-09-16）：browse_headed 有头档两态生命周期
+  // （态一未接管 idle 收割 30min / 态二接管粘滞 + 24h 硬顶兜底）
+  LASSO_HEADED_IDLE_MS: 1800000,
+  LASSO_HEADED_HARD_CAP_MS: 86400000,
 };
 
 /**
@@ -469,6 +521,9 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
   const autoHideAfterLoginDelayMs = parseAutoHideDelayMs(
     env.LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS,
   );
+  // W2（doc/bugs/09 决议 A.4⑤r1 + C3）：headed 档两态生命周期阈值 + 跨通道逃生门
+  const headedIdleMs = parseHeadedIdleMs(env.LASSO_HEADED_IDLE_MS);
+  const headedHardCapMs = parseHeadedHardCapMs(env.LASSO_HEADED_HARD_CAP_MS);
 
   return {
     runId: opts.runId,
@@ -485,5 +540,7 @@ export function loadConfig(opts: LoadConfigOptions): LassoConfig {
     launchMode,
     autoHideAfterLogin,
     autoHideAfterLoginDelayMs,
+    headedIdleMs,
+    headedHardCapMs,
   };
 }

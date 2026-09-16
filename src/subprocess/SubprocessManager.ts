@@ -72,13 +72,37 @@ export interface SpawnSpec {
   env?: Record<string, string>;
   /**
    * McpClient 在 initialize 握手时自报的 name（"lasso-browse-headless" /
-   * "lasso-browse-logged-in"），仅用于日志 / doctor，与 transport 无关。
+   * "lasso-browse-logged_in"），仅用于日志 / doctor，与 transport 无关。
    */
   mcpClientName: string;
   /** stdio stderr 透传策略，默认 "pipe" 让 doctor 能读。 */
   stderr?: StdioSpawnParams["stderr"];
   /** spawn cwd，默认继承。 */
   cwd?: string;
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1，2026-09-16）：per-spec 回收策略三元组。
+   * **缺省 = 现行为字节级不变**（存量 spec 不触新路径——INV-99 回归锚）。
+   * 目前唯一消费方：HeadedChannel（"headed" spec 两态生命周期）。
+   */
+  reapPolicy?: ReapPolicy;
+}
+
+/**
+ * W2（doc/bugs/09 决议 A.4⑤r1）：per-spec 回收策略。
+ *  - idleMs：态一（未接管）idle 收割阈值——HeadedChannel 用 LASSO_HEADED_IDLE_MS
+ *    （默认 30min，宽于 headless 域 5min：有头窗口弹出是显式可见事件，须覆盖
+ *    「用户正走向电脑」竞态；数值对齐 ledger 域 LASSO_LAUNCH_HARD_CAP 同族的宽窗语义）。
+ *  - stickyExempt：态二（已接管，粘滞永不回落）——session 标记 userTaken 后
+ *    idle 收割豁免；唯一兜底出口是 hardCapMs（BUG-06 式硬顶防孤儿舰队）。
+ *  - hardCapMs：自 spawnedAt 的硬顶（0 = 无顶）。接管粘滞也生效。
+ */
+export interface ReapPolicy {
+  /** 态一 idle 收割阈值（ms）。 */
+  idleMs: number;
+  /** 接管粘滞豁免 idle 收割（态二）。 */
+  stickyExempt: boolean;
+  /** 硬顶（ms，自 spawnedAt）；0 = 无顶。 */
+  hardCapMs: number;
 }
 
 interface ManagedProc {
@@ -88,6 +112,13 @@ interface ManagedProc {
   restartCount: number;
   /** 远端关闭（transport onclose）或本地 kill 后置 true，下次 ensureRunning 必重 spawn。 */
   closed: boolean;
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1）：用户接管粘滞标记（态二）。
+   * 唯一写径 markUserTaken（HeadedChannel hasFocus 探测器命中时调）；
+   * **永不回落**（置 true 后 idle 收割永久豁免，仅 hardCap 兜底）。
+   * respawn = 新 ManagedProc 对象 → 标记自然重置（新窗口 = 未接管，语义正确）。
+   */
+  userTaken?: boolean;
 }
 
 // ============================================================
@@ -266,31 +297,94 @@ export class SubprocessManager {
   async cleanupZombies(idleThresholdMs = 3_600_000): Promise<void> {
     const now = Date.now();
     for (const [name, m] of this.procs) {
-      if (now - m.lastUsedAt > idleThresholdMs) {
-        logger.info({
-          evt: "zombie_reaped",
-          name,
-          idle_ms: now - m.lastUsedAt,
-        });
-        // v1.9（parse17 §2.2 (b)）：回收前 reap hook（有界 3s，不阻塞 reaper；
-        // hook 抛错/超时只 warn——恢复动作是 best-effort，不能拖死回收本身）
-        if (this.reapHook) {
-          try {
-            await Promise.race([
-              this.reapHook(name),
-              new Promise<void>((resolve) =>
-                setTimeout(() => resolve(), 3_000),
-              ),
-            ]);
-          } catch (e) {
-            logger.warn({ evt: "reap_hook_error", name, error: String(e) });
-          }
+      const why = this._reapReason(name, m, now, idleThresholdMs);
+      if (why === null) continue;
+      logger.info({
+        evt: "zombie_reaped",
+        name,
+        reason: why.reason,
+        ...(why.reason === "hard_cap" ? { age_ms: why.ms } : { idle_ms: why.ms }),
+      });
+      // v1.9（parse17 §2.2 (b)）：回收前 reap hook（有界 3s，不阻塞 reaper；
+      // hook 抛错/超时只 warn——恢复动作是 best-effort，不能拖死回收本身）
+      if (this.reapHook) {
+        try {
+          await Promise.race([
+            this.reapHook(name),
+            new Promise<void>((resolve) =>
+              setTimeout(() => resolve(), 3_000),
+            ),
+          ]);
+        } catch (e) {
+          logger.warn({ evt: "reap_hook_error", name, error: String(e) });
         }
-        // BUG-08 决议 C：退役性 kill 走 _retire（树杀完成后 post-kill hook——
-        // fresh profile 的 rmSync 一律在树杀完成之后，禁 pre-kill 窗口删除）
-        await this._retire(name);
       }
+      // BUG-08 决议 C：退役性 kill 走 _retire（树杀完成后 post-kill hook——
+      // fresh profile 的 rmSync 一律在树杀完成之后，禁 pre-kill 窗口删除）
+      await this._retire(name);
     }
+  }
+
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1）：per-spec 回收判定单一真源（R-CI-02——
+   * 「是否收割」只在此处决定一次，cleanupZombies 只消费结论）。
+   *
+   * 判定序（policy spec）：
+   *  1. hardCapMs 硬顶（唯一兜底出口——**接管粘滞也生效**；BUG-06 式防孤儿舰队，
+   *     24h 级不构成「用户面前关窗」面，doc/bugs/09 A.7 安全面）
+   *  2. stickyExempt ∧ userTaken（态二·已接管，粘滞永不回落）→ idle 豁免
+   *  3. idleMs（态一·未接管）→ idle 收割
+   *
+   * **存量回归锚**：spec 无 reapPolicy 时与 v1.26.0 行为字节级等价——只判
+   * `now - lastUsedAt > idleThresholdMs`（全局阈值），不触 hardCap/sticky 路径
+   * （INV-99 断言钉死）。
+   */
+  private _reapReason(
+    name: string,
+    m: ManagedProc,
+    now: number,
+    idleThresholdMs: number,
+  ): { reason: "idle" | "hard_cap"; ms: number } | null {
+    const policy = this.specs.get(name)?.reapPolicy;
+    if (!policy) {
+      // 存量路径（headless / logged_in / browserbase / steel）：全局阈值，行为不变
+      return now - m.lastUsedAt > idleThresholdMs
+        ? { reason: "idle", ms: now - m.lastUsedAt }
+        : null;
+    }
+    // 1. 硬顶兜底（粘滞不豁免）
+    if (policy.hardCapMs > 0 && now - m.spawnedAt > policy.hardCapMs) {
+      return { reason: "hard_cap", ms: now - m.spawnedAt };
+    }
+    // 2. 态二·已接管（粘滞）：idle 豁免
+    if (policy.stickyExempt && m.userTaken) return null;
+    // 3. 态一·未接管：独立阈值 idle
+    if (now - m.lastUsedAt > policy.idleMs) {
+      return { reason: "idle", ms: now - m.lastUsedAt };
+    }
+    return null;
+  }
+
+  /**
+   * W2（doc/bugs/09 决议 A.4⑤r1）：标记 session 被用户接管（态二，粘滞永不回落）。
+   * 唯一合法调用方：HeadedChannel 接管探测器（hasFocus 命中）。
+   * 幂等；proc 不存在 / 已 closed → false（respawn 后须重新探测命中）。
+   */
+  markUserTaken(name: string): boolean {
+    const m = this.procs.get(name);
+    if (!m || m.closed) return false;
+    const first = m.userTaken !== true;
+    m.userTaken = true;
+    if (first) {
+      logger.info({ evt: "subproc_user_taken_sticky", name });
+    }
+    return true;
+  }
+
+  /** W2：读接管粘滞标记（doctor / 测试消费；只读）。 */
+  isUserTaken(name: string): boolean {
+    const m = this.procs.get(name);
+    return m?.userTaken === true;
   }
 
   /**
