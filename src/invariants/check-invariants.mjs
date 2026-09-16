@@ -4181,7 +4181,7 @@ const assertions = [
     id: "INV-79-cdp-mcp-170-migration-and-launch-stealth-guard",
     desc:
       "v1.11：chrome-devtools-mcp 0.3.0→1.7.0 迁移守护 + launch 级 stealth（round1 T1/T2）——" +
-      "（a）版本锁 1.7.0；（b）四通道 spec 全含 --no-usage-statistics（1.7.0 默认采集遥测，关）；" +
+      "（a）版本锁 1.7.0；（b）五通道 spec 全含 --no-usage-statistics（1.7.0 默认采集遥测，关；W2/doc/bugs/09 四通道扩五通道）；" +
       "（c）Browserbase --wsEndpoint（与 --browserUrl 互斥，wss 语义保障）；" +
       "（d）headless spec --chromeArg=--disable-blink-features=AutomationControlled + " +
       "--chromeArg=--user-agent= + --viewport=（launch 级 UA/viewport，UA 头↔navigator 一致）；" +
@@ -4194,12 +4194,14 @@ const assertions = [
       if (!subproc) return false;
       if (!/LOCKED_CDP_MCP_VERSION = "1\.7\.0"/.test(subproc.text)) return false;
 
-      // ----- (b) 四通道 spec 全含 --no-usage-statistics -----
+      // ----- (b) 五通道 spec 全含 --no-usage-statistics（W2/doc/bugs/09 决议 A.4②：
+      // HeadedChannel 加入通道族——四通道扩五通道；1.7.0 默认采集遥测，关） -----
       const specFiles = [
         /^channels\/HeadlessChannel\.ts$/,
         /^channels\/LoggedInChannel\.ts$/,
         /^channels\/SteelChannel\.ts$/,
         /^channels\/BrowserbaseChannel\.ts$/,
+        /^channels\/HeadedChannel\.ts$/,
       ];
       for (const re of specFiles) {
         const f = byPath(re);
@@ -5176,6 +5178,9 @@ const assertions = [
         (s) =>
           /^tools\//.test(s.f) &&
           s.f.replace(/\\/g, "/") !== "tools/browse.ts" &&
+          // W2（doc/bugs/09 决议 A.7）：browse_headed 是 browse 族第三入口
+          //（SSRF 三层同范式继承——file: 旁路路由同款接入，非新旁路面）
+          s.f.replace(/\\/g, "/") !== "tools/headed.ts" &&
           /file-guard\.js/.test(s.text),
       );
       if (offenders.length > 0) return false;
@@ -5618,7 +5623,9 @@ const assertions = [
       if (!/"url_required_for_action"/.test(exclBlock[0])) return false;
 
       // ----- (4) 通道钉定锚（tools 层 current-page 请求 fallbacks=[]） -----
-      if (!/fallbacks: url === undefined \? \[\] : \["browse_logged_in"\]/.test(browseToolSrc))
+      // C3（doc/bugs/09 决议 C3，W2）：跨通道边默认移除——url 缺省恒 []；
+      // url 在场默认也 []（terminal），逃生门 crossChannelFallback=true 恢复旧边
+      if (!/fallbacks:[\s\S]{0,120}url !== undefined && crossChannelFallback \? \["browse_logged_in"\] : \[\]/.test(browseToolSrc))
         return false;
       // SSRF 跳过形态（url !== undefined 才 guardEntryUrl）
       const handlerBlock = browseToolSrc.match(
@@ -5798,6 +5805,192 @@ const assertions = [
         return false;
       if (!/\[fallback \$\{lastHop\.channel\}: /.test(exhaustBlock[0])) return false;
       if (!/slice\(0, 120\)/.test(exhaustBlock[0])) return false; // 摘录钳制
+
+      return true;
+    },
+  },
+
+  // ============================================================
+  // W2（doc/bugs/09 决议 A.4/A.7，2026-09-16）新增
+  //  INV-97  HeadedChannel 平级断言（L2 有头档——spawn 形态/stealth 取舍/装配四处/consent）
+  //  INV-98  【保留位：驱逐哨兵契约——WT4（哨兵代码落地）时按决议 A.7③ 编号落此；
+  //           编号已在决议 A.7 固定为 98，勿挪作他用】
+  //  INV-99  两态生命周期契约（reapPolicy 判定序/探测器并发安全/存量 spec 字节级不变/C3 逃生门）
+  // ============================================================
+  //  INV-97  headed-channel-peer-contract：
+  //    (a) HeadedChannel extends BrowseChannel（平级兄弟，SteelChannel 先例）+
+  //        name = browse_headed + freshProfile 显式拒（headless 域语义）
+  //    (b) spawn 形态：无 --headless / 无裸 --isolated / 有 lasso-owned
+  //        --user-data-dir（HEADED_PROFILE_PREFIX 守卫）/ --no-usage-statistics /
+  //        AutomationControlled + ignoreDefaultChromeArg=--enable-automation
+  //    (c) stealth 取舍：零 StealthEngine 引用（真实环境=真实指纹；A.4③ 防顺手对齐）
+  //    (d) reapPolicy 三元组挂载（stickyExempt 恒 true）
+  //    (e) 装配四处：CHANNEL_TO_SPEC / registerHeadedTool / initialCapabilities /
+  //        longBreakers + breakers + V5_TOOL_TO_CHANNEL
+  //    (f) consent 契约：description 首行 opens-a-real-window + explicit user consent
+  //        + 工具引用同一 description/schema；终端 plan fallbacks 恒空
+  {
+    id: "INV-97-headed-channel-peer-contract",
+    desc:
+      "W2（doc/bugs/09 决议 A.4）：HeadedChannel L2 有头档平级断言——(a) extends BrowseChannel 平级兄弟 + name=browse_headed + freshProfile 显式拒；(b) spawn 无 --headless/无裸 --isolated/有 HEADED_PROFILE_PREFIX 守卫的 lasso-owned --user-data-dir/--no-usage-statistics/automation 两抹；(c) 零 StealthEngine（真实环境=真实指纹，与 headless 相反取舍防顺手对齐）；(d) reapPolicy 三元组（stickyExempt 恒 true）；(e) index 装配四处 + breakers + V5_TOOL_TO_CHANNEL；(f) consent description 首行 + 终端 plan fallbacks 恒空 + window_opened 回显",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const headed = byPath(/^channels\/HeadedChannel\.ts$/);
+      const toolHeaded = byPath(/^tools\/headed\.ts$/);
+      const index = byPath(/^index\.ts$/);
+      const descSrc = byPath(/^tools\/descriptions\.ts$/);
+      if (!headed || !toolHeaded || !index || !descSrc) return false;
+      const headedCode = stripComments(headed.text);
+      const toolCode = stripComments(toolHeaded.text);
+      const indexCode = stripComments(index.text);
+      const descText = descSrc.text;
+
+      // ----- (a) 平级兄弟 + name + freshProfile 拒 -----
+      if (!/class\s+HeadedChannel\s+extends\s+BrowseChannel\b/.test(headedCode))
+        return false;
+      if (!/readonly\s+name\s*=\s*["']browse_headed["']/.test(headedCode))
+        return false;
+      if (!/fresh_profile_not_supported_on_headed/.test(headedCode)) return false;
+
+      // ----- (b) spawn 形态 -----
+      const argsBlock = headedCode.match(/args:\s*\[[\s\S]*?\]/);
+      if (!argsBlock) return false;
+      const args = argsBlock[0];
+      if (/"--headless"/.test(args)) return false; // 有头本体：禁 headless flag
+      if (/"--isolated"/.test(args)) return false; // 显式 user-data-dir 替代裸 isolated
+      if (!args.includes('"--no-usage-statistics"')) return false;
+      if (!args.includes('"--chromeArg=--disable-blink-features=AutomationControlled"'))
+        return false;
+      if (!args.includes('"--ignoreDefaultChromeArg=--enable-automation"')) return false;
+      if (!/`--chromeArg=--user-data-dir=\$\{profileDir\}`/.test(args)) return false;
+      // lasso-owned profile：前缀守卫单出口 + 拒删错误 + 归属锚命名
+      if (!/HEADED_PROFILE_PREFIX/.test(headedCode)) return false;
+      if (!/headed_profile_refuse_delete/.test(headedCode)) return false;
+      if (!/buildHeadedProfileDirName/.test(headedCode)) return false;
+
+      // ----- (c) 零 StealthEngine（注释提及也不行？——注释经 stripComments 已除，
+      //            剩代码本体零引用即断言通过；文档性提及合法在注释区） -----
+      if (/StealthEngine/.test(headedCode)) return false;
+
+      // ----- (d) reapPolicy 挂载 -----
+      if (!/reapPolicy:\s*this\.reapPolicy/.test(headedCode)) return false;
+      if (!/stickyExempt:\s*true/.test(headedCode)) return false;
+
+      // ----- (e) 装配四处 + breakers + V5 表 -----
+      if (!/browse_headed:\s*"headed"/.test(indexCode)) return false; // CHANNEL_TO_SPEC
+      if (!/registerHeadedTool\s*\(/.test(indexCode)) return false;
+      if (!/"browse_headed",\s*\n\s*"desktop",/.test(indexCode)) return false; // initialCapabilities
+      if (!/"browse_headed",\s*\/\/ W2/.test(indexCode) && !/"browse_headed",\s*\n\s*"browse_cloud_browserbase"/.test(indexCode))
+        return false; // longBreakers 列表
+      if (!/\[\s*"browse_headed",\s*new CircuitBreaker\(\)\s*\]/.test(indexCode))
+        return false;
+      if (!/browse_headed:\s*"browse_headed"/.test(indexCode)) return false; // V5_TOOL_TO_CHANNEL
+
+      // ----- (f) consent + 终端 plan + window_opened -----
+      const descConst = descText.match(
+        /export const BROWSE_HEADED_DESCRIPTION = \[\s*"([^"]+)"/,
+      );
+      if (!descConst) return false;
+      if (!/opens a real on-screen window/.test(descConst[1])) return false; // 首行钉死
+      if (!/explicit user consent/.test(descText)) return false;
+      if (!/BROWSE_HEADED_DESCRIPTION/.test(toolCode)) return false;
+      if (!/from "\.\/browse\.js"/.test(toolCode)) return false; // schema 单一真源复用
+      if (!/fallbacks:\s*\[\]\s*as string\[\]/.test(toolCode)) return false; // 终端通道
+      if (!/window_opened:\s*true/.test(toolCode)) return false; // 归属锚②回显
+
+      return true;
+    },
+  },
+
+  //  INV-99  headed-two-state-lifecycle-contract（决议 A.4⑤r1 + C3）：
+  //    (a) ReapPolicy 三元组接口 + SpawnSpec 可选挂载（缺省=存量路径）
+  //    (b) _reapReason 判定序：hardCap → stickyExempt 豁免 → idle（序文本锚）
+  //    (c) markUserTaken 粘滞 + isUserTaken 只读；respawn 新对象自然重置
+  //    (d) 存量 spec 字节级不变回归锚：四既有 spec 文件零 reapPolicy 引用
+  //    (e) config：HEADED_IDLE 默认 30min（≠ headless 5min）+ HARD_CAP 默认 24h
+  //    (f) 探测器并发安全：30s 周期 + 5s 调用上界 + hasFocus 字面量 + 停表
+  //        clearInterval + unref；tick 体零 ensureRunning/touch（idle 不被饿死）
+  //    (g) C3：默认 plan 无跨通道边 + parseCrossChannelFallback 逃生门 + 装配透传
+  {
+    id: "INV-99-headed-two-state-lifecycle-contract",
+    desc:
+      "W2（doc/bugs/09 决议 A.4⑤r1 + C3）：两态生命周期契约——(a) ReapPolicy 三元组 + SpawnSpec 可选挂载；(b) 判定序 hardCap→sticky→idle（硬顶压粘滞=唯一兜底出口）；(c) markUserTaken 粘滞/isUserTaken 只读；(d) 存量四 spec 零 reapPolicy（字节级不变回归锚）；(e) HEADED_IDLE 默认 30min（≠ headless 5min）+ HARD_CAP 24h；(f) 探测器 30s/5s 上界/hasFocus/停表/unref/tick 零 ensureRunning+touch；(g) C3 默认无跨通道边 + 逃生门解析 + 装配透传",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const subproc = byPath(/^subprocess\/SubprocessManager\.ts$/);
+      const configSrc = byPath(/^config\/config\.ts$/);
+      const headed = byPath(/^channels\/HeadedChannel\.ts$/);
+      const browseTool = byPath(/^tools\/browse\.ts$/);
+      const index = byPath(/^index\.ts$/);
+      if (!subproc || !configSrc || !headed || !browseTool || !index) return false;
+      const subprocCode = stripComments(subproc.text);
+      const configCode = configSrc.text; // 常量值锚（注释提及合法）
+      const headedCode = stripComments(headed.text);
+      const browseCode = stripComments(browseTool.text);
+      const indexCode = stripComments(index.text);
+
+      // ----- (a) 接口 + 挂载 -----
+      if (!/export interface ReapPolicy\s*\{/.test(subprocCode)) return false;
+      if (!/idleMs:\s*number/.test(subprocCode)) return false;
+      if (!/stickyExempt:\s*boolean/.test(subprocCode)) return false;
+      if (!/hardCapMs:\s*number/.test(subprocCode)) return false;
+      if (!/reapPolicy\?:\s*ReapPolicy/.test(subprocCode)) return false; // 可选=存量不变
+
+      // ----- (b) 判定序（hardCap 先于 sticky 先于 idle——序文本锚） -----
+      const reapFn = subprocCode.match(
+        /private _reapReason\([\s\S]*?\n  \}/,
+      );
+      if (!reapFn) return false;
+      const capIdx = reapFn[0].indexOf("policy.hardCapMs");
+      const stickyIdx = reapFn[0].indexOf("policy.stickyExempt");
+      const idleIdx = reapFn[0].indexOf("policy.idleMs");
+      if (capIdx < 0 || stickyIdx < 0 || idleIdx < 0) return false;
+      if (!(capIdx < stickyIdx && stickyIdx < idleIdx)) return false;
+      // 存量路径：无 policy 时全局阈值（字节级等价分支存在）
+      if (!/now - m\.lastUsedAt > idleThresholdMs/.test(reapFn[0])) return false;
+
+      // ----- (c) 粘滞写径/读径 -----
+      if (!/markUserTaken\(name: string\): boolean/.test(subprocCode)) return false;
+      if (!/isUserTaken\(name: string\): boolean/.test(subprocCode)) return false;
+      if (!/m\.userTaken = true/.test(subprocCode)) return false;
+
+      // ----- (d) 存量四 spec 零 reapPolicy（回归锚——INV-99 的存在理由） -----
+      for (const re of [
+        /^channels\/HeadlessChannel\.ts$/,
+        /^channels\/LoggedInChannel\.ts$/,
+        /^channels\/SteelChannel\.ts$/,
+        /^channels\/BrowserbaseChannel\.ts$/,
+      ]) {
+        const f = byPath(re);
+        if (!f) return false;
+        if (/reapPolicy/.test(stripComments(f.text))) return false;
+      }
+
+      // ----- (e) config 值锚 -----
+      if (!/DEFAULT_HEADED_IDLE_MS = 1_800_000/.test(configCode)) return false;
+      if (/DEFAULT_HEADED_IDLE_MS = 300_000/.test(configCode)) return false; // 引错域防线
+      if (!/DEFAULT_HEADED_HARD_CAP_MS = 86_400_000/.test(configCode)) return false;
+      if (!/export function parseHeadedIdleMs/.test(configCode)) return false;
+      if (!/export function parseHeadedHardCapMs/.test(configCode)) return false;
+
+      // ----- (f) 探测器并发安全 -----
+      if (!/TAKEOVER_PROBE_INTERVAL_MS = 30_000/.test(headedCode)) return false;
+      if (!/TAKEOVER_PROBE_TIMEOUT_MS = 5_000/.test(headedCode)) return false;
+      if (!/document\.hasFocus\(\)/.test(headedCode)) return false;
+      if (!/clearInterval\(this\.probeTimer\)/.test(headedCode)) return false;
+      if (!/unref\?\.\(\)/.test(headedCode)) return false;
+      // tick 体零 ensureRunning/touch（态一 idle 不被探测器饿死——设计禁令）
+      const tickFn = headedCode.match(/const tick = async \(\) => \{[\s\S]*?\n    \};/);
+      if (!tickFn) return false;
+      if (/ensureRunning|\.touch\(/.test(tickFn[0])) return false;
+      if (!/callTool/.test(tickFn[0])) return false; // 探测本体存在
+
+      // ----- (g) C3 逃生门 -----
+      if (!/url !== undefined && crossChannelFallback \? \["browse_logged_in"\] : \[\]/.test(browseCode))
+        return false;
+      if (!/crossChannelFallback: boolean = false/.test(browseCode)) return false;
+      if (!/export function parseCrossChannelFallback/.test(configCode)) return false;
+      if (!/config\.crossChannelFallback/.test(indexCode)) return false; // 装配透传
 
       return true;
     },
