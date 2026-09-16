@@ -159,7 +159,9 @@ export interface BrowseResult {
   ignored_options?: string[];
   /**
    * BUG-08 决议 D-1（doc/bugs/08，2026-09-15）：navigate 命中 same-document
-   *（hash-only）形态时填 true（检测命中标注——调用方知情）。
+   *（hash-only）形态时填 true（检测命中标注——调用方知情）。对抗复审 r1
+   * I-2（doc/bugs/09，2026-09-16）：ensure-nav 组合路径（extract/snapshot 等
+   * 带 url 先导导航）同样回填——先导导航命中即调用方可见。
    */
   same_document_navigated?: boolean;
   /** D-1：是否补了 reload（no_reload:true 时 false——仅标注不重载）。 */

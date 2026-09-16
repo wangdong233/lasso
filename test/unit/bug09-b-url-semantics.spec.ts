@@ -452,3 +452,207 @@ describe("决议 B — about:blank 占位 + ignored_options 诚实性", () => {
     expect(r.data!.ignored_options ?? []).not.toContain("no_cache");
   });
 });
+
+// ============================================================
+// 对抗复审第 1 轮回炉修复（2026-09-16，终判 3-issues 全 P2）
+//  - I-1：final_url 尾部句读剥离（C4 取证定案：上游 pages.js:179 散文
+//    「Successfully navigated to <url>.」句点被 \S+ 吞入 = lasso 侧混入 → 修）
+//  - I-2：先导导航的 D-1 双标注（same_document_navigated/reloaded）在
+//    ensure-nav 组合路径透传（此前只收割 final_url，调用方看不见 reload）
+//  - I-3：no_reload 消费表对齐（ensure-nav 六 action 同 no_cache 形态入表 +
+//    NAV_ONLY_OPTION_KEYS 派生——此前组合路径实际消费却谎报 ignored）
+//  - 附带：hash-only extract 边界本地钉（此前唯一行为级守卫在 bug08-d 单条
+//    组合测试——守卫集中度缺口，复审建议项）
+// ============================================================
+describe("对抗复审 r1 — I-2：先导导航 sd 双标注透传", () => {
+  const CURRENT = "https://tm.aliyun.com/#/search?q=dada";
+  const TARGET = "https://tm.aliyun.com/#/search?q=wengweng";
+
+  it("evaluate 到 hash-only 目标 → 组合回显 same_document_navigated:true + reloaded:true（与 navigate 本尊同形态；此前双标注被丢弃）", async () => {
+    const { client, calls } = makeClient(
+      {
+        // n=1 门 probe；n=2 doNavigate 内 D-1 probe；n>=3 执行体
+        evaluate_script: (n) =>
+          n <= 2 ? fencedEval(JSON.stringify(CURRENT)) : fencedEval(JSON.stringify(7)),
+        navigate_page: (n) =>
+          textContent(n === 1 ? `Navigated to ${TARGET}` : "Reloaded"),
+        take_snapshot: () => textContent("- page: ok"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse(TARGET, "evaluate", { js: "() => 1" });
+    expect(r.outcome).toBe("worked");
+    // reload 真实发生（先导导航链内 D-1 触发）
+    const navCalls = names(calls, "navigate_page");
+    expect(navCalls).toHaveLength(2);
+    expect(navCalls[1]!.args.type).toBe("reload");
+    // 双标注可见（I-2 本体）
+    expect(r.data!.did_navigate).toBe(true);
+    expect(r.data!.same_document_navigated).toBe(true);
+    expect(r.data!.same_document_reloaded).toBe(true);
+  });
+
+  it("跨页目标（非 same-document）→ 双标注缺席（防假阳性钉）", async () => {
+    const { client } = makeClient(
+      {
+        evaluate_script: (n) =>
+          n === 1
+            ? fencedEval(JSON.stringify("https://residual.test/"))
+            : fencedEval(JSON.stringify(1)),
+        navigate_page: () => textContent("Navigated to https://target.test/page"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse("https://target.test/page", "evaluate", { js: "() => 1" });
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.did_navigate).toBe(true);
+    expect(r.data!.same_document_navigated).toBeUndefined();
+    expect(r.data!.same_document_reloaded).toBeUndefined();
+  });
+});
+
+describe("对抗复审 r1 — I-3：no_reload 消费诚实回显（hash-only extract 本地钉）", () => {
+  const CURRENT = "https://tm.aliyun.com/#/search?q=dada";
+  const TARGET = "https://tm.aliyun.com/#/search?q=wengweng";
+
+  it("hash-only extract + no_reload:true → reload 确被跳过（消费）→ 不进 ignored_options + reloaded:false 如实标注", async () => {
+    const { client, calls } = makeClient(
+      {
+        // n=1 warmSession D-1 probe；n=2 warmSession verify responseStatus；n=3 门 probe；n=4 doNavigate D-1 probe
+        evaluate_script: (n) =>
+          n <= 4 ? fencedEval(JSON.stringify(CURRENT)) : fencedEval(JSON.stringify(1)),
+        navigate_page: () => textContent(`Navigated to ${TARGET}`),
+        take_snapshot: () =>
+          textContent(`## snapshot\nuid=1_0 RootWebArea "商标查询" url="${TARGET}"`),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    await warmSession(ch, CURRENT);
+    const r = await ch.browse(TARGET, "extract", { no_reload: true } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    // opt-out 生效：先导导航 1 次（warmSession 的）+ 本次 type=url 1 次，无 reload
+    const navCalls = names(calls, "navigate_page");
+    expect(navCalls).toHaveLength(2);
+    expect(navCalls[1]!.args.type).toBe("url");
+    expect(navCalls.some((c) => c.args.type === "reload")).toBe(false);
+    // I-3 本体：实际消费（reload 被跳过）→ 不谎报 ignored
+    expect(r.data!.did_navigate).toBe(true);
+    expect(r.data!.same_document_navigated).toBe(true);
+    expect(r.data!.same_document_reloaded).toBe(false);
+    expect(r.data!.ignored_options ?? []).not.toContain("no_reload");
+  });
+
+  it("hash-only extract 默认（无 no_reload）→ D-1 reload 发生（M1 守卫本地钉：isSameUrlAfterNormalize 含 hash，hash-only 差异必走先导导航）", async () => {
+    const { client, calls } = makeClient(
+      {
+        // n=1 warmSession D-1 probe；n=2 warmSession verify responseStatus；n=3 门 probe；n=4 doNavigate D-1 probe
+        evaluate_script: (n) =>
+          n <= 4 ? fencedEval(JSON.stringify(CURRENT)) : fencedEval(JSON.stringify(1)),
+        navigate_page: (n) =>
+          textContent(n === 1 ? `Navigated to ${TARGET}` : "Reloaded"),
+        take_snapshot: () =>
+          textContent(`## snapshot\nuid=1_0 RootWebArea "商标查询" url="${TARGET}"`),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    await warmSession(ch, CURRENT);
+    const r = await ch.browse(TARGET, "extract", {});
+    expect(r.outcome).toBe("worked");
+    const navCalls = names(calls, "navigate_page");
+    expect(navCalls).toHaveLength(3); // warmSession 1 + url 1 + reload 1
+    expect(navCalls[2]!.args.type).toBe("reload");
+    expect(r.data!.did_navigate).toBe(true);
+    expect(r.data!.same_document_reloaded).toBe(true);
+    expect(r.data!.final_url).toBe(TARGET);
+  });
+
+  it("同页跳过分支：no_reload 未被消费 → 进 ignored_options（no_navigation 模式派生——无导航即真死键）", async () => {
+    const { client } = makeClient(
+      {
+        evaluate_script: (n) =>
+          n === 1
+            ? fencedEval(JSON.stringify("https://example.com/"))
+            : fencedEval(JSON.stringify(1)),
+        navigate_page: () => textContent("Navigated to https://example.com/"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "() => 1",
+      no_reload: true,
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.did_navigate).toBe(false); // 同页跳过 → 无导航 → 未消费
+    expect(r.data!.ignored_options ?? []).toContain("no_reload");
+  });
+});
+
+describe("对抗复审 r1 — I-1：final_url 尾部句读剥离（C4 取证定案）", () => {
+  it("上游散文「Successfully navigated to <url>.」→ 句点剥（真机复现 final_url 带尾点而 location.href 无点 = lasso 侧混入）", async () => {
+    const { client } = makeClient(
+      {
+        evaluate_script: () => fencedEval(JSON.stringify("https://old.test/")),
+        navigate_page: () =>
+          textContent("Successfully navigated to https://example.com/."),
+        take_snapshot: () => textContent("- page: ok"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse("https://example.com/", "navigate", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.final_url).toBe("https://example.com/"); // 尾点不随 URL 本体
+  });
+
+  it("wiki 括号尾 URL：句点剥、右括号保（…/Python_(programming_language) 合法尾字符——误剥比漏剥有害）", async () => {
+    const WIKI = "https://en.wikipedia.org/wiki/Python_(programming_language)";
+    const { client } = makeClient(
+      {
+        evaluate_script: () => fencedEval(JSON.stringify("https://old.test/")),
+        navigate_page: () => textContent(`Successfully navigated to ${WIKI}.`),
+        take_snapshot: () => textContent("- page: ok"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse(WIKI, "navigate", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.final_url).toBe(WIKI);
+  });
+
+  it("FQDN 根点形态（…com./）＋句末句点 → 只剥句读，根点保留（贪婪 run 不越界路径斜杠）", async () => {
+    const ROOTDOT = "https://example.com./";
+    const { client } = makeClient(
+      {
+        evaluate_script: () => fencedEval(JSON.stringify("https://old.test/")),
+        navigate_page: () => textContent(`Successfully navigated to ${ROOTDOT}.`),
+        take_snapshot: () => textContent("- page: ok"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse(ROOTDOT, "navigate", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.final_url).toBe(ROOTDOT);
+  });
+
+  it("URL 后无句读（裸串结尾）→ 原样回显（无句读可剥零变化）", async () => {
+    const { client } = makeClient(
+      {
+        evaluate_script: () => fencedEval(JSON.stringify("https://old.test/")),
+        navigate_page: () => textContent("Navigated to https://example.com/plain"),
+        take_snapshot: () => textContent("- page: ok"),
+      },
+      null,
+    );
+    const ch = new Bug09TestChannel(client);
+    const r = await ch.browse("https://example.com/plain", "navigate", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data!.final_url).toBe("https://example.com/plain");
+  });
+});

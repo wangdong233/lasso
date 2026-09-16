@@ -478,7 +478,14 @@ export abstract class BrowseChannel extends UiChannel {
       // 注入 + hash same-document 检测同享）再执行。
       const nav = this.actionDispatch.get("navigate");
       let navFinalUrl: string | undefined;
-      if (nav) navFinalUrl = (await nav(c, url, options)).final_url;
+      let navSdNavigated: boolean | undefined;
+      let navSdReloaded: boolean | undefined;
+      if (nav) {
+        const navPartial = await nav(c, url, options);
+        navFinalUrl = navPartial.final_url;
+        navSdNavigated = navPartial.same_document_navigated;
+        navSdReloaded = navPartial.same_document_reloaded;
+      }
       this.navSeenClients.add(c);
       this.lastNavigatedClient = c; // BUG-07 A⁺：与 navSeenClients 同两行写点（单写者）
       const partial = await handler(c, url, options);
@@ -486,6 +493,16 @@ export abstract class BrowseChannel extends UiChannel {
         ...partial,
         final_url: partial.final_url ?? navFinalUrl,
         did_navigate: true,
+        // 对抗复审第 1 轮 I-2（bug09）：先导导航的 D-1 双标注透传——此前只收割
+        // final_url，组合路径 hash-only 命中 + 补 reload 真实发生但调用方不可见
+        //（可观测性缺口；reload 行为本体正确）。非 same-document 导航 nav partial
+        // 不带双标注 → 组合回显同样缺席（与 navigate 本尊同形态）。
+        ...(navSdNavigated && !partial.same_document_navigated
+          ? {
+              same_document_navigated: true,
+              same_document_reloaded: navSdReloaded ?? false,
+            }
+          : {}),
       };
     }
     // current-page 模式 / current-page 动作族（wait/click/fill）/ console /
@@ -2007,7 +2024,14 @@ function extractFinalUrl(r: NavigateResult): string | undefined {
   if (!txt) return undefined;
   // chrome-devtools-mcp 现状返回结构不稳定，宽松解析：找 URL 子串
   const m = txt.match(/https?:\/\/\S+/);
-  return m ? m[0] : undefined;
+  if (!m) return undefined;
+  // C4 取证定案（bug09 对抗复审 I-1，doc/bugs/09 §C4）：上游 navigate_page 回
+  // 散文「Successfully navigated to <url>.」（chrome-devtools-mcp 1.7.0
+  // pages.js:179）——句末句读被 \S+ 吞入（真机复现 final_url 带尾点而
+  // location.href 无点 = lasso 侧混入）。决议 C4 裁决「lasso 侧混入 → 修」：
+  // 剥尾部句读类字符。括号/引号不剥——wiki URL 合法尾字符
+  // （…/Python_(programming_language) 形态），误剥比漏剥有害（诚实回显）。
+  return m[0].replace(/[.,;:!?]+$/, "");
 }
 
 /** take_snapshot 返回的 a11y 文本树：抽 title（首行）+ 整文本预览。 */
@@ -2138,6 +2162,13 @@ const CURRENT_PAGE_URL_LITERAL = "current-page";
  * 如实标注；evaluate 同页跳过分支（did_navigate:false）经 no_navigation
  * 模式派生剔除（决议 B——本调用确未导航，如实标注）。
  *
+ * 对抗复审第 1 轮 I-3（bug09）：no_reload 与 no_cache 同形——统一后
+ * doNavigate 对全部 ENSURE_NAV_ACTIONS 的先导导航分支读它（same-document
+ * 命中的 reload opt-out，:1335），却只钉在 navigate 表项下 → 组合路径实际
+ * 消费（reload 确被跳过）却谎报 ignored_options:["no_reload"]。修法与
+ * no_cache 完全同构：入 ensure-nav 六 action 表项 + NAV_ONLY_OPTION_KEYS
+ * 派生（无导航模式 = 真死键，如实标注）。
+ *
  * 入口级消费（browse() 分流，非本表）：steps 非空 → StepEngine 链（steps 路径
  * 不走 browseSingle，无本标注）；budget_ms 在 steps 路径为链预算、在单 action
  * evaluate 为单调用预算（BUG-08 决议 A-2 兑现——此前是「死键诚实标注」，现为
@@ -2146,17 +2177,17 @@ const CURRENT_PAGE_URL_LITERAL = "current-page";
 const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   /** BUG-08 决议 D-1：no_reload = same-document 检测命中的 opt-out（doNavigate 消费） */
   navigate: ["no_cache", "no_reload"],
-  /** ensure-nav 先导导航分支消费 no_cache（见上实施注） */
-  snapshot: ["no_cache"],
-  /** ensure-nav：先导航（消费 no_cache）再截屏（消费 screenshot.full/filePath） */
-  screenshot: ["screenshot", "no_cache"],
-  extract: ["extract_mode", "include_refs", "no_cache"],
+  /** ensure-nav 先导导航分支消费 no_cache/no_reload（见上实施注 + I-3 注） */
+  snapshot: ["no_cache", "no_reload"],
+  /** ensure-nav：先导航（消费 no_cache/no_reload）再截屏（消费 screenshot.full/filePath） */
+  screenshot: ["screenshot", "no_cache", "no_reload"],
+  extract: ["extract_mode", "include_refs", "no_cache", "no_reload"],
   click: ["selectors"],
   fill: ["selectors"],
   wait: ["expect"],
   /** BUG-08 决议 A-2：budget_ms = 单调用 MCP 超时（doEvaluate 传导 callTool）；
-   * 决议 B：no_cache 经 ensure-nav 先导导航分支消费（url ≠ 当前页时） */
-  evaluate: ["js", "budget_ms", "no_cache"],
+   * 决议 B：no_cache/no_reload 经 ensure-nav 先导导航分支消费（url ≠ 当前页时） */
+  evaluate: ["js", "budget_ms", "no_cache", "no_reload"],
   pdf: [
     "pdf_format",
     "pdf_landscape",
@@ -2166,19 +2197,20 @@ const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Object.fre
     "pdf_margin_left",
     "pdf_margin_right",
     "no_cache",
+    "no_reload",
   ],
   /** 决议 C（§5）：console_level/console_limit 由 doConsole 消费（filterConsoleMessages） */
   console: ["console_level", "console_limit"],
   /** network_include_bodies / network_timeout_ms 死键不入表（决议 r1） */
-  network: ["network_filter", "no_cache"],
+  network: ["network_filter", "no_cache", "no_reload"],
 });
 
 /**
- * BUG-07 决议 A⁺（§5.2③）：仅经导航消费的 options 键（doNavigate 读 no_cache；
- * 无导航即死键）。current-page 模式下运行时从 CONSUMED_OPTIONS 表派生剔除
- * （消费表仍是单一真源，模式变体不落表）。
+ * BUG-07 决议 A⁺（§5.2③）：仅经导航消费的 options 键（doNavigate 读
+ * no_cache/no_reload；无导航即死键）。current-page 模式下运行时从
+ * CONSUMED_OPTIONS 表派生剔除（消费表仍是单一真源，模式变体不落表）。
  */
-const NAV_ONLY_OPTION_KEYS = new Set(["no_cache"]);
+const NAV_ONLY_OPTION_KEYS = new Set(["no_cache", "no_reload"]);
 
 /**
  * BUG-08 决议 C：browse() 入口消费的 options 键（freshProfile 在 getMcpClient
