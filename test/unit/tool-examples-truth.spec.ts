@@ -402,9 +402,9 @@ describe("闸 1d · call-shape ⊆ 对应工具 zod schema 键", () => {
 describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
   const PER_CONSTANT_CHAR_CAPS: Record<string, number> = {
     // 基线实测（v1.27.0 @ 0cbd950 dist）+ 650 chars 增量帽，取整到百
-    BROWSE_HEADLESS_DESCRIPTION: 12_300, // 11,623 + 650 → 12,273
+    BROWSE_HEADLESS_DESCRIPTION: 13_000, // bug10 决议 B.3+D：12,228 + 707（RETURNS 契约句 + 静默吞提交 NOTE——决议 mandated 文本，非装饰膨胀）
     BROWSE_LOGGED_IN_DESCRIPTION: 6_000, // 5,273 + 650 → 5,923
-    BROWSE_HEADED_DESCRIPTION: 2_500, // 1,830 + 650 → 2,480
+    BROWSE_HEADED_DESCRIPTION: 2_500, // 1,830 + 650 → 2,480（bug10 D NOTE 后 2,464）
     SCREENSHOT_DESCRIPTION: 3_500, // 2,830 + 650 → 3,480
     ADMIN_DESCRIPTION: 4_600, // 3,903 + 650 → 4,553
   };

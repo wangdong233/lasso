@@ -187,6 +187,22 @@ lasso doctor
 
 **处置**（按 hint 指引）：① 快照需求先试 **L1 原子抢读**——`extract`/`snapshot` 带 url 单次调用内「导航→load→抢读」，驱逐窗口内往往来得及；② 需要页面驻留 JS（驱动搜索框+轮询结果）→ **先征得用户明确同意，再转 `browse_headed`**（会在屏幕弹真实窗口——惊讶面必须经同意，lasso 绝不自动升级通道）；③ 同 host 重定向形态不触发信号（host 级判据的已知盲区）——若 evaluate 死于 context destroyed 而无信号，按症状判读同上处置。全案见 [`bugs/09`](../bugs/09-2026-09-16-反爬根治通道与url语义统一决议.md) §8.A。
 
+### 2.18 tm.aliyun.com 分层拦截面实测 + 「click worked ≠ 提交被接受」（2026-09-17）
+
+**背景**：同一站点（tm.aliyun.com）的拦截不是全有全无——**拦截面按层分布，且会位移**。三层判定（页面加载层 / 表单提交层 / 人机挑战层）是反爬选型前提：先判哪一层拦你，再选通道，别拿 L0 的成功推断提交层也能过。
+
+**该站实测画像**（v1.27.1，[`实机报告 2026-09-17`](../bugs/实机报告-20260917-商标站滑块-cgEvent投递断裂-v1.27.1.md) P1 节；决议见 [`bugs/10`](../bugs/10-2026-09-17-商标站滑块批-cgEvent投递证伪与回执语义决议.md) 决议 D）：
+
+| 层 | headless | headed |
+|---|---|---|
+| 首页层（navigate + snapshot） | ✅ 完整可用（v1.26 时代「加载 2-3s 重定向驱逐」**未复现**——§2.17 的驱逐形态已消失） | ✅ 驻留十几分钟多轮稳定 |
+| 提交层（fill + click 提交查询） | 🔴 **静默吞掉**：fill/click 均报 worked，但 wait 超时、final_url 停留首页、页面零变化 | 🔴 弹阿里云滑块（人机挑战层） |
+| 挑战层（滑块 captcha） | 不可达（提交被吞，走不到这层） | 🔴 iframe 跨域——`evaluate` 与 AX **双盲**（组合配方见 desktop 工具描述） |
+
+**通则：click worked ≠ 提交被接受**。`click`/`fill` 的 worked 是「事件送达」语义——表单被前端反爬层或服务端拦截消费时**不产生任何错误**（steps 链里 wait 超时是唯一线索）。判定提交成败必须用结果证据：`wait url_contains`（跳转）/ `wait text`（结果页文案）/ 重新 `extract` 读页面，**不能用 act 回执**。browse_headless / browse_headed 工具描述的 NOTE 段与本节互为指针。
+
+**处置**：headless 提交层被吞 → 按程序转 `browse_headed`（**先征得用户同意**，§2.17 同款 consent 契约）；headed 弹滑块 → 滑块属人机挑战，自动化拖动涉 S2 干预与 captcha 伦理面，交人工完成后自动化再继续。`freshProfile`（§2.17 之外的第二逃生门）对「提交层服务端指纹拉黑」形态值得一试。
+
 ## 3. FAQ
 
 ### Q1：`npx lasso-mcp` 启动报 "command not found"
