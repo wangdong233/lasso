@@ -291,3 +291,110 @@ describe("INV-28 — CGEventProvider.ts 源文件 raw keycode 自检", () => {
     expect(codeOnly).toMatch(/raw_keycode_forbidden/);
   });
 });
+
+// ============================================================
+// bugs/10（2026-09-17）决议 A.2：落地回执 + 物理竞争警示透传
+// ============================================================
+describe("CGEventProvider — bugs/10 落地回执 / physical_input 透传", () => {
+  it("坐标动作 results 带 cursor_after+landed → actions_and_results 原样透传", async () => {
+    const { provider } = makeProvider({
+      cgevent_dispatch: () => ({
+        results: [
+          {
+            index: 0,
+            ok: true,
+            kind: "move",
+            cursor_after: { x: 100.0, y: 200.0 },
+            landed: true,
+          },
+        ],
+        physical_input: { attribution: "synthetic", seconds_since_mouse_moved: 0.08 },
+      }),
+    });
+    const r = await provider.act({
+      actions: [{ kind: "move", x: 100, y: 200 }],
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.actions_and_results?.[0]?.cursor_after).toEqual({ x: 100, y: 200 });
+    expect(r.data?.actions_and_results?.[0]?.landed).toBe(true);
+    // dispatch 级 physical_input 透传到 data（信号不策略：worked 不翻转）
+    expect(r.data?.physical_input).toEqual({
+      attribution: "synthetic",
+      seconds_since_mouse_moved: 0.08,
+    });
+  });
+
+  it("no_landing 动作（ok:false + cursor_after 诊断坐标）→ 透传错误与坐标", async () => {
+    const { provider } = makeProvider({
+      cgevent_dispatch: () => ({
+        results: [
+          {
+            index: 0,
+            ok: false,
+            error_kind: "cgevent_no_landing",
+            error: "click(833.0,453.0): cursor read back at (512.0,384.0) — synthetic event did not land",
+            cursor_after: { x: 512.0, y: 384.0 },
+          },
+        ],
+        physical_input: { attribution: "physical", seconds_since_mouse_moved: 0.02 },
+      }),
+    });
+    const r = await provider.act({
+      actions: [{ kind: "click", x: 833, y: 453 }],
+    });
+    // 全失败 → unknown（D-β：既有策略零改动——升 tier4 screenshotVlm）
+    expect(r.outcome).toBe("unknown");
+    expect(r.retrieval_method).toBe("cgevent_all_actions_failed");
+    expect(r.data?.actions_and_results?.[0]?.ok).toBe(false);
+    expect(r.data?.actions_and_results?.[0]?.error).toContain("did not land");
+    expect(r.data?.actions_and_results?.[0]?.cursor_after).toEqual({ x: 512, y: 384 });
+    // physical 竞争警示在 unknown 形态也透传（诊断面）
+    expect(r.data?.physical_input?.attribution).toBe("physical");
+  });
+
+  it("键盘动作无回执字段 → actions_and_results 形状不变（byte-identical 键路径）", async () => {
+    const { provider } = makeProvider({
+      cgevent_dispatch: () => ({
+        results: [{ index: 0, ok: true }],
+      }),
+    });
+    const r = await provider.act({
+      actions: [{ kind: "press", key: "Return" }],
+    });
+    expect(r.data?.actions_and_results?.[0]).toEqual({ ref: "Return", ok: true });
+    expect(r.data?.actions_and_results?.[0]?.cursor_after).toBeUndefined();
+    expect(r.data?.physical_input).toBeUndefined(); // wire 无该字段 → 不伪造
+  });
+
+  it("physical_input 坏形状（未知 attribution）→ 不透传（不伪造信号）", async () => {
+    const { provider } = makeProvider({
+      cgevent_dispatch: () => ({
+        results: [{ index: 0, ok: true }],
+        physical_input: { attribution: "quantum", seconds_since_mouse_moved: 1 },
+      }),
+    });
+    const r = await provider.act({
+      actions: [{ kind: "move", x: 1, y: 2 }],
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.physical_input).toBeUndefined();
+  });
+
+  it("scroll 无位置意图（cursor_after/landed = null）→ 两字段都不透传（不伪造）", async () => {
+    // 契约钉：回执字段不是判定字段——rust 端 no_landing 已转 ok:false，
+    // TS 端不做二次裁决（单一裁决点，R-CI-02）；null = 无回执面，原样缺席。
+    const { provider } = makeProvider({
+      cgevent_dispatch: () => ({
+        results: [
+          { index: 0, ok: true, kind: "scroll", cursor_after: null, landed: null },
+        ],
+      }),
+    });
+    const r = await provider.act({
+      actions: [{ kind: "scroll", dx: 0, dy: -3 }],
+    });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.actions_and_results?.[0]?.landed).toBeUndefined(); // null → undefined
+    expect(r.data?.actions_and_results?.[0]?.cursor_after).toBeUndefined();
+  });
+});

@@ -40,6 +40,7 @@ pub struct Request {
     /// "ping"|"tcc_status"|"ax_snapshot"|"ax_find"|"ax_act"|"screenshot"
     /// |"list_windows"|"applescript_run"|"cgevent_key"|"cgevent_hotkey"
     /// |"cgevent_dispatch"  （v0.4 M0.4b 加后 4 个）
+    /// |"cgevent_cursor_state"（bugs/10 决议 A.1：纯读原语——光标/空闲钟/主屏）
     pub method: String,
     /// 方法特定参数；未知字段忽略。`serde_json::Value::Null` 表示无参数。
     #[serde(default)]

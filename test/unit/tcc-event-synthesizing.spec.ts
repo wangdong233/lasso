@@ -40,13 +40,42 @@ describe("T11 — doctor #21 tcc_event_synthesizing 三态", () => {
     expect(c!.detail).toContain("已授权");
   });
 
-  it("not_required（macOS < 15）→ pass（无需配置）", async () => {
+  it("not_required（维度缺失/旧 helper）→ pass + advisory detail", async () => {
     const checks = await runRustDoctorChecks(
       rustWithTcc({ event_synthesizing: "not_required" }) as never,
     );
     const c = checks.find((x) => x.name === "tcc_event_synthesizing");
     expect(c!.status).toBe("pass");
     expect(c!.detail).toContain("not_required");
+    // bugs/10 A.4：advisory 分层文案（<15 Accessibility 是操作性授权）
+    expect(c!.detail).toContain("advisory");
+  });
+
+  it("undefined + macOS <15 → pass（advisory——Undefined 下投递实证可用）", async () => {
+    const checks = await runRustDoctorChecks(
+      rustWithTcc({
+        event_synthesizing: "undefined",
+        iohid_post_event: "undefined",
+        macos_major: 12,
+      }) as never,
+    );
+    const c = checks.find((x) => x.name === "tcc_event_synthesizing");
+    expect(c!.status).toBe("pass");
+    expect(c!.detail).toContain("undefined");
+    expect(c!.detail).toContain("advisory");
+  });
+
+  it("undefined + macOS ≥15 → warn（门控语义按未授权处理——旧行为维持）", async () => {
+    const checks = await runRustDoctorChecks(
+      rustWithTcc({
+        event_synthesizing: "undefined",
+        iohid_post_event: "undefined",
+        macos_major: 15,
+      }) as never,
+    );
+    const c = checks.find((x) => x.name === "tcc_event_synthesizing");
+    expect(c!.status).toBe("warn");
+    expect(c!.next_step).toContain("Event Synthesizing");
   });
 
   it("denied → warn + 引导文案（System Settings 路径）", async () => {
@@ -66,7 +95,7 @@ describe("T11 — doctor #21 tcc_event_synthesizing 三态", () => {
     expect(c!.status).toBe("pass");
   });
 
-  it("7 项 desktop check 顺序固定（#15-#21）", async () => {
+  it("8 项 desktop check 顺序固定（#15-#22；bugs/10 A.3 加 #22）", async () => {
     const checks = await runRustDoctorChecks(
       rustWithTcc({}) as never,
     );
@@ -78,6 +107,7 @@ describe("T11 — doctor #21 tcc_event_synthesizing 三态", () => {
       "ax_read_rate",
       "vlm_endpoint_reachable",
       "tcc_event_synthesizing",
+      "cgevent_delivery_selftest",
     ]);
   });
 });

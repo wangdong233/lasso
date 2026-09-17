@@ -412,6 +412,27 @@ const VIOLATION_SAMPLES = [
       ],
     },
   },
+  // ============================================================
+  // bugs/10（2026-09-17）U-R：INV-101/102/103 违规样本（TS 锚可注入面）
+  // ============================================================
+  {
+    inv: "INV-101",
+    desc: "CGEventProvider 丢落地回执透传（cursor_after 全量改名——静默失败面回潮）",
+    file: "desktop/CGEventProvider.ts",
+    mutation: { replaceAll: ["cursor_after", "cursorAfterDropped"] },
+  },
+  {
+    inv: "INV-102",
+    desc: "doctor #22 伦理门 env 键改名（agent 可触发光标位移的漂移形态）",
+    file: "desktop/desktop-doctor-checks.ts",
+    mutation: { replaceAll: ["LASSO_DOCTOR_INPUT_SELFTEST", "LASSO_SELFTEST_UNGATED"] },
+  },
+  {
+    inv: "INV-103",
+    desc: "doctor #21 丢 advisory 字段消费（iohid_post_event 改名——诚实化探测回潮为死字段）",
+    file: "desktop/desktop-doctor-checks.ts",
+    mutation: { replaceAll: ["iohid_post_event", "iohidPostEventDead"] },
+  },
 ];
 
 // ============================================================

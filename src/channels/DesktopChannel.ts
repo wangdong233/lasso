@@ -57,6 +57,9 @@ import type { InteractResult, ChannelStatus, Health } from "../types.js";
 import type { RustBridge } from "../subprocess/RustBridge.js";
 import { runDoctor, type DoctorOptions } from "../doctor/doctor.js";
 import { logger } from "../util/logger.js";
+// bugs/10 决议 C：desktop screenshot 默认落盘（browse 通道同款管理路径）
+import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 
 // ============================================================
 // wait tri-state（与 BrowseChannel.runExpect 同形状）
@@ -434,8 +437,15 @@ export class DesktopChannel extends UiChannel {
    *  - canvas/Metal pictureOnly 节点的兜底
    *  - LLM 显式要求"看一眼屏幕"
    *
-   * 返回 InteractResult<{ base64, format, width, height }>；tool 层包成
-   * DesktopResult 形状（actions_and_results 留空，screenshot_base64 写入）。
+   * bugs/10 决议 C（2026-09-17）：默认**落盘 + 返回路径**（对齐 browse 通道
+   * 唯一做法，R-CI-02——同目录同命名约定 /tmp/lasso-screenshot-<uuid>.png，
+   * lasso 管理路径，不经 LASSO_SCREENSHOT_DIR 白名单，与 browse 缺省路径
+   * 同一豁免语义）。此前全屏 860KB base64 直塞工具结果 → token 溢出强制
+   * 落盘，消费方两头受损。escape hatch：options.inline_base64:true 维持
+   * 旧行为（screenshot_base64 在响应内）。rust wire 零改动（TS 落盘）。
+   *
+   * 返回 InteractResult<DesktopResult>（默认含 screenshot_path + 尺寸；
+   * inline 时含 screenshot_base64）。
    */
   async screenshot(opts: DesktopOptions): Promise<InteractResult<DesktopResult>> {
     const shot = await this.vlmProvider.captureScreenshot(opts.screenshot_region);
@@ -449,11 +459,43 @@ export class DesktopChannel extends UiChannel {
         error: shot.error ?? "screenshot_failed",
       };
     }
+    // bugs/10 决议 C escape hatch：inline_base64=true → 旧行为（base64 在响应内）
+    if (opts.inline_base64 === true) {
+      return {
+        outcome: "worked",
+        data: {
+          actions_and_results: [],
+          screenshot_base64: shot.data.base64,
+          screenshot_format: "png",
+          screenshot_width: shot.data.width,
+          screenshot_height: shot.data.height,
+          fallback_used: false,
+        },
+        served_by: shot.served_by,
+        fallback_used: false,
+        retrieval_method: "screenshot",
+      };
+    }
+    // 默认路径：decode → 写 lasso 管理路径 → 只回绝对路径（token 经济）
+    const target = `/tmp/lasso-screenshot-${randomUUID()}.png`;
+    try {
+      await writeFile(target, Buffer.from(shot.data.base64, "base64"));
+    } catch (e) {
+      // 写失败如实报（不回退成 base64——把失败伪装成另一形态比拒绝更糟）
+      return {
+        outcome: "didnt",
+        data: null,
+        served_by: shot.served_by,
+        fallback_used: false,
+        retrieval_method: "screenshot_write_failed",
+        error: `screenshot_write_failed:${e instanceof Error ? e.message : String(e)} (target=${target}; retry or options.inline_base64:true)`,
+      };
+    }
     return {
       outcome: "worked",
       data: {
         actions_and_results: [],
-        screenshot_base64: shot.data.base64,
+        screenshot_path: target,
         screenshot_format: "png",
         // W1-DEF-8：把截图尺寸透出到返回 data（此前 channel 层丢弃，
         // 用例只能解 PNG IHDR 才能断言区域裁剪生效）
