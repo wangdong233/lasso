@@ -73,10 +73,13 @@ describeOrSkip("render-guardian —— 进程级持活与账空自退（r2 真�
       });
 
       // 1. 等 pidfile（执守自写 = 入口自检已过、装配完成）
+      // 🔴 8s→25s（2026-09-18 flake 收口）：全量并发把 load 推高时真 spawn node+装配链
+      // 可超 8s（实测两轮全量 1 红复现、单独/低载绿——资源竞争型）。timing-sensitive
+      // 池预算 30s 内取 25s；pidfile 是「出生完成」信号非竞态判定，等更久零语义损。
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error(`pidfile 超时；stderr=${stderr.slice(-400)}`)),
-          8_000,
+          25_000,
         );
         const poll = setInterval(() => {
           if (existsSync(pidPath)) {

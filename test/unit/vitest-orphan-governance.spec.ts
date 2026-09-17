@@ -306,8 +306,17 @@ describe("BUG-08 F — gate belt（runWithBelt）超时路径：根活时整树 
       }
       expect(existsSync(markerPath)).toBe(true);
       const workerPid = Number(readFileSync(markerPath, "utf8").trim());
-      const vitestMainPid = parentPid(workerPid); // forks 池：worker 的父 = vitest main
-      const npxRootPid = parentPid(vitestMainPid); // vitest main 的父 = npx（belt 的树根）
+      // 🔴 父链稳定窗（2026-09-18 flake 收口）：marker 出现 ≠ vitest main 的父已挂上
+      // npx——高载下进程表登记可滞后，parentPid 偶返 ≤1（实测全量并发 1 红复现）。
+      // 轮询至 npx 根可见（≤10s），超窗才断言——树快照语义（belt 开火前全树在册）不变。
+      let vitestMainPid = parentPid(workerPid); // forks 池：worker 的父 = vitest main
+      let npxRootPid = parentPid(vitestMainPid); // vitest main 的父 = npx（belt 的树根）
+      const rootDeadline = Date.now() + 10_000;
+      while (npxRootPid <= 1 && Date.now() < rootDeadline) {
+        await new Promise((r) => setTimeout(r, 200));
+        vitestMainPid = parentPid(workerPid);
+        npxRootPid = parentPid(vitestMainPid);
+      }
       const treeSnapshot = [npxRootPid, vitestMainPid, ...descendantsOf(npxRootPid)];
       expect(npxRootPid).toBeGreaterThan(1);
 
