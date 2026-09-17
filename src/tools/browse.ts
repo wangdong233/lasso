@@ -78,8 +78,14 @@ const JS_DESCRIBE =
 /** D.5：freshProfile（入口级消费键，从 ENTRY_CONSUMED_OPTION_KEYS 拼作用域）。 */
 const FRESH_PROFILE_DESCRIBE = `entry-level option (${[...ENTRY_CONSUMED_OPTION_KEYS].join(" | ")} — consumed at browse() entry before dispatch, all actions on supporting channels); headless-only: browse_logged_in rejects it (your real Chrome identity is never rotated)`;
 
-/** D.5：no_reload（作用域从 CONSUMED_OPTIONS 反查拼出）。 */
-const NO_RELOAD_DESCRIBE = `hash-only same-document opt-out (default = reload on hash-only targets); consumed by: ${actionsConsuming("no_reload").join(" | ")}; no-navigation calls echo it in data.ignored_options`;
+/** D.5：no_reload（作用域从 CONSUMED_OPTIONS 反查拼出）。
+ * bug11 决议 D-2（doc/bugs/11，2026-09-17）：补「不是跳过导航旗标」语义澄清句
+ * ——下午实机报告 P3「no_reload:true 仍 did_navigate:true」实测误会：该形态是
+ * 行为正确（实质不同 URL 恒导航——no_reload 只作用于 hash-only same-document
+ * 的补 reload）；同 URL（规范化含 hash）恒零导航是规则 2，与本键无关。顺带去
+ * 句内重复（"on hash-only targets" 与前半 hash-only 范围语同义——预算工序
+ * §5.1：mandated +133 − 句内去重 20）。 */
+const NO_RELOAD_DESCRIBE = `hash-only same-document opt-out (default = reload; this is NOT a skip-navigation flag — navigation still happens whenever the url differs; identical-URL targets never navigate at all); consumed by: ${actionsConsuming("no_reload").join(" | ")}; no-navigation calls echo it in data.ignored_options`;
 
 /** D.5：budget_ms 双语义（steps 链预算 + 单 action evaluate 的 MCP 超时——
  * 作用域从 CONSUMED_OPTIONS 反查拼出；r1 修正：禁「仅 steps 链」谎言）。 */

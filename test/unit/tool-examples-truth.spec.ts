@@ -442,12 +442,22 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     }
   });
 
-  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,160 chars", () => {
+  // bug11 决议 D-θ/§5.1-3（doc/bugs/11，2026-09-17）：L2 帽重定基线 2,160 → 2,300。
+  // 实测基线（HEAD=b20e23e，v1.28.0）：L2 = 2,157（browse 1,715 + screenshot 214
+  // + admin 228），余量 3。bug11 决议 D-2 mandated 文本（no_reload 语义澄清句
+  // 「this is NOT a skip-navigation flag — …」~133 chars，语义载荷全在——下午
+  // 实机报告 P3 的用户误会本体）远超余量；等量裁剪可行性核尽：action describe
+  // 被 (c) 项 exact toBe 模板钉死、freshProfile 开头被 (c) 项字面钉、filePath
+  // 被 (d) 项钉——可安全裁的既有冗余仅 ~31 chars（no_reload 句内 "on hash-only
+  // targets" 重复 + filePath 主语），缺口 ~80+ 只能靠删真语义或跨 worker 冲突
+  // 补。按 §5.1-3 走「显式提帽」先例（bug10 B.3+D 同款）：本 commit 只提帽，
+  // 功能文本在后续单主题 commit 落（净增 +113：133 mandated − 20 句内去重）。
+  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,300 chars", () => {
     const l2 =
       describeChars(browseSchema) +
       describeChars(screenshotSchema) +
       describeChars(adminSchema);
-    expect(l2, `L2 = ${l2}`).toBeLessThanOrEqual(2_160);
+    expect(l2, `L2 = ${l2}`).toBeLessThanOrEqual(2_300);
   });
 });
 

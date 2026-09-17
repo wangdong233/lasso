@@ -2145,6 +2145,15 @@ async function doFill(
   return { preview: `filled ${fillElems.length} fields` };
 }
 
+/**
+ * 决议 D-1（doc/bugs/11，2026-09-17）：wait 超时的 window.open 观察面教学句。
+ * 下午实机报告实验 1 的「无跳转」真身是观察面错误——submit 走 `window.open`
+ * 开新 tab，原选中页 URL 永不变 → `wait url_contains` 结构性失明（D-ε）。
+ * 首次让该形态的超时自带归因线索（教学不是行动——不自动翻页不自动重试）。
+ */
+const WAIT_NEW_TAB_TEACHING =
+  "; if the action opened a NEW tab (window.open), the original page URL never changes and this wait cannot succeed — inspect open pages or use the desktop channel";
+
 async function doWait(
   c: McpClient,
   _url: string,
@@ -2179,7 +2188,9 @@ async function doWait(
       ...(cond.timeout_ms ? { timeout: cond.timeout_ms } : {}),
     })) as { isError?: boolean };
     if (r.isError) {
-      throw new Error(`wait_timeout:${JSON.stringify(cond.text).slice(0, 80)}`);
+      throw new Error(
+        `wait_timeout:${JSON.stringify(cond.text).slice(0, 80)}${WAIT_NEW_TAB_TEACHING}`,
+      );
     }
     return { preview: `waited for "${cond.text}"` };
   }
@@ -2188,7 +2199,9 @@ async function doWait(
   // 超时同 wait_timeout 前缀（classifyBrowseError 落 unknown——可重试语义一致）。
   const verdict = await expectPoll(c, cond);
   if (verdict === "failed") {
-    throw new Error(`wait_timeout:${JSON.stringify(cond).slice(0, 80)}`);
+    throw new Error(
+      `wait_timeout:${JSON.stringify(cond).slice(0, 80)}${WAIT_NEW_TAB_TEACHING}`,
+    );
   }
   return { preview: `waited for ${JSON.stringify(cond).slice(0, 80)}` };
 }

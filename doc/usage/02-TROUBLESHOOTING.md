@@ -203,6 +203,40 @@ lasso doctor
 
 **处置**：headless 提交层被吞 → 按程序转 `browse_headed`（**先征得用户同意**，§2.17 同款 consent 契约）；headed 弹滑块 → 滑块属人机挑战，自动化拖动涉 S2 干预与 captcha 伦理面，交人工完成后自动化再继续。`freshProfile`（§2.17 之外的第二逃生门）对「提交层服务端指纹拉黑」形态值得一试。
 
+### 2.19 「提交成功了却 wait 超时」——window.open 新 tab 观察面（2026-09-17，bug11 决议 D-1）
+
+**现象**：`fill` + `click` 提交后 `wait url_contains` 超时、`final_url` 停在原页、页面零变化——看起来像「提交被吞」。但操作其实**已经成功**：提交走 `window.open` 打开了**新 tab**，结果页在新 tab 里。
+
+**机理**：`wait url_contains` / `wait text` 只观察**当前选中的页**。submit 走 `window.open` 形态时，原选中页 URL **永不变化**——这不是 fill/click 失败，是观察面选错了页（tm.aliyun.com 搜索即此形态：搜索结果在新 tab，原页 URL 不变，所等子串与真实 URL 模式也不符——[`实机报告 2026-09-17 下午`](../bugs/实机报告-20260917下午-输入保护层拦截-未到达滑块-v1.28.0.md) 实验 1「无跳转」的真身）。
+
+**判定与处置**：
+
+1. wait 超时错误自带教学句（bug11 起）：`…; if the action opened a NEW tab (window.open), the original page URL never changes and this wait cannot succeed — inspect open pages or use the desktop channel`——第一次让该形态的超时自带归因线索。
+2. 正确观察面：检查打开的页面（新 tab 里的结果），或用 `desktop` 通道看真实窗口；判定提交成败用**结果证据**（新 tab 的 URL/文案），不能用原页的 `wait`。
+
+**链配方（hydration 竞争的通用防线）**：如果怀疑「fill 赶在页面 JS 引擎初始化前执行、值被后续初始化覆盖」——正确处置是**显式 wait step**（已支持，无需新机制）：
+
+```
+navigate → wait{selector:<目标输入框>} → fill → press/click
+```
+
+先等输入框就位再填值，页面引擎初始化竞争即被显式序消灭。注意：bug11 白盒复析中「fill 时序竞争」假说**无 reproducer**（受控重析当天 uid 路 fill 全链路成功——决议 D-1 证伪登记，无 reproducer 不写防御代码）；本节配方是通用防线，不是对该假说的修复。
+
+### 2.20 `no_reload:true` 还是 `did_navigate:true`——不是 bug，是语义（2026-09-17，bug11 决议 D-2）
+
+**现象**：传了 `no_reload:true`，返回仍报 `did_navigate:true`，像是被忽略了。
+
+**行为矩阵**（语义钉——`test/unit/bug11-p2p3-semantics.spec.ts` 与本表互为锚）：
+
+| 形态 | `did_navigate` | same_document 标注 | `no_reload` 效果 |
+|---|---|---|---|
+| URL 规范化后全等（含 hash） | `false`（规则 2 零导航直执行） | 无 | 死键 → `ignored_options` 如实标注 |
+| hash-only 差异，默认 | `true` | `navigated:true, reloaded:true` | —（默认补 reload） |
+| hash-only 差异，`no_reload:true` | `true` | `navigated:true, reloaded:false` | **跳过补 reload**（SPA 自管 hash 的显式逃生） |
+| 实质不同 URL | `true` | 无 | 消费但无 same-document 分支（「期权」语义） |
+
+**结论**：`no_reload` **不是「跳过导航」旗标**——它只作用于 hash-only same-document 命中时的**补 reload**；实质不同的 URL 恒导航；完全相同的 URL 恒零导航（那是 url 语义规则 2，与本键无关）。误会源是旧 describe 缺这句（bug11 起已补：「this is NOT a skip-navigation flag — navigation still happens whenever the url differs; identical-URL targets never navigate at all」）。
+
 ## 3. FAQ
 
 ### Q1：`npx lasso-mcp` 启动报 "command not found"
