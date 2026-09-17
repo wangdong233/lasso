@@ -12,7 +12,7 @@ doc/
 ├── testing/      功能测试清单                          01
 ├── governance/   审计与裁决档案（轻量 ADR，按时间线）   01-12
 ├── history/      执行记录（测试执行证据本体，原样冻结）  01
-├── bugs/         BUG 档案                              01-09（+04-附录E）
+├── bugs/         BUG 档案                              01-10（+04-附录E）
 ├── 根级 *.md     渲染档文档组（决议/需求/对接/配方/裁决/提案/登记，见 ⑦）
 ├── archive/      历史快照（parse 36 件 + research 17 件，编号保留原样不回改）
 ├── assets/       图片资产（打赏二维码）
@@ -83,6 +83,7 @@ doc/
 | [`bugs/07-2026-09-10-消费方台账L4-截图必经重导航无法截当前页面状态.md`](bugs/07-2026-09-10-消费方台账L4-截图必经重导航无法截当前页面状态.md) | 消费方台账 L4：`action=screenshot` 省略 url = 截当前受管页（零导航） | 已根治（v1.25.0，INV-95） |
 | [`bugs/08-2026-09-15-商标查询马拉松-五组修复决议.md`](bugs/08-2026-09-15-商标查询马拉松-五组修复决议.md) | 反爬马拉松 A-F 六组决议：evaluate 预算/超时类型化 + sidecar 治理 browser_recycle + freshProfile 逃生门 + hash 导航默认 reload + 端口三层解析/fetch 细分 + vitest threads/gate 追杀带 | 已实施（v1.26.0 预写，INV-96；§9 实施定稿 + §11 对抗复审 + §12 F 组） |
 | [`bugs/09-2026-09-16-反爬根治通道与url语义统一决议.md`](bugs/09-2026-09-16-反爬根治通道与url语义统一决议.md) | 反爬根治通道（防御梯 L0/L1/L2 + `browse_headed` 有头档两态生命周期）+ url 语义统一（单一 ensure-navigation，假数据面根治）+ P2 批 C1-C5；r1 设计修订 + §5r2/§5r3 两轮对抗否定复审 + §7 实施定稿 + §8 尾款轮 | **定稿（尾款清偿+收卷终态，v1.27.0 预写）**：B/C1-C5/HeadedChannel 已合并三轮复审 clean；**§7.2 移交项 1/2/3 全清偿**——WT4 驱逐哨兵（§8.A/8.F，INV-98 真锚）+ steps 链真值化（§8.B/8.E.1，INV-100）+ macOS occlusion 定案（§8.C/8.E.2，A.4④ 终值闭合）；§8.H 收卷终态核验；遗留仅开放项 6、R-INT-06 触发登记（**二次触发**，testing/01 ④′）、分支 ref 卫生 |
+| [`bugs/10-2026-09-17-商标站滑块批-cgEvent投递证伪与回执语义决议.md`](bugs/10-2026-09-17-商标站滑块批-cgEvent投递证伪与回执语义决议.md) | 商标站滑块批：cgEvent 投递断裂**证伪**（三路白盒 + 受控计数器页——真凶=并发物理输入竞争）→「修复」重定向为**消灭静默失败**（决议 A：landing 回执 / 物理竞争检测 / doctor 光标 wiggle 自检〔opt-in〕/ TCC 探测诚实化）+ 决议 B evaluate 表达式自动返回（P2 静默错值根治）+ 决议 C desktop 截图默认落盘（P3 token 爆炸）+ 决议 D 检测面文档（P1 拦截面位移——TROUBLESHOOTING §2.18）；§5 双 worktree 拆分（U-R rust+desktop / U-B browse+docs，文件域互斥） | 定稿（2026-09-17，双单元实施中——U-B 半已落地：evaluateFunctionArg 五形态 + js_form 教学回执 + §2.18 + 描述 NOTE；U-R 半见其 worktree） |
 
 ## ⑥ archive/ — 历史档案（快照性质，不回改，编号保留原样）
 
@@ -111,10 +112,10 @@ doc/
 
 | 文档 | 写到版本 | 最后同步 |
 |---|---|---|
-| ../README.md | v1.27.0 预写（changelog 未发版前缀双语齐；发版时改版本行 + 工具清单面随发版更新） | 2026-09-16 |
+| ../README.md | v1.28.0 预写（BUG-10 U-B 半 changelog 双语齐——evaluate 契约 + §2.18；版本行仍 v1.27.1 随 package.json，发版时再升） | 2026-09-17 |
 | ../ARCHITECTURE.md | v1.27.0 预写态（尾款轮+合并轮增补：§7/§10/§11/§14/§15/§16.7——尾款三件〔哨兵/链真值/occlusion〕+ 计数 **3120 passed + 1 skipped / 192 文件 / 100 INV 实装**；§14 v1.27.0 要点补齐 ⑧⑨） | 2026-09-16 |
 | usage/01（KEY-GUIDE） | v1.27.0 预写（BUG-09 W2 批补 `LASSO_HEADED_IDLE_MS` / `LASSO_HEADED_HARD_CAP_MS` / `LASSO_FALLBACK_CROSS_CHANNEL` + file-from 三工具） | 2026-09-16 |
-| usage/02（TROUBLESHOOTING） | v1.27.0 预写（尾款批收卷补 §2.17 `page_redirect_eviction_suspected` 驱逐释义；v1.26.0 批 §10 四配方：9222 被占/freshProfile/长 evaluate/fetch 细分） | 2026-09-16 |
+| usage/02（TROUBLESHOOTING） | v1.28.0 预写（BUG-10 决议 D：新增 §2.18 tm.aliyun.com 分层拦截面实测 + 「click worked ≠ 提交被接受」通则；v1.27.0 批 §2.17 驱逐释义；v1.26.0 批 §10 四配方） | 2026-09-17 |
 | usage/03（SELECTOR-MAINTENANCE） | v1.13 + v1.15 局部（http-serp 消费面待补，见 governance/07 §2.6） | 2026-08-27（仅修头部断链） |
 | architecture/01（基线冻结） | v0.x 快照 + 仓迁注 | 2026-08-27 |
 | architecture/02（排期） | v1.27.0 预写（BUG-09 收卷轮：v1.26.0 行转 ✅ 已发布 + 新增 v1.27.0 ⏳ 行） | 2026-09-16 |
@@ -127,7 +128,7 @@ doc/
 | governance/08 / 09 / 10 | v1.17.2 / v1.18.0-1 / v1.18.2 | 2026-08-19/20 |
 | governance/11 / 12 | v1.18.7 / v1.22.1 | 2026-08-31 / 2026-09-09 |
 | bugs/01-02 | v1.18.4 / v1.18.6（已根治） | 2026-08-23/31 |
-| bugs/03-09 | v1.21.0 / v1.22.0+附录E / v1.23.0 / v1.24.0 / v1.25.0 / v1.26.0 已发布 / v1.27.0 预写（**定稿·尾款清偿**，§7.2 移交项 1/2/3 全清 + §8.0-8.H） | 2026-09-07~16 |
+| bugs/03-10 | v1.21.0 / v1.22.0+附录E / v1.23.0 / v1.24.0 / v1.25.0 / v1.26.0 已发布 / v1.27.0 预写（**定稿·尾款清偿**，§7.2 移交项 1/2/3 全清 + §8.0-8.H）/ v1.28.0 预写（bugs/10，双单元实施中） | 2026-09-07~17 |
 | 根级渲染档文档组（7 件） | v1.19-v1.20 落地面 + 登记开项 | 2026-09-10（登记 #10 最新核） |
 
 ## 历史遗漏盘点（BUG-09 尾款批 doc 收卷轮，2026-09-16）
