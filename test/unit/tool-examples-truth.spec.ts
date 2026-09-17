@@ -402,7 +402,7 @@ describe("闸 1d · call-shape ⊆ 对应工具 zod schema 键", () => {
 describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
   const PER_CONSTANT_CHAR_CAPS: Record<string, number> = {
     // 基线实测（v1.27.0 @ 0cbd950 dist）+ 650 chars 增量帽，取整到百
-    BROWSE_HEADLESS_DESCRIPTION: 13_000, // bug10 决议 B.3+D：12,228 + 707（RETURNS 契约句 + 静默吞提交 NOTE——决议 mandated 文本，非装饰膨胀）
+    BROWSE_HEADLESS_DESCRIPTION: 13_900, // bug11 决议 §5.1-3 显式提帽（+900）：type/press 两 action 行 + input_guard_suspected RETURNS 句（决议 mandated 文本，紧缩后 13,862；等量裁剪已做——evaluate 块 URL SEMANTICS 与 UNIFIED 段重复 body 收敛为指针，bug10 B.3+D 先例：提帽是一次显式决策）
     BROWSE_LOGGED_IN_DESCRIPTION: 6_000, // 5,273 + 650 → 5,923
     BROWSE_HEADED_DESCRIPTION: 2_500, // 1,830 + 650 → 2,480（bug10 D NOTE 后 2,464）
     SCREENSHOT_DESCRIPTION: 3_500, // 2,830 + 650 → 3,480
@@ -418,14 +418,14 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     }
   });
 
-  it("L1 fleet：descriptions.ts 19 常量 Σ ≤ 58,900 chars（55,236 基线 + 3,600）", () => {
+  it("L1 fleet：descriptions.ts 19 常量 Σ ≤ 59,850 chars（bug11 §5.1-3 提帽 +950：键盘原语行 + guard 信号句，紧缩+去重后 59,810）", () => {
     const fleet = Object.entries(CONSTANTS)
       .filter(([k]) => k !== "READ_TEXT_DESCRIPTION")
       .reduce((n, [, v]) => n + v.length, 0);
     expect(
       fleet,
       `fleet = ${fleet}（19 常量，read_text 不计）`,
-    ).toBeLessThanOrEqual(58_900);
+    ).toBeLessThanOrEqual(59_850);
   });
 
   it("EXAMPLES 段 ≤5 行/工具（只数 EXAMPLES 块内非头行；内联段落不计）", () => {
@@ -452,7 +452,10 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
   // targets" 重复 + filePath 主语），缺口 ~80+ 只能靠删真语义或跨 worker 冲突
   // 补。按 §5.1-3 走「显式提帽」先例（bug10 B.3+D 同款）：本 commit 只提帽，
   // 功能文本在后续单主题 commit 落（净增 +113：133 mandated − 20 句内去重）。
-  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,300 chars", () => {
+  // 〔U-D 半 4c05f64 提帽理由如上；U-T 半 ed72eda 的 +140 派生项见下行 it 标题。
+  //   并树注意：U-D +113 与 U-T +140 同入本 fleet——双单元并树后的实测并值
+  //   若超 2,300，由合并线按 §5.1-3 另立单主题提帽 commit 覆盖（帽是显式决策）。〕
+  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,300 chars（bug11 §5.1-3 提帽 +140：BROWSE_ACTIONS 扩员派生 +30×2 / selectors 派生 +7 / press key describe）", () => {
     const l2 =
       describeChars(browseSchema) +
       describeChars(screenshotSchema) +
