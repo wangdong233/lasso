@@ -376,14 +376,15 @@ export class CGEventProvider {
       const errKind =
         typeof r.error_kind === "string" ? r.error_kind : undefined;
       const errMsg = typeof r.error === "string" ? r.error : undefined;
-      // bugs/10 Tier A：读回坐标（null=读失败/无位置意图——原样透传不伪造）
-      const cursorAfter =
+      // bugs/10 Tier A：读回坐标（两轴均为有限数字才透传——否则缺席，不伪造）
+      const rawCursor =
         r.cursor_after && typeof r.cursor_after === "object"
-          ? {
-              x: numOrUndefined((r.cursor_after as Record<string, unknown>).x),
-              y: numOrUndefined((r.cursor_after as Record<string, unknown>).y),
-            }
-          : undefined;
+          ? (r.cursor_after as Record<string, unknown>)
+          : null;
+      const cx = numOrUndefined(rawCursor?.x);
+      const cy = numOrUndefined(rawCursor?.y);
+      const cursorAfter =
+        cx !== undefined && cy !== undefined ? { x: cx, y: cy } : undefined;
       const landed =
         r.landed === true || r.landed === false ? r.landed : undefined;
       actionsAndResults.push({
@@ -439,7 +440,12 @@ function numOrUndefined(v: unknown): number | undefined {
 /** bugs/10 Tier C：physical_input 形状读取（坏形状 → undefined，不伪造）。 */
 function readPhysicalInput(
   v: unknown,
-): { attribution: string; seconds_since_mouse_moved: number } | undefined {
+):
+  | {
+      attribution: "idle" | "synthetic" | "physical";
+      seconds_since_mouse_moved: number;
+    }
+  | undefined {
   if (!v || typeof v !== "object") return undefined;
   const o = v as Record<string, unknown>;
   const attribution = o.attribution;
