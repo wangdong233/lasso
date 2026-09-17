@@ -147,6 +147,7 @@ describe("bug11-B — type uid 路（click 获得焦点 → type_text 逐字）"
     expect(calls[typeIdx!].args).toEqual({ text: "喵虎" });
     // uid 路零探针（信号值守区 = ref 路）
     expect(calls.filter((c) => c.name === "evaluate_script")).toHaveLength(0);
+    expect(r.data!.input_guard_suspected).toBeUndefined();
   });
 
   it("多字段 uid 表：逐字段 click→type_text 序列（键序保持）", async () => {
@@ -196,7 +197,7 @@ describe("bug11-B — type ref 路（locate 预检 → focus 回执 → type_tex
     expect(r.outcome).toBe("worked");
     expect(r.data!.preview).toBe("typed 1 fields (1 via lasso ref)");
     const evals = calls.filter((c) => c.name === "evaluate_script");
-    expect(evals).toHaveLength(2); // locate + focus
+    expect(evals).toHaveLength(3); // locate + focus + guard probe（决议 C 值守区）
     const typeIdx = calls.findIndex((c) => c.name === "type_text");
     const focusIdx = calls.findIndex((c) => c.name === "evaluate_script" && String(c.args.function).includes("el.focus()"));
     expect(focusIdx).toBeGreaterThan(-1);

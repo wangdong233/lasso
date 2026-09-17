@@ -103,8 +103,14 @@ import {
   REF_PATTERN,
   type ExtractRef,
 } from "../browse/extract-refs.js";
-// doc/bugs/11 决议 B（2026-09-17）：type action ref 路的 focus expr（input-guard.ts）
-import { buildRefFocusExpr } from "../browse/input-guard.js";
+// doc/bugs/11 决议 B+C（2026-09-17）：type/press 键盘原语 + 输入保护层诚实信号
+//（三探针纯函数 expr——input-guard.ts 头注载红线：只供信号绝不自动改道）
+import {
+  buildGuardProbeExpr,
+  buildRefFocusExpr,
+  toSignal,
+  type GuardProbeResult,
+} from "../browse/input-guard.js";
 
 // =====================================================// 类型
 // ============================================================
@@ -694,6 +700,20 @@ export abstract class BrowseChannel extends UiChannel {
     return "suspected eviction OR unattributed cross-host move (not confirmed — a site redirect, an earlier click's side effect, or a user click are indistinguishable here); snapshot may still work via L1 atomic read (extract/snapshot with url); for JS residency ASK THE USER FIRST, then retry with browse_headed({url, action:'snapshot'}) (opens a real on-screen window)";
   }
 
+  /**
+   * doc/bugs/11 决议 C（2026-09-17）：输入保护层信号 hint 组装点
+   * （evictionHint 同款 house pattern——protected，子类可 override 措辞）。
+   *
+   * 双假设措辞（认识论诚实——探针是机理侧证非定谳）+ 三条合法出路：换可信
+   * 原语（type）/ 换快照 uid 路（fill_form 短值逐字）/ 请用户物理输入。
+   * 🔴 INV-98(e) 同款源锚红线：片段内禁双引号——单引号形参。
+   * 红线（§C.3）：hint 是指令不是行动——通道层检测到保护层**绝不自动改道**
+   * （不换 type、不重试、不换通道；惊吓面与归因权交给知道真相的调用方）。
+   */
+  protected inputGuardHint(): string {
+    return "suspected site input guard (not confirmed — value setter is non-native / filled value was not kept / React tracker diverged; script-set values may be rewritten on blur or re-render); per-key typing enters the trusted input pipeline: browse_headless({url:'...', action:'type', selectors:{'<uid>':'<text>'}}) — or re-extract and fill via snapshot uid (fill_form types short values per key); if typed keys are also rejected, ask the user to type physically";
+  }
+
   /** A.5r2-2：驱逐信号唯一写径（R-INT-07 单逻辑写者；同窗重复检出覆盖不叠加）。 */
   private markEviction(from: string, to: string, client: McpClient): void {
     this.pendingEviction = { from, to, at_ms: Date.now(), client };
@@ -1099,6 +1119,12 @@ export abstract class BrowseChannel extends UiChannel {
           // 尾款轮 A.5r2-3（doc/bugs/09 §8.A）：驱逐信号——仅在场时发射
           //（一次性消费，下一返回即清；认识论诚实：suspected 非完成时断言）。
           ...(ev ? { eviction_suspected: ev.eviction_suspected } : {}),
+          // doc/bugs/11 决议 C（2026-09-17）：输入保护层信号——ref 路 fill/type
+          // 探针命中时发射（advisory：值此刻在 DOM，风险在 blur 后——不伪造失败，
+          // outcome 照旧 worked）。per-call partial 携带 = 天然一次性（无通道态）。
+          ...(partial.input_guard_suspected
+            ? { input_guard_suspected: partial.input_guard_suspected }
+            : {}),
         },
         served_by: this.name,
         fallback_used: false,
@@ -1106,6 +1132,12 @@ export abstract class BrowseChannel extends UiChannel {
         // 等——单次调用可见，读后即清）
         retrieval_method: this.retrievalMethod() + this.consumeRetrievalNote(),
         ...(ev ? { hint: ev.hint } : {}),
+        // 决议 C：信号 hint（consumeEviction 同款单组装点）。与驱逐 hint 并存时
+        // guard 优先（action 本地证据 > 通道级漂移；eviction_suspected 数据字段
+        // 仍在场不丢）。
+        ...(partial.input_guard_suspected
+          ? { hint: this.inputGuardHint() }
+          : {}),
       };
     } catch (e) {
       // BUG-08 决议 A-3①（doc/bugs/08，2026-09-15）：MCP 请求超时类型化——SDK
@@ -2146,8 +2178,13 @@ async function doFill(
         elements: uidEntries.map(([uid, value]) => ({ uid, value })),
       });
     }
+    // doc/bugs/11 决议 C：ref 路 = 信任阶梯第 2 层值守区——填充后一次三探针
+    //（纯读 + 页内 250ms sleep；uid 路 v1 不探——第 1 层可信管道）。advisory：
+    // outcome 照旧 worked，值此刻在 DOM，风险在 blur 后。
+    const guard = await probeInputGuard(c, refEntries);
     return {
       preview: `filled ${entries.length} fields (${refEntries.length} via lasso ref)`,
+      ...(guard ? { input_guard_suspected: guard } : {}),
     };
   }
 
@@ -2164,6 +2201,28 @@ async function doFill(
  */
 const WAIT_NEW_TAB_TEACHING =
   "; if the action opened a NEW tab (window.open), the original page URL never changes and this wait cannot succeed — inspect open pages or use the desktop channel";
+
+/**
+ * doc/bugs/11 决议 C：三探针执行（doFill/doType ref 路共用）。best-effort——
+ * 探测 evaluate 抛错/解不出值 → null（探测失败不是保护层证据，不发假信号）。
+ * 红线（§C.3）：探针纯读（页内 sleep，零事件派发、零 blur、零 focus 别处）。
+ */
+async function probeInputGuard(
+  c: McpClient,
+  refEntries: Array<[string, string]>,
+): Promise<{ checks: string[]; target: string; at_ms: number } | null> {
+  try {
+    const r = (await c.callTool("evaluate_script", {
+      function: buildGuardProbeExpr(
+        refEntries.map(([ref, value]) => ({ ref, value })),
+      ),
+    })) as EvaluateResult;
+    if (r.isError) return null; // 上游错误：无观测，不猜
+    return toSignal(parseEvalResult(r) as GuardProbeResult | undefined);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * doc/bugs/11 决议 B.1：type action——逐字键入（可信 CDP 输入管道）。
@@ -2195,6 +2254,7 @@ async function doType(
   const entries = Object.entries(elements);
   const refEntries = entries.filter(([k]) => REF_PATTERN.test(k));
   const uidEntries = entries.filter(([k]) => !REF_PATTERN.test(k));
+  let guard: { checks: string[]; target: string; at_ms: number } | null = null;
 
   // —— ref 路（先行——与 doFill 的 ref→uid 混合序一致）——
   if (refEntries.length > 0) {
@@ -2234,6 +2294,9 @@ async function doType(
       }
       await callUpstreamTypeText(c, text);
     }
+    // 决议 C：ref 路（第 2 层值守区）——键入后三探针（纯读；typed keys 被拒
+    // 也在此显形——hint 的「ask the user to type physically」终态分支）
+    guard = await probeInputGuard(c, refEntries);
   }
 
   // —— uid 路（无探针——第 1 层可信管道，v1 边界如实文档化）——
@@ -2244,6 +2307,7 @@ async function doType(
 
   return {
     preview: `typed ${entries.length} fields (${refEntries.length} via lasso ref)`,
+    ...(guard ? { input_guard_suspected: guard } : {}),
   };
 }
 

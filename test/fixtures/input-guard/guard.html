@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!--
+  bug11 决议 C §6-2 fixture：本地输入保护层三型机制（doc/bugs/11）
+
+  三元素各模拟一种「脚本设值被吞、可信键入存活」的机理（isTrusted 判别——
+  这是对「站点只接受真实输入」之墙的诚实建模，非绕过手法）：
+    r1 #react-like  —— React 16/17 受控组件模拟：_valueTracker + blur 回写
+                      （脚本写入不进 state → blur 时回写已提交 state；可信键入
+                      的 input 事件更新 state → blur 后存活）。探针签名：G3
+    r2 #accessor    —— 实例 value accessor 劫持：setter 记录+转发、getter 透传
+                      （决议 §0 断言 8 同族机理——透明但可探测）。探针签名：G1
+    r3 #async-reset —— 异步重置族：untrusted input 事件后 ~50ms 清值
+                      （「MutationObserver 异步重置」族的现实形态——value 是
+                      property 不是 attribute，MO 观察不到，事件监听 + 延时清
+                      才是该族可实现的形态；fixture 注释如实记录此偏离）。
+                      探针签名：G2
+
+  断言面（integration spec）：
+    - ref 路 fill：脚本设值 → 各元素触发对应 check（r1→G3 / r2→G1 / r3→G2）
+    - type 动作（上游 type_text 逐字 CDP 派发，isTrusted:true）：三元素全存活
+    - uid 路 fill（fill_form 短值 = puppeteer 逐字 typing）：blur 后存活
+
+  元素带 data-lasso-uid（模拟一次 extract include_refs 的注入产物——ref 路消
+  费该属性，fixture 预置等价于先跑过 extract）。
+-->
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>bug11 input-guard fixture</title>
+</head>
+<body>
+  <h1>bug11 input guard fixture</h1>
+  <form onsubmit="return false">
+    <label>react-like
+      <input id="react-like" data-lasso-uid="r1" aria-label="react-like" />
+    </label>
+    <label>accessor
+      <input id="accessor" data-lasso-uid="r2" aria-label="accessor" />
+    </label>
+    <label>async-reset
+      <input id="async-reset" data-lasso-uid="r3" aria-label="async-reset" />
+    </label>
+  </form>
+  <script>
+    (function () {
+      // —— r1: React 16/17 受控组件模拟（_valueTracker + blur 回写）——
+      // 脚本写入 el.value + 合成 input（isTrusted:false）不更新受控 state →
+      // blur 时回写 state（值「消失」——tm.aliyun.com 实测机理）。
+      // 可信键入（CDP Input.dispatchKeyEvent，isTrusted:true）的 input 事件
+      // 更新 state → blur 回写无害。
+      var el1 = document.getElementById("react-like");
+      var state1 = "";
+      el1._valueTracker = { getValue: function () { return state1; } };
+      el1.addEventListener("input", function (e) {
+        if (e.isTrusted) state1 = el1.value;
+      });
+      el1.addEventListener("blur", function () {
+        var d = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, "value");
+        d.set.call(el1, state1);
+      });
+
+      // —— r2: 实例 value accessor 劫持（setter 记录+转发、getter 透传）——
+      // 透明（值照常读写——G2 不命中）但实例 own property 可探测（G1 命中）。
+      var el2 = document.getElementById("accessor");
+      var nativeGet = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, "value").get;
+      var nativeSet = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, "value").set;
+      el2.__hijackLog = [];
+      Object.defineProperty(el2, "value", {
+        get: function () { return nativeGet.call(el2); },
+        set: function (x) {
+          el2.__hijackLog.push(String(x)); // 记录（站点侧观测面）
+          nativeSet.call(el2, x);           // 转发（透传——不影响值本身）
+        },
+        configurable: true,
+      });
+
+      // —— r3: 异步重置族（untrusted input → ~50ms 清值）——
+      var el3 = document.getElementById("async-reset");
+      el3.addEventListener("input", function (e) {
+        if (!e.isTrusted) {
+          setTimeout(function () { el3.value = ""; }, 50);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
