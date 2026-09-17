@@ -2210,11 +2210,18 @@ const WAIT_NEW_TAB_TEACHING =
 async function probeInputGuard(
   c: McpClient,
   refEntries: Array<[string, string]>,
+  preByRef?: Map<string, string | null>,
 ): Promise<{ checks: string[]; target: string; at_ms: number } | null> {
   try {
     const r = (await c.callTool("evaluate_script", {
       function: buildGuardProbeExpr(
-        refEntries.map(([ref, value]) => ({ ref, value })),
+        refEntries.map(([ref, value]) => ({
+          ref,
+          value,
+          // 对抗复审 r1：type 路传 pre（键入前读回）→ G2 存活语义；fill 路无
+          // pre → G2 精确读回语义（input-guard.ts G2 双语义判据）
+          ...(preByRef ? { pre: preByRef.get(ref) ?? null } : {}),
+        })),
       ),
     })) as EvaluateResult;
     if (r.isError) return null; // 上游错误：无观测，不猜
@@ -2255,6 +2262,9 @@ async function doType(
   const refEntries = entries.filter(([k]) => REF_PATTERN.test(k));
   const uidEntries = entries.filter(([k]) => !REF_PATTERN.test(k));
   let guard: { checks: string[]; target: string; at_ms: number } | null = null;
+  // 对抗复审 r1：ref → 键入前读回（focus 回执的 pre）。type 是 append 语义，
+  // G2 必须按存活判据（cur === pre 才报）而非 fill 的精确读回（见 input-guard.ts）
+  const preByRef = new Map<string, string | null>();
 
   // —— ref 路（先行——与 doFill 的 ref→uid 混合序一致）——
   if (refEntries.length > 0) {
@@ -2273,7 +2283,7 @@ async function doType(
         function: buildRefFocusExpr(ref),
       })) as EvaluateResult;
       const focusV = parseEvalResult(focusR) as
-        | { ok?: boolean; focused?: boolean; reason?: string }
+        | { ok?: boolean; focused?: boolean; reason?: string; pre?: string | null }
         | undefined;
       if (focusV?.reason === "ref_stale") {
         throw new Error(
@@ -2292,11 +2302,14 @@ async function doType(
           `type_focus_failed:${ref} (located but document.activeElement !== target — hidden/readonly?)`,
         );
       }
+      // 对抗复审 r1：键入前读回（focus 回执的 pre）→ G2 存活判据基线
+      preByRef.set(ref, typeof focusV.pre === "string" ? focusV.pre : null);
       await callUpstreamTypeText(c, text);
     }
     // 决议 C：ref 路（第 2 层值守区）——键入后三探针（纯读；typed keys 被拒
-    // 也在此显形——hint 的「ask the user to type physically」终态分支）
-    guard = await probeInputGuard(c, refEntries);
+    // 也在此显形——hint 的「ask the user to type physically」终态分支）。
+    // pre 随行 → G2 用存活语义（cur === pre 才报），不用 fill 的 replace 假设
+    guard = await probeInputGuard(c, refEntries, preByRef);
   }
 
   // —— uid 路（无探针——第 1 层可信管道，v1 边界如实文档化）——

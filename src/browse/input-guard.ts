@@ -84,13 +84,23 @@ function probeFunctionsSnippet(): string {
  * 决议 C.1 三探针 expr（doFill ref 路 / doType ref 路共用——一次 in-page
  * evaluate 全探，纯读 + 页内 250ms sleep）。
  *
- * 输入：entries = [{ ref, value }]（value = 刚填充/键入的期望值）。
+ * 输入：entries = [{ ref, value, pre? }]（value = 刚填充/键入的期望值；
+ * pre = 键入前的元素读回——**type 追加语义专用**，见下）。
  * 返回 JSON 字符串 { ok, guards: [{ ref, checks: [...] }] }——guards 只含
  * 有命中的字段（全负 = 空数组 = 无信号）。expr 抛错 → { ok:false }（探测
  * 失败不是保护层证据，调用方按 best-effort 无信号处理）。
+ *
+ * G2 双语义（对抗复审 r1，2026-09-17）：type 是 **append**（describe 明示
+ * "appends to existing text — fill replaces"）——非空字段上 type 后
+ * cur = pre + text ≠ text，若沿用 fill 的精确读回判据（cur ≠ value）会在
+ * **值完全存活**时系统性误报 G2（假信号）。故：
+ *  - fill 模式（pre 缺席/null）：G2 ⇔ cur !== value（精确读回——replace 语义）
+ *  - type 模式（pre 为字符串）：G2 ⇔ cur === pre（存活语义——typed keys
+ *    **全拒**才报，与 hint 终态分支 "if typed keys are also rejected" 对齐；
+ *    cur 有任何变化即不claim——advisory 诚实优先于覆盖率）
  */
 export function buildGuardProbeExpr(
-  entries: Array<{ ref: string; value: string }>,
+  entries: Array<{ ref: string; value: string; pre?: string | null }>,
 ): string {
   return `async () => {
     try {
@@ -101,6 +111,7 @@ export function buildGuardProbeExpr(
       for (var i = 0; i < entries.length; i++) {
         var ref = entries[i].ref;
         var expected = entries[i].value;
+        var pre = (typeof entries[i].pre === "string") ? entries[i].pre : null;
         var el = null;
         try { el = ${refQuerySnippet("ref")}; } catch (e) { el = null; }
         if (!el) continue;
@@ -108,10 +119,17 @@ export function buildGuardProbeExpr(
         var cur = readback(el);
         if (cur !== null) {
           if (g1(el)) checks.push(${JSON.stringify(GUARD_CHECK_G1)});
-          if (cur !== expected) checks.push(${JSON.stringify(GUARD_CHECK_G2)});
+          if (pre === null) {
+            if (cur !== expected) checks.push(${JSON.stringify(GUARD_CHECK_G2)});
+          } else if (cur === pre) {
+            checks.push(${JSON.stringify(GUARD_CHECK_G2)});
+          }
           if (g3(el)) checks.push(${JSON.stringify(GUARD_CHECK_G3)});
         } else if (el.isContentEditable) {
-          if (String(el.textContent || "") !== expected) {
+          var curT = String(el.textContent || "");
+          if (pre === null) {
+            if (curT !== expected) checks.push(${JSON.stringify(GUARD_CHECK_G2)});
+          } else if (curT === pre) {
             checks.push(${JSON.stringify(GUARD_CHECK_G2)});
           }
         }
@@ -129,6 +147,11 @@ export function buildGuardProbeExpr(
  * document.activeElement === el 作 focus 回执（上游 type_text 的文档化前置
  * 「previously focused input」）。miss → { ok:false, reason:"ref_stale" }。
  *
+ * 回执携带 pre = focus 后（= 键入前最后一刻）的元素读回（value/textContent，
+ * 同 probe 的 readback 判定式；两者皆非 → null）。对抗复审 r1（2026-09-17）：
+ * type 是 append 语义，G2 存活判据需要键入前的基线——pre 在 focus 后读取
+ * （focus 处理器若改值也计入基线，与 type_text 的写入点零距离）。
+ *
  * 注意：focus() 打在**目标自身**上（键入前置），不是探测行为——决议 §C.3
  * 禁的是「为探测合成 blur / focus 别处」。
  */
@@ -140,10 +163,19 @@ export function buildRefFocusExpr(ref: string): string {
       try { el = ${refQuerySnippet("ref")}; } catch (e) { el = null; }
       if (!el) return JSON.stringify({ ok: false, reason: "ref_stale" });
       el.focus();
+      var pre = null;
+      try {
+        if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || "value" in el) {
+          pre = String(el.value == null ? "" : el.value);
+        } else if (el.isContentEditable) {
+          pre = String(el.textContent || "");
+        }
+      } catch (e2) { pre = null; }
       return JSON.stringify({
         ok: true,
         focused: document.activeElement === el,
-        tag: (el.tagName || "").toLowerCase()
+        tag: (el.tagName || "").toLowerCase(),
+        pre: pre
       });
     } catch (e) {
       return JSON.stringify({ ok: false, reason: "eval_error:" + String(e) });

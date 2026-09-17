@@ -246,6 +246,43 @@ describe("bug11-C — 三探针 expr（stub DOM 真实 eval）", () => {
     expect(v.guards![0].checks).toEqual([GUARD_CHECK_G3]);
   });
 
+  // —— 对抗复审 r1（P1 修复）：type 的追加语义 vs G2 的 replace 假设 ——
+  // type 是 append（describe 明示 "appends to existing text — fill replaces"），
+  // 非空字段上 type 后 cur = pre + text ≠ text——按 fill 的精确读回判据会系统性
+  // 误报 G2（假信号）。存活语义（pre 在场时 G2 ⇔ cur === pre）只在该报时报。
+  it("G2 type 模式（pre 在场）：非空字段追加键入（cur = pre+text）→ 不误报（append 语义回归钉）", async () => {
+    const el = fakeInput({ value: "abcdef" }); // pre "abc" + typed "def"，全存活
+    stubDom({ r1: el });
+    const v = await evalExpr<{ guards: unknown[] }>(
+      buildGuardProbeExpr([{ ref: "r1", value: "def", pre: "abc" }]),
+    );
+    expect(v.guards).toHaveLength(0); // G1 native / G2 存活 / G3 无 tracker 全负
+  });
+
+  it("G2 type 模式：typed keys 全拒（cur === pre）→ fill_readback_mismatch（hint 终态分支判据）", async () => {
+    const el = fakeInput({ value: "abc" }); // typed "def" 被站点全拒，值停在 pre
+    stubDom({ r1: el });
+    const v = await evalExpr<{ guards: Array<{ ref: string; checks: string[] }> }>(
+      buildGuardProbeExpr([{ ref: "r1", value: "def", pre: "abc" }]),
+    );
+    expect(v.guards![0].checks).toEqual([GUARD_CHECK_G2]);
+  });
+
+  it("G2 type 模式（contenteditable）：追加存活 → 不误报；全拒 → G2", async () => {
+    const el1: FakeEl = { tagName: "DIV", textContent: "abc def", isContentEditable: true };
+    stubDom({ r1: el1 });
+    const v1 = await evalExpr<{ guards: unknown[] }>(
+      buildGuardProbeExpr([{ ref: "r1", value: "def", pre: "abc" }]),
+    );
+    expect(v1.guards).toHaveLength(0);
+    const el2: FakeEl = { tagName: "DIV", textContent: "abc", isContentEditable: true };
+    stubDom({ r2: el2 });
+    const v2 = await evalExpr<{ guards: Array<{ ref: string; checks: string[] }> }>(
+      buildGuardProbeExpr([{ ref: "r2", value: "def", pre: "abc" }]),
+    );
+    expect(v2.guards![0].checks).toEqual([GUARD_CHECK_G2]);
+  });
+
   it("全负（干净受控一致的 input）→ guards 空 → 无信号", async () => {
     const el = fakeInput({ value: "ok", trackerGetValue: () => "ok" }); // tracker 已收敛
     stubDom({ r1: el });
@@ -278,16 +315,17 @@ describe("bug11-C — 三探针 expr（stub DOM 真实 eval）", () => {
 // buildRefFocusExpr（doType ref 路前置）
 // ============================================================
 describe("bug11-C — focus expr 回执", () => {
-  it("定位 + focus + activeElement 回执", async () => {
-    const el = fakeInput({ value: "" });
+  it("定位 + focus + activeElement 回执 + pre（键入前读回——type 追加语义的 G2 存活判据输入）", async () => {
+    const el = fakeInput({ value: "abc" });
     const doc = stubDom({ r1: el });
-    const v = await evalExpr<{ ok: boolean; focused: boolean; tag: string }>(
+    const v = await evalExpr<{ ok: boolean; focused: boolean; tag: string; pre: string }>(
       buildRefFocusExpr("r1"),
     );
     expect(v.ok).toBe(true);
     expect(v.focused).toBe(true);
     expect(doc.activeElement).toBe(el);
     expect(v.tag).toBe("input");
+    expect(v.pre).toBe("abc");
   });
 
   it("miss → { ok:false, reason:'ref_stale' }（不猜）", async () => {

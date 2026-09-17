@@ -39,6 +39,8 @@ function textContent(text: string, isError = false) {
 interface FocusStub {
   focused?: boolean;
   reason?: string;
+  /** 键入前读回（对抗复审 r1：doType 传 pre 进探针——G2 存活语义输入）。 */
+  pre?: string | null;
 }
 
 function makeClient(fx: {
@@ -73,7 +75,12 @@ function makeClient(fx: {
           const ref = m ? JSON.parse(m[1]) : "";
           const stub = fx.focus?.[ref] ?? { focused: true };
           if (stub.reason) return mockEvalResponse({ ok: false, reason: stub.reason });
-          return mockEvalResponse({ ok: true, focused: stub.focused ?? true, tag: "input" });
+          return mockEvalResponse({
+            ok: true,
+            focused: stub.focused ?? true,
+            tag: "input",
+            ...(stub.pre !== undefined ? { pre: stub.pre } : {}),
+          });
         }
         // 三探针 expr（input-guard buildGuardProbeExpr）：默认全负（无信号）
         if (fn.includes("guards.push")) {
@@ -247,6 +254,23 @@ describe("bug11-B — type ref 路（locate 预检 → focus 回执 → type_tex
     } as BrowseOptions);
     expect(r.outcome).toBe("didnt");
     expect(String(r.error)).toContain("ref_stale_re_snapshot");
+  });
+
+  it("对抗复审 r1 接线：focus 回执的 pre 传进三探针 expr（追加语义的 G2 存活判据，非 replace 假设）", async () => {
+    const { client, calls } = makeClient({ focus: { r1: { focused: true, pre: "abc" } } });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "type", {
+      selectors: { r1: "def" }, // 非空字段追加键入
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    const probe = calls.find(
+      (c) => c.name === "evaluate_script" && String(c.args.function).includes("guards.push"),
+    );
+    expect(probe).toBeTruthy();
+    const fn = String(probe!.args.function);
+    // expr 的 entries 序列化携带 pre（存活模式），value 仍为所键文本
+    expect(fn).toContain(`"pre":"abc"`);
+    expect(fn).toContain(`"value":"def"`);
   });
 });
 
