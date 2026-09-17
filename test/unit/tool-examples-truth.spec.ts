@@ -452,15 +452,20 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
   // targets" 重复 + filePath 主语），缺口 ~80+ 只能靠删真语义或跨 worker 冲突
   // 补。按 §5.1-3 走「显式提帽」先例（bug10 B.3+D 同款）：本 commit 只提帽，
   // 功能文本在后续单主题 commit 落（净增 +113：133 mandated − 20 句内去重）。
-  // 〔U-D 半 4c05f64 提帽理由如上；U-T 半 ed72eda 的 +140 派生项见下行 it 标题。
-  //   并树注意：U-D +113 与 U-T +140 同入本 fleet——双单元并树后的实测并值
-  //   若超 2,300，由合并线按 §5.1-3 另立单主题提帽 commit 覆盖（帽是显式决策）。〕
-  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,300 chars（bug11 §5.1-3 提帽 +140：BROWSE_ACTIONS 扩员派生 +30×2 / selectors 派生 +7 / press key describe）", () => {
+  // 〔U-D 半 4c05f64 提帽理由如上；U-T 半 ed72eda 的 +140 派生项见下行 it 标题。〕
+  // 并树重定（合并线单主题 commit，2026-09-17）：U-D 与 U-T 两单元并行各自把
+  // 本帽从 2,160 提到 2,300（各自单边绿：2,157+113=2,270 / 2,157+132=2,289），
+  // 但两单元的 mandated 文本同入一个 fleet——并树实测 L2 = 2,402（基线 2,157
+  // + U-D no_reload 语义句 113 + U-T type/press 派生 132），超单边帽 102。
+  // §5.1-3 纪律适用：并树并值是双单元显式决策的复合结果（两段文本语义载荷
+  // 全在，无一可裁），由合并线另立本单主题提帽 2,300 → 2,450（余 48），不在
+  // 功能 commit 里顺手改数字——帽是膨胀红线，不是橡皮筋。
+  it("L2 fleet：browse+screenshot+admin schema describe Σ ≤ 2,450 chars（bug11 §5.1-3 提帽：U-D +113 与 U-T +132 并树并值 2,402——BROWSE_ACTIONS 扩员派生/selectors 派生/press key/no_reload 语义句）", () => {
     const l2 =
       describeChars(browseSchema) +
       describeChars(screenshotSchema) +
       describeChars(adminSchema);
-    expect(l2, `L2 = ${l2}`).toBeLessThanOrEqual(2_300);
+    expect(l2, `L2 = ${l2}`).toBeLessThanOrEqual(2_450);
   });
 });
 
