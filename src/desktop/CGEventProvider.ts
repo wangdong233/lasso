@@ -32,8 +32,12 @@
  *                                            （安全红线 → 短路停止链，INV-28）
  *
  *   Rust 端错误（透传 cgevent_dispatch）：
- *     - 每项独立成败；返回 results 数组（每项 { index, ok, error_kind?, error? }）
- *     - 全部失败 → outcome=unknown（真实执行错；可被上游 fallback）
+ *     - 每项独立成败；返回 results 数组（每项 { index, ok, error_kind?, error?,
+ *       cursor_after?, landed? }——bugs/10 A.2 Tier A 落地回执）
+ *     - dispatch 级 physical_input { attribution, seconds_since_mouse_moved }
+ *       （bugs/10 A.2 Tier C 物理竞争警示；worked 不因此翻转）
+ *     - 全部失败 → outcome=unknown（真实执行错；可被上游 fallback——
+ *       no_landing 类失败走此路，D-β 零策略改动）
  *     - 部分成功 → outcome=worked（与 AxProvider.act 部分成功策略一致）
  *     - 全部成功 → outcome=worked
  *
@@ -349,10 +353,17 @@ export class CGEventProvider {
     }
 
     // ------------------------------------------------------------------
-    // 结果映射：cgevent_dispatch 返 { results: [{index, ok, kind?, error_kind?, error?}] }
+    // 结果映射：cgevent_dispatch 返 { results: [{index, ok, kind?, error_kind?, error?,
+    //   cursor_after?{x,y}, landed?}], physical_input: {attribution, seconds_since_mouse_moved} }
     // 至少 1 项 ok → outcome=worked；全失败 → unknown（真实执行错）
+    // bugs/10 A.2：落地回执（cursor_after/landed）+ 物理竞争警示（physical_input）
+    // 逐项透传到 actions_and_results / data——消费方第一次能看见「事件送达但
+    // 未落地」与「用户正在物理操作」两类信号。
     // ------------------------------------------------------------------
-    const result = (resp.result ?? {}) as { results?: unknown };
+    const result = (resp.result ?? {}) as {
+      results?: unknown;
+      physical_input?: unknown;
+    };
     const resultsArr = Array.isArray(result.results) ? result.results : [];
     const actionsAndResults: ActionResult[] = [];
     let successCount = 0;
@@ -365,20 +376,38 @@ export class CGEventProvider {
       const errKind =
         typeof r.error_kind === "string" ? r.error_kind : undefined;
       const errMsg = typeof r.error === "string" ? r.error : undefined;
+      // bugs/10 Tier A：读回坐标（null=读失败/无位置意图——原样透传不伪造）
+      const cursorAfter =
+        r.cursor_after && typeof r.cursor_after === "object"
+          ? {
+              x: numOrUndefined((r.cursor_after as Record<string, unknown>).x),
+              y: numOrUndefined((r.cursor_after as Record<string, unknown>).y),
+            }
+          : undefined;
+      const landed =
+        r.landed === true || r.landed === false ? r.landed : undefined;
       actionsAndResults.push({
         ref,
         ok,
+        ...(cursorAfter ? { cursor_after: cursorAfter } : {}),
+        ...(landed !== undefined ? { landed } : {}),
         error: ok ? undefined : errMsg ?? errKind ?? "cgevent_action_failed",
       });
       if (ok) successCount++;
     }
 
+    // bugs/10 Tier C：dispatch 级物理竞争警示（worked 不因此翻转——信号不策略）
+    const physicalInput = readPhysicalInput(result.physical_input);
+
     if (successCount === 0) {
-      // 全部项失败：真实 CGEvent 执行问题 → unknown（可被上游 fallback）
+      // 全部项失败：真实 CGEvent 执行问题 → unknown（可被上游 fallback）。
+      // bugs/10 D-β：no_landing 类失败落此处 → 既有「全失败→unknown→升 tier4
+      // screenshotVlm」策略自动接管——回执只是让这类失败第一次可见，零策略改动。
       return {
         outcome: "unknown",
         data: {
           actions_and_results: actionsAndResults,
+          ...(physicalInput ? { physical_input: physicalInput } : {}),
           fallback_used: false,
         },
         served_by: CGEventProvider.NAME,
@@ -392,6 +421,7 @@ export class CGEventProvider {
       outcome: "worked",
       data: {
         actions_and_results: actionsAndResults,
+        ...(physicalInput ? { physical_input: physicalInput } : {}),
         fallback_used: false,
       },
       served_by: CGEventProvider.NAME,
@@ -399,6 +429,31 @@ export class CGEventProvider {
       retrieval_method: "cgevent_ffi",
     };
   }
+}
+
+/** number | undefined 安全提取（wire 容错：非数字字段不透传）。 */
+function numOrUndefined(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** bugs/10 Tier C：physical_input 形状读取（坏形状 → undefined，不伪造）。 */
+function readPhysicalInput(
+  v: unknown,
+): { attribution: string; seconds_since_mouse_moved: number } | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const attribution = o.attribution;
+  const since = o.seconds_since_mouse_moved;
+  if (
+    (attribution === "idle" ||
+      attribution === "synthetic" ||
+      attribution === "physical") &&
+    typeof since === "number" &&
+    Number.isFinite(since)
+  ) {
+    return { attribution, seconds_since_mouse_moved: since };
+  }
+  return undefined;
 }
 
 // ============================================================

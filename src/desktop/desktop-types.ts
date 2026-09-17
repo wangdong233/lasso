@@ -262,6 +262,13 @@ export interface DesktopOptions {
    * doctor 自检锚点。**类型强制 string**：raw keycode 数字入参由层 1 拒绝。
    */
   cgEventKey?: string;
+  /**
+   * bugs/10 决议 C：desktop screenshot 的 base64 逃生舱（默认 false）。
+   * false/缺省 = 落盘 /tmp/lasso-screenshot-<uuid>.png 只回 screenshot_path
+   * （对齐 browse 通道）；true = 旧行为（screenshot_base64 在响应内，token 重）。
+   * 唯一新旗标，无 mode 蔓延（R-ABS-01）。
+   */
+  inline_base64?: boolean;
 }
 
 // ============================================================
@@ -271,6 +278,18 @@ export interface ActionResult {
   ref: string;
   ok: boolean;
   error?: string;
+  /**
+   * bugs/10（2026-09-17）决议 A.2 Tier A：坐标鼠标动作（click/move/drag、
+   * 带 x,y 的 scroll）的落地回执——最终 post 后读回的真实光标位置。
+   * 缺席 = 该动作无回执面（键盘路径 / 读回失败——诚实留空，不伪造）。
+   */
+  cursor_after?: { x: number; y: number };
+  /**
+   * bugs/10 Tier A：读回光标是否落于目标容差内（0.5pt）。
+   * rust 端未落地 → ok:false + error_kind=cgevent_no_landing（该失败类
+   * 第一次可见——此前「API worked 实际零效果」是静默的）。
+   */
+  landed?: boolean;
 }
 
 export interface DesktopResult {
@@ -284,6 +303,22 @@ export interface DesktopResult {
    */
   screenshot_width?: number;
   screenshot_height?: number;
+  /**
+   * bugs/10 决议 C：desktop screenshot 默认落盘（对齐 browse 通道唯一做法，
+   * R-CI-02）——PNG 写 /tmp/lasso-screenshot-<uuid>.png，返回绝对路径。
+   * `screenshot_base64` 仅在 options.inline_base64:true（旧行为逃生舱）时在场。
+   */
+  screenshot_path?: string;
+  /**
+   * bugs/10 决议 A.2 Tier C：物理输入竞争警示（cgEvent 档 dispatch 级回显）。
+   * attribution="physical" = 动作窗口内检测到晚于本进程合成 post 的鼠标事件
+   * （用户在物理操作——报告真凶「并发物理输入竞争」的检测面）。
+   * 信号不策略：worked 不因此翻转；调用方择机重发或以落地回执/expect 复核。
+   */
+  physical_input?: {
+    attribution: "idle" | "synthetic" | "physical";
+    seconds_since_mouse_moved: number;
+  };
   fallback_used?: boolean;
 }
 
