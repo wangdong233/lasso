@@ -51,9 +51,27 @@
 //!     params: { "actions": [{kind:"press",key:"Return"},{kind:"hotkey",keys:"cmd+c"},
 //!                          {kind:"click",x:100,y:200},...] }
 //!     批处理入口；逐项执行，每项独立成败（结果数组）。
+//!
+//! ## bugs/10（2026-09-17）决议 A：消灭静默失败（投递链本身完好——证伪结论）
+//!
+//! 实机报告（doc/bugs/实机报告-20260917-商标站滑块-cgEvent投递断裂-v1.27.1.md）
+//! 曾判「cgEvent 投递断裂 P0」；白盒证伪实验 + 三路独立探针定谳：**HID tap 投递链
+//! 完好**（受控计数器页产出完整 isTrusted:true 序列；无授权终端进程亦投递成功），
+//! 真凶是并发物理输入竞争 + 判定法盲区。故本批交付物不是「修投递」，而是让这类
+//! 失败不再静默：
+//!   - A.1 `cgevent::cursor_state`：纯读原语（光标位置 + 输入空闲钟 + 主屏 bounds）
+//!   - A.2 Tier A：坐标鼠标动作的**落地回执**（最终 post 后读回光标，未落地 →
+//!     该动作 ok:false + error_kind=cgevent_no_landing——报告惧怕的「投递断裂」
+//!     类失败第一次可见）
+//!   - A.2 Tier C：**物理输入竞争警示**（dispatch 级 physical_input 归因——
+//!     worked 不因此翻转，只供信号）
+//!   - REJECTED（§8）：CGEventPostToPid 定向（SOTA 反证：PID 定向鼠标被 AppKit
+//!     静默丢弃——绕过 WindowServer 指针状态）；act 内置像素 diff（判定法盲区
+//!     即反例）；act 内自动等待重试（信号不策略）。
 
 use crate::cgevent_keymap::{parse_hotkey, parse_key, KeyMapping};
 use crate::protocol::Response;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 // ============================================================================
 // Non-macOS fallback
@@ -72,6 +90,192 @@ pub fn hotkey(id: &str, _params: &serde_json::Value) -> Response {
 #[cfg(not(target_os = "macos"))]
 pub fn dispatch(id: &str, _params: &serde_json::Value) -> Response {
     Response::err(id, "not_macos", "cgevent_dispatch requires macOS")
+}
+
+/// bugs/10 A.1：纯读原语（非 macOS 桩，house pattern）。
+#[cfg(not(target_os = "macos"))]
+pub fn cursor_state(id: &str, _params: &serde_json::Value) -> Response {
+    Response::err(id, "not_macos", "cgevent_cursor_state requires macOS")
+}
+
+// ============================================================================
+// bugs/10 决议 A 共用基座：常量 + extern + 进程内时间戳 + 纯函数
+//（macOS only；非 macOS 侧只有上面的桩）
+// ============================================================================
+
+/// 落地回执容差（pt）：读回光标与目标坐标差小于此值判 landed。
+/// house 常量，不做参数化（决议 A.2 Tier A）。
+#[cfg(target_os = "macos")]
+const LANDING_TOL_PT: f64 = 0.5;
+
+/// 最终 post 后读回光标前的沉淀等待（ms）——HID 状态传播需要一点时间。
+#[cfg(target_os = "macos")]
+const CURSOR_READ_SETTLE_MS: u64 = 30;
+
+/// 物理输入归因窗口（ms）：最近一次鼠标移动距 now 小于此值才算「有最近事件」。
+#[cfg(target_os = "macos")]
+const PHYSICAL_INPUT_WINDOW_MS: f64 = 250.0;
+
+/// 合成归因 slack（ms）：最近事件时间不晚于 last_synth+slack → 归因合成
+///（D-γ：合成事件同样计入空闲钟，须扣减自身 post 时间戳后才剩物理事件）。
+#[cfg(target_os = "macos")]
+const SYNTH_ATTRIBUTION_SLACK_MS: f64 = 50.0;
+
+/// kCGEventSourceStateHIDSystemState（CGEventSourceStateID 枚举原始值 = 1）。
+/// ⚠️ 在场教训（bugs/10 §0 断言 4）：`CGEventSourceSecondsSinceLastEventType`
+/// 的第一参是 **stateID int**，不是 CGEventSource ref——第一次探针传错参挂起被杀。
+#[cfg(target_os = "macos")]
+const K_CG_EVENT_SOURCE_STATE_HID_SYSTEM: u32 = 1;
+
+/// kCGEventMouseMoved（CGEventType 枚举原始值 = 5）。
+#[cfg(target_os = "macos")]
+const K_CG_EVENT_MOUSE_MOVED: u32 = 5;
+
+/// kCGAnyInputEventType（= ~0，IOHIDLib.h：「any input」哨兵值）。
+#[cfg(target_os = "macos")]
+const K_CG_EVENT_ANY_INPUT: u32 = u32::MAX;
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    /// `CGEventSourceSecondsSinceLastEventType(stateID, eventType) -> CFTimeInterval`
+    /// （0.24 未暴露该符号 → extern "C" 声明，tcc.rs CGPreflightScreenCaptureAccess
+    /// 同款先例——零新依赖）。**stateID 是 int 不是 source ref**（见上方教训注释）。
+    fn CGEventSourceSecondsSinceLastEventType(
+        state_id: u32,
+        event_type: u32,
+    ) -> f64;
+}
+
+/// helper 进程内「最近一次合成鼠标事件」时间戳（ms，Unix epoch）。
+/// R-INT-07（单写者）：helper main loop 单线程顺序 dispatch——只有
+/// exec_mouse_action 的 post 路径写它，Tier C 归因读它，无第二写者。
+#[cfg(target_os = "macos")]
+static LAST_SYNTHETIC_MOUSE_MS: AtomicI64 = AtomicI64::new(0);
+
+/// 记录一次合成鼠标 post（每条鼠标事件 post 后调；exec_mouse_action 内部用）。
+#[cfg(target_os = "macos")]
+fn note_synthetic_mouse_post() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    LAST_SYNTHETIC_MOUSE_MS.store(now, Ordering::SeqCst);
+}
+
+/// 最近一次合成鼠标 post 的时间戳（0 = 本进程从未 post 过）。
+#[cfg(target_os = "macos")]
+fn last_synthetic_mouse_ms() -> i64 {
+    LAST_SYNTHETIC_MOUSE_MS.load(Ordering::SeqCst)
+}
+
+/// 当前时间（ms，Unix epoch）。
+#[cfg(target_os = "macos")]
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+// ============================================================
+// bugs/10 A.2/A.3 纯函数（单测锚；物理 post 归真机手测）
+// ============================================================
+
+/// 落地判定：读回光标与目标坐标差（两轴均）< LANDING_TOL_PT。
+#[cfg(target_os = "macos")]
+fn cursor_landed(target_x: f64, target_y: f64, actual_x: f64, actual_y: f64) -> bool {
+    (target_x - actual_x).abs() < LANDING_TOL_PT && (target_y - actual_y).abs() < LANDING_TOL_PT
+}
+
+/// 物理输入归因（Tier C，决议 A.2；纯函数——单测锚）：
+///  - "idle"     ：最近 250ms 内无任何鼠标移动事件（空闲钟值 ≥ 窗口）
+///  - "synthetic"：最近事件落在本进程合成 post 的 +50ms slack 内（是我们发的）
+///  - "physical" ：窗口内有最近事件，且它晚于 last_synth+slack（是物理输入——
+///                 报告真凶「并发物理输入竞争」的检测面）
+///
+/// last_synth_ms=0（本进程从未 post）时窗口内的事件一律归 physical。
+#[cfg(target_os = "macos")]
+fn physical_attribution(
+    now_ms_val: i64,
+    last_synth_ms: i64,
+    seconds_since_mouse_moved: f64,
+) -> &'static str {
+    let since_ms = seconds_since_mouse_moved * 1000.0;
+    if since_ms >= PHYSICAL_INPUT_WINDOW_MS {
+        return "idle";
+    }
+    let event_time_ms = now_ms_val as f64 - since_ms;
+    if last_synth_ms > 0 && event_time_ms <= last_synth_ms as f64 + SYNTH_ATTRIBUTION_SLACK_MS {
+        "synthetic"
+    } else {
+        "physical"
+    }
+}
+
+// ============================================================
+// bugs/10 A.1 读原语（macOS；纯读零副作用，无 TCC 面）
+// ============================================================
+
+/// 读当前光标位置（CGEventSource(HIDSystemState) + dummy CGEvent location；
+/// 白盒实证：纯读路径 <1s 返回，无授权进程亦可用）。
+#[cfg(target_os = "macos")]
+fn read_cursor_location() -> Result<(f64, f64), ()> {
+    use core_graphics::event::CGEvent;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| ())?;
+    let ev = CGEvent::new(source).map_err(|_| ())?;
+    let p = ev.location();
+    Ok((p.x, p.y))
+}
+
+/// 读主屏 bounds（CGDisplay::main().bounds()；供 doctor wiggle 夹取，
+/// 免 TS 侧猜屏幕边界）。
+#[cfg(target_os = "macos")]
+fn main_display_bounds() -> (f64, f64) {
+    let b = core_graphics::display::CGDisplay::main().bounds();
+    (b.size.width, b.size.height)
+}
+
+/// bugs/10 A.1：`cgevent_cursor_state` 协议出口（macOS）。
+///
+/// 返回 `{ x, y, seconds_since_mouse_moved, seconds_since_any_event, display:{w,h} }`。
+/// 纯读、零副作用、无 TCC 面——A.2 落地回执 / A.3 doctor 自检 / Tier C 归因
+/// 三处消费的共用基座（R-CI-02：一个读原语，不造第二套）。
+#[cfg(target_os = "macos")]
+pub fn cursor_state(id: &str, _params: &serde_json::Value) -> Response {
+    let (x, y) = match read_cursor_location() {
+        Ok(p) => p,
+        Err(()) => {
+            return Response::err(
+                id,
+                "cgevent_source_failed",
+                "cursor read failed (CGEventSource/CGEvent::new returned NULL)",
+            );
+        }
+    };
+    let since_mouse = unsafe {
+        CGEventSourceSecondsSinceLastEventType(
+            K_CG_EVENT_SOURCE_STATE_HID_SYSTEM,
+            K_CG_EVENT_MOUSE_MOVED,
+        )
+    };
+    let since_any = unsafe {
+        CGEventSourceSecondsSinceLastEventType(
+            K_CG_EVENT_SOURCE_STATE_HID_SYSTEM,
+            K_CG_EVENT_ANY_INPUT,
+        )
+    };
+    let (w, h) = main_display_bounds();
+    Response::ok(
+        id,
+        serde_json::json!({
+            "x": x,
+            "y": y,
+            "seconds_since_mouse_moved": since_mouse,
+            "seconds_since_any_event": since_any,
+            "display": { "w": w, "h": h },
+        }),
+    )
 }
 
 // ============================================================================
@@ -208,22 +412,49 @@ pub fn dispatch(id: &str, params: &serde_json::Value) -> Response {
     };
 
     let mut results: Vec<serde_json::Value> = Vec::with_capacity(actions.len());
+    // ------------------------------------------------------------------
+    // bugs/10 A.2 Tier C：物理输入竞争警示（dispatch 入口读一次空闲钟）。
+    // 归因纯函数见 physical_attribution；worked 不因此翻转（无法断言失败——
+    // 只供信号：坐标动作收到 attribution="physical" 时调用方择机重发或以
+    // Tier A 落点回执 / expect 复核）。读失败 → 物理省略该字段（诚实分层）。
+    // ------------------------------------------------------------------
+    let physical_input = {
+        let since = unsafe {
+            CGEventSourceSecondsSinceLastEventType(
+                K_CG_EVENT_SOURCE_STATE_HID_SYSTEM,
+                K_CG_EVENT_MOUSE_MOVED,
+            )
+        };
+        serde_json::json!({
+            "attribution": physical_attribution(now_ms(), last_synthetic_mouse_ms(), since),
+            "seconds_since_mouse_moved": since,
+        })
+    };
     for (i, a) in actions.iter().enumerate() {
         let kind = a.get("kind").and_then(|v| v.as_str()).unwrap_or("");
 
         // ============================================================
         // v1.11（round1 T7）鼠标四路径：click / move / drag / scroll
+        // bugs/10 A.2 Tier A：坐标鼠标动作附带落地回执（cursor_after/landed）。
         // ============================================================
         if matches!(kind, "click" | "move" | "drag" | "scroll") {
             match exec_mouse_action(a) {
-                Ok(()) => results.push(serde_json::json!({
+                Ok(receipt) => results.push(serde_json::json!({
                     "index": i, "ok": true, "kind": kind,
+                    "cursor_after": receipt.cursor_after.map(|(x, y)| serde_json::json!({"x": x, "y": y})),
+                    "landed": receipt.landed,
                 })),
-                Err((error_kind, msg)) => results.push(serde_json::json!({
-                    "index": i, "ok": false,
-                    "error_kind": error_kind,
-                    "error": msg,
-                })),
+                Err(e) => {
+                    let mut item = serde_json::json!({
+                        "index": i, "ok": false,
+                        "error_kind": e.kind,
+                        "error": e.msg,
+                    });
+                    if let Some((x, y)) = e.cursor_after {
+                        item["cursor_after"] = serde_json::json!({"x": x, "y": y});
+                    }
+                    results.push(item);
+                }
             }
             continue;
         }
@@ -296,7 +527,10 @@ pub fn dispatch(id: &str, params: &serde_json::Value) -> Response {
     }
     // 引 source 防 unused warning（已用作 initial availability probe）
     let _ = source;
-    Response::ok(id, serde_json::json!({ "results": results }))
+    Response::ok(
+        id,
+        serde_json::json!({ "results": results, "physical_input": physical_input }),
+    )
 }
 
 // ============================================================================
@@ -365,10 +599,62 @@ fn drag_interpolation_points(
 }
 
 
-/// 执行一个鼠标 action（click/move/drag/scroll）。返回 Err 时带 error_kind 语义前缀
-/// （invalid_params / cgevent_construct_failed）。
+// ============================================================
+// bugs/10 A.2 Tier A：鼠标动作落地回执类型
+// ============================================================
+
+/// 坐标鼠标动作的执行回执：最终 post 后读回的光标位置 + 是否落于目标容差内。
+/// `landed=None` 表示无位置意图（scroll 无 x/y）或读回失败（不可断言——诚实留空）。
 #[cfg(target_os = "macos")]
-fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
+struct MouseReceipt {
+    cursor_after: Option<(f64, f64)>,
+    landed: Option<bool>,
+}
+
+/// 鼠标动作失败（invalid_params / cgevent_construct_failed / cgevent_no_landing）。
+/// `cursor_after` 在 no_landing 时携带读回坐标（诊断面：调用方看到光标实际在哪）。
+#[cfg(target_os = "macos")]
+struct MouseErr {
+    kind: String,
+    msg: String,
+    cursor_after: Option<(f64, f64)>,
+}
+
+#[cfg(target_os = "macos")]
+impl From<(String, String)> for MouseErr {
+    fn from((kind, msg): (String, String)) -> Self {
+        Self { kind, msg, cursor_after: None }
+    }
+}
+
+/// 读回光标 + 落地判定（Tier A 共用收尾：settle → read → judge）。
+/// 读回失败 → cursor_after=None + landed=None（post 已发生，不可断言失败——诚实）。
+#[cfg(target_os = "macos")]
+fn landing_receipt(target: Option<(f64, f64)>) -> MouseReceipt {
+    std::thread::sleep(std::time::Duration::from_millis(CURSOR_READ_SETTLE_MS));
+    match (read_cursor_location(), target) {
+        (Ok((ax, ay)), Some((tx, ty))) => MouseReceipt {
+            cursor_after: Some((ax, ay)),
+            landed: Some(cursor_landed(tx, ty, ax, ay)),
+        },
+        (Ok((ax, ay)), None) => MouseReceipt {
+            cursor_after: Some((ax, ay)),
+            landed: None,
+        },
+        (Err(()), _) => MouseReceipt { cursor_after: None, landed: None },
+    }
+}
+
+/// 执行一个鼠标 action（click/move/drag/scroll）。返回 Ok(MouseReceipt) 携带
+/// 落地回执；Err 时带 error_kind 语义前缀（invalid_params /
+/// cgevent_construct_failed / cgevent_no_landing）。
+///
+/// bugs/10 A.2 Tier A：坐标动作（click/move/drag、scroll 带 x,y）最终 post 后
+/// 读回光标——未落地 → Err(cgevent_no_landing)（该动作 ok:false，报告惧怕的
+/// 「投递断裂」类失败第一次可见）。全失败时上游沿既有「全部失败 → unknown」
+/// 策略升 tier4（D-β，零策略改动）。
+#[cfg(target_os = "macos")]
+fn exec_mouse_action(a: &serde_json::Value) -> Result<MouseReceipt, MouseErr> {
     use core_graphics::event::{CGEvent, CGEventTapLocation, CGEventType};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
@@ -378,6 +664,12 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
         CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| {
             ("cgevent_source_failed".to_string(), "CGEventSource::new".to_string())
         })
+    };
+
+    // Tier C 单写者锚：每条鼠标事件 post 后记录进程内时间戳（R-INT-07）。
+    let post = |ev: &CGEvent| {
+        ev.post(CGEventTapLocation::HID);
+        note_synthetic_mouse_post();
     };
 
     match kind {
@@ -390,7 +682,7 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
                 return Err((
                     "invalid_params".to_string(),
                     "button must be a logical name string (left/right/center); raw button codes forbidden (INV-28)".to_string(),
-                ));
+                ).into());
             }
             let button = parse_mouse_button(raw_button.and_then(|v| v.as_str()))
                 .map_err(|e| ("invalid_params".to_string(), e))?;
@@ -407,7 +699,7 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             // v1.12（round2 T2-8）：clickState=1（agent-desktop input/mouse.rs 同款——
             // field 1 = kCGMouseEventClickState；挑剔 app 靠它区分单击/拖拽起手）
             down.set_integer_value_field(KCG_MOUSE_EVENT_CLICK_STATE, 1);
-            down.post(CGEventTapLocation::HID);
+            post(&down);
             // v1.12（round2 T2-8）：10ms down→up 间隔（零间隔双事件被部分 app 判定
             // 为异常/忽略；数值照抄 agent-desktop 实测参数，不做参数化）
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -415,8 +707,21 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             let up = CGEvent::new_mouse_event(s2, up_ty, pos, button)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "mouse up".to_string()))?;
             up.set_integer_value_field(KCG_MOUSE_EVENT_CLICK_STATE, 1);
-            up.post(CGEventTapLocation::HID);
-            Ok(())
+            post(&up);
+            // bugs/10 Tier A：落地回执（目标 = 点击坐标）
+            let receipt = landing_receipt(Some((pos.x, pos.y)));
+            if receipt.landed == Some(false) {
+                let (ax, ay) = receipt.cursor_after.unwrap_or((0.0, 0.0));
+                return Err(MouseErr {
+                    kind: "cgevent_no_landing".to_string(),
+                    msg: format!(
+                        "click({:.1},{:.1}): cursor read back at ({:.1},{:.1}) — synthetic event did not land (physical input racing? see physical_input)",
+                        pos.x, pos.y, ax, ay
+                    ),
+                    cursor_after: receipt.cursor_after,
+                });
+            }
+            Ok(receipt)
         }
         "move" => {
             let pos = parse_point(a, "x", "y")
@@ -424,8 +729,20 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             let s = new_source()?;
             let ev = CGEvent::new_mouse_event(s, CGEventType::MouseMoved, pos, core_graphics::event::CGMouseButton::Left)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "mouse move".to_string()))?;
-            ev.post(CGEventTapLocation::HID);
-            Ok(())
+            post(&ev);
+            let receipt = landing_receipt(Some((pos.x, pos.y)));
+            if receipt.landed == Some(false) {
+                let (ax, ay) = receipt.cursor_after.unwrap_or((0.0, 0.0));
+                return Err(MouseErr {
+                    kind: "cgevent_no_landing".to_string(),
+                    msg: format!(
+                        "move({:.1},{:.1}): cursor read back at ({:.1},{:.1}) — synthetic event did not land",
+                        pos.x, pos.y, ax, ay
+                    ),
+                    cursor_after: receipt.cursor_after,
+                });
+            }
+            Ok(receipt)
         }
         "drag" => {
             let from = parse_point(a, "from_x", "from_y")
@@ -435,7 +752,7 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
             let s = new_source()?;
             let down = CGEvent::new_mouse_event(s, CGEventType::LeftMouseDown, from, core_graphics::event::CGMouseButton::Left)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag down".to_string()))?;
-            down.post(CGEventTapLocation::HID);
+            post(&down);
             // ============================================================
             // v1.12（round2 T2-8）：drag 物理质量——200ms 按住 + 逐点插值 + 100ms 沉淀。
             // 旧实现单个 LeftMouseDragged 后立即 up：滑条/拖拽排序/文件拖放类目标
@@ -454,27 +771,42 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
                     core_graphics::event::CGMouseButton::Left,
                 )
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag moved".to_string()))?;
-                dragged.post(CGEventTapLocation::HID);
+                post(&dragged);
                 std::thread::sleep(std::time::Duration::from_millis(DRAG_STEP_MS));
             }
             std::thread::sleep(std::time::Duration::from_millis(DRAG_SETTLE_MS));
             let s3 = new_source()?;
             let up = CGEvent::new_mouse_event(s3, CGEventType::LeftMouseUp, to, core_graphics::event::CGMouseButton::Left)
                 .map_err(|_| ("cgevent_construct_failed".to_string(), "drag up".to_string()))?;
-            up.post(CGEventTapLocation::HID);
-            Ok(())
+            post(&up);
+            // bugs/10 Tier A：落地回执（目标 = 拖拽终点）
+            let receipt = landing_receipt(Some((to.x, to.y)));
+            if receipt.landed == Some(false) {
+                let (ax, ay) = receipt.cursor_after.unwrap_or((0.0, 0.0));
+                return Err(MouseErr {
+                    kind: "cgevent_no_landing".to_string(),
+                    msg: format!(
+                        "drag→({:.1},{:.1}): cursor read back at ({:.1},{:.1}) — synthetic event did not land",
+                        to.x, to.y, ax, ay
+                    ),
+                    cursor_after: receipt.cursor_after,
+                });
+            }
+            Ok(receipt)
         }
         "scroll" => {
             let dx = a.get("dx").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let dy = a.get("dy").and_then(|v| v.as_f64()).unwrap_or(0.0);
             // 先移到 (x,y)（可选——缺省在当前光标位置滚）
+            let mut target: Option<(f64, f64)> = None;
             if a.get("x").is_some() || a.get("y").is_some() {
                 let pos = parse_point(a, "x", "y")
                     .map_err(|e| ("invalid_params".to_string(), format!("scroll: {e}")))?;
+                target = Some((pos.x, pos.y));
                 let s = new_source()?;
                 let ev = CGEvent::new_mouse_event(s, CGEventType::MouseMoved, pos, core_graphics::event::CGMouseButton::Left)
                     .map_err(|_| ("cgevent_construct_failed".to_string(), "scroll move".to_string()))?;
-                ev.post(CGEventTapLocation::HID);
+                post(&ev);
             }
             // dy>0 = 内容向下滚（wheel1 = -dy；标准滚轮方向：负值 = 向下/向前）
             // dx 走 wheel2（水平轴）。wheel_count=2 支持 vertical+horizontal。
@@ -490,13 +822,32 @@ fn exec_mouse_action(a: &serde_json::Value) -> Result<(), (String, String)> {
                 0,
             )
             .map_err(|_| ("cgevent_construct_failed".to_string(), "scroll wheel".to_string()))?;
-            ev.post(CGEventTapLocation::HID);
-            Ok(())
+            post(&ev);
+            // bugs/10 Tier A：带 x,y 的 scroll 有位置意图 → 判落地（先导 move 同款）；
+            // 无 x,y（在当前光标滚）→ 只记 cursor_after 不判 landed。
+            if target.is_some() {
+                let receipt = landing_receipt(target);
+                if receipt.landed == Some(false) {
+                    let (tx, ty) = target.unwrap_or((0.0, 0.0));
+                    let (ax, ay) = receipt.cursor_after.unwrap_or((0.0, 0.0));
+                    return Err(MouseErr {
+                        kind: "cgevent_no_landing".to_string(),
+                        msg: format!(
+                            "scroll@({:.1},{:.1}): cursor read back at ({:.1},{:.1}) — synthetic event did not land",
+                            tx, ty, ax, ay
+                        ),
+                        cursor_after: receipt.cursor_after,
+                    });
+                }
+                Ok(receipt)
+            } else {
+                Ok(landing_receipt(None))
+            }
         }
         _ => Err((
             "invalid_params".to_string(),
             format!("unknown mouse kind {:?}", kind),
-        )),
+        ).into()),
     }
 }
 
@@ -764,10 +1115,23 @@ mod tests {
             }),
         );
         assert!(r.ok);
-        let results = r.result.unwrap()["results"].as_array().unwrap().clone();
+        let result = r.result.unwrap();
+        // bugs/10 A.2 Tier A：坐标动作 per-action 必附 cursor_after（成功=读回坐标；
+        // 失败=no_landing 错误项也带）；landed 仅在读回成功且有位置意图时非 null。
+        let results = result["results"].as_array().unwrap().clone();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].get("cursor_after").is_some());
         if results[0]["ok"] == false {
             assert_ne!(results[0]["error_kind"], "invalid_params");
         }
+        // bugs/10 A.2 Tier C：dispatch 级 physical_input 必在场（attribution 三态枚举）
+        let pi = &result["physical_input"];
+        assert!(pi.is_object());
+        assert!(matches!(
+            pi["attribution"].as_str(),
+            Some("idle") | Some("synthetic") | Some("physical")
+        ));
+        assert!(pi["seconds_since_mouse_moved"].is_f64());
     }
 
     #[cfg(target_os = "macos")]
@@ -832,4 +1196,85 @@ mod tests {
         assert!(!src.contains(&needle0), "raw button code literal found: {needle0}");
         assert!(!src.contains(&needle1), "raw button code literal found: {needle1}");
     }
+
+    // ============================================================
+    // bugs/10 决议 A（2026-09-17）：落地回执 + 物理归因 + 读原语
+    // 纯函数/协议形状断言；物理 post 归真机手测清单（不新增物理投递依赖）
+    // ============================================================
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn cursor_state_non_macos_returns_not_macos() {
+        let r = cursor_state("t", &serde_json::json!({}));
+        assert!(!r.ok);
+        assert_eq!(r.error_kind.as_deref(), Some("not_macos"));
+    }
+
+    /// bugs/10 A.1：cgevent_cursor_state 协议形状（macOS）。
+    /// 纯读零副作用——本测不 post 任何事件。无 GUI 环境 x/y 读可能失败
+    /// （cgevent_source_failed 合法），但不应是 invalid_params/unknown_method。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cursor_state_protocol_shape_macos() {
+        let r = cursor_state("t", &serde_json::json!({}));
+        if r.ok {
+            let v = r.result.unwrap();
+            assert!(v["x"].is_f64());
+            assert!(v["y"].is_f64());
+            assert!(v["seconds_since_mouse_moved"].is_f64());
+            assert!(v["seconds_since_any_event"].is_f64());
+            assert!(v["display"]["w"].is_f64());
+            assert!(v["display"]["h"].is_f64());
+        } else {
+            assert_eq!(r.error_kind.as_deref(), Some("cgevent_source_failed"));
+        }
+    }
+
+    /// bugs/10 A.2 Tier A：落地容差纯函数（house 常量 LANDING_TOL_PT=0.5，严格小于）。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn landing_tolerance_strict_less_than_half_point() {
+        assert!(cursor_landed(100.0, 200.0, 100.4, 200.4));
+        assert!(cursor_landed(100.0, 200.0, 99.6, 199.6));
+        // 恰好 0.5 = 未落地（严格 <）
+        assert!(!cursor_landed(100.0, 200.0, 100.5, 200.0));
+        assert!(!cursor_landed(100.0, 200.0, 100.0, 200.6));
+        assert!(!cursor_landed(100.0, 200.0, 833.0, 453.0));
+    }
+
+    /// bugs/10 house 常量钉（决议值，防手滑漂移）。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bugs10_house_constants_pinned() {
+        assert_eq!(LANDING_TOL_PT, 0.5);
+        assert_eq!(CURSOR_READ_SETTLE_MS, 30);
+        assert_eq!(PHYSICAL_INPUT_WINDOW_MS, 250.0);
+        assert_eq!(SYNTH_ATTRIBUTION_SLACK_MS, 50.0);
+        // stateID/eventType 枚举原始值（在场教训注释的机械锚）
+        assert_eq!(K_CG_EVENT_SOURCE_STATE_HID_SYSTEM, 1);
+        assert_eq!(K_CG_EVENT_MOUSE_MOVED, 5);
+    }
+
+    /// bugs/10 A.2 Tier C：物理归因纯函数三态（决议 A.2 公式 + D-γ 扣减语义）。
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn physical_attribution_three_states() {
+        // idle：空闲钟超出 250ms 窗口
+        assert_eq!(physical_attribution(1_000_000, 999_000, 5.0), "idle");
+        assert_eq!(physical_attribution(1_000_000, 999_000, 0.3), "idle");
+        // synthetic：窗口内最近事件 = 本进程 150ms 前的 post（slack 50ms 内归我们）
+        assert_eq!(physical_attribution(1_000_000, 999_850, 0.1), "synthetic");
+        // slack 边界内（event_time=999900 ≤ last_synth+50=999900 → 仍 synthetic）
+        assert_eq!(physical_attribution(1_000_000, 999_850, 0.1), "synthetic");
+        // 恰出 slack（event_time=999900 > 999800+50=999850 → physical）
+        assert_eq!(physical_attribution(1_000_000, 999_800, 0.1), "physical");
+        // physical：窗口内最近事件晚于 last_synth+50ms（用户物理移动）
+        assert_eq!(physical_attribution(1_000_000, 999_000, 0.05), "physical");
+        // physical：本进程从未 post（last_synth=0）→ 窗口内事件一律物理
+        assert_eq!(physical_attribution(1_000_000, 0, 0.1), "physical");
+    }
+
+    // dispatch 级 physical_input 的在场性由 dispatch_click_valid_coords_passes_
+    // shape_validation 同测断言（不新增物理 post——键盘 press 会向用户当前焦点
+    // app 注入真实回车，干预面大于点击；bugs/10 手测清单纪律：真机实验最小化）。
 }

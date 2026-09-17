@@ -107,6 +107,9 @@ fn dispatch(req: &protocol::Request) -> protocol::Response {
         "cgevent_key" => cgevent::key(&req.id, &req.params),
         "cgevent_hotkey" => cgevent::hotkey(&req.id, &req.params),
         "cgevent_dispatch" => cgevent::dispatch(&req.id, &req.params),
+        // bugs/10 决议 A.1：纯读原语（光标位置 + 输入空闲钟 + 主屏 bounds）——
+        // A.2 落地回执 / A.3 doctor 自检 / Tier C 归因的共用基座。
+        "cgevent_cursor_state" => cgevent::cursor_state(&req.id, &req.params),
         other => protocol::Response::err(
             &req.id,
             "unknown_method",
@@ -217,5 +220,26 @@ mod tests {
                 "{method} must be routed (got unknown_method)"
             );
         }
+    }
+
+    /// bugs/10 决议 A.1：cgevent_cursor_state 必须有路由（不落 unknown_method）。
+    /// 非 macOS 走 not_macos 桩；macOS 真实读（纯读零副作用，无物理 post）。
+    #[test]
+    fn dispatch_cgevent_cursor_state_routed() {
+        let req = protocol::Request {
+            id: "rcs".into(),
+            method: "cgevent_cursor_state".into(),
+            params: serde_json::Value::Null,
+        };
+        let resp = dispatch(&req);
+        assert_ne!(
+            resp.error_kind.as_deref(),
+            Some("unknown_method"),
+            "cgevent_cursor_state must be routed"
+        );
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(resp.error_kind.as_deref(), Some("not_macos"));
+        #[cfg(target_os = "macos")]
+        assert!(resp.ok || resp.error_kind.as_deref() == Some("cgevent_source_failed"));
     }
 }
