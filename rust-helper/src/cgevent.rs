@@ -389,11 +389,13 @@ pub fn dispatch(id: &str, params: &serde_json::Value) -> Response {
             );
         }
     };
-    // v1.11（round1 T11）：macOS 15+ Event Synthesizing TCC 预检。
+    // v1.11（round1 T11）：Event Synthesizing TCC 预检。
     // denied（System Settings → Privacy & Security → Event Synthesizing 未授权）
     // → 合成键盘/指针事件被 WindowServer 静默拦截——诚实报因而非假 posted。
-    // < macOS 15 状态是 not_required（不预检，行为与 v1.10 零差异）。
-    if crate::tcc::event_synthesizing_status() == "denied" {
+    // bugs/10 A.4：预检入口换 event_synthesis_gated()（tcc.rs 版本注入纯函数）——
+    // <15 永不门控（含 undefined 实测值，断言 5）、≥15 非 granted 门控
+    // （维持已发布行为）。行为与 v1.27.1 逐场景一致（本批最重要的「不变」）。
+    if crate::tcc::event_synthesis_gated() {
         return Response::err(
             id,
             "tcc_event_synthesis_denied",
