@@ -20,6 +20,8 @@
  *  - ping / tcc_status 返 boolean 字段
  */
 import { describe, it, expect, beforeEach } from "vitest";
+// bugs/10 决议 C：默认落盘路径断言（PNG magic + 用后清理）
+import { readFileSync, rmSync } from "node:fs";
 import { DesktopChannel } from "../../src/channels/DesktopChannel.js";
 import { AxProvider } from "../../src/desktop/AxProvider.js";
 import { MacAxBackend } from "../../src/desktop/AxBackend.js";
@@ -460,7 +462,7 @@ describe("desktop(action:'wait') — tri-state", () => {
 // 5. screenshot（直接 vlmProvider.captureScreenshot，不调 VLM）
 // ============================================================
 describe("desktop(action:'screenshot')", () => {
-  it("worked：返 DesktopResult 含 screenshot_base64", async () => {
+  it("worked（默认落盘）：返 screenshot_path，base64 缺席（bugs/10 决议 C）", async () => {
     const { desktop, rust } = assembleDesktop({
       ping: defaultPing(),
       screenshot: () => ({
@@ -472,9 +474,33 @@ describe("desktop(action:'screenshot')", () => {
     });
     const r = await desktop.screenshot({});
     expect(r.outcome).toBe("worked");
-    expect(r.data?.screenshot_base64).toBeTruthy();
+    // 默认路径：PNG 落 lasso 管理路径（browse 通道同款命名约定），只回路径
+    expect(r.data?.screenshot_path).toMatch(/^\/tmp\/lasso-screenshot-[0-9a-f-]{36}\.png$/);
+    expect(r.data?.screenshot_base64).toBeUndefined(); // 有意行为变化（CHANGELOG 通知）
     expect(r.data?.screenshot_format).toBe("png");
     expect(rust.calls.some((c) => c.method === "screenshot")).toBe(true);
+    // 落盘真实存在且是 PNG magic（不伪造路径）
+    const buf = readFileSync(r.data!.screenshot_path!);
+    expect(buf.length).toBeGreaterThan(0);
+    expect(buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(true);
+    // 用后清理（真机实验最小化纪律）
+    rmSync(r.data!.screenshot_path!, { force: true });
+  });
+
+  it("inline_base64:true → 旧行为（screenshot_base64 在响应内）", async () => {
+    const { desktop } = assembleDesktop({
+      ping: defaultPing(),
+      screenshot: () => ({
+        base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        format: "png",
+        width: 1,
+        height: 1,
+      }),
+    });
+    const r = await desktop.screenshot({ inline_base64: true });
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.screenshot_base64).toBeTruthy();
+    expect(r.data?.screenshot_path).toBeUndefined();
   });
 
   // W1-DEF-8（v1.8 Phase C）：区域裁剪 wire 键 + 尺寸透出

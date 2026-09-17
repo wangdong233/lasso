@@ -135,6 +135,12 @@ const desktopSchema = {
       appleScriptAction: z.string().optional(),
       /** AppleScript 模板参数（key 须为 action 对应 allowedParams 子集）。 */
       appleScriptParams: z.record(z.unknown()).optional(),
+      // ------------------------------------------------------------------
+      // bugs/10 决议 C（2026-09-17）：desktop screenshot 默认落盘 + 返回路径
+      // （对齐 browse 通道）；inline_base64=true 恢复旧行为（base64 在响应内）。
+      // ------------------------------------------------------------------
+      /** screenshot escape hatch：true = 返回 screenshot_base64（token 重）。 */
+      inline_base64: z.boolean().optional(),
     })
     .default({}),
 };
