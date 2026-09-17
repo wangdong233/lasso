@@ -556,7 +556,7 @@ async function checkCgeventDeliverySelftest(
     return {
       name,
       status: "fail",
-      detail: `投递层：wiggle move(${target.x.toFixed(1)},${target.y.toFixed(1)}) 未落地（landed!=true；已复位原位）——合成鼠标事件未到达 WindowServer；对照 physical_input 排查并发物理输入`,
+      detail: `投递层：wiggle move(${target.x.toFixed(1)},${target.y.toFixed(1)}) 未落地（landed!=true${selftestDiag(wiggle.result)}；已复位原位）——合成鼠标事件未到达 WindowServer 或被并发物理输入竞争（读回光标偏离目标 + attribution=physical 即后者）`,
       next_step:
         "确认 Accessibility 已授权（doctor #17）；若正在物理操作鼠标请静止后重试；持续失败=环境层问题（远程会话/输入监控拦截），如实上报",
     };
@@ -595,6 +595,37 @@ function landedOfFirstAction(result: unknown): boolean {
   if (!Array.isArray(results) || results.length === 0) return false;
   const first = results[0] as Record<string, unknown> | null;
   return !!first && first.ok === true && first.landed === true;
+}
+
+/**
+ * bugs/10 对抗复审轮 1（2026-09-17）F3 补面：wiggle 失败 detail 透出读回坐标
+ * + 物理归因——这两字段是「并发物理输入竞争 vs 系统性投递断裂」的分诊依据
+ * （实测一次 fail 只报 landed!=true 时，排查者必须重跑探针才能分诊；实机
+ * 复审当场命中该形态：真实并发物理输入窗口内 wiggle 失败，detail 无读回值）。
+ * 坏形状字段缺席（不伪造）；两字段全缺 → 空串（保持原 detail 形态）。
+ */
+function selftestDiag(result: unknown): string {
+  const o = (result ?? {}) as {
+    results?: Array<{ cursor_after?: { x?: unknown; y?: unknown } } | null>;
+    physical_input?: { attribution?: unknown };
+  };
+  const first = Array.isArray(o.results) ? o.results[0] : null;
+  const ca = first?.cursor_after;
+  const parts: string[] = [];
+  if (
+    ca &&
+    typeof ca.x === "number" &&
+    Number.isFinite(ca.x) &&
+    typeof ca.y === "number" &&
+    Number.isFinite(ca.y)
+  ) {
+    parts.push(`读回光标=(${ca.x.toFixed(1)},${ca.y.toFixed(1)})`);
+  }
+  const attr = o.physical_input?.attribution;
+  if (attr === "idle" || attr === "synthetic" || attr === "physical") {
+    parts.push(`physical_input.attribution=${attr}`);
+  }
+  return parts.length > 0 ? `；${parts.join("；")}` : "";
 }
 
 /**

@@ -133,16 +133,36 @@ describe("bugs/10 A.3 — #22 分层定位", () => {
           results: [
             { index: 0, ok: false, error_kind: "cgevent_no_landing", cursor_after: { x: cursor.x, y: cursor.y } },
           ],
+          physical_input: { attribution: "physical", seconds_since_mouse_moved: 0.02 },
         };
       },
     });
     const c = find22(await runRustDoctorChecks(rust as never));
     expect(c!.status).toBe("fail");
     expect(c!.detail).toContain("投递层");
+    // 对抗复审轮 1（F3）：fail detail 必须透出分诊两字段（读回光标 + 物理归因）
+    expect(c!.detail).toContain("读回光标=(100.0,200.0)");
+    expect(c!.detail).toContain("physical_input.attribution=physical");
     // 复位 move 仍发生（即使 wiggle 失败）
     const dispatches = rust.calls.filter((x) => x.method === "cgevent_dispatch");
     expect(dispatches).toHaveLength(2);
     expect((dispatches[1].params as { actions: Array<{ x: number; y: number }> }).actions[0]).toEqual({ kind: "move", x: 100, y: 200 });
+  });
+
+  it("wiggle 未落地且 wire 无诊断字段 → detail 保持原形态（不伪造分诊数据）", async () => {
+    process.env.LASSO_DOCTOR_INPUT_SELFTEST = "1";
+    const rust = new MockRustBridge({
+      cgevent_cursor_state: () => ({ x: 100, y: 200, display: { w: 1440, h: 900 } }),
+      cgevent_dispatch: () => ({
+        results: [{ index: 0, ok: false, error_kind: "cgevent_no_landing" }],
+      }),
+    });
+    const c = find22(await runRustDoctorChecks(rust as never));
+    expect(c!.status).toBe("fail");
+    expect(c!.detail).toContain("landed!=true；已复位原位");
+    // 诊断字段的**值形态**缺席（静态指引句里的词不算——只禁伪造数据）
+    expect(c!.detail).not.toContain("读回光标=(");
+    expect(c!.detail).not.toContain("physical_input.attribution=");
   });
 
   it("wiggle OK 但复位复读不匹配 → fail（如实报 displaced）", async () => {

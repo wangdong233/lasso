@@ -6295,7 +6295,7 @@ const assertions = [
   {
     id: "INV-101-cgevent-landing-receipt",
     desc:
-      "bugs/10 决议 A.2：坐标鼠标动作落地回执——(1) rust cgevent.rs click/move/drag/scroll 每路径调 landing_receipt（settle→read→judge）；(2) 未落地 → ok:false + error_kind=cgevent_no_landing；(3) dispatch 级 physical_input 在场（Tier C）；(4) TS ActionResult.cursor_after/landed + CGEventProvider 透传；(5) 全失败沿既有 unknown→tier4 策略（D-β 零改动）",
+      "bugs/10 决议 A.2：坐标鼠标动作落地回执——(1) rust cgevent.rs click/move/drag/scroll 每路径调 landing_receipt（settle→read→judge）；(2) 未落地 → ok:false + error_kind=cgevent_no_landing（2b 触发分支精确形态×4 + 2c 鼠标 post 走 HID tap 路由钉——对抗复审轮 1 变异实验补）；(3) dispatch 级 physical_input 在场（Tier C）；(4) TS ActionResult.cursor_after/landed + CGEventProvider 透传；(5) 全失败沿既有 unknown→tier4 策略（D-β 零改动）",
     check: () => {
       // ----- rust 侧（原位读取——selftest 副本不含 rust-helper）-----
       let rustCge = "";
@@ -6313,6 +6313,19 @@ const assertions = [
       if (callSites.length < 5) return false; // 1 def + ≥4 call
       // (2) no_landing 错误类（未落地 → ok:false 的裁决点在 rust 单一裁决）
       if (!/"cgevent_no_landing"/.test(rustCge)) return false;
+      // (2b) 对抗复审轮 1（2026-09-17）变异实验实锤补锚：`if false && receipt.landed
+      // == Some(false)` 前缀注入时上面 (2) 的字符串存在性锚全绿——no_landing
+      // 触发分支必须以**精确分支形态**钉（click/move/drag/scroll 各一处，共 4）。
+      // （rust 锚——inv-selftest 的 src-only 复制注不进 rust-helper，本锚的
+      //   变异翻转验证走对抗复审实录，见 doc/bugs/10 验收节。）
+      const firingBranches =
+        rustCge.match(/if receipt\.landed == Some\(false\) \{/g) ?? [];
+      if (firingBranches.length < 4) return false;
+      // (2c) 投递路由钉：鼠标 post 闭包走 HID tap（bugs/10 §A.0 定谳的唯
+      // 一正确投递路由；Session/PID 定向是已证伪形态——§8-1 REJECTED。变异
+      // 实验：HID→Session 换路由曾全绿通过 42 cargo 测 + 103 INV——路由无锚
+      // 即无防线，本行补上）。
+      if (!/ev\.post\(CGEventTapLocation::HID\);/.test(rustCge)) return false;
       // (3) Tier C：dispatch 级 physical_input + 归因纯函数 + 单写者时间戳
       if (!/"physical_input": physical_input/.test(rustCge)) return false;
       if (!/fn physical_attribution\(/.test(rustCge)) return false;
