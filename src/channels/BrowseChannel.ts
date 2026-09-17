@@ -1080,6 +1080,10 @@ export abstract class BrowseChannel extends UiChannel {
             : {}),
           // BUG-08 决议 C：该次调用确实换了身份（调用方审计可见）
           ...(freshApplied ? { fresh_profile: true } : {}),
+          // 决议 B.2（doc/bugs/10）：evaluate 语句体 + undefined 的教学回执透传
+          //（doEvaluate 仅在形态-值合取时产出；其余形态缺席 = byte-identical）
+          ...(partial.js_form ? { js_form: partial.js_form } : {}),
+          ...(partial.js_form_hint ? { js_form_hint: partial.js_form_hint } : {}),
           // 决议 B（doc/bugs/09）B.1-4：所有 url 感知 action 统一回显——本次
           // 调用是否真的执行了导航（current-page 模式 / 同页跳过 / current-page
           // 动作族恒 false；navigate 本尊与先导导航恒 true）。
@@ -2210,9 +2214,12 @@ async function doEvaluate(
   // 不自动重试（Chrome 未死，服务端楔死 ≤180s 时间性自解，A-3②）。
   const evalTimeoutMs =
     opts.budget_ms ?? defaultEvalTimeoutMs();
+  // 决议 B.1/B.2（doc/bugs/10，2026-09-17）：classify 单真源——上游 function
+  // 参数与形态标签同源 derive（B.2 教学回执按形态接线）。
+  const { form: jsForm, fnArg } = classifyJs(opts.js);
   const r = (await c.callTool(
     "evaluate_script",
-    { function: evaluateFunctionArg(opts.js) },
+    { function: fnArg },
     evalTimeoutMs,
   )) as EvaluateResult;
   // P5（v1.18.1，得到实战问题集 P5）：上游错误假成功治理——与 doWait
@@ -2227,6 +2234,13 @@ async function doEvaluate(
     if (/^No page selected$/.test(errText.trim())) {
       throw new Error(
         "session_rotated:No page selected — the session page was rotated/cleared; take a fresh snapshot then retry (retryable)",
+      );
+    }
+    // 决议 B.2（doc/bugs/10）：is not a function 错误 = 传值当函数调用的典型
+    // 形态——错误文案追加同款教学句（eval_upstream_error 前缀语义不变）。
+    if (/is not a function/.test(errText)) {
+      throw new Error(
+        `eval_upstream_error:${errText.slice(0, 120)} | ${JS_FORM_HINT}`,
       );
     }
     throw new Error(`eval_upstream_error:${errText.slice(0, 120)}`);
@@ -2270,10 +2284,31 @@ async function doEvaluate(
         "session_rotated:No page selected — the session page was rotated/cleared; take a fresh snapshot then retry (retryable)",
       );
     }
+    // 决议 B.2（doc/bugs/10）：is not a function 同款教学句（P5 无 isError 形态）。
+    if (/is not a function/.test(preview)) {
+      throw new Error(
+        `eval_upstream_error:${preview.slice(0, 120)} | ${JS_FORM_HINT}`,
+      );
+    }
     throw new Error(`eval_upstream_error:${preview.slice(0, 120)}`);
   }
-  return { preview: truncatePreview(preview) };
+  // 决议 B.2（doc/bugs/10，2026-09-17）：语句体 + undefined 的教学回执——
+  // 上游围栏 = 页内 JSON.stringify(返回值)（upstream-response 契约），undefined
+  // 序列化为字面 "undefined"。仅语句体形态回显（`() => undefined` 合法返回
+  // undefined 的函数表达式不教学——信号只对「形态-值」合取成立，防噪音）。
+  const undefinedTeaching =
+    jsForm === "statement_body" && fence != null && fence.trim() === "undefined"
+      ? { js_form: "statement_body" as const, js_form_hint: JS_FORM_HINT }
+      : {};
+  return { preview: truncatePreview(preview), ...undefinedTeaching };
 }
+
+/**
+ * 决议 B.2（doc/bugs/10）：evaluate 语句体教学句（js_form_hint 回执与
+ * `is not a function` 错误追加共用同一文案——单一真源）。
+ */
+const JS_FORM_HINT =
+  "js form hint: statement bodies return undefined unless you `return` — send one expression (now auto-returned), an IIFE, or add `return`";
 
 /**
  * P5：上游 evaluate 错误文本签名（实测三种形态，问题集 P5 白盒证据）——
@@ -2289,10 +2324,12 @@ const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
 ];
 
 /**
- * E④（BUG-03 决议 E④）+ BUG-04 决议 C1（doc/bugs/04 §7）：evaluate 的 js 入参 →
- * 上游 function 参数归一（导出供测试）。
+ * E④（BUG-03 决议 E④）+ BUG-04 决议 C1（doc/bugs/04 §7）+ 决议 B.1（doc/bugs/10，
+ * 2026-09-17）：evaluate 的 js 入参 → 上游 function 参数归一（导出供测试）。
  *
- * 三形态兼容：
+ * 五形态兼容（B.1 前三形态字节级沿用，后两条为 bug10 新增表达式路由——消灭
+ * 「裸表达式落语句体恒 undefined / 括号表达式透传报 fn is not a function」两类
+ * 静默错值，实机报告 P2）：
  *  - **函数表达式**（起手 `(` / `function` / `async`，或单标识符箭头 `x => x`）
  *    → 原样透传——上游 evaluate_script 契约本就吃函数表达式并自调用；旧 wrapper
  *    会把它包成「函数体内的函数表达式语句」（求值不 return → 恒 undefined 静默
@@ -2303,7 +2340,21 @@ const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
  *    后 `fn(...args)`：IIFE 串求值成**结果**而非函数 → `fn is not a function`
  *    （报告 §9-②a）。包裹成 `() => (iife)` 后外层箭头求值即得 IIFE 结果
  *    （Promise 由上游 await fn() 解开，语义不变）。
- *  - **语句体**（`return ...` / 声明 / 多语句 / 裸表达式）→ 维持包裹
+ *  - **括号表达式**（bug10 B.1 路由 1：起手 `(` 且首平衡括号组后不接 `=>`、
+ *    组内容非函数起手——`({a:1})`、`(1+2)`、`(a+b)`）→ 包 `() => (\n<t>\n)`。
+ *    旧三形态把它们当函数表达式透传 → 上游求值为**对象/值** → `fn is not a
+ *    function`（实机报告 P2 症状②）。保守排除集（判伪方向=维持透传，现行行为
+ *    字节级不变）：首闭合组后接 `=>`（`(a,b)=>a` 参数组）；外组内容以
+ *    `async`/`function` 起手（`(function () {...})`，E④ 语料）；外组内容以 `(`
+ *    起手（`(() => 42)` 嵌套括号函数形态，E④ 语料）或单标识符箭头（`(x => x)`）
+ *    ——函数表达式族整族维持透传，宁可漏网（透传错形态=上游响亮报错）不可
+ *    误包（包裹函数表达式=静默错值，毒中之毒）。
+ *  - **单行裸表达式**（bug10 B.1 路由 2：单行 + 剥尾 `;` 后无串外 `;` + 非语句
+ *    关键字起手 + 括号/引号平衡——`JSON.stringify({...})`、`document.title`、
+ *    `1+2`）→ 包 `() => (\n<t>\n)`——旧三形态落语句体包裹，表达式值被语句体
+ *    吞掉 → 恒 undefined（实机报告 P2 症状①）。多行/多语句/声明维持语句体
+ *    （现行行为字节级不变——B.2 的 js_form 教学回执兜住这类输入的诚实边界）。
+ *  - **语句体**（`return ...` / 声明 / 多语句 / 多行）→ 维持包裹
  *    `() => { ... }`（W1-DEF-1b：直接透传 `return` 会被当函数表达式语法错，
  *    wave2 smoke 实证 "Unexpected token 'return'"）。
  *
@@ -2319,14 +2370,47 @@ const UPSTREAM_EVAL_ERROR_SIGNATURES: RegExp[] = [
  * 表达式位置包 `() => (expr)` 求值不变。
  */
 export function evaluateFunctionArg(js: string): string {
+  return classifyJs(js).fnArg;
+}
+
+/**
+ * 决议 B.1（doc/bugs/10）：js 入参形态分类（导出供单测——doEvaluate 的 B.2
+ * 教学回执按形态接线；与 evaluateFunctionArg 同一真源 derive，零漂移）。
+ */
+export type JsForm =
+  | "function_expression" // 透传（上游自调用）
+  | "iife" // 包表达式体（求值即得结果）
+  | "paren_expression" // bug10 路由 1：括号表达式包表达式体
+  | "single_expression" // bug10 路由 2：单行裸表达式包表达式体
+  | "statement_body"; // 语句体包裹（值须显式 return）
+
+export function evaluateJsForm(js: string): JsForm {
+  return classifyJs(js).form;
+}
+
+/** 表达式体包裹（剥尾 `;`——表达式体内 `expr;` 是语法错；其余 byte 保留）。 */
+function exprBodyWrap(t: string): string {
+  return `() => (\n${t.replace(/;\s*$/, "")}\n)`;
+}
+
+/** classifyJs：evaluateFunctionArg / evaluateJsForm 的共同真源（单一实现）。 */
+function classifyJs(js: string): { form: JsForm; fnArg: string } {
   const t = js.trim();
   if (/^(?:async\b|function\b|\()/.test(t)) {
     // 函数表达式起手 token；IIFE 形态（结构化尾部调用判定）包成表达式体箭头
-    //（剥尾 `;`——表达式体内 `expr;` 是语法错；其余 byte 保留）
-    return isIifeString(t) ? `() => (\n${t.replace(/;\s*$/, "")}\n)` : t;
+    if (isIifeString(t)) return { form: "iife", fnArg: exprBodyWrap(t) };
+    if (t.startsWith("(") && isParenExpression(t)) {
+      return { form: "paren_expression", fnArg: exprBodyWrap(t) };
+    }
+    return { form: "function_expression", fnArg: t };
   }
-  if (/^[A-Za-z_$][\w$]*\s*=>/.test(t)) return t; // 单标识符箭头 x => x
-  return `() => {\n${js}\n}`; // 语句体维持包裹
+  if (/^[A-Za-z_$][\w$]*\s*=>/.test(t)) {
+    return { form: "function_expression", fnArg: t }; // 单标识符箭头 x => x
+  }
+  if (isSingleLineExpression(t)) {
+    return { form: "single_expression", fnArg: exprBodyWrap(t) };
+  }
+  return { form: "statement_body", fnArg: `() => {\n${js}\n}` }; // 语句体维持包裹
 }
 
 /**
@@ -2345,6 +2429,111 @@ export function isIifeString(t: string): boolean {
   const last = before.charAt(before.length - 1);
   if (last !== ")" && last !== "}") return false;
   return bracketsBalanced(s);
+}
+
+// ============================================================
+// 决议 B.1（doc/bugs/10，2026-09-17）：两条表达式路由的结构化判定
+//（导出供单测；机械规则全部在此真源，描述/测试不得另立判定副本）
+// ============================================================
+
+/**
+ * B.1 路由 1：括号表达式判定（调用方保证 t 以 `(` 起手）。
+ *
+ * 判真（三条全中）：括号/引号平衡；首**闭合**括号组后（跳空白）不接 `=>`
+ * （接 `=>` = 箭头参数组——`(a,b)=>a`，函数表达式族）；外组（0 位开括号的
+ * 匹配闭）内容 trim 后不以 `async`/`function`/`(` 起手且非单标识符箭头
+ * （`(() => 42)`/`(function () {...})`/`(x => x)` 函数表达式族保守排除——
+ * 判伪方向=维持现行透传，E④ 语料字节级不变）。
+ */
+export function isParenExpression(t: string): boolean {
+  if (!bracketsBalanced(t)) return false;
+  const spans = parenSpans(t);
+  if (spans.outerClose < 0 || spans.firstClose === null) return false;
+  // 排除 1：首闭合组后接 => （箭头参数组）
+  const after = t.slice(spans.firstClose[1] + 1);
+  if (/^\s*=>/.test(after)) return false;
+  // 排除 2：外组内容是函数表达式族（async/function/嵌套括号/单标识符箭头）
+  const content = t.slice(1, spans.outerClose).trim();
+  if (/^(?:async\b|function\b|\()/.test(content)) return false;
+  if (/^[A-Za-z_$][\w$]*\s*=>/.test(content)) return false;
+  return true;
+}
+
+/**
+ * B.1 路由 2：单行裸表达式判定（调用方保证已过函数起手/IIFE/单标识符箭头
+ * 三道前置分支）。
+ *
+ * 判真：单行（无 `\n`）+ 剥尾 `;` 后非空 + 非语句关键字起手（词边界——
+ * `document.title` 不被 `do` 误伤）+ 串外无 `;`（多语句排除）+ 括号/引号平衡。
+ */
+export function isSingleLineExpression(t: string): boolean {
+  if (t.includes("\n")) return false;
+  const s = t.replace(/;\s*$/, "");
+  if (s.length === 0) return false;
+  if (STATEMENT_KEYWORD_RE.test(s)) return false;
+  if (topLevelSemicolonIndex(s) >= 0) return false;
+  return bracketsBalanced(s);
+}
+
+/** 语句关键字起手表（B.1 决议 2 原文清单；`function`/`async` 前置分支已拦，留作纵深）。 */
+const STATEMENT_KEYWORD_RE =
+  /^(?:const|let|var|return|if|for|while|do|switch|try|throw|class|with|debugger|function|async|import|export)\b/;
+
+/**
+ * 字符串感知扫描：返回首个**闭合**括号组的起止下标 + 0 位开括号的匹配闭下标
+ * （不平衡时 outerClose=-1）。字符串字面量内的括号不计数（与 bracketsBalanced
+ * 同一引号/转义规则）。
+ */
+function parenSpans(t: string): {
+  firstClose: [number, number] | null;
+  outerClose: number;
+} {
+  const stack: number[] = [];
+  let firstClose: [number, number] | null = null;
+  let quote: string | null = null;
+  let escaped = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (quote !== null) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") stack.push(i);
+    else if (ch === ")") {
+      const start = stack.pop();
+      if (start === undefined) return { firstClose, outerClose: -1 };
+      if (firstClose === null) firstClose = [start, i];
+      if (start === 0) return { firstClose, outerClose: i };
+    }
+  }
+  return { firstClose, outerClose: -1 }; // 0 位开括号未闭合
+}
+
+/** 串外首个 `;` 的下标（字符串内的分号不计数；无则 -1）。 */
+function topLevelSemicolonIndex(s: string): number {
+  let quote: string | null = null;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote !== null) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === ";") return i;
+  }
+  return -1;
 }
 
 /** 括号/花括号平衡（含字符串字面量感知——字符串内的括号不计数）。 */

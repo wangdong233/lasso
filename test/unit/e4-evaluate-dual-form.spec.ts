@@ -12,13 +12,25 @@
  *  3. 会话轮换错误（"No page selected"）归类 session_rotated（可重试语义 +
  *     提示重 snapshot），不再落泛 unknown 文案
  *
+ * 决议 B（doc/bugs/10，2026-09-17）扩展：两条表达式路由（括号表达式 + 单行
+ * 裸表达式——修复实机报告 P2 的 `JSON.stringify({...})` 恒 undefined 与
+ * `({...})` 报 fn is not a function）+ B.2 错误教学（js_form 回执 +
+ * is-not-a-function hint）。
+ *
  * 全 mock McpClient——零真浏览器。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { promises as fs, mkdtempSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BrowseChannel, evaluateFunctionArg, isIifeString } from "../../src/channels/BrowseChannel.js";
+import {
+  BrowseChannel,
+  evaluateFunctionArg,
+  evaluateJsForm,
+  isIifeString,
+  isParenExpression,
+  isSingleLineExpression,
+} from "../../src/channels/BrowseChannel.js";
 import { isFallbackWorthy } from "../../src/fallback/outcome.js";
 import { evalFence, parseEvalResult } from "../../src/browse/upstream-response.js";
 import { setStateStoreContext } from "../../src/util/state-store.js";
@@ -100,11 +112,13 @@ describe("E④ · evaluateFunctionArg 双形态", () => {
     }
   });
 
-  it("1b. 语句体形态维持包裹（return / 声明 / 裸表达式 / 多语句）", () => {
+  it("1b. 语句体形态维持包裹（return / 声明 / 多语句）", () => {
+    // bug10 决议 B.1：单行裸表达式（旧语料 `document.title`）已迁出语句体 →
+    // 表达式路由自动返回值（见 B.1 describe 块）；语句体只剩 return/声明/
+    // 多语句/多行四类。
     for (const stmt of [
       "return document.title",
       "const a = 1; return a",
-      "document.title",
       "var x = 1;\nx + 2",
       "await new Promise(r => setTimeout(r, 10)); return 1",
     ]) {
@@ -115,7 +129,12 @@ describe("E④ · evaluateFunctionArg 双形态", () => {
   it("1c. 判定方向保守：误判为「透传语句体」（响亮语法错）优于「包裹函数表达式」（静默 undefined）", () => {
     // 非函数起手的语句体（含 return）绝不透传；只有白名单起手 token 才透传
     expect(evaluateFunctionArg("return () => 1")).not.toBe("return () => 1");
-    expect(evaluateFunctionArg("[1,2,3].map(x => x * 2)")).toMatch(/^\(\) => \{/);
+    // bug10 决议 B.1 翻转：单行裸表达式（含 `[1,2,3].map(...)`）从语句体包裹
+    //（恒 undefined）迁到表达式路由（值自动返回）——旧 /^\(\) => \{/ 断言随之
+    // 作废（doc/bugs/10 §2 B.1 裸表达式路由目标用例）。
+    expect(evaluateFunctionArg("[1,2,3].map(x => x * 2)")).toBe(
+      "() => (\n[1,2,3].map(x => x * 2)\n)",
+    );
   });
 });
 
@@ -298,5 +317,179 @@ describe("C1 · evaluate IIFE 第三形态", () => {
     ]) {
       expect(evaluateFunctionArg(stmt)).toBe(`() => {\n${stmt}\n}`);
     }
+  });
+});
+
+// ============================================================
+// 6. 决议 B.1（doc/bugs/10，2026-09-17）：两条表达式路由
+//    （实机报告 P2：`JSON.stringify({...})` 落语句体恒 undefined；
+//     `({...})` 透传报 fn is not a function）
+// ============================================================
+describe("B.1 · 表达式路由（括号 + 单行裸表达式）", () => {
+  it("6a. 单行裸表达式 → 表达式体包裹（值自动返回——修复恒 undefined）", () => {
+    for (const expr of [
+      "JSON.stringify({a:1})",
+      "document.title",
+      "1+2",
+      "[1,2,3].map(x => x * 2)",
+      "document.querySelector('a').href",
+    ]) {
+      expect(evaluateFunctionArg(expr)).toBe(`() => (\n${expr}\n)`);
+      expect(evaluateJsForm(expr)).toBe("single_expression");
+    }
+    // 尾分号形态：剥尾 `;` 后包裹（表达式体内 `;` 是语法错）
+    expect(evaluateFunctionArg("document.title;")).toBe(
+      "() => (\ndocument.title\n)",
+    );
+  });
+
+  it("6b. 括号表达式路由：`({...})`/`(1+2)` → 表达式体包裹（修复 fn is not a function）", () => {
+    for (const expr of ["({a:1})", "(1+2)", "(a+b)", "(foo)(x)", '("(" + x)']) {
+      expect(evaluateFunctionArg(expr)).toBe(`() => (\n${expr}\n)`);
+      expect(evaluateJsForm(expr)).toBe("paren_expression");
+      expect(isParenExpression(expr)).toBe(true);
+    }
+  });
+
+  it("6c. 函数表达式族保守排除（判伪方向=维持现行透传，字节级不变）", () => {
+    // (a,b)=>a：首闭合组后接 => （箭头参数组）
+    expect(evaluateFunctionArg("(a,b)=>a")).toBe("(a,b)=>a");
+    expect(evaluateJsForm("(a,b)=>a")).toBe("function_expression");
+    // `(() => 42)`：首闭合组（内层空参）后接 => → 透传（E④ 1a 语料不回退）
+    expect(evaluateFunctionArg("(() => 42)")).toBe("(() => 42)");
+    // `(function(){...})`：外组内容 function 起手 → 透传（E④ 1a 语料不回退）
+    expect(evaluateFunctionArg("(function() { return 1; })")).toBe(
+      "(function() { return 1; })",
+    );
+    // `(async () => 1)`：外组内容 async 起手 → 透传
+    expect(evaluateFunctionArg("(async () => 1)")).toBe("(async () => 1)");
+    // `(x => x)`：外组内容单标识符箭头 → 透传（保守排除集）
+    expect(evaluateFunctionArg("(x => x)")).toBe("(x => x)");
+    // 嵌套括号对象 `(({a:1}))`：外组内容 `(` 起手 → 保守透传（响亮错误方向）
+    expect(evaluateFunctionArg("(({a:1}))")).toBe("(({a:1}))");
+  });
+
+  it("6d. 语句体三闸不回退：语句关键字 / 串外分号 / 多行 → 维持语句体包裹", () => {
+    for (const stmt of [
+      "const x = 1", // 声明关键字
+      "if (x) y", // 语句关键字（非表达式）
+      "let a = 1", //
+      "a = 1; b = 2", // 串外分号（多语句）
+      "JSON.stringify({\na:1\n})", // 多行（诚实边界：B.2 教学回执兜住）
+      "x; y", // 串外分号
+    ]) {
+      expect(evaluateFunctionArg(stmt)).toBe(`() => {\n${stmt}\n}`);
+      expect(evaluateJsForm(stmt)).toBe("statement_body");
+    }
+    // 词边界反例：document 不被 `do` 误伤 / classroom 不被 `class` 误伤
+    expect(isSingleLineExpression("document.title")).toBe(true);
+    expect(isSingleLineExpression("classroom + 1")).toBe(true);
+    expect(isSingleLineExpression("do { x } while (0)")).toBe(false);
+    // 串内分号不计数（引号感知）
+    expect(isSingleLineExpression("document.querySelector('a;b').href")).toBe(
+      true,
+    );
+    // 不平衡 → 不判表达式（交上游响亮报错）
+    expect(isSingleLineExpression("(({a:1)")).toBe(false);
+    expect(isParenExpression("(({a:1)")).toBe(false);
+  });
+
+  it("6e. IIFE 用例字节级回归锚（B.1 扩展不扰动 C1 语义）", () => {
+    const iife = "(async () => { const x = await Promise.resolve(7); return x; })()";
+    expect(evaluateFunctionArg(iife)).toBe(
+      `() => (\n${iife.replace(/;\s*$/, "")}\n)`,
+    );
+    expect(evaluateJsForm(iife)).toBe("iife");
+  });
+
+  it("6f. doEvaluate 行为：裸表达式入参 → 上游收到表达式体箭头 + 值直达（不再 undefined）", async () => {
+    const { client, calls } = makeClient({
+      evaluate_script: () => fencedEval('{"a":1}'),
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "JSON.stringify({a:1})",
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    // BUG-08 D-2：执行体断言取最后一次 evaluate_script 调用
+    expect(calls.filter((c) => c.name === "evaluate_script").at(-1)!.args.function).toBe(
+      "() => (\nJSON.stringify({a:1})\n)",
+    );
+    expect(r.data?.preview).toBe('{"a":1}');
+    // 值非 undefined → 无教学回执（byte-identical 增量面）
+    expect(r.data?.js_form).toBeUndefined();
+  });
+});
+
+// ============================================================
+// 7. 决议 B.2（doc/bugs/10）：错误教学（js_form 回执 + is-not-a-function hint）
+// ============================================================
+describe("B.2 · evaluate 语句体教学回执", () => {
+  it("7a. 语句体 + 返回 undefined → data.js_form='statement_body' + js_form_hint（错误即教学）", async () => {
+    const { client } = makeClient({
+      evaluate_script: () => fencedEval("undefined"), // 上游围栏契约：JSON.stringify(undefined) → 字面 "undefined"
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "JSON.stringify({\na:1\n})", // 多行 → 语句体（6d 诚实边界用例）
+    } as BrowseOptions);
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.js_form).toBe("statement_body");
+    expect(r.data?.js_form_hint).toMatch(/statement bodies return undefined/);
+    expect(r.data?.js_form_hint).toMatch(/`return`/);
+  });
+
+  it("7b. 形态-值合取防噪音：函数表达式合法返回 undefined / 语句体有值 → 无教学回执", async () => {
+    // 函数表达式 `() => undefined`：合法返回 undefined——不教学
+    const { client: c1 } = makeClient({
+      evaluate_script: () => fencedEval("undefined"),
+    });
+    const ch1 = new TestBrowseChannel(c1);
+    const r1 = await ch1.browse("https://example.com/", "evaluate", {
+      js: "() => undefined",
+    } as BrowseOptions);
+    expect(r1.outcome).toBe("worked");
+    expect(r1.data?.js_form).toBeUndefined();
+    // 语句体 + 有值（return 42）：不教学
+    const { client: c2 } = makeClient({
+      evaluate_script: () => fencedEval("42"),
+    });
+    const ch2 = new TestBrowseChannel(c2);
+    const r2 = await ch2.browse("https://example.com/", "evaluate", {
+      js: "return 42",
+    } as BrowseOptions);
+    expect(r2.outcome).toBe("worked");
+    expect(r2.data?.js_form).toBeUndefined();
+  });
+
+  it("7c. 上游错误含 is not a function → 错误文案追加同款教学句（eval_upstream_error 前缀语义不变）", async () => {
+    const { client } = makeClient({
+      evaluate_script: () =>
+        textContent("TypeError: intercept is not a function", true),
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "(() => 42)(", // 截断形态：透传 → 上游求值为非函数
+    } as BrowseOptions);
+    expect(r.outcome).toBe("didnt"); // BUG-04 决议 C2：脚本错不 fallback
+    expect(r.error).toContain("eval_upstream_error:");
+    expect(r.error).toContain("is not a function");
+    expect(r.error).toMatch(/js form hint: statement bodies return undefined/);
+  });
+
+  it("7d. 其余上游错误不带教学句（窄匹配防误伤）", async () => {
+    const { client } = makeClient({
+      evaluate_script: () =>
+        textContent(
+          "Network.enable timed out. Increase the 'protocolTimeout' setting",
+          true,
+        ),
+    });
+    const ch = new TestBrowseChannel(client);
+    const r = await ch.browse("https://example.com/", "evaluate", {
+      js: "return 1",
+    } as BrowseOptions);
+    expect(r.error).toContain("eval_upstream_error:");
+    expect(r.error).not.toContain("js form hint");
   });
 });
