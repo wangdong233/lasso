@@ -188,6 +188,15 @@ export interface BrowseResult {
    * 不发射（SSO 跨域流转是合法常态）。
    */
   eviction_suspected?: { from: string; to: string; at_ms: number };
+  /**
+   * 决议 B.2（doc/bugs/10，2026-09-17）：evaluate 返回 undefined **且** lasso
+   * 包裹形态为语句体时回显 js_form:"statement_body"——「错误即教学」：调用方
+   * 第一次能机械判读「为什么是 undefined」（语句体不 return 恒 undefined）。
+   * 仅该合取成立时在场；函数表达式合法返回 undefined 时不填（防教学噪音）。
+   */
+  js_form?: "statement_body";
+  /** B.2：与 js_form 成对的教学句（单一真源 JS_FORM_HINT）。 */
+  js_form_hint?: string;
 }
 
 // ============================================================
