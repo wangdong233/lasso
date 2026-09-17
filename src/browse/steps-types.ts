@@ -112,6 +112,11 @@ export interface Step {
   selectors?: Record<string, string>;
   /** evaluate action 用 */
   js?: string;
+  /**
+   * doc/bugs/11 决议 B.2：press step 的键/组合键（"Enter" / "Control+A"——
+   * 顶层 options.key 同一键，executeStep 原样透传 doPress）。
+   */
+  key?: string;
   /** 每步可附 postcondition（12 §1.1B outcomeAfterCheck） */
   expect?: ExpectCondition;
   /** per-step timeout（默认 30000） */

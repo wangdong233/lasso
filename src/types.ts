@@ -232,6 +232,13 @@ export interface ScreenshotSpec {
 export interface BrowseOptions {
   selectors?: Record<string, string>;
   js?: string;
+  /**
+   * doc/bugs/11 决议 B.2（2026-09-17）：press action 的键/组合键入参
+   * （"Enter" / "Control+A"——与上游 press_key key 契约逐字一致，修饰键由
+   * 上游 parseKey 拆解 + 失败释放保证）。type 不消费此键（键入文本走
+   * selectors 的值——与 fill 同形）。
+   */
+  key?: string;
   steps?: unknown[]; // browse() 入口消费：非空 → StepEngine.runChain（BrowseChannel browse 入口分流）
   expect?: ExpectCondition; // action=wait 消费（doWait 读 expect.text，必需）；其余 action 忽略
   // review-r2 裁决留档的 wait_until? / timeout_ms? 死字段已于 P2 处置轮删除

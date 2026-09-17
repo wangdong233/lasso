@@ -80,6 +80,11 @@ const UPSTREAM_170_TOOLS = [
   "select_page",
   "list_network_requests",
   "list_console_messages",
+  // D-γ（doc/bugs/11，2026-09-17）：1.7.0 input.js 真实暴露的键盘工具（§0 断言
+  // 1-2 白盒核实）。死列表此前只钉 lasso 消费过的工具——不补则 P10 前置门把
+  // type/press 调用判成 upstream_unsupported（假红）。
+  "type_text",
+  "press_key",
 ];
 
 function makeUpstreamClient(fx: UpstreamFixture = {}): {
@@ -107,6 +112,9 @@ function makeUpstreamClient(fx: UpstreamFixture = {}): {
         // W1-DEF-1b 真实契约：base64 在 image block（不在 text），见 helpers/upstream-mock
         return mockScreenshotResponse(fx.screenshotBase64 ?? VALID_PNG_BASE64);
       }
+      // doc/bugs/11：键盘原语（成功档默认；错误档由各 spec 自行 mock）
+      if (name === "type_text") return textContent("typed");
+      if (name === "press_key") return textContent("pressed");
       if (name === "evaluate_script") {
         if (fx.evalOverride) return fx.evalOverride(String(args.function ?? ""));
         // W1-DEF-1 真实契约：上游把 function 参数 eval 成函数再调用；

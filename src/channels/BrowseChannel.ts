@@ -73,6 +73,7 @@ import {
   evalFence,
   imageBlock,
   firstText,
+  type UpstreamContentResult,
 } from "../browse/upstream-response.js";
 // BUG-05 决议 E（doc/bugs/05 §6-E）：options.screenshot.filePath 写根守卫
 //（LASSO_SCREENSHOT_DIR，默认关=显式 filePath 收紧为拒——任意写盘暴露面收窄）
@@ -88,6 +89,7 @@ import {
   doConsole,
   doNetwork,
   ACTION_TO_UPSTREAM_TOOL,
+  CDP_UPSTREAM_TOOL_NAMES,
 } from "../browse/cdp-actions.js";
 // v1.17 Phase F（parse24 §6.2 C2）：include_refs opt-in——refs 注入/附录/click-by-ref
 //   纯函数 helper（expr 构造 + 附录格式化；无 SDK 依赖，单测友好）
@@ -101,9 +103,10 @@ import {
   REF_PATTERN,
   type ExtractRef,
 } from "../browse/extract-refs.js";
+// doc/bugs/11 决议 B（2026-09-17）：type action ref 路的 focus expr（input-guard.ts）
+import { buildRefFocusExpr } from "../browse/input-guard.js";
 
-// ============================================================
-// 类型
+// =====================================================// 类型
 // ============================================================
 /**
  * Action handler 签名：取一个 McpClient + URL + 选项，返回 BrowseResult 的部分字段。
@@ -197,6 +200,11 @@ export abstract class BrowseChannel extends UiChannel {
     ["pdf", doPdf],
     ["console", doConsole],
     ["network", doNetwork],
+    // doc/bugs/11 决议 B（2026-09-17）：键盘输入原语——上游 type_text/press_key
+    // 映射（cdp-actions.ts INV-6 集中表；禁 CDP 直连）。click/fill/type 三原语
+    // 补齐第三缺；与 click/fill 同族（current-page 动作族：从不导航，url 装饰性）。
+    ["type", doType],
+    ["press", doPress],
   ]);
 
   /**
@@ -1332,6 +1340,9 @@ export abstract class BrowseChannel extends UiChannel {
     const opts: BrowseOptions = {
       selectors: step.selectors,
       js: step.js,
+      // doc/bugs/11 决议 B.2：steps[].key 透传（链内 press step 可用——与顶层
+      // options.key 同一键，StepEngine 不解释）
+      key: step.key,
       // P2 处置轮：删死写 timeout_ms: step.timeout_ms——BrowseOptions.timeout_ms
       // 已删（doNavigate 从不读，r2 审查实证），step.timeout_ms 的等待语义
       // 由 step.expect.timeout_ms（ExpectPoll 消费）承载。
@@ -2154,6 +2165,124 @@ async function doFill(
 const WAIT_NEW_TAB_TEACHING =
   "; if the action opened a NEW tab (window.open), the original page URL never changes and this wait cannot succeed — inspect open pages or use the desktop channel";
 
+/**
+ * doc/bugs/11 决议 B.1：type action——逐字键入（可信 CDP 输入管道）。
+ *
+ * 入参与 fill 同形：opts.selectors = { uid|ref: text, ... }（零新 zod 键——
+ * selectors 既有 record；^r\d+$ 键 = lasso ref，REF_PATTERN 双路先例）。
+ *  - uid 路：每字段 click {uid}（可信鼠标点击获得焦点——上游 type_text 的
+ *    文档化前置「previously focused input」）→ type_text {text}
+ *  - ref 路：locate 预检（原子性——miss 则零部分键入）→ focus expr（定位 +
+ *    el.focus() + document.activeElement 回执；失败 throw type_focus_failed →
+ *    didnt 档）→ type_text {text}
+ *  - 不暴露 submitKey（上游 type_text 有此参数）：提交显式走后续 press/click
+ *    两步链更可审计（上传 tap 子串/意外提交零风险——决议 B.1）
+ *  - 长值无上限：逐字派发天然覆盖 fill_form ≥100 字符的脚本设值断层（D-α）
+ *
+ * 伦理边界（决议 A.2，本批最重）：type = Playwright page.keyboard.type() 同级
+ * 标准输入原语；任何「模拟人类输入节奏/随机延迟以欺骗行为检测」的增强越过
+ * 红线，拒绝实现。
+ */
+async function doType(
+  c: McpClient,
+  _url: string,
+  opts: BrowseOptions,
+): Promise<Partial<BrowseResult>> {
+  const elements = opts.selectors;
+  if (!elements || Object.keys(elements).length === 0) {
+    throw new Error("type: opts.selectors required ({ uid|ref: text, ... })");
+  }
+  const entries = Object.entries(elements);
+  const refEntries = entries.filter(([k]) => REF_PATTERN.test(k));
+  const uidEntries = entries.filter(([k]) => !REF_PATTERN.test(k));
+
+  // —— ref 路（先行——与 doFill 的 ref→uid 混合序一致）——
+  if (refEntries.length > 0) {
+    // 副作用前预检：任一 ref miss → 不键入任何字段直接抛 ref_stale（无部分键入）
+    const loc = (await c.callTool("evaluate_script", {
+      function: buildRefLocateExpr(refEntries.map(([k]) => k)),
+    })) as EvaluateResult;
+    const locV = parseEvalResult(loc) as { ok?: boolean; missing?: string[] } | undefined;
+    if (!locV?.ok) {
+      throw new Error(
+        `ref_stale_re_snapshot: refs [${(locV?.missing ?? refEntries.map(([k]) => k)).join(", ")}] not found in DOM (page changed since extract? re-run extract with include_refs)`,
+      );
+    }
+    for (const [ref, text] of refEntries) {
+      const focusR = (await c.callTool("evaluate_script", {
+        function: buildRefFocusExpr(ref),
+      })) as EvaluateResult;
+      const focusV = parseEvalResult(focusR) as
+        | { ok?: boolean; focused?: boolean; reason?: string }
+        | undefined;
+      if (focusV?.reason === "ref_stale") {
+        throw new Error(
+          `ref_stale_re_snapshot: ref "${ref}" not found in DOM (page changed since extract? re-run extract with include_refs)`,
+        );
+      }
+      if (focusV?.ok !== true) {
+        throw new Error(
+          `type_focus_failed:${ref}:${focusV?.reason ?? "unparsable_eval"}`,
+        );
+      }
+      if (focusV.focused !== true) {
+        // 决议 B.1：focus 回执失败（定位成功但 activeElement ≠ 目标——hidden/
+        // readonly/被遮挡）→ didnt 档（不猜——键入会落到别的元素上）
+        throw new Error(
+          `type_focus_failed:${ref} (located but document.activeElement !== target — hidden/readonly?)`,
+        );
+      }
+      await callUpstreamTypeText(c, text);
+    }
+  }
+
+  // —— uid 路（无探针——第 1 层可信管道，v1 边界如实文档化）——
+  for (const [uid, text] of uidEntries) {
+    await c.callTool("click", { uid });
+    await callUpstreamTypeText(c, text);
+  }
+
+  return {
+    preview: `typed ${entries.length} fields (${refEntries.length} via lasso ref)`,
+  };
+}
+
+/** type_text 单次键入（上游 isError 检查——W-DEF-R11-1/P5 假成功治理同范式）。 */
+async function callUpstreamTypeText(c: McpClient, text: string): Promise<void> {
+  const r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.type_text, {
+    text,
+  })) as UpstreamContentResult;
+  if (r.isError) {
+    throw new Error(
+      `upstream_type_error:${(firstText(r) ?? "unknown").slice(0, 120)}`,
+    );
+  }
+}
+
+/**
+ * doc/bugs/11 决议 B.2：press action——键/组合键直通上游 press_key。
+ * key 契约与上游逐字一致（"Enter" / "Control+A"——修饰键由上游 parseKey 拆解
+ * + 失败释放保证，§0 断言 2）。零包装直通（submitKey 类便捷参数不设——提交
+ * 链保持显式两步）。
+ */
+async function doPress(
+  c: McpClient,
+  _url: string,
+  opts: BrowseOptions,
+): Promise<Partial<BrowseResult>> {
+  const key = opts.key;
+  if (!key) throw new Error("press: opts.key required (e.g. 'Enter', 'Control+A')");
+  const r = (await c.callTool(CDP_UPSTREAM_TOOL_NAMES.press_key, {
+    key,
+  })) as UpstreamContentResult;
+  if (r.isError) {
+    throw new Error(
+      `upstream_press_error:${(firstText(r) ?? "unknown").slice(0, 120)}`,
+    );
+  }
+  return { preview: `pressed ${key}` };
+}
+
 async function doWait(
   c: McpClient,
   _url: string,
@@ -2733,6 +2862,10 @@ export const BROWSE_ACTIONS: readonly string[] = Object.freeze([
   "pdf",
   "console",
   "network",
+  // doc/bugs/11 决议 B：键盘输入原语（顺序 = actionDispatch 插入序——errors-
+  // as-teaching spec 钉序相等，新增 action 必须两处同 commit）
+  "type",
+  "press",
 ]);
 
 // BUG-07 决议 A⁺（§5.2③）：current-page 模式的 data.url / final_url 字面量
@@ -2804,6 +2937,13 @@ export const CONSUMED_OPTIONS: Readonly<Record<string, readonly string[]>> = Obj
   console: ["console_level", "console_limit"],
   /** network_include_bodies / network_timeout_ms 死键不入表（决议 r1） */
   network: ["network_filter", "no_cache", "no_reload"],
+  /**
+   * doc/bugs/11 决议 B.3：键盘原语消费键——type 与 fill 同形（selectors =
+   * { uid|ref: text }）；press 单 key 入参。死键反向诚实标注自动生效
+   * （type 传 key → ignored；press 传 selectors → ignored）。
+   */
+  type: ["selectors"],
+  press: ["key"],
 });
 
 /**
@@ -2906,6 +3046,9 @@ function classifyBrowseError(msg: string, _action: string): Outcome {
   // v1.17 Phase F（parse24 §6.2 C2）：ref 失效是明确「句柄不可用」信号 → didnt
   // （不 fallback、不猜——CC 重新 extract with include_refs 取新 refs）
   if (m.includes("ref_stale")) return "didnt";
+  // doc/bugs/11 决议 B.1：type 的 focus 回执失败是明确「目标不可键入」信号 →
+  // didnt（不猜不重试——键入会落到别的元素上；换 selector 或重 extract）
+  if (m.includes("type_focus_failed")) return "didnt";
   // P10（v1.18.1，得到实战问题集 P10）：上游工具缺失是确定性「明确不可得」
   // （锁定的 chrome-devtools-mcp@1.7.0 无 pdf 工具，-32602 "Tool pdf not found"；
   // 重试/fallback 都无济于事）→ didnt。此前落 unknown 假可重试——steps 链里

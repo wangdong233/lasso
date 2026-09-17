@@ -97,6 +97,9 @@ const SCREENSHOT_FILEPATH_DESCRIBE = `output path for the PNG; the screenshot su
 /** selectors 作用域（uid 映射）。 */
 const SELECTORS_DESCRIBE = `uid map from a prior snapshot, e.g. {click:"<uid>"}; consumed by: ${actionsConsuming("selectors").join(" | ")}`;
 
+/** doc/bugs/11 决议 B.2：press 键作用域（L2 半行——修饰词语义在 L1 press 行）。 */
+const KEY_DESCRIBE = `key/combo for action=press ('Enter', 'Control+A'); other actions echo it in data.ignored_options`;
+
 // expect 四条件共享字段（原 options.expect 与 steps[].expect 两处内联重复的同
 // 形状抽出——R-CI-02 同一 schema 单一真源；describe 的条件枚举从本对象派生）。
 const expectConditionFields = {
@@ -137,6 +140,11 @@ export const browseSchema = {
     .object({
       selectors: z.record(z.string()).optional().describe(SELECTORS_DESCRIBE),
       js: z.string().optional().describe(JS_DESCRIBE),
+      // doc/bugs/11 决议 B.2（2026-09-17）：press action 的键/组合键（与上游
+      // press_key key 契约逐字一致——修饰键上游拆解 + 失败释放保证）。type 不
+      // 消费（键入文本走 selectors 值——与 fill 同形）。console_level 同款纪律：
+      // 无 .default()（absent = undefined，防 zod 注入破坏 byte-identical 断言）。
+      key: z.string().min(1).optional().describe(KEY_DESCRIBE),
       // review-r2：wait_until / screenshot.element / timeout_ms 已从 schema 删除——
       // 三者自 v0.1 起「schema 接受 → channel 零消费」（doNavigate 只读 no_cache、
       // doScreenshot 只读 screenshot.full；grep waitUntil 全 src=0），调用方传
@@ -195,6 +203,8 @@ export const browseSchema = {
             action: z.string().describe(BROWSE_ACTION_DESCRIBE),
             selectors: z.record(z.string()).optional(),
             js: z.string().optional(),
+            // doc/bugs/11 决议 B.2：链内 press step 的键（executeStep 透传 doPress）
+            key: z.string().min(1).optional(),
             expect: z.object(expectConditionFields).optional(),
             timeout_ms: z.number().int().positive().optional(),
             label: z.string().optional(),
