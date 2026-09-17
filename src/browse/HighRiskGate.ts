@@ -137,10 +137,11 @@ export class HighRiskGate {
    *  3. 跑 evaluate_script：定位目标元素 + 查祖先是否命中 HIGH_RISK_PATTERNS
    *  4. 任何异常 → blocked=false + reason="gate_error:*"（保守放过）
    *
-   * 目标选择策略（与 BrowseChannel 的 doClick / doFill 实际签名对齐）：
+   * 目标选择策略（与 BrowseChannel 的 doClick / doFill / doType 实际签名对齐）：
    *  - click : selectors.click 是 a11y uid
-   *  - fill  : selectors 是 { uid: value, ... } 多字段 flat map；取首个 key 当目标
-   *  - 其他副作用 action：暂无 DOM 目标概念 → 直接放过（让 channel 报错）
+   *  - fill/type : selectors 是 { uid: value, ... } 多字段 flat map；取首个 key 当目标
+   *                （D-ζ / doc/bugs/11：type 与 fill 同形同语义，同拦——防换名绕 gate）
+   *  - 其他副作用 action（press 单 key 无 DOM 目标等）→ 直接放过（让 channel 报错）
    *
    * @returns blocked=true 时，reason 形如 "high_risk_pattern:rte"，evidence 为祖先 outerHTML 片段
    */
@@ -154,12 +155,18 @@ export class HighRiskGate {
     let target: string | undefined;
     if (step.action === "click") {
       target = step.selectors?.click;
-    } else if (step.action === "fill") {
-      // fill 的 selectors 是 flat { uid: value, ... }；取首个 key（任意一个都需过 gate）
+    } else if (step.action === "fill" || step.action === "type") {
+      // fill/type 的 selectors 是 flat { uid: value, ... }；取首个 key（任意一个都需过 gate）。
+      // D-ζ（doc/bugs/11，2026-09-17）：type 与 fill selectors 同形同语义——必须
+      // 同分支同拦，否则 RTE 黑名单元素 fill 被 high_risk_pattern:rte 拦、type 直填
+      // 放行 =「换 action 名绕过 identity 通道守卫」的口径裂缝（RTE/contenteditable
+      // 恰是 type 最可靠的目标类——fill 的 JS 设值在 contenteditable 最弱）。
       const keys = step.selectors ? Object.keys(step.selectors) : [];
       if (keys.length > 0) target = keys[0];
     } else {
-      // 其他副作用 action（v0.3 仅 click / fill 有 DOM 目标）→ 不拦
+      // 其他副作用 action → 不拦。press 无 DOM 目标（单 key 入参，打在当前焦点
+      // 上）——与 evaluate 同档不拦；Enter 打在已聚焦 RTE 上不可评估目标是已知
+      // 接受面（doc/bugs/11 D-ζ 注释文档化此边界，非疏漏）。
       return { blocked: false };
     }
     if (!target) {

@@ -189,6 +189,17 @@ export interface BrowseResult {
    */
   eviction_suspected?: { from: string; to: string; at_ms: number };
   /**
+   * doc/bugs/11 决议 C（2026-09-17）：输入保护层信号——ref 路 fill/type 的
+   * 三探针（G1 value_setter_non_native / G2 fill_readback_mismatch / G3
+   * react_tracker_divergence）任一命中时发射。advisory：outcome 照旧 worked
+   * （值此刻在 DOM，风险在 blur 后——不伪造失败）；checks = 命中探针并集
+   * （固定序），target = 命中字段 ref 逗号连缀，at_ms = 检出时刻。hint 并列
+   * 携带三条合法出路（换 type 可信管道 / 换快照 uid 路 / 请用户物理输入）——
+   * 通道层绝不自动改道（惊吓面与归因权交还调用方）。uid 路 v1 不探（第 1 层
+   * 可信管道——成本>增值，如实文档化边界）。per-call partial 携带 = 一次性。
+   */
+  input_guard_suspected?: { checks: string[]; target: string; at_ms: number };
+  /**
    * 决议 B.2（doc/bugs/10，2026-09-17）：evaluate 返回 undefined **且** lasso
    * 包裹形态为语句体时回显 js_form:"statement_body"——「错误即教学」：调用方
    * 第一次能机械判读「为什么是 undefined」（语句体不 return 恒 undefined）。
@@ -232,6 +243,13 @@ export interface ScreenshotSpec {
 export interface BrowseOptions {
   selectors?: Record<string, string>;
   js?: string;
+  /**
+   * doc/bugs/11 决议 B.2（2026-09-17）：press action 的键/组合键入参
+   * （"Enter" / "Control+A"——与上游 press_key key 契约逐字一致，修饰键由
+   * 上游 parseKey 拆解 + 失败释放保证）。type 不消费此键（键入文本走
+   * selectors 的值——与 fill 同形）。
+   */
+  key?: string;
   steps?: unknown[]; // browse() 入口消费：非空 → StepEngine.runChain（BrowseChannel browse 入口分流）
   expect?: ExpectCondition; // action=wait 消费（doWait 读 expect.text，必需）；其余 action 忽略
   // review-r2 裁决留档的 wait_until? / timeout_ms? 死字段已于 P2 处置轮删除

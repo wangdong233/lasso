@@ -62,6 +62,21 @@ export const CDP_UPSTREAM_TOOL_NAMES = Object.freeze({
   console_log: "list_console_messages",
   /** evaluate_script（既有 doEvaluate 在 BrowseChannel.ts；此处仅记录名用于历史探测） */
   evaluate_script: "evaluate_script",
+  /**
+   * doc/bugs/11 决议 B（2026-09-17）：键盘输入原语映射——上游 1.7.0/1.9.0
+   * input.js 均暴露（§0 断言 1-3 白盒核实）。type_text → Puppeteer
+   * keyboard.type（逐字 CDP Input.dispatchKeyEvent，isTrusted:true——与
+   * Playwright page.keyboard.type() 同级的**标准输入原语**）；唯一能进框架
+   * 输入管道（React onChange 触发）的键入路径。禁绕过上游自建
+   * dispatchKeyEvent 循环（INV-6 + 上游锁定纪律——映射即可）。
+   */
+  type_text: "type_text",
+  /**
+   * press_key → 修饰键 down/press/up + **失败释放保证**（上游 input.js :527-560
+   * finally 内 toReversed() 逐个 up——#2309：失败 press 不残留逻辑按下的修饰键）。
+   * key 契约与上游逐字一致（"Enter" / "Control+A"——tokens 由上游 parseKey 拆解）。
+   */
+  press_key: "press_key",
 });
 
 /**
@@ -75,6 +90,12 @@ export const ACTION_TO_UPSTREAM_TOOL: Readonly<Record<string, string>> = Object.
   pdf: CDP_UPSTREAM_TOOL_NAMES.pdf,
   network: CDP_UPSTREAM_TOOL_NAMES.network_log,
   console: CDP_UPSTREAM_TOOL_NAMES.console_log,
+  /**
+   * doc/bugs/11 决议 B（D-β）：type/press 入表即自动获得 P10 前置门
+   * （上游工具缺失 → 导航前诚实 didnt）——对抗旧上游/假想漂移零额外代码。
+   */
+  type: CDP_UPSTREAM_TOOL_NAMES.type_text,
+  press: CDP_UPSTREAM_TOOL_NAMES.press_key,
 });
 
 /**

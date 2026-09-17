@@ -50,6 +50,8 @@ interface RefStubs {
   click?: { ok: boolean; reason?: string; tag?: string };
   locate?: { ok: boolean; missing?: string[] };
   fill?: { ok: boolean; filled?: string[]; errors?: string[] };
+  /** doc/bugs/11 决议 C：guard 探针应答（默认全负——无信号）。 */
+  guardProbe?: { ok: boolean; guards?: Array<{ ref: string; checks: string[] }> };
 }
 
 function textContent(text: string) {
@@ -106,6 +108,10 @@ function makeStubClient(stubs: RefStubs = {}): {
         }
         if (fn.includes("var filled")) {
           return mockEvalResponse(stubs.fill ?? { ok: true, filled: ["r1"], errors: [] });
+        }
+        // doc/bugs/11 决议 C：doFill ref 路的 guard 探针 expr（默认全负——无信号）
+        if (fn.includes("guards.push")) {
+          return mockEvalResponse(stubs.guardProbe ?? { ok: true, guards: [] });
         }
         // 缺省 extract expr（无 refs）
         return mockEvalResponse({
@@ -397,11 +403,14 @@ describe("fill by ref — 预检 + native setter", () => {
     expect(r.outcome).toBe("worked");
     expect(r.data!.preview).toBe("filled 1 fields (1 via lasso ref)");
     expect(calls.some((c) => c.name === "fill_form")).toBe(false);
-    // 两次 evaluate（locate → fill）
+    // 三次 evaluate（locate → fill → guard 探针；bug11 决议 C：ref 路填充后
+    // 一次纯读三探针，全负 → 无 input_guard_suspected 字段）
     const evals = calls.filter((c) => c.name === "evaluate_script");
-    expect(evals).toHaveLength(2);
+    expect(evals).toHaveLength(3);
     expect(String(evals[0].args.function)).toContain("var missing");
     expect(String(evals[1].args.function)).toContain("var filled");
+    expect(String(evals[2].args.function)).toContain("guards.push");
+    expect(r.data!.input_guard_suspected).toBeUndefined();
   });
 
   it("混合表（ref + uid）→ ref 走 expr，uid 部分照旧 fill_form", async () => {
