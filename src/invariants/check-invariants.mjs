@@ -6287,6 +6287,143 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // bugs/10（2026-09-17）决议 A/C——cgEvent 投递回执体系三连
+  //（U-R 尾部新增；锚跨 TS + rust-helper，rust 侧经原位 readFileSync——
+  //  INV-76 fixtures 同款先例；selftest 违规样本走 TS 锚）
+  // ============================================================
+  {
+    id: "INV-101-cgevent-landing-receipt",
+    desc:
+      "bugs/10 决议 A.2：坐标鼠标动作落地回执——(1) rust cgevent.rs click/move/drag/scroll 每路径调 landing_receipt（settle→read→judge）；(2) 未落地 → ok:false + error_kind=cgevent_no_landing；(3) dispatch 级 physical_input 在场（Tier C）；(4) TS ActionResult.cursor_after/landed + CGEventProvider 透传；(5) 全失败沿既有 unknown→tier4 策略（D-β 零改动）",
+    check: () => {
+      // ----- rust 侧（原位读取——selftest 副本不含 rust-helper）-----
+      let rustCge = "";
+      try {
+        rustCge = readFileSync(
+          fileURLToPath(new URL("../../rust-helper/src/cgevent.rs", import.meta.url)),
+          "utf8",
+        );
+      } catch {
+        return false;
+      }
+      // (1) landing_receipt 定义 + ≥4 个调用点（click/move/drag/scroll×2）
+      if (!/fn landing_receipt\(/.test(rustCge)) return false;
+      const callSites = rustCge.match(/landing_receipt\(/g) ?? [];
+      if (callSites.length < 5) return false; // 1 def + ≥4 call
+      // (2) no_landing 错误类（未落地 → ok:false 的裁决点在 rust 单一裁决）
+      if (!/"cgevent_no_landing"/.test(rustCge)) return false;
+      // (3) Tier C：dispatch 级 physical_input + 归因纯函数 + 单写者时间戳
+      if (!/"physical_input": physical_input/.test(rustCge)) return false;
+      if (!/fn physical_attribution\(/.test(rustCge)) return false;
+      if (!/static LAST_SYNTHETIC_MOUSE_MS/.test(rustCge)) return false;
+      // A.1 读原语是回执基座（R-CI-02：一个读原语三处消费）
+      if (!/pub fn cursor_state\(/.test(rustCge)) return false;
+
+      // ----- TS 侧 -----
+      const types = SRC.find((s) => /desktop\/desktop-types\.ts$/.test(s.f.replace(/\\/g, "/")));
+      const provider = SRC.find((s) => /desktop\/CGEventProvider\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!types || !provider) return false;
+      // (4) ActionResult 回执字段 + 透传映射
+      if (!/cursor_after\?: \{ x: number; y: number \};/.test(types.text)) return false;
+      if (!/landed\?: boolean;/.test(types.text)) return false;
+      const provCode = stripComments(provider.text);
+      if (!/cursor_after: cursorAfter/.test(provCode)) return false;
+      if (!/landed !== undefined/.test(provCode)) return false;
+      if (!/readPhysicalInput/.test(provCode)) return false;
+      // (5) 全失败 unknown 策略在位（no_landing 类失败第一次可见后走此路）
+      if (!/"cgevent_all_actions_failed"/.test(provCode)) return false;
+      if (!/if \(successCount === 0\)/.test(provCode)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-102-doctor-input-selftest-consent-gate",
+    desc:
+      "bugs/10 决议 A.3（伦理红线）：doctor #22 cgevent_delivery_selftest 必须 env 门住——无 LASSO_DOCTOR_INPUT_SELFTEST=1 时零 cgevent_dispatch 调用（guard 在函数体一切副作用之前）+ 有 env 时复位 move 在场（wiggle 失败也复位——义务不是奖励）+ wiggle 位移 house 常量 7pt 不参数化",
+    check: () => {
+      const dc = SRC.find((s) =>
+        /desktop\/desktop-doctor-checks\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!dc) return false;
+      // 提取 checkCgeventDeliverySelftest 函数体（首列 } 前的整个函数）
+      const m = dc.text.match(
+        /async function checkCgeventDeliverySelftest\([\s\S]*?\n\}/,
+      );
+      if (!m) return false;
+      // 注释剥离后判源序（注释里提及 rust.call("cgevent_dispatch") 的教学词
+      // 曾骗过裸 indexOf——INV 自身先中招一次，锚改走代码本体）。
+      const bodyCode = stripComments(m[0]);
+      // 伦理门：env guard 必须在第一个 cgevent_dispatch **调用**之前（源序 = 执行序）
+      const guardIdx = bodyCode.indexOf("LASSO_DOCTOR_INPUT_SELFTEST");
+      const dispatchCallRe = /rust\.call\(\s*"cgevent_dispatch"/;
+      const dispatchCall = dispatchCallRe.exec(bodyCode);
+      if (guardIdx < 0 || !dispatchCall) return false;
+      if (guardIdx > dispatchCall.index) return false;
+      // guard 语义必须是 !== "1"（缺省关；显式 0 也关）
+      if (!/LASSO_DOCTOR_INPUT_SELFTEST"?\s*!==\s*"1"/.test(bodyCode)) return false;
+      // 复位 move 在场：第二个 dispatch 携带原坐标（x: orig.x）
+      if (!/x: orig\.x, y: orig\.y/.test(bodyCode)) return false;
+      const dispatchCalls = bodyCode.match(/"cgevent_dispatch"/g) ?? [];
+      if (dispatchCalls.length < 2) return false; // wiggle + 复位
+      // wiggle 位移 house 常量（不参数化）
+      if (!/SELFTEST_WIGGLE_PT = 7/.test(dc.text)) return false;
+      // check 数组内 #22 在场（#15-#22 顺序增长的锚）
+      if (!/await checkCgeventDeliverySelftest\(rust\)/.test(stripComments(dc.text))) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-103-tcc-gate-version-honesty",
+    desc:
+      "bugs/10 决议 A.4（最重要的「不变」）：TCC 门控语义不放松不收紧——(1) rust tcc.rs 存在版本注入纯函数 event_synthesis_gated_with 且 <15 早退 false（任何探测值都不门：Undefined 下投递实证可用）；(2) cgevent.rs dispatch 预检走 event_synthesis_gated()（非裸 status 比较——≥15 undefined 维持旧 denied 映射）；(3) TccSnapshot 增 advisory 字段 iohid_post_event + macos_major；(4) TS #21 消费 advisory（undefined+<15 pass / undefined+≥15 warn 分层）",
+    check: () => {
+      // ----- rust 侧（原位读取）-----
+      let rustTcc = "";
+      let rustCge = "";
+      try {
+        rustTcc = readFileSync(
+          fileURLToPath(new URL("../../rust-helper/src/tcc.rs", import.meta.url)),
+          "utf8",
+        );
+        rustCge = readFileSync(
+          fileURLToPath(new URL("../../rust-helper/src/cgevent.rs", import.meta.url)),
+          "utf8",
+        );
+      } catch {
+        return false;
+      }
+      // (1) 版本注入门控纯函数：<15 早退 false（永不门控分支是第一裁决）
+      const gateFn = rustTcc.match(
+        /fn event_synthesis_gated_with\([\s\S]*?\n\}/,
+      );
+      if (!gateFn) return false;
+      if (!/if major < 15\s*\{?\s*return false;/.test(gateFn[0].replace(/\n\s*/g, " "))) {
+        return false;
+      }
+      // ≥15 分支只认 denied|undefined（维持已发布映射，不加新门）
+      if (!/matches!\(status, "denied" \| "undefined"\)/.test(gateFn[0])) return false;
+      // 诚实化：无版本硬门的原始探测 + Undefined 第三态不折叠
+      if (!/fn iohid_post_event_status\(\) -> &'static str/.test(rustTcc)) return false;
+      if (!/"undefined"/.test(rustTcc)) return false;
+      if (!/pub iohid_post_event: String/.test(rustTcc)) return false;
+      if (!/pub macos_major: u32/.test(rustTcc)) return false;
+      // (2) dispatch 预检走 gate 谓词（不是裸 status == "denied"）
+      if (!/crate::tcc::event_synthesis_gated\(\)/.test(rustCge)) return false;
+      if (/event_synthesizing_status\(\)\s*==\s*"denied"/.test(rustCge)) return false;
+
+      // (3)(4) TS 侧：#21 消费 advisory 字段 + 分层判据
+      const dc = SRC.find((s) =>
+        /desktop\/desktop-doctor-checks\.ts$/.test(s.f.replace(/\\/g, "/")),
+      );
+      if (!dc) return false;
+      const code = stripComments(dc.text);
+      if (!/iohid_post_event\?: string;/.test(dc.text)) return false;
+      if (!/major >= 15/.test(code)) return false; // undefined 分层判据
+      if (!/per-process attribution/.test(dc.text)) return false; // 诚实分层文案
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）
