@@ -84,6 +84,8 @@ const ROW_TARGETS: Record<string, string[]> = {
   E7: ["BROWSE_HEADLESS_DESCRIPTION"],
   E8: ["BROWSE_HEADED_DESCRIPTION"],
   E10: ["ADMIN_DESCRIPTION"],
+  E15: ["BROWSE_HEADLESS_DESCRIPTION"],
+  E16: ["BROWSE_HEADLESS_DESCRIPTION"],
   E11: ["READ_TEXT_DESCRIPTION"],
   E12: ["BROWSE_HEADLESS_DESCRIPTION"],
   E13: ["BROWSE_HEADLESS_DESCRIPTION"],
@@ -164,10 +166,20 @@ function parseObj(s: string, i: number): { v: ParsedValue; next: number } | null
   if (s[j] === "}") return { v: { kind: "obj", keys, children }, next: j + 1 };
   for (;;) {
     j = skipWs(s, j);
-    const km = /^[A-Za-z_$][\w$]*/.exec(s.slice(j));
-    if (!km) return null;
-    const key = km[0];
-    j = skipWs(s, j + key.length);
+    let key: string;
+    // 2026-09-18：uid 键（"1_23"/"@uid" 形态）是 type/selectors 的真实调用形态——
+    // 解析器须支持带引号键（与标识符键并存），否则真实示例无法进正典。
+    if (s[j] === '"') {
+      const kEnd = s.indexOf('"', j + 1);
+      if (kEnd < 0) return null;
+      key = s.slice(j + 1, kEnd);
+      j = skipWs(s, kEnd + 1);
+    } else {
+      const km = /^[A-Za-z_$][\w$]*/.exec(s.slice(j));
+      if (!km) return null;
+      key = km[0];
+      j = skipWs(s, j + key.length);
+    }
     if (s[j] !== ":") return null;
     const r = parseValue(s, j + 1);
     if (!r) return null;
