@@ -328,3 +328,28 @@ export const searchLocalAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   openWorldHint: false,
 };
+
+// ============================================================
+// download（v1.30，doc/bugs/12 下载器纳入决议与BT可行性定谳，2026-09-20）
+// ============================================================
+/**
+ * download tool annotations。
+ *
+ * 四象限归属：
+ *   |  tool     | readOnly | openWorld | 含义                                  |
+ *   |  -------- | -------- | --------- | ------------------------------------- |
+ *   |  download |   false  |   true    | 写磁盘（产物落盘）；触外网（引擎直连）  |
+ *
+ * - readOnlyHint=false：start 把文件写到 out_dir（磁盘副作用），cancel 会按
+ *   四要素谓词杀引擎进程树（D7）——annotations 按能力上限标注（v0.5 既定原则），
+ *   让 CC 给 permission 提示而非自动批准；status/wait 只读不改变结论（admin
+ *   「即使 capability_list 只读也标 false」同款推理）。
+ * - openWorldHint=true：http/stream/torrent 三 kind 都触外网（aria2c/yt-dlp
+ *   引擎直连远端；BT DHT peer 含私网 IP 是 P2P 设计面——D12 诚实边界）。
+ *   注意 http kind 的外联经 ssrfGuard（与 fetch_url 同函数同 config）；
+ *   stream/torrent 的网络面由引擎决定（description SAFETY 段如实声明）。
+ */
+export const downloadAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: true,
+};

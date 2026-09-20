@@ -33,6 +33,10 @@ import { browseSchema } from "../../src/tools/browse.js";
 import { screenshotSchema } from "../../src/tools/screenshot.js";
 import { adminSchema } from "../../src/tools/admin.js";
 import {
+  downloadSchema,
+  BT_ZERO_PEER_DIAGNOSIS,
+} from "../../src/tools/download.js";
+import {
   BROWSE_ACTIONS,
   CONSUMED_OPTIONS,
   CURRENT_PAGE_ACTIONS,
@@ -40,7 +44,7 @@ import {
 } from "../../src/channels/BrowseChannel.js";
 
 // ============================================================
-// 常量登记（19 个 descriptions.ts 常量 + read_text 金标准）
+// 常量登记（20 个 descriptions.ts 常量 + read_text 金标准）
 // ============================================================
 const CONSTANTS: Record<string, string> = {
   SEARCH_DESCRIPTION: D.SEARCH_DESCRIPTION,
@@ -62,6 +66,8 @@ const CONSTANTS: Record<string, string> = {
   ADMIN_DESCRIPTION: D.ADMIN_DESCRIPTION,
   FETCH_FEED_DESCRIPTION: D.FETCH_FEED_DESCRIPTION,
   SEARCH_LOCAL_DESCRIPTION: D.SEARCH_LOCAL_DESCRIPTION,
+  // v1.30（doc/bugs/12 决议 §五）：download 工具族入驻
+  DOWNLOAD_DESCRIPTION: D.DOWNLOAD_DESCRIPTION,
   READ_TEXT_DESCRIPTION,
 };
 
@@ -89,6 +95,11 @@ const ROW_TARGETS: Record<string, string[]> = {
   E11: ["READ_TEXT_DESCRIPTION"],
   E12: ["BROWSE_HEADLESS_DESCRIPTION"],
   E13: ["BROWSE_HEADLESS_DESCRIPTION"],
+  // v1.30（doc/bugs/12 决议 §五）：download 三示例（E17 直链 http / E18 流媒体
+  // +subs+audio_only / E19 status:"all" 跨会话寻址）
+  E17: ["DOWNLOAD_DESCRIPTION"],
+  E18: ["DOWNLOAD_DESCRIPTION"],
+  E19: ["DOWNLOAD_DESCRIPTION"],
 };
 
 interface DocRow {
@@ -214,6 +225,8 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
   screenshot: screenshotSchema as unknown as Record<string, unknown>,
   admin: adminSchema as unknown as Record<string, unknown>,
   read_text: readTextSchema as unknown as Record<string, unknown>,
+  // v1.30：download（E17/E18/E19 的 call-shape ⊆ schema 消费面）
+  download: downloadSchema as unknown as Record<string, unknown>,
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -320,13 +333,21 @@ describe("闸 1b · consent 前提与示例不得分离/倒序（browse_headed�
 // 闸 1c：合法值锚
 // ============================================================
 describe("闸 1c · 示例引用的 action ∈ 合法词汇表", () => {
-  it("browse 族示例的 action:\"X\" ∈ BROWSE_ACTIONS；admin 示例的 ∈ adminSchema.action 枚举（admin 的 action 词汇表与 browse 分立——E10 的 browser_recycle 不是 browse action）", () => {
+  it("browse 族示例的 action:\"X\" ∈ BROWSE_ACTIONS；admin 示例的 ∈ adminSchema.action 枚举；download 示例的 ∈ downloadSchema.action 枚举（三套词汇表分立——download 的 start/status 不是 browse/admin action）", () => {
     const legalBrowse = new Set(BROWSE_ACTIONS);
     const legalAdmin = new Set(
       (adminSchema as any).action._def.values as readonly string[],
     );
+    // v1.30：download action 词汇表从 zod enum 派生（drift-free by construction）
+    const legalDownload = new Set(
+      (downloadSchema as any).action._def.values as readonly string[],
+    );
+    const VOCAB: Record<string, Set<string>> = {
+      ADMIN_DESCRIPTION: legalAdmin,
+      DOWNLOAD_DESCRIPTION: legalDownload,
+    };
     for (const [name, text] of Object.entries(CONSTANTS)) {
-      const legal = name === "ADMIN_DESCRIPTION" ? legalAdmin : legalBrowse;
+      const legal = VOCAB[name] ?? legalBrowse;
       for (const m of text.matchAll(/action:"([a-z_-]+)"/g)) {
         expect(
           legal.has(m[1]),
@@ -430,13 +451,13 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     }
   });
 
-  it("L1 fleet：descriptions.ts 19 常量 Σ ≤ 62,250 chars（v1.30 提帽 +2,400：download 工具族入驻[红队红 A4/预算复核 2026-09-20]——单主题提帽先行，描述实写 ≤2,200 留 slack；bug11 §5.1-3 先例 +950）", () => {
+  it("L1 fleet：descriptions.ts 20 常量 Σ ≤ 62,250 chars（v1.30 提帽 +2,400：download 工具族入驻[红队红 A4/预算复核 2026-09-20]——单主题提帽先行，描述实写 ≤2,200 留 slack；bug11 §5.1-3 先例 +950）", () => {
     const fleet = Object.entries(CONSTANTS)
       .filter(([k]) => k !== "READ_TEXT_DESCRIPTION")
       .reduce((n, [, v]) => n + v.length, 0);
     expect(
       fleet,
-      `fleet = ${fleet}（19 常量，read_text 不计）`,
+      `fleet = ${fleet}（20 常量，read_text 不计）`,
     ).toBeLessThanOrEqual(62_250);
   });
 
@@ -582,5 +603,49 @@ describe("闸 4 · schema describe 派生一致（drift-free by construction 的
     const d = describeOf(shotObj.shape.filePath);
     expect(d).toContain("consumed only by: screenshot");
     expect(d).toContain("ignored_options");
+  });
+});
+
+// ============================================================
+// v1.30 download 工具面锚（doc/bugs/12 决议 §五——四处联动 + 预算份额 + BT 双因）
+// ============================================================
+describe("v1.30 · download 工具面锚", () => {
+  it("DOWNLOAD_DESCRIPTION ≤ 2,200 chars（v1.30 fleet 提帽 62,250 的单常量份额——红队预算复核留 slack，实写超 2,200 即膨胀红灯）", () => {
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION.length).toBeLessThanOrEqual(2_200);
+  });
+
+  it("download EXAMPLES 段恰好 3 行且 E17/E18/E19 逐字在场（doc04 B 表 ↔ 代码双向锚的 code 侧快锚——闸 1a 锁 doc→code，此处锁 EXAMPLES 段形态不增发）", () => {
+    const block = CONSTANTS.DOWNLOAD_DESCRIPTION.split("\n\n").find((b) =>
+      b.startsWith("EXAMPLES"),
+    );
+    expect(block, "DOWNLOAD_DESCRIPTION 缺 EXAMPLES 段").toBeTruthy();
+    const lines = block!.split("\n").slice(1);
+    expect(lines.length).toBe(3);
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION).toContain(
+      'download({action:"start", url:"https://mirror.example/big.iso", out_dir:"~/Downloads"})',
+    );
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION).toContain(
+      'download({action:"start", url:"https://youtube.com/watch?v=X", kind:"stream", audio_only:true, subs:true})',
+    );
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION).toContain(
+      'download({action:"status", task_id:"all"})',
+    );
+  });
+
+  it("BT 双因诊断正典文案逐字锚（doc/bugs/12 §二/D16——禁单因断言：死种 OR DPI 双因 + 三出路都在场，DESCRIPTION NOTES 与运行时常量同 claim）", () => {
+    // 运行时诊断常量（download.ts 单一真源）
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("dead torrent OR");
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("DPI blocking");
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("legal exits");
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("http/stream source");
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("IPv6");
+    expect(BT_ZERO_PEER_DIAGNOSIS).toContain("different egress");
+    // L1 同 claim 双层一致（tool-descriptions-no-leak 三方一致模式）
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION).toContain(
+      "reports BOTH causes —",
+    );
+    expect(CONSTANTS.DOWNLOAD_DESCRIPTION).toContain(
+      "dead torrent OR regional-ISP DPI blocking",
+    );
   });
 });
