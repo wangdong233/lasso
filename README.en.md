@@ -164,6 +164,16 @@ Reuses **your locally-logged-in Chrome** — you handle 2FA once; Lasso takes ov
 
 When you don't need to render a full page, direct HTTP is **~4× faster and ~4× cheaper** than going through a browser. Auto-detects content type (JSON / text / binary).
 
+### Downloading Files (new in v1.30)
+
+> You: "Download this ISO to my Downloads folder" / "Grab these two videos with subtitles" → file paths on disk
+
+Multi-GB files, videos, magnet links — downloaded straight to disk, **never through your chat context** (fetch_url's 16MiB small-body cap stays as-is; each tool keeps its lane). Three engines auto-route: **direct links with multi-connection resume** (aria2c), **streaming + subtitles + audio-only** (yt-dlp), and a single-stream fallback (undici). Downloads run **detached** — they survive lasso restarts, and `status:"all"` lists every task back with the **absolute deliverable file paths** (the cross-session source of truth). Interrupted HTTP tasks resume **byte-level** when you re-issue the same URL; parallel tasks never block each other.
+
+> **Honest boundary (BT/magnet)**: this machine's network (Guangdong Mobile home broadband, verified 2026-09-20) has ISP-level BT DPI blocking — a magnet task with zero peers after 60 seconds reports **both causes** (dead torrent OR network blocking — no single-cause verdict) plus three exits (switch to an http/stream source / try IPv6 / use a different egress).
+
+> **Safety**: output dirs are allowlist-confined (default `~/Downloads`, extendable via `LASSO_DOWNLOAD_DIR_ALLOWLIST`); filenames are forced to bare basenames (no path traversal); a per-task 5GiB watchdog cap (default) kills oversize downloads and marks them; http direct links go through the same SSRF guard as `fetch_url`.
+
 ### Screenshot / Archive
 
 > You: "Take a full-page screenshot" / "Save as PDF" → file path on disk

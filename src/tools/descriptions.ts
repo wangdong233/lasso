@@ -1188,3 +1188,59 @@ export const SEARCH_LOCAL_DESCRIPTION = [
   "      profile (string, optional) — Chrome profile name, e.g. \"Profile 1\";",
   "            default searches all profiles",
 ].join("\n");
+
+// ============================================================
+// download（v1.30，doc/bugs/12 下载器纳入决议与BT可行性定谳，2026-09-20）
+// ============================================================
+/**
+ * download tool 描述（决议 §四工具面契约 + §五联动面；预算 ≤2,200 chars——
+ * v1.30 fleet 提帽 62,250 的单常量份额，红队预算复核留 slack）。
+ *
+ * 结构（fetch_url/screenshot 风格压缩）：一句话定位 + ACTIONS 段 + EXAMPLES
+ * 段 3 行（doc/usage/04 B 表 E17-E19 逐字锚）+ PROXY 段（D11 三级语义）+
+ * SAFETY 段（D12：out_dir 白名单/max_bytes/filename basename；stream kind
+ * 边界诚实句——网络面由 yt-dlp 决定，不假装 ssrfGuard-per-hop；BT DHT peer
+ * 含私网 IP 是 P2P 设计面）+ NOTES（wait 轮询教学/status:"all" 交付物本体/
+ * BT 60s 双因诊断 D16）。
+ */
+export const DOWNLOAD_DESCRIPTION = [
+  "Download files to disk with resume — engines: aria2c (multi-conn HTTP + BT),",
+  "yt-dlp (streaming + subs), undici fallback. Tasks run detached,",
+  "survive lasso restarts.",
+  "",
+  "ACTIONS:",
+  "  - start : {url, kind?, out_dir?, filename?, proxy?, subs?, audio_only?, max_conn?,",
+  '             max_bytes?} → {task_id, kind, engine, out_dir, state:"starting"}.',
+  "             kind=auto: magnet:/.torrent→torrent, yt-dlp extractor sites→stream,",
+  "             else→http. url must match kind (torrent takes magnet: or",
+  "             absolute .torrent only).",
+  '  - status: {task_id} — one task, or "all" (reconciles orphans first): list',
+  "             tasks; files[] ABSOLUTE PATHS = cross-session deliverables",
+  '             (address via "all").',
+  "  - wait  : {task_id, timeout_s?} — poll to terminal state; timeout",
+  '             (default 60s, max 120s) returns a partial snapshot + outcome:"unknown"',
+  "             — poll again, do NOT burn the MCP timeout.",
+  "  - cancel: {task_id} — kill engine tree (4-factor predicate); idempotent —",
+  "             engine already dead still true.",
+  "",
+  "EXAMPLES:",
+  '  download({action:"start", url:"https://mirror.example/big.iso", out_dir:"~/Downloads"})',
+  '  download({action:"start", url:"https://youtube.com/watch?v=X", kind:"stream", audio_only:true, subs:true})',
+  '  download({action:"status", task_id:"all"})',
+  "",
+  'PROXY: auto → LASSO_PROXY → env HTTP(S)_PROXY → off; or "host:port" / "off".',
+  "",
+  "SAFETY: out_dir must be inside the allowlist (default ~/Downloads; extend via",
+  "LASSO_DOWNLOAD_DIR_ALLOWLIST). filename must be a bare",
+  'basename (no "/" or ".."). max_bytes default 5 GiB (Content-Length precheck +',
+  'chunked watchdog; over-cap killed as state:"oversize"). http kind IS',
+  "ssrfGuarded (same guard + config as fetch_url); stream kind: network surface",
+  "decided by the yt-dlp engine (extractor pages + CDN redirects), NOT",
+  "ssrfGuard-per-hop. BT DHT peers may include private IPs — by design for P2P.",
+  "",
+  "NOTES: subs = json3 word-level source converted to .srt. BT zero peers",
+  "after 60s reports BOTH causes — dead torrent OR regional-ISP DPI blocking",
+  "(verified on this network 2026-09-20) — legal exits: http/stream source,",
+  "IPv6, or different egress. Invalid combos (start with task_id) error",
+  "explicitly + ignored_options echo.",
+].join("\n");

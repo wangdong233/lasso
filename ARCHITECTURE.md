@@ -13,7 +13,7 @@ Lasso 是 Claude Code 的**全交互**对外抓手 MCP（浏览器 + 桌面 + �
 - media-gen-mcp：「所有图像操作归一个 MCP」（生成 + 识别）
 - **Lasso**：「所有外部交互归一个 MCP」（浏览器 + 桌面 + 搜自己的机器）
 
-**工具面（18 个 MCP 工具，`tools/list` 实跑核；v1.27.0 起 18——`browse_headed` 默认注册）**：`search / browse_headless / browse_headed / browse_logged_in / desktop / fetch_url / screenshot / pdf / network / read_text / search_local / wayback_lookup / fetch_feed / doctor / interact_roots / interact_observe / interact_act / admin`（另有 `browserbase` / `steel` 两个云通道工具按环境条件解锁，不在默认清单；对应 channel 名 `browse_cloud_browserbase` / `browse_cloud_steel`）。
+**工具面（19 个 MCP 工具，`tools/list` 实跑核；v1.30 起 19——`download` 下载器纳入〔doc/bugs/12〕；v1.27.0 起 18——`browse_headed` 默认注册）**：`search / browse_headless / browse_headed / browse_logged_in / desktop / fetch_url / screenshot / pdf / network / read_text / search_local / wayback_lookup / fetch_feed / download / doctor / interact_roots / interact_observe / interact_act / admin`（另有 `browserbase` / `steel` 两个云通道工具按环境条件解锁，不在默认清单；对应 channel 名 `browse_cloud_browserbase` / `browse_cloud_steel`）。
 
 四条交互通道：`search` / `browse_headless` / `browse_logged_in` / `desktop`，加 **`search_local` 本地私有搜索**（doc/governance/05 裁决 B1「第四通道」：Chrome 历史 / Spotlight 文件，纯本地只读）与条件解锁的 `browse_cloud_steel` 云通道。v1.27.0 新增 **`browse_headed` 有头强力档**（BUG-09 决议 A：反爬 L2 层——S2 介入型工具，调用即弹真实屏幕窗口，consent 契约钉 description 首行；两态生命周期=未接管 30min idle / 接管粘滞永不回收 + 24h 硬顶，doc/bugs/09 A.4⑤r1）。所有通道共享同一套 fallback 范式 / 状态模型 / 工具风格（R-CI-02 红线：禁第二套做法）；`search_local` 是唯一例外——纯本地只读查询无网络面、无 fallback 语义，走「工具直连」范式（照 `read_text` / `doctor-tool` 先例，不建 Channel 子类，防空壳对称 R-ABS-01）。
 
@@ -40,7 +40,7 @@ Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户�
 │  Lasso（单进程 Node.js）                                        │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Tool Layer（src/tools/，18 工具）                         │  │
+│  │  Tool Layer（src/tools/，19 工具）                         │  │
 │  │   search / browse_headless / browse_headed /               │  │
 │  │   browse_logged_in / desktop / search_local / fetch_url /  │  │
 │  │   fetch_feed / wayback_lookup / screenshot / pdf / network │  │
