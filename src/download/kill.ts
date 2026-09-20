@@ -6,13 +6,17 @@
  * 引擎树——**任一要素不满足即零动作**（反向证据必须停，项目全局红线；
  * 「永不 kill 用户进程」的机械锚）。
  *
- * 四要素（types.ts KillPredicateFn 契约）：
+ * 四要素（types.ts KillPredicateFn 契约；③④ 已按 WT-engines 实测适配）：
  *  ① 任务表在案（调用方保证——record 必须来自 store.readTask，不是调用方臆造）；
  *  ② pid 活：process.kill(pid, 0) 探测（killEngineTree 内做——谓词本身收
  *     cmdlineNow 现值，纯函数可单测）；
- *  ③ cmdlineNow 含 LASSO_DOWNLOAD_ARGV_MARKER（引擎 argv 归属标记）；
+ *  ③ cmdlineNow 含 `staging/<taskId>` 锚（engineCmdlineMatchesTask——
+ *     **2026-09-20 合并适配**：argv marker 方案被 WT-engines 实测定罪
+ *     [aria2 1.37.0 `unrecognized option '--lasso-download-task'`、yt-dlp 同拒
+ *     未知长参数]，归属标记改由 staging 目录路径承载：aria2 `--dir` /
+ *     yt-dlp `--paths` 必然携带 `staging/<taskId>` 入 argv，UUID 不可碰撞）；
  *  ④ cmdlineNow 与 record.engineCmdline 匹配（argv 集合包含关系：记录的全部
- *     argv 元素必须在场——marker + taskId 串由此共同钉死，taskId 不可伪造面）。
+ *     argv 元素必须在场——taskId 串由此共同钉死，taskId 不可伪造面）。
  *
  * cmdline 读取：`ps -ww -p <pid> -o command=`，execFileSync 无 shell 层
  * （PERF-5 假阳性教训：shell 层会把 stderr 当失败信号）。-ww = 不截断宽输出
@@ -28,7 +32,10 @@ import process from "node:process";
 import { logger } from "../util/logger.js";
 // 致死原语单一真源（SubprocessManager / chrome-stop / headless-stack-ledger 共用）
 import { killTreeSync } from "../util/kill-tree.js";
-import { LASSO_DOWNLOAD_ARGV_MARKER, type DownloadTaskRecord, type KillPredicateInput } from "./types.js";
+// 归属标记真源（staging 路径锚——argv marker 方案实测被 aria2/yt-dlp 拒，
+// 见本文件头注「合并适配」；单一真源在 engines/staging.ts）
+import { engineCmdlineMatchesTask } from "./engines/staging.js";
+import type { DownloadTaskRecord, KillPredicateInput } from "./types.js";
 
 // ============================================================
 // 谓词（纯函数——四要素 ③④ 的机械判定）
@@ -39,7 +46,7 @@ import { LASSO_DOWNLOAD_ARGV_MARKER, type DownloadTaskRecord, type KillPredicate
  * 输入的 record/enginePid/cmdlineNow 均由调用方采集（①台账在案 + ②pid 活在
  * killEngineTree 侧保证——谓词只做可注入可单测的纯判定）：
  *  - enginePid 必须与 record.enginePid 一致（探的不是台账那只 pid → 拒）；
- *  - cmdlineNow 必须含 marker（③）；
+ *  - cmdlineNow 必须含 `staging/<taskId>` 锚（③——engineCmdlineMatchesTask）；
  *  - record.engineCmdline 非空且每个元素都在 cmdlineNow 在场（④集合包含）——
  *    engineCmdline 空（引擎从未 spawn / 已清场）→ 拒（防空集 vacuous-true）。
  */
@@ -49,8 +56,8 @@ export function shouldKillEngine(input: KillPredicateInput): boolean {
   if (typeof enginePid !== "number" || !Number.isInteger(enginePid) || enginePid <= 0) return false;
   if (record.enginePid !== enginePid) return false;
   if (!Array.isArray(cmdlineNow) || cmdlineNow.length === 0) return false;
-  // ③：marker 必须在场（独立于④——防 engineCmdline 忘带 marker 的脏台账）
-  if (!cmdlineNow.includes(LASSO_DOWNLOAD_ARGV_MARKER)) return false;
+  // ③：staging/<taskId> 锚必须在场（独立于④——防 engineCmdline 忘带 staging 路径的脏台账）
+  if (!engineCmdlineMatchesTask(cmdlineNow, record.taskId)) return false;
   // ④：argv 集合包含关系（marker+taskId 串由此共同钉死；空 cmdline 拒）
   if (record.engineCmdline.length === 0) return false;
   return record.engineCmdline.every((arg) => cmdlineNow.includes(arg));

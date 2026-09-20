@@ -2,14 +2,14 @@
  * download-kill-reconcile.spec.ts（doc/bugs/12 D7/H10 + D4——WT-core 单测）
  *
  * kill 面（mutation-killer：四要素每缺一即拒，删任一检查→必红）：
- *  - shouldKillEngine 真值表（②'pid 一致 / ③marker / ④argv 包含 / 空集守卫）
+ *  - shouldKillEngine 真值表（②'pid 一致 / ③staging 锚 / ④argv 包含 / 空集守卫）
  *  - killEngineTree 注入式分支：任一要素不过 → killTree 零调用（红线断言）
- *  - 真子进程端到端：真 spawn node（argv 带 marker+taskId）→ killEngineTree
- *    真树杀（parent+sleep 孙进程双亡）；无 marker 的无辜进程 → 拒杀且存活
+ *  - 真子进程端到端：真 spawn node（argv 带 staging/<taskId> 锚）→ killEngineTree
+ *    真树杀（parent+sleep 孙进程双亡）；无锚的无辜进程 → 拒杀且存活
  *
  * reconcile 面（D4 收养）：
  *  - 注入式：enginePid 死 → failed + diagnosis 原文；pid 复用 → failed+注记
- *  - 真子进程：ownerPid=999999 + 活引擎（marker argv）→ 收养（ownerPid/state
+ *  - 真子进程：ownerPid=999999 + 活引擎（staging 锚 argv）→ 收养（ownerPid/state
  *    落盘）；二次扫描幂等（untouched）
  *  - 非候选（终态 / 本会话自有）零触碰
  */
@@ -29,7 +29,9 @@ import {
 import { reconcileOrphans, classifyOrphan, ENGINE_DIED_DIAGNOSIS } from "../../src/download/reconcile.js";
 import { createTask, readTask, type DownloadTaskRecord } from "../../src/download/store.js";
 import { killTreeSync } from "../../src/util/kill-tree.js";
-import { LASSO_DOWNLOAD_ARGV_MARKER, DOWNLOADS_DIR_ENV } from "../../src/download/types.js";
+import { DOWNLOADS_DIR_ENV } from "../../src/download/types.js";
+// 归属锚真源（staging/<taskId> 路径——argv marker 方案已退役，见 kill.ts 头注）
+import { stagingTaskMarker } from "../../src/download/engines/staging.js";
 
 let tmpDir: string;
 let root: string;
@@ -70,7 +72,7 @@ function makeRec(overrides: Partial<DownloadTaskRecord> = {}): DownloadTaskRecor
     ownerPid: process.pid,
     engine: "aria2c",
     enginePid: 4242,
-    engineCmdline: ["aria2c", "--dir", "/tmp/out", LASSO_DOWNLOAD_ARGV_MARKER, taskId],
+    engineCmdline: ["aria2c", "--dir", path.join("/tmp/lasso-dl-fix", "staging", taskId), "-x", "8", "https://example.com/corpus.tar"],
     stdioFile: null,
     progress: {
       state: "downloading",
@@ -108,8 +110,8 @@ async function waitUntil(
 }
 
 /**
- * 真引擎 fixture：node 跑 scriptFile（argv = [scriptFile, marker, taskId]——
- * 与真实引擎 spawn 形状一致：marker+taskId 在 argv 里）。可选孙进程（sleep）
+ * 真引擎 fixture：node 跑 scriptFile（argv = [scriptFile, "--dir", <staging>/<taskId>]——
+ * 与真实引擎 spawn 形状一致：staging/<taskId> 锚在 argv 里）。可选孙进程（sleep）
  * + PIDFILE 落孙 pid（树杀验证用）。scriptFile 走文件而非 -e：argv 无空格
  * 假设只覆盖引擎面，文件路径永不带空格（mkdtemp + 固定名）。
  */
@@ -122,7 +124,7 @@ async function spawnEngineFixture(
   const pidFile = script.includes("PIDFILE") ? path.join(tmpDir, `grand-${taskId}.pid`) : null;
   const child = spawn(
     process.execPath,
-    [scriptFile, LASSO_DOWNLOAD_ARGV_MARKER, taskId],
+    [scriptFile, "--dir", path.join(tmpDir, "staging", taskId)],
     pidFile
       ? { env: { ...process.env, PIDFILE: pidFile }, stdio: "ignore" }
       : { stdio: "ignore" },
@@ -151,7 +153,7 @@ const IDLE_SCRIPT = `setInterval(() => {}, 1000);`;
 // ============================================================
 describe("shouldKillEngine —— 杀谓词四要素", () => {
   const TASK_ID = "00000000-0000-4000-8000-000000000000";
-  const cmdline = ["aria2c", "--dir", "/tmp/out", LASSO_DOWNLOAD_ARGV_MARKER, TASK_ID];
+  const cmdline = ["aria2c", "--dir", path.join("/tmp/lasso-dl-fix", "staging", TASK_ID), "-x", "8", "https://example.com/corpus.tar"];
 
   it("全要素在场 → true", () => {
     const rec = makeRec({ taskId: TASK_ID, enginePid: 4242, engineCmdline: cmdline });
@@ -165,7 +167,7 @@ describe("shouldKillEngine —— 杀谓词四要素", () => {
     ).toBe(false);
   });
 
-  it("③ cmdlineNow 缺 marker → false", () => {
+  it("③ cmdlineNow 缺 staging/<taskId> 锚 → false", () => {
     const rec = makeRec({ engineCmdline: ["aria2c", "--dir", "/tmp/out", "00000000-0000-4000-8000-000000000000"] });
     expect(
       shouldKillEngine({
@@ -233,7 +235,7 @@ describe("killEngineTree —— 谓词不过即零动作（红线）", () => {
     expect(k.calls).toHaveLength(0);
   });
 
-  it("③④ 归属不成立（cmdline 无 marker）→ ownership_rejected + 零调用", () => {
+  it("③④ 归属不成立（cmdline 无 staging 锚）→ ownership_rejected + 零调用", () => {
     const k = killRecorder();
     const r = killEngineTree(
       makeRec(),
@@ -257,7 +259,7 @@ describe("killEngineTree —— 谓词不过即零动作（红线）", () => {
       "user-cancel",
       deps({
         isPidAlive: () => true,
-        psCommand: () => ["aria2c", ...rec.engineCmdline.slice(1)],
+        psCommand: () => [...rec.engineCmdline],
         killTree: k.fn,
         log: () => {},
       }),
@@ -272,7 +274,7 @@ describe("killEngineTree —— 谓词不过即零动作（红线）", () => {
 // ============================================================
 describe("killEngineTree —— 真子进程端到端", () => {
   it(
-    "真引擎（marker+taskId 在 argv）→ 真树杀：parent 与 sleep 孙进程双亡",
+    "真引擎（staging/<taskId> 锚在 argv）→ 真树杀：parent 与 sleep 孙进程双亡",
     { timeout: 15_000 },
     async () => {
       const taskId = randomUUID();
@@ -284,7 +286,7 @@ describe("killEngineTree —— 真子进程端到端", () => {
       const rec = makeRec({
         taskId,
         enginePid: child.pid!,
-        engineCmdline: [path.join(tmpDir, `engine-${taskId}.cjs`), LASSO_DOWNLOAD_ARGV_MARKER, taskId],
+        engineCmdline: [path.join(tmpDir, `engine-${taskId}.cjs`), "--dir", path.join(tmpDir, "staging", taskId)],
       });
       const r = killEngineTree(rec, "test-tree-kill");
       expect(r).toMatchObject({ killed: true, action: "killed" });
@@ -295,22 +297,22 @@ describe("killEngineTree —— 真子进程端到端", () => {
   );
 
   it(
-    "无辜进程（argv 无 marker）→ ownership_rejected 零动作，进程存活",
+    "无辜进程（argv 无 staging 锚）→ ownership_rejected 零动作，进程存活",
     { timeout: 15_000 },
     async () => {
       const taskId = randomUUID();
-      // spawn 时省 marker：engine fixture 直接用裸 spawn（不经 helper 的 marker 注入）
+      // spawn 时省 staging 锚：engine fixture 直接用裸 spawn（不经 helper 的锚注入）
       const scriptFile = path.join(tmpDir, `innocent-${taskId}.cjs`);
       await fs.writeFile(scriptFile, IDLE_SCRIPT, "utf8");
       const child = spawn(process.execPath, [scriptFile], { stdio: "ignore" });
       liveFixtures.push(child);
       await waitUntil(() => isEnginePidAlive(child.pid!));
 
-      // 台账谎称这是我们的引擎（engineCmdline 带 marker+taskId）——ps 现值无 marker
+      // 台账谎称这是我们的引擎（engineCmdline 带 staging 锚）——ps 现值无锚
       const rec = makeRec({
         taskId,
         enginePid: child.pid!,
-        engineCmdline: [scriptFile, LASSO_DOWNLOAD_ARGV_MARKER, taskId],
+        engineCmdline: [scriptFile, "--dir", path.join(tmpDir, "staging", taskId)],
       });
       const r = killEngineTree(rec, "test-innocent");
       expect(r).toMatchObject({ killed: false, action: "ownership_rejected" });
@@ -361,7 +363,7 @@ describe("reconcileOrphans —— 注入式分支", () => {
     expect(
       classifyOrphan(rec, {
         isPidAlive: () => true,
-        psCommand: () => ["aria2c", ...rec.engineCmdline.slice(1)],
+        psCommand: () => [...rec.engineCmdline],
       }),
     ).toBe("adopt");
     expect(classifyOrphan(rec, { isPidAlive: () => false })).toBe("fail:dead");
@@ -393,7 +395,7 @@ describe("reconcileOrphans —— 真子进程收养", () => {
         taskId,
         ownerPid: 999999, // macOS pid 上限 99998——999999 必不存在的死 owner
         enginePid: child.pid!,
-        engineCmdline: [path.join(tmpDir, `engine-${taskId}.cjs`), LASSO_DOWNLOAD_ARGV_MARKER, taskId],
+        engineCmdline: [path.join(tmpDir, `engine-${taskId}.cjs`), "--dir", path.join(tmpDir, "staging", taskId)],
       });
       await createTask(rec);
 

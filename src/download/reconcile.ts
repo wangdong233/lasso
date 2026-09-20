@@ -18,7 +18,7 @@
  */
 import process from "node:process";
 import { logger } from "../util/logger.js";
-import { updateTask, listTasks } from "./store.js";
+import { updateTaskSync, listTasks } from "./store.js";
 import { shouldKillEngine, isEnginePidAlive, readCmdlineArgv } from "./kill.js";
 import type { DownloadTaskRecord } from "./types.js";
 
@@ -73,6 +73,19 @@ export async function reconcileOrphans(
   currentPid: number = process.pid,
   deps: ReconcileDeps = {},
 ): Promise<ReconcileResult> {
+  // 逐任务独立 updateTask（每任务一文件）——并发重复扫描幂等收敛，无需全局队列
+  return Promise.resolve(reconcileOrphansSync(currentPid, deps));
+}
+
+/**
+ * 同步版（2026-09-20 合并批次：deps 装配层的 DownloadDeps.reconcileOrphans
+ * 是同步接口）。全链磁盘+ps 同步操作（updateTaskSync 同块原子），status 的
+ * 调用点无 await 面。语义/日志与 async 版完全一致（async 版委托本实现）。
+ */
+export function reconcileOrphansSync(
+  currentPid: number = process.pid,
+  deps: ReconcileDeps = {},
+): ReconcileResult {
   const log = deps.log ?? ((p: Record<string, unknown>) => logger.info(p));
   const tasks = listTasks();
   const adopted: string[] = [];
@@ -91,7 +104,7 @@ export async function reconcileOrphans(
     if (verdict === "adopt") {
       // 收养：state 钉 downloading（starting→downloading 同步升级——引擎活到了
       // 收养时刻，证明 spawn 已完成）+ ownerPid 换防
-      const next = await updateTask(rec.taskId, {
+      const next = updateTaskSync(rec.taskId, {
         ownerPid: currentPid,
         progress: { ...rec.progress, state: "downloading" },
       });
@@ -107,7 +120,7 @@ export async function reconcileOrphans(
         verdict === "fail:reused"
           ? `${ENGINE_DIED_DIAGNOSIS} (pid reused by unrelated process)`
           : ENGINE_DIED_DIAGNOSIS;
-      const next = await updateTask(rec.taskId, {
+      const next = updateTaskSync(rec.taskId, {
         progress: { ...rec.progress, state: "failed" },
         diagnosis,
       });

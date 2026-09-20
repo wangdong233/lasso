@@ -131,7 +131,8 @@ import { registerSearchLocalTool } from "./search-local/register-search-local-to
 // didnt "download engine layer not wired (merge pending)"（宁可 didnt 不可悬空，
 // read_text D1「写好没装配」反例教训）。ssrfGuard 仅 http kind（D12，与 fetch_url
 // 同函数同 config）。
-import { registerDownloadTools } from "./tools/download.js";
+import { registerDownloadTools, wireDownloadTools } from "./tools/download.js";
+import { buildDownloadDeps } from "./download/deps.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -1000,11 +1001,11 @@ async function runMcpServer(): Promise<void> {
   // 经 util/http-pool acquireHttpClient + 共用 ssrfConfig（与 fetch_url 同范式；守 INV-56 家族）
   registerFetchFeedTool(server, ssrfConfig);
   // v1.30（doc/bugs/12 决议 §五）：download 注册——四处联动第 2 处。
-  // ⚠️ 接线 TODO（主循环合并后）：在此调用 wireDownloadTools(实装) 注入
-  // WT-core（store/kill/reconcile）+ WT-engines（route/engines）的 DownloadDeps
-  // 实参——本 WT-tools 分支无法 import 兄弟分支实现；未接线时 handler 返回
-  // didnt "download engine layer not wired (merge pending)" 的诚实降级（宁可
-  // didnt 不可悬空）。ssrfConfig 已随注册传入（http kind 同函数同 config，D12）。
+  // 装配（2026-09-20 合并批次收口）：deps.ts 是 WT-core（store/kill/reconcile）
+  // + WT-engines（route/engines/进度）的唯一粘合点；ssrfConfig 透传引擎层供
+  // undici 降级路径的逐跳重定向复检（D12/H8）。未接线防线（didnt 降级）由
+  // wireDownloadTools 前置 null 检查承载——本调用后即永久在位。
+  wireDownloadTools(buildDownloadDeps(ssrfConfig));
   registerDownloadTools(server, ssrfConfig);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
   // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：

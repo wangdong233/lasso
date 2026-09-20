@@ -91,7 +91,10 @@ export interface RoutedDownload {
   engine: DownloadEngineName;
 }
 
-/** 引擎 spawn 规格（per-task spawn，D3——无 daemon）。 */
+/** 引擎 spawn 规格（per-task spawn，D3——无 daemon）。
+ *  可执行路径在 plan 的外层 `{command, spec}` 对里（WT-engines 原生分离设计：
+ *  spec 描述 spawn 参数面，command 是解析后的可执行路径——2026-09-20 合并
+ *  批次裁定保持分离，不并入本接口）。 */
 export interface EngineSpawnSpec {
   engine: DownloadEngineName;
   args: string[];
@@ -147,7 +150,14 @@ export type KillPredicateFn = (input: KillPredicateInput) => boolean;
 // 四、常量（单一真源）
 // ============================================================
 
-/** 引擎 argv 里必须出现的归属标记（cmdline 验证锚点）。 */
+/**
+ * 引擎 argv 归属标记——**2026-09-20 合并适配：已退役（历史契约保留）**。
+ * 实测定罪：aria2 1.37.0 与 yt-dlp 均拒绝未知长参数
+ * （`unrecognized option '--lasso-download-task'`），marker 不能进 argv。
+ * 归属验证真源 = `engineCmdlineMatchesTask`（src/download/engines/staging.ts：
+ * argv 含 `staging/<taskId>` 子串——aria2 `--dir` / yt-dlp `--paths` 必然携带）。
+ * 本常量仅供 doc/bugs/12 契约史对照，**生产代码禁再引用**（kill.ts 已切换）。
+ */
 export const LASSO_DOWNLOAD_ARGV_MARKER = "--lasso-download-task";
 
 /** 任务表根目录（env LASSO_DOWNLOADS_PATH 可覆盖——测试隔离）。 */

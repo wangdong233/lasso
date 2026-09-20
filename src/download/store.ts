@@ -267,6 +267,17 @@ export async function createTask(record: DownloadTaskRecord): Promise<boolean> {
   return enqueueTaskOp(record.taskId, () => writeTaskSync(record));
 }
 
+/**
+ * 同步建任务（2026-09-20 合并批次：tools 层 DownloadDeps 是同步接口）。
+ * 新任务不存在并发竞争面（taskId 全新 UUID，队列里不可能有同 id 在途操作），
+ * 直写安全；start 返回前任务已在盘上——lasso 当场死也不丢账（决议 D6 的
+ * 「台账先于引擎」语义）。失败语义同 async 版（false + warn）。
+ */
+export function createTaskSync(record: DownloadTaskRecord): boolean {
+  assertTaskId(record.taskId);
+  return writeTaskSync(record);
+}
+
 // ============================================================
 // 读（纯磁盘读，非进程探测——验收 §七「status <50ms」判据的根基）
 // ============================================================
@@ -332,17 +343,29 @@ export async function updateTask(
   patch: Partial<DownloadTaskRecord>,
 ): Promise<DownloadTaskRecord | null> {
   assertTaskId(taskId);
-  return enqueueTaskOp(taskId, () => {
-    const current = readTask(taskId);
-    if (current === null) return null;
-    const next: DownloadTaskRecord = {
-      ...current,
-      ...patch,
-      taskId, // 主键不可被 patch 篡改（RMW 永远写回自己的文件）
-      updatedAt: new Date().toISOString(),
-    };
-    return writeTaskSync(next) ? next : null;
-  });
+  return enqueueTaskOp(taskId, () => updateTaskSync(taskId, patch));
+}
+
+/**
+ * 同步读-改-写（2026-09-20 合并批次：deps 装配层/引擎完成回调用）。
+ * 同步块内无 await → 单事件循环天然原子（enqueueTaskOp 防的是跨 await 的
+ * RMW 交错——同步调用没有交错点）。语义同 async 版：浅合并 + updatedAt
+ * 自动戳新 + 主键不可篡改 + 失败 null 不返幻影。
+ */
+export function updateTaskSync(
+  taskId: string,
+  patch: Partial<DownloadTaskRecord>,
+): DownloadTaskRecord | null {
+  assertTaskId(taskId);
+  const current = readTask(taskId);
+  if (current === null) return null;
+  const next: DownloadTaskRecord = {
+    ...current,
+    ...patch,
+    taskId,
+    updatedAt: new Date().toISOString(),
+  };
+  return writeTaskSync(next) ? next : null;
 }
 
 /**
