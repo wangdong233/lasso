@@ -36,6 +36,9 @@ const SLOW_SPECS = [
   // BUG-08 F（2026-09-15 vitest 孤儿进程治理）：真实 spawn 嵌套 vitest + 杀主 +
   // 树追杀验证（真机复刻用户事故形态，>5s 窗口）
   "test/unit/vitest-orphan-governance.spec.ts",
+  // v1.30 WT-engines（doc/bugs/12 §七验收）：真 spawn aria2c 冒烟（detached
+  // 引擎 + 轮询等待 >5s 窗口）+ fake-ytdlp 假引擎协议锁
+  "test/integration/download-engines-smoke.spec.ts",
 ];
 
 /**
