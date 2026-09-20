@@ -430,14 +430,14 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     }
   });
 
-  it("L1 fleet：descriptions.ts 19 常量 Σ ≤ 59,850 chars（bug11 §5.1-3 提帽 +950：键盘原语行 + guard 信号句，紧缩+去重后 59,810）", () => {
+  it("L1 fleet：descriptions.ts 19 常量 Σ ≤ 62,250 chars（v1.30 提帽 +2,400：download 工具族入驻[红队红 A4/预算复核 2026-09-20]——单主题提帽先行，描述实写 ≤2,200 留 slack；bug11 §5.1-3 先例 +950）", () => {
     const fleet = Object.entries(CONSTANTS)
       .filter(([k]) => k !== "READ_TEXT_DESCRIPTION")
       .reduce((n, [, v]) => n + v.length, 0);
     expect(
       fleet,
       `fleet = ${fleet}（19 常量，read_text 不计）`,
-    ).toBeLessThanOrEqual(59_850);
+    ).toBeLessThanOrEqual(62_250);
   });
 
   it("EXAMPLES 段 ≤5 行/工具（只数 EXAMPLES 块内非头行；内联段落不计）", () => {
