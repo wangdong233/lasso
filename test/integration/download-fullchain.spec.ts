@@ -26,6 +26,7 @@ import { loadSsrfConfig, type SsrfConfig } from "../../src/ssrf/ssrf-guard.js";
 import { doDownload, type DownloadArgs } from "../../src/tools/download.js";
 import { DOWNLOADS_DIR_ENV } from "../../src/download/types.js";
 import { downloadTasksRoot } from "../../src/download/store.js";
+import { detectAria2 } from "../../src/download/engines/bootstrap.js";
 
 // ---- fixture 服务器（本地大文件源）----
 let server: http.Server | null = null;
@@ -38,6 +39,8 @@ let outDir = "";
 
 let ssrfConfig: SsrfConfig = { allowRanges: [], denyRanges: [] };
 let deps: ReturnType<typeof buildDownloadDeps> | null = null;
+// CI runner 无 brew/aria2c——aria2 系测试条件跳过（undici 系照跑：降级路径
+// 本就是「引擎缺失」的生产语义）。skip 在 it 注册时求值 → 直接探测非 beforeAll 变量。
 
 describe("download 全链（真装配终态测试——审查 P0-1 复审判据）", () => {
   beforeAll(async () => {
@@ -114,9 +117,10 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
   });
 
   function start(url: string, extra: Partial<DownloadArgs> = {}) {
-    // proxy off：本机 shell 的 HTTPS_PROXY 会把 127.0.0.1 fixture 指到代理被拒
+    // proxy off（本机 shell HTTPS_PROXY 会把 127.0.0.1 指到代理被拒）+
+    // out_dir 显式（CI runner 的 ~/Downloads 不存在——白名单 realpath 拒）
     return doDownload(
-      { action: "start", url, proxy: "off", ...extra } as DownloadArgs,
+      { action: "start", url, proxy: "off", out_dir: outDir, ...extra } as DownloadArgs,
       deps!,
       ssrfConfig,
     );
@@ -142,7 +146,7 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
 
   it(
     "P0-1 回归钉：aria2 路径 start→exit 回调定谳→completed→files 字节级交付（staging 清空）",
-    { timeout: 60_000 },
+    { timeout: 60_000, skip: detectAria2().path === null ? "aria2c 不在 PATH（CI 无 brew）" : false },
     async () => {
       const r = await start(`${baseUrl}/payload.bin`, {
         filename: "fullchain.bin",
@@ -258,7 +262,7 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
 
   it(
     "P0-2 aria2 主路径守门（复审 #2 定罪回归钉：进度写回后 enforceMaxBytes 可达）",
-    { timeout: 60_000 },
+    { timeout: 60_000, skip: detectAria2().path === null ? "aria2c 不在 PATH（CI 无 brew）" : false },
     async () => {
       // 慢速滴流（300ms/64KiB）+ aria2 路（PATH 正常——不绕开盲区）：
       // 5s 首个 summary 带 total=2MiB > cap 64KiB → enrichTask 写回 → 下一轮
@@ -277,7 +281,7 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
 
   it(
     "P0-1 兜底回归钉：无 exit 回调视角（模拟 lasso 重启）——wait 的 poll 副作用定谳",
-    { timeout: 60_000 },
+    { timeout: 60_000, skip: detectAria2().path === null ? "aria2c 不在 PATH（CI 无 brew）" : false },
     async () => {
       // 真链起任务，等引擎自然退出后，把任务 ownerPid 换成 999999 + 重新装配
       //（模拟重启：exit 回调随旧 deps 实例失效）→ status 触发 maybeFinalizeOnPoll
