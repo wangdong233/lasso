@@ -514,3 +514,18 @@ lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解�
 ### 10.4 fetch_url 失败细分
 
 网络层错误现在是 `fetch_failed:<kind>:<detail>`：`dns_failed`（本机 DNS/代理环境） / `connect_refused` / `connect_timeout` / `tls_failed`（证书） / `aborted_timeout`（你传的 timeout_ms 到点） / `other`。用它区分「我的代理/DNS 坏了」和「目标站拒绝」——反爬拦截通常回 2xx + 滑块内容，不在这层报错。
+
+### 2.21 download BT 零 peer——死种 OR 运营商 DPI 双因（v1.30，doc/bugs/12 §二）
+
+`kind=torrent` 任务 60 秒零 peer 时，`diagnosis` 报**双因**（禁单因断言）：冷门种找 peer 本来就可能超 60s（假阴性），或区域运营商对 BT 协议特征做 DPI 定向封锁（2026-09-20 本机广东移动实测四重定罪：BT-UDP 全灭而 STUN-UDP 通、明文 peer 握手 0/14、真实客户端 110s 零 peer、与外部报告互证）。**三条合法出路**（工具只报因不替你决定）：换 http/stream 源（yt-dlp 是当前网络主门）/ 试 IPv6 直连（未测活口）/ 换网络出口。DNS 污染仅限 DHT bootstrap 域名且 DoH 同污染（递归上游），lasso 内置 IP 直写 bootstrap + 冻结 tracker 表——不要再用「换 DoH」当解法。
+
+### 2.22 download 引擎缺失/引导（v1.30，doc/bugs/12 D9/D10）
+
+- **aria2c 缺失**：http kind 自动走 undici 单流降级（Range ≥4MiB 时 ≤4 分片，内建恒在）；torrent kind 显式 `engine_unavailable` + 手动引导提示（`brew install aria2`，注意 brew 挂起先带 `https_proxy` env）。
+- **yt-dlp 缺失**：首个 stream 下载触发 lazy bootstrap——GitHub release 流式下载 `yt-dlp_macos` 单文件到 `~/.cache/lasso/bin/`（pin 版本+sha256 校验，网络走 proxy 解析）。bootstrap 失败返回可操作错误（含手动 curl 命令）。
+- `doctor` 的 `download_engines` check 报双引擎版本/来源（PATH / bin-cache / env）；引擎缺失=warn 非阻断。
+- stream 站点 extractor 失效（yt-dlp 生态周更级腐烂）：exit 1 + `unable to extract` 特征词 → 诊断提示重引导 latest。
+
+### 2.23 download 的 proxy=auto 三级语义（v1.30，doc/bugs/12 D11/H7）
+
+`proxy:"auto"`（缺省）按序解析：①`LASSO_PROXY`（若有）②env `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`（若有）③直连 off。显式 `"host:port"` 透传；显式 `"off"` 剥子进程 proxy env（防引擎 env 拾取推翻用户意图）。注意与浏览器通道的差异：`LASSO_PROXY` 对 browse 只作用于 Chrome `--proxy-server`，对 download 作用于引擎 argv/env 与 undici 降级路径（EnvHttpProxyAgent 对齐）——同一 auto 在不同工具的行为面写在各自 description，禁混读。

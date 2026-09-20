@@ -6437,6 +6437,94 @@ const assertions = [
       return true;
     },
   },
+  {
+    id: "INV-104-download-kill-single-exit",
+    desc:
+      "bugs/12 决议 D7/H10（红队条件 3，不满足即回炉）：download 的杀路径唯一——(1) kill.ts shouldKillEngine 四要素（pid 一致/staging/<taskId> 锚/engineCmdline 集合包含/空集拒）；(2) 致死原语 100% 经 util/kill-tree.js killTreeSync（禁第二 kill 实现）；(3) 归属锚真源=engines/staging.ts engineCmdlineMatchesTask（argv marker 方案已实测定罪退役，types.ts LASSO_DOWNLOAD_ARGV_MARKER 仅供契约史，生产禁引用）；(4) 谓词不过零动作（ownership_rejected 分支在案）",
+    check: () => {
+      const kf = SRC.find((s) => /download\/kill\.ts$/.test(s.f.replace(/\\/g, "/")));
+      const st = SRC.find((s) => /download\/engines\/staging\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!kf || !st) return false;
+      const k = kf.text;
+      // (1) 四要素面
+      if (!/engineCmdlineMatchesTask\(cmdlineNow, record\.taskId\)/.test(k)) return false;
+      if (!/record\.enginePid !== enginePid/.test(k)) return false;
+      if (!/every\(\(arg\) => cmdlineNow\.includes\(arg\)\)/.test(k)) return false;
+      if (!/engineCmdline\.length === 0/.test(k)) return false;
+      // (2) killTreeSync 单一真源 + 零第二实现（download 域禁 child_process 直杀）
+      if (!/killTreeSync/.test(k)) return false;
+      if (!/from "\.\.\/util\/kill-tree\.js"/.test(k)) return false;
+      for (const s of SRC) {
+        const f = s.f.replace(/\\/g, "/");
+        if (!f.startsWith("src/download/")) continue;
+        if (/killTreeSync|\.kill\(/.test(stripComments(s.text)) && !/download\/kill\.ts$/.test(f)) return false;
+      }
+      // (3) 归属锚真源在 staging.ts；kill.ts 经 import 消费
+      if (!/export function engineCmdlineMatchesTask/.test(st.text)) return false;
+      if (!/import \{ engineCmdlineMatchesTask \} from "\.\/engines\/staging\.js"/.test(k)) return false;
+      // (4) 零动作分支文案在案
+      if (!/ownership_rejected/.test(k)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-105-download-torrent-policy-honesty",
+    desc:
+      "bugs/12 决议 §二/D16：magnet/torrent 禁冒充 ssrfGuard 可判对象（http kind 同函数同 config 守门；torrent 走独立策略）+ BT 双因诊断（60s 零 peer=死种 OR DPI，禁单因断言）+ DHT 私网放弃面文本在案（peer 含私网 IP 是 P2P 设计内，ssrfGuard 私网姿态显式放弃）",
+    check: () => {
+      const dt = SRC.find((s) => /tools\/download\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dt) return false;
+      const d = dt.text;
+      // http kind 才过 ssrfGuard（与 fetch_url 同函数）；torrent 不冒充
+      if (!/if \(routed\.kind === "http"\)\s*\{[\s\S]{0,400}ssrfGuard/.test(d)) return false;
+      if (!d.includes("magnet:")) return false; // torrent 形态校验在案（字符串包含，避开双斜杠正则转义）
+      // BT 双因：BT_ZERO_PEER_DIAGNOSIS 常量含 OR（双因）与出路词
+      if (!/BT_ZERO_PEER_DIAGNOSIS/.test(d)) return false;
+      const descs = SRC.find((s) => /tools\/descriptions\.ts$/.test(s.f.replace(/\\/g, "/")));
+      const dd = descs ? descs.text : "";
+      const diagSrc = /BT_ZERO_PEER_DIAGNOSIS\s*=\s*"([^"]+)"/.exec(d);
+      const diag = diagSrc ? diagSrc[1] : "";
+      if (!/OR/.test(diag)) return false;
+      if (!/DPI/i.test(diag)) return false;
+      // DHT 私网放弃面：description SAFETY 段声明
+      if (!/private IPs|private IP/.test(dd)) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-106-download-stdio-file-discipline",
+    desc:
+      "bugs/12 决议 D5/H1（红队条件 1，不满足即回炉）：下载引擎 stdio 一律文件化——spawn.ts 是唯一 spawn 口且 stdio 数组不含 pipe（['ignore', fd, fd] 形态）；src/download/ 域禁 stdio:'pipe'（lasso 死后引擎 SIGPIPE 自毁的技术死穴封锁）",
+    check: () => {
+      const sp = SRC.find((s) => /download\/engines\/spawn\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!sp) return false;
+      if (!/stdio:\s*\["ignore",\s*fd,\s*fd\]/.test(sp.text)) return false;
+      for (const s of SRC) {
+        const f = s.f.replace(/\\/g, "/");
+        if (!f.startsWith("src/download/")) continue;
+        if (/stdio:\s*\["pipe"|stdio:\s*"pipe"/.test(s.text)) return false;
+      }
+      return true;
+    },
+  },
+  {
+    id: "INV-107-download-ledger-wiring-closure",
+    desc:
+      "bugs/12 决议 §五/§八：四处联动防线闭环——(1) index.ts registerDownloadTools+wireDownloadTools(buildDownloadDeps(ssrfConfig)) 双调用在案（未接线=悬空面收口）；(2) deps.ts 是唯一跨 WT 粘合点；(3) 任务表先于引擎（createTaskSync 抛错语义：写失败不 spawn）；(4) wait 帽 ≤120s 常量单一真源（types.ts DOWNLOAD_WAIT_TIMEOUT_MAX_S 消费）",
+    check: () => {
+      const ix = SRC.find((s) => /(^|\/)index\.ts$/.test(s.f.replace(/\\/g, "/")));
+      const dp = SRC.find((s) => /download\/deps\.ts$/.test(s.f.replace(/\\/g, "/")));
+      const ty = SRC.find((s) => /download\/types\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!ix || !dp || !ty) return false;
+      if (!/wireDownloadTools\(buildDownloadDeps\(ssrfConfig\)\)/.test(ix.text)) return false;
+      if (!/registerDownloadTools\(server, ssrfConfig\)/.test(ix.text)) return false;
+      if (!/task_store_write_failed/.test(dp.text)) return false;
+      if (!/DOWNLOAD_WAIT_TIMEOUT_MAX_S = 120/.test(ty.text)) return false;
+      const dt = SRC.find((s) => /tools\/download\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!dt || !/DOWNLOAD_WAIT_TIMEOUT_MAX_S/.test(dt.text)) return false;
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

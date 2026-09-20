@@ -59,6 +59,9 @@
  *                                    不是达标线——Lasso JS defineProperty 范式结构性过不了 prototype lie 检测）
  *  39. stagehand_rest_contract_probe       — v1.7 Phase A：HEAD 探 api.stagehand.dev/verify 确认 R-ECO-6
  *                                    （404=REST 契约虚构确认 → warn；2xx=契约存在 → pass；永不 fail —— 已知状态）
+ *  40. download_engines                    — v1.30（doc/bugs/12 §五/D10）：aria2c/yt-dlp 在位性+版本
+ *                                    （缺失=warn 非阻断——下载是可选能力，同 #37/#39 永不 fail 范式；
+ *                                    undici 降级路径内建恒在，http kind 至少可用）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#21 全 warn skip（无 RustBridge 装配）
@@ -173,6 +176,9 @@ import type { McpClient } from "../subprocess/McpClient.js";
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// v1.30（doc/bugs/12）：#40 download_engines 探测（engines/bootstrap 检测序复用）
+import { detectAria2, detectYtDlp } from "../download/engines/bootstrap.js";
 
 export const LASSO_VERSION = "1.29.2";
 
@@ -843,6 +849,13 @@ export async function runDoctor(
   checks.push(
     await checkStagehandRestContract({ skipNetwork: opts.skipNetwork }),
   );
+
+  // #40 download_engines（v1.30 doc/bugs/12 §五/D10）：下载双引擎在位性+版本/发布龄。
+  //   - aria2c 缺 → warn（http kind 仍有 undici 降级；torrent kind 显式 unavailable）
+  //   - yt-dlp 缺 → warn（stream kind 引导提示；首个 download 调用会 lazy bootstrap）
+  //   - 双在位 → pass（detail 报版本+来源 PATH/bin-cache）
+  //   - **永不 fail**（同 #37/#39 范式：引擎缺失是可引导状态，不是 ready 阻断项）
+  checks.push(checkDownloadEngines());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2413,6 +2426,46 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
       next_step: "检查 src/browse/cdp-actions.ts 加载",
     };
   }
+}
+
+// ============================================================
+// v1.30（doc/bugs/12 §五/D10）：#40 download_engines——下载双引擎在位性
+// ============================================================
+/**
+ * 40. download_engines —— aria2c / yt-dlp 探测（复用 engines/bootstrap.ts
+ * 的检测序：PATH → bin 缓存目录 → env 覆盖）。
+ *
+ * 语义（永不 fail——同 #37 Steel / #39 stagehand 的可选能力范式）：
+ *  - 引擎缺失是**可引导状态**：yt-dlp 首个 download 调用 lazy bootstrap
+ *    （GitHub release 流式下载+sha256 校验）；aria2 缺时 http kind 走 undici
+ *    降级（内建恒在）、torrent kind 显式 unavailable+手动引导提示。
+ *  - 红队 A1-刺①（yt-dlp 腐烂面诚实化）：detail 报版本探测值，消费方自行
+ *    判断发布龄（extractor 周更级腐烂是 yt-dlp 生态特性，doctor 不替用户定
+ *    「过期」阈值——报事实不报判断）。
+ */
+function checkDownloadEngines(): DoctorCheck {
+  const aria2 = detectAria2();
+  const ytdlp = detectYtDlp();
+  const parts: string[] = [];
+  parts.push(
+    aria2.path
+      ? `aria2c ${aria2.version ?? "?"}（${aria2.source}）`
+      : "aria2c 缺失（http kind 走 undici 降级；torrent kind 将显式不可用）",
+  );
+  parts.push(
+    ytdlp.path
+      ? `yt-dlp ${ytdlp.version ?? "?"}（${ytdlp.source}）`
+      : "yt-dlp 缺失（首个 stream 下载将 lazy bootstrap，需网络）",
+  );
+  const both = Boolean(aria2.path) && Boolean(ytdlp.path);
+  return {
+    name: "download_engines",
+    status: both ? "pass" : "warn",
+    detail: parts.join("；"),
+    next_step: both
+      ? "引擎齐备；yt-dlp extractor 腐烂是生态常态——stream 站点失效时重引导 latest（download_start 的 exit-1 extractor 诊断会自动提示）"
+      : "brew install aria2 或等首个 download 调用自动引导 yt-dlp（~/.cache/lasso/bin/，pin+sha256）",
+  };
 }
 
 // ============================================================
