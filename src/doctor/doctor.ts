@@ -180,7 +180,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // v1.30（doc/bugs/12）：#40 download_engines 探测（engines/bootstrap 检测序复用）
 import { detectAria2, detectYtDlp } from "../download/engines/bootstrap.js";
 
-export const LASSO_VERSION = "1.29.2";
+export const LASSO_VERSION = "1.30.0";
 
 // ============================================================
 // 类型
