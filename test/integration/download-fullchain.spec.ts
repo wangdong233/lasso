@@ -52,7 +52,11 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
 
     server = http.createServer((req, res) => {
       const slow = req.url?.includes("slow");
-      const range = req.headers.range;
+      // oversize 守门专用：禁 Range（200 全量滴流）→ aria2 单连接 ~9.6s/2MiB
+      // ——首个 5s summary（total=2MiB>64KiB cap）后守门必追得上（4 连接分片
+      // 会把滴流冲快到 5.1s 完成、逃过首个 summary 节拍——实测定罪）
+      const noRange = req.url?.includes("slow-oversize");
+      const range = noRange ? undefined : req.headers.range;
       if (range) {
         const m = /bytes=(\d+)-(\d*)/.exec(String(range));
         if (m) {
@@ -249,6 +253,25 @@ describe("download 全链（真装配终态测试——审查 P0-1 复审判据�
       } finally {
         process.env.PATH = prevPath;
       }
+    },
+  );
+
+  it(
+    "P0-2 aria2 主路径守门（复审 #2 定罪回归钉：进度写回后 enforceMaxBytes 可达）",
+    { timeout: 60_000 },
+    async () => {
+      // 慢速滴流（300ms/64KiB）+ aria2 路（PATH 正常——不绕开盲区）：
+      // 5s 首个 summary 带 total=2MiB > cap 64KiB → enrichTask 写回 → 下一轮
+      // status 守门读到 → oversize（此前：进度从不写回=守门输入永不填充）
+      const r = await start(`${baseUrl}/slow-oversize.bin`, {
+        filename: "oversize-aria2.bin",
+        max_bytes: 64 * 1024,
+      });
+      expect(r.outcome).toBe("worked");
+      const taskId = (r.data as { task_id: string }).task_id;
+      const { state, task } = await waitTerminal(taskId, 45_000);
+      expect(state).toBe("oversize");
+      expect((task as unknown as { diagnosis: string | null }).diagnosis).toContain("oversize");
     },
   );
 

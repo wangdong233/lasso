@@ -336,6 +336,19 @@ function enrichTask(
       totalBytes: snap.totalBytes ?? record.progress.totalBytes,
     },
   };
+  // 进度写回（复审 #2 P0 定罪修复）：解析出的数值持久化进任务表——
+  // (a) enforceMaxBytes 的输入源（detached 路守门此前结构性不可达：登记时
+  //     写 null 后无人更新，10GiB+5GiB 帽静默完整下载）；
+  // (b) updatedAt 随写刷新 = idle 硬顶的活跃语义（活跃任务不该被 24h 硬顶
+  //     杀——死任务无人 enrich，updatedAt 不动，硬顶照杀——语义自洽）。
+  // 数值有变才写（避免 status 高频空写）。
+  if (
+    view.progress.downloadedBytes !== record.progress.downloadedBytes ||
+    view.progress.totalBytes !== record.progress.totalBytes ||
+    view.progress.progress !== record.progress.progress
+  ) {
+    d.updateTask(record.taskId, { progress: view.progress });
+  }
   const diagnosis = maybeBtZeroPeerDiagnosis(view, snap.peers, Date.now());
   if (diagnosis && !record.diagnosis) {
     // 首诊落盘（跨会话可见）；已诊断不重复写
