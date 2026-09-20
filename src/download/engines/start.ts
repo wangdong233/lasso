@@ -53,6 +53,12 @@ export type EngineStartResult =
       pid: number;
       stagingDir: string;
       proxyUsed: string | null;
+      /**
+       * 引擎子进程句柄（审查修复批 P0-1：deps.runSpawnPipeline 挂 exit 回调
+       * 的定谳入口——detached+unref 不影响 exit 事件派发，lasso 活着即可即
+       * 时终态化；lasso 死后由 maybeFinalizeOnPoll 轮询兜底）。
+       */
+      child: import("node:child_process").ChildProcess;
     }
   | {
       status: "inprocess";
@@ -110,6 +116,7 @@ export async function startEngineDownload(
         pid: handle.pid,
         stagingDir: plan.stagingDir,
         proxyUsed,
+        child: handle.child,
       };
     }
     if (opts.kind === "torrent") {
@@ -160,6 +167,7 @@ export async function startEngineDownload(
       pid: handle.pid,
       stagingDir: plan.stagingDir,
       proxyUsed,
+      child: handle.child,
     };
   }
 

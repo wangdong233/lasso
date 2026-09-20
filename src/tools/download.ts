@@ -58,7 +58,7 @@ export const BT_ZERO_PEER_DIAGNOSIS =
 
 /** wait 超时 hint（D8：教轮询，不烧穿 MCP 超时）。 */
 export const WAIT_TIMEOUT_HINT =
-  "poll again with download_wait or download_status";
+  "poll again with download({action:\"wait\"}) or download({action:\"status\"})";
 
 /** wait 缺省预算（D8 帽 ≤120s；缺省取半，教「短预算多轮」而非一次长等）。 */
 const DEFAULT_WAIT_TIMEOUT_S = 60;
@@ -319,6 +319,12 @@ function enrichTask(
 ): DownloadTaskRecord {
   if (TERMINAL_STATES.has(record.progress.state ?? "starting")) return record;
   const snap = d.readEngineSnapshot(record);
+  // 审查修复批：readEngineSnapshot 挂 poll 副作用（pid 死兜底定谳/max_bytes
+  // 守门/idle 硬顶）——触发后磁盘已是终态，重读拿定谳结果（view 禁止用旧态）
+  const finalized = d.readTask(record.taskId);
+  if (finalized !== null && TERMINAL_STATES.has(finalized.progress.state ?? "starting")) {
+    return finalized;
+  }
   const view: DownloadTaskRecord = {
     ...record,
     progress: {
@@ -604,9 +610,11 @@ async function doStart(
       );
     }
   }
-  if (routed.kind === "http") {
+  if (routed.kind === "http" || routed.kind === "stream") {
     // 与 fetch_url 同函数同 config（INV-31 家族）；拒绝风格同构（ssrfDenial 二分；
-    // served_by 同 fetch_url 的 "lasso.ssr_guard"——CC 端跨工具模式识别一致）
+    // served_by 同 fetch_url 的 "lasso.ssr_guard"——CC 端跨工具模式识别一致）。
+    // 审查修复批 P1-7：stream 首跳同样守门（kind:"stream"+内网 URL 的全旁路
+    // 定罪修复——lasso 可控面=首跳；引擎自跟随跳仍属诚实边界）
     const ssrfResult = await ssrfGuard(args.url!, ssrfConfig);
     if (!ssrfResult.allowed) {
       const denial = ssrfDenial(ssrfResult.reason);
@@ -635,7 +643,18 @@ async function doStart(
     maxConn: args.max_conn ?? 8,
     maxBytes: args.max_bytes ?? DEFAULT_MAX_BYTES,
   };
-  const record = d.createTask(input);
+  // 总量帽/写盘失败等装配层异常 → 显式 didnt（错误码可操作——审查修复批）
+  let record: ReturnType<DownloadDeps["createTask"]>;
+  try {
+    record = d.createTask(input);
+  } catch (e) {
+    return envelope(
+      "didnt",
+      null,
+      "task_create_failed",
+      String(e instanceof Error ? e.message : e).slice(0, 300),
+    );
+  }
   d.spawnEngine(record, {
     proxy: input.proxy,
     subs: input.subs,

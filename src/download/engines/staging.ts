@@ -29,6 +29,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DOWNLOADS_DIR_ENV } from "../types.js";
+import { downloadTasksRoot } from "../store.js";
 
 /** taskId 唯一合法形态校验（进路径前必过——防 `..`/分隔符注入路径穿越）。 */
 export function assertSafeTaskId(taskId: string): void {
@@ -42,9 +43,16 @@ export function assertSafeTaskId(taskId: string): void {
 
 /** downloads 根（staging/logs/tasks 的共同父级；env 见文件头注）。 */
 export function downloadsRootDir(env: NodeJS.ProcessEnv = process.env): string {
+  // 2026-09-20 单一真源收口：tasks 根的 env 解析统一走 store.downloadTasksRoot
+  // （store 的 env 读取链在测试 worker 里被验证稳定；原独立实现是 R-CI-08
+  // 知识重复面，且在 vitest 模块实例双份 process 下与 store 读数漂移——
+  // staging 落 ~/.cache 缺省而任务表落测试根，定谳搬运扑空的实锤形态）。
+  // dirname(tasks 根) = downloads 根（.../downloads/tasks → .../downloads）。
+  if (env === process.env) {
+    return path.dirname(downloadTasksRoot());
+  }
   const explicit = (env[DOWNLOADS_DIR_ENV] ?? "").trim();
   if (explicit) {
-    // 显式覆盖指向 tasks 根 → 根=其父目录（.../downloads/tasks → .../downloads）
     return path.dirname(path.resolve(explicit));
   }
   const cache = (env.LASSO_CACHE_DIR ?? "").trim() || path.join(os.homedir(), ".cache", "lasso");

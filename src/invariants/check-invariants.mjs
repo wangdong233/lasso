@@ -6449,7 +6449,8 @@ const assertions = [
       // (1) 四要素面
       if (!/engineCmdlineMatchesTask\(cmdlineNow, record\.taskId\)/.test(k)) return false;
       if (!/record\.enginePid !== enginePid/.test(k)) return false;
-      if (!/every\(\(arg\) => cmdlineNow\.includes\(arg\)\)/.test(k)) return false;
+      // ④ 集合包含（2026-09-20 P1-4 修复后形态：无空格精确在场+含空格 join 子串——空白容忍）
+      if (!/every\(\s*\(arg\)\s*=>\s*cmdlineNow\.includes\(arg\)\s*\|\|\s*cmdlineJoined\.includes\(arg\)/.test(k.replace(/\n\s*/g, " "))) return false;
       if (!/engineCmdline\.length === 0/.test(k)) return false;
       // (2) killTreeSync 单一真源 + 零第二实现（download 域禁 child_process 直杀）
       if (!/killTreeSync/.test(k)) return false;
@@ -6470,13 +6471,13 @@ const assertions = [
   {
     id: "INV-105-download-torrent-policy-honesty",
     desc:
-      "bugs/12 决议 §二/D16：magnet/torrent 禁冒充 ssrfGuard 可判对象（http kind 同函数同 config 守门；torrent 走独立策略）+ BT 双因诊断（60s 零 peer=死种 OR DPI，禁单因断言）+ DHT 私网放弃面文本在案（peer 含私网 IP 是 P2P 设计内，ssrfGuard 私网姿态显式放弃）",
+      "bugs/12 决议 §二/D16：magnet/torrent 禁冒充 ssrfGuard 可判对象（http+stream kind 首跳同函数同 config 守门——审查 P1-7 修复：stream 曾是一参数即全旁路；torrent 走独立策略）+ BT 双因诊断（60s 零 peer=死种 OR DPI，禁单因断言）+ DHT 私网放弃面文本在案（peer 含私网 IP 是 P2P 设计内，ssrfGuard 私网姿态显式放弃）",
     check: () => {
       const dt = SRC.find((s) => /tools\/download\.ts$/.test(s.f.replace(/\\/g, "/")));
       if (!dt) return false;
       const d = dt.text;
       // http kind 才过 ssrfGuard（与 fetch_url 同函数）；torrent 不冒充
-      if (!/if \(routed\.kind === "http"\)\s*\{[\s\S]{0,400}ssrfGuard/.test(d)) return false;
+      if (!/if \(routed\.kind === "http" \|\| routed\.kind === "stream"\)\s*\{[\s\S]{0,400}ssrfGuard/.test(d)) return false;
       if (!d.includes("magnet:")) return false; // torrent 形态校验在案（字符串包含，避开双斜杠正则转义）
       // BT 双因：BT_ZERO_PEER_DIAGNOSIS 常量含 OR（双因）与出路词
       if (!/BT_ZERO_PEER_DIAGNOSIS/.test(d)) return false;

@@ -58,9 +58,15 @@ export function shouldKillEngine(input: KillPredicateInput): boolean {
   if (!Array.isArray(cmdlineNow) || cmdlineNow.length === 0) return false;
   // ③：staging/<taskId> 锚必须在场（独立于④——防 engineCmdline 忘带 staging 路径的脏台账）
   if (!engineCmdlineMatchesTask(cmdlineNow, record.taskId)) return false;
-  // ④：argv 集合包含关系（marker+taskId 串由此共同钉死；空 cmdline 拒）
+  // ④：argv 集合包含关系（空 cmdline 拒）
   if (record.engineCmdline.length === 0) return false;
-  return record.engineCmdline.every((arg) => cmdlineNow.includes(arg));
+  // 含空格 argv 元素（用户 filename 如 "my file.iso"）在 ps 空白切分下不可
+  // 逐元素对齐（审查 P1-4：原 every 逐元素相等使该类合法任务恒拒杀）——
+  // 降级为 join 后子串匹配：无空格元素精确在场，含空格元素整体子串在场。
+  const cmdlineJoined = cmdlineNow.join(" ");
+  return record.engineCmdline.every(
+    (arg) => cmdlineNow.includes(arg) || cmdlineJoined.includes(arg),
+  );
 }
 
 // ============================================================

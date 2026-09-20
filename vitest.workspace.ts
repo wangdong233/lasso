@@ -39,6 +39,7 @@ const SLOW_SPECS = [
   // v1.30 WT-engines（doc/bugs/12 §七验收）：真 spawn aria2c 冒烟（detached
   // 引擎 + 轮询等待 >5s 窗口）+ fake-ytdlp 假引擎协议锁
   "test/integration/download-engines-smoke.spec.ts",
+    "test/integration/download-fullchain.spec.ts",
 ];
 
 /**

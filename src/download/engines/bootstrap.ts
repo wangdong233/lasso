@@ -78,11 +78,15 @@ export function detectYtDlp(env: NodeJS.ProcessEnv = process.env): EngineDetectR
 // ============================================================
 
 /**
- * 🔴 TODO(主循环收尾 pin)：以最新 release 的 yt-dlp_macos 资产 sha256 替换
- * 本占位（获取：curl -sL <asset-url> | shasum -a256）。占位期间跳过校验
- * （warn 日志可见）；替换后不匹配即拒用——下载供应链闭环。
+ * pin（2026-09-20 收尾批落定）：tag 2026.08.19 的 yt-dlp_macos 资产
+ * sha256——来源 = GitHub Releases API 官方资产摘要（digest 字段，服务端
+ * 计算——供应链可信度高于本地下载后自算）。不匹配即拒用（删文件+结构化
+ * 错误）——禁安装时现取 SHA（TOCTOU）。升级 yt-dlp 时须同步改此常量+测试。
  */
-export const YT_DLP_MACOS_SHA256_PIN = "__UNPINNED__";
+export const YT_DLP_MACOS_SHA256_PIN =
+  "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202";
+/** pin 对应的 release tag（诊断面展示用）。 */
+export const YT_DLP_MACOS_PINNED_TAG = "2026.08.19";
 
 /** 引导资产上限（yt-dlp_macos 实际 ~37MB；200MiB 防恶意超发）。 */
 const BOOTSTRAP_MAX_BYTES = 200 * 1024 * 1024;
@@ -162,16 +166,10 @@ export async function bootstrapYtDlp(opts?: {
       fs.closeSync(out);
     }
 
-    // 3) sha256 校验（占位=跳过+warn；pin 值=不匹配拒用）
+    // 3) sha256 校验（2026-09-20 pin 落定：不匹配即拒用——占位跳过分支已随
+    //    pin 动作删除，防「永假分支」假绿——升级重引导须同步常量+测试）
     const actual = hash.digest("hex");
-    if (YT_DLP_MACOS_SHA256_PIN === "__UNPINNED__") {
-      logger.warn({
-        evt: "ytdlp_bootstrap_sha_unpinned",
-        actual_sha256: actual,
-        bytes: total,
-        hint: "主循环收尾 pin 后此 warn 消失；不匹配即拒用",
-      });
-    } else if (actual !== YT_DLP_MACOS_SHA256_PIN) {
+    if (actual !== YT_DLP_MACOS_SHA256_PIN) {
       fs.rmSync(tmp, { force: true });
       throw new Error(
         `ytdlp_bootstrap_failed:sha256_mismatch(expect=${YT_DLP_MACOS_SHA256_PIN} actual=${actual})`,

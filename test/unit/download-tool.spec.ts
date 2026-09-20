@@ -501,7 +501,7 @@ describe("download · wait", () => {
     );
     expect(r.outcome).toBe("unknown");
     expect(r.hint).toBe(WAIT_TIMEOUT_HINT);
-    expect(r.hint).toContain("download_wait or download_status");
+    expect(r.hint).toContain('download({action:"wait"})');
     const data = r.data as { task: DownloadTaskRecord; waited_ms: number };
     expect(data.task.taskId).toBe(taskId);
     expect(data.task.progress.state).toBe("downloading"); // partial 快照非终态
