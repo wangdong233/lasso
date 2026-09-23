@@ -64,6 +64,8 @@
  *                                    undici 降级路径内建恒在，http kind 至少可用）
  *  41. chrome_ledger_inventory              — BUG-14（2026-09-23）：台账活实例清单；visible+idle-0
  *                                    → warn + chrome-hide 收尾一行（永不 fail / 不代动，INV-82）
+ *  42. stale_runtime                        — bugs/13 §10（2026-09-23 doubao 阻塞-3）：载旧码探针——模块 mtime
+ *                                    > 进程启动 → warn 重连 MCP 提示（CLI 形态恒 pass；永不 fail）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#21 全 warn skip（无 RustBridge 装配）
@@ -102,6 +104,7 @@ import {
   constants as fsConstants,
   readFileSync,
   existsSync,
+  statSync,
 } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -864,6 +867,10 @@ export async function runDoctor(
   // #41 chrome_ledger_inventory（BUG-14 §6-1）：台账活实例治理清单——visible+
   // idle-0 → warn+chrome-hide 收尾一行（永不 fail/不代动，INV-82 红线）。
   checks.push(checkChromeLedgerInventory());
+
+  // #42 stale_runtime（bugs/13 §10 doubao 阻塞-3）：载旧码探针——MCP 形态暴露
+  // 「dist 重建晚于进程启动」；CLI 形态恒 pass（新进程）。永不 fail。
+  checks.push(checkStaleRuntime());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2535,6 +2542,54 @@ function checkChromeLedgerInventory(): DoctorCheck {
     status: "pass",
     detail: `live: ${parts.join(" | ")}`,
     next_step: "chrome-status for per-instance ownership verdicts",
+  };
+}
+
+// ============================================================
+// bugs/13 §10（doubao 第三轮，2026-09-23）：#42 stale_runtime——载旧码探针
+// ============================================================
+/**
+ * 42. stale_runtime —— 「运行中 server 是否载旧码」一键裁决（doubao 阻塞-3）。
+ *
+ * 判据：进程启动时间（Date.now() - uptime*1000）vs 自身模块文件 mtime
+ *（同批 dist 构建产物——比版本号 bump 纪律更强：同版本号内多次重建也能判）。
+ * dist 重建晚于进程启动 +5s 容忍 → warn「当前进程载重建前代码——重连 MCP」。
+ *
+ * 语义（永不 fail——诊断探针）：MCP doctor tool（server 进程内跑）暴露真实
+ * 判据；CLI doctor 恒 pass（新进程永载新码——同样正确：CLI 不是被裁决对象）。
+ */
+export function checkStaleRuntime(
+  now = Date.now(),
+  uptimeSec = process.uptime(),
+): DoctorCheck {
+  const startedAt = now - uptimeSec * 1000;
+  let mtimeMs: number;
+  try {
+    // 形态双候选：dist=doctor.js（生产 MCP/CLI）；vitest 直跑源=doctor.ts
+    //（同批构建/提交产物——mtime 语义同构）
+    const cand = path.join(__dirname, "doctor.js");
+    mtimeMs = statSync(existsSync(cand) ? cand : path.join(__dirname, "doctor.ts")).mtimeMs;
+  } catch {
+    return {
+      name: "stale_runtime",
+      status: "warn",
+      detail: "runtime entry mtime unreadable (source-mode run?)",
+      next_step: "if running from a rebuilt dist via MCP, reconnect MCP (/mcp) to pick up new code",
+    };
+  }
+  if (mtimeMs > startedAt + 5_000) {
+    return {
+      name: "stale_runtime",
+      status: "warn",
+      detail: `runtime module (${new Date(mtimeMs).toISOString()}) was rebuilt AFTER this process started (${new Date(startedAt).toISOString()}) — this server carries pre-rebuild code`,
+      next_step: "reconnect the MCP server (CC: /mcp reconnect, or restart the session) to pick up the rebuilt dist; bugs/13 §10",
+    };
+  }
+  return {
+    name: "stale_runtime",
+    status: "pass",
+    detail: `runtime started ${new Date(startedAt).toISOString()} (at/after last build ${new Date(mtimeMs).toISOString()}) — current code`,
+    next_step: "if behavior still looks stale, verify the MCP entry path matches the dist you rebuilt",
   };
 }
 

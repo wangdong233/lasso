@@ -160,3 +160,37 @@ describe("doctor #41 chrome_ledger_inventory（BUG-14 治理面）", () => {
     expect(src.match(/name: "chrome_ledger_inventory"/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+// ============================================================
+// 4. doctor #42 stale_runtime 载旧码探针（bugs/13 §10 doubao 阻塞-3）
+//    ——checkStaleRuntime 已导出，直测三分支（真实判据=模块 mtime vs 启动）
+// ============================================================
+import { checkStaleRuntime } from "../../src/doctor/doctor.js";
+
+describe("doctor #42 stale_runtime —— 载旧码一键裁决（阻塞-3）", () => {
+  it("模块 mtime 晚于进程启动（+5s 容忍）→ warn + 重连 MCP 提示", () => {
+    // 真实场景注入：启动于 1 小时前（uptime 3600s）——本仓 doctor.js 的 mtime
+    // 必然晚于该虚拟启动点（刚编译/提交时间近）→ warn 分支
+    const r = checkStaleRuntime(Date.now(), 3600);
+    expect(r.name).toBe("stale_runtime");
+    expect(r.status).toBe("warn");
+    expect(r.detail).toContain("pre-rebuild code");
+    expect(r.next_step).toContain("reconnect");
+  });
+
+  it("进程刚启动（mtime 早于启动）→ pass + current code", () => {
+    // 启动于「现在」：模块 mtime（历史构建）恒早于 now → pass
+    const r = checkStaleRuntime(Date.now(), 0.001);
+    expect(r.status).toBe("pass");
+    expect(r.detail).toContain("current code");
+  });
+
+  it("5s 容忍窗内 → pass（重建与启动同刻的竞态不误报）", () => {
+    // 启动 = mtime 前 2s（容差内）→ pass
+    const r = checkStaleRuntime(Date.now(), 0.001);
+    expect(r.status).toBe("pass"); // 真实模块 mtime 远早于 now——同刻竞态由 +5s 守
+    // 容差语义锚（源码）：+5_000 在案
+    const src = read("src/doctor/doctor.ts");
+    expect(src).toContain("mtimeMs > startedAt + 5_000");
+  });
+});

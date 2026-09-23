@@ -531,3 +531,7 @@ lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解�
 ### 2.23 download 的 proxy=auto 三级语义（v1.30，doc/bugs/12 D11/H7）
 
 `proxy:"auto"`（缺省）按序解析：①`LASSO_PROXY`（若有）②env `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`（若有）③直连 off。显式 `"host:port"` 透传；显式 `"off"` 剥子进程 proxy env（防引擎 env 拾取推翻用户意图）。注意与浏览器通道的差异：`LASSO_PROXY` 对 browse 只作用于 Chrome `--proxy-server`，对 download 作用于引擎 argv/env 与 undici 降级路径（EnvHttpProxyAgent 对齐）——同一 auto 在不同工具的行为面写在各自 description，禁混读。
+
+### 2.24 「lasso 修复了但行为没变」——运行中 server 载旧码（2026-09-23，bugs/13 §10 doubao 阻塞-3）
+
+本地 dist 开发模式（CC 配 `node <lasso仓>/dist/index.js`）下，MCP server 是 CC 会话启动的**长命进程**——dist 重建后旧进程仍载旧码，任何新修复都不生效（症状可能是新形态错误而非修复前旧错误，更迷惑）。**一键裁决**：调 `doctor` MCP 工具看 `stale_runtime` check——模块 mtime 晚于进程启动 → warn「carries pre-rebuild code」。**恢复**：CC 侧 `/mcp` reconnect（或会话重启）让 server 以新 dist 重启；不要 kill server 进程（有本会话 lasso 工具永久失联风险）。CLI `lasso-mcp doctor` 恒 pass 是正常的——CLI 是新进程永载新码，它不是被裁决对象。
