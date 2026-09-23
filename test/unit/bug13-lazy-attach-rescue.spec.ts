@@ -168,10 +168,13 @@ describe("doctor #41 chrome_ledger_inventory（BUG-14 治理面）", () => {
 import { checkStaleRuntime } from "../../src/doctor/doctor.js";
 
 describe("doctor #42 stale_runtime —— 载旧码一键裁决（阻塞-3）", () => {
+  // 三分支全注入（fresh 审查条件清偿）：mtimeMs 第三参注入确定值——spec 对
+  // 宿主仓库 mtime 零依赖（原形态 checkout 静置 >1h 必红，审查实证）
+  const NOW = 1_700_000_000_000; // 固定纪元（判据纯算术，绝对值无语义）
+
   it("模块 mtime 晚于进程启动（+5s 容忍）→ warn + 重连 MCP 提示", () => {
-    // 真实场景注入：启动于 1 小时前（uptime 3600s）——本仓 doctor.js 的 mtime
-    // 必然晚于该虚拟启动点（刚编译/提交时间近）→ warn 分支
-    const r = checkStaleRuntime(Date.now(), 3600);
+    // 启动于 NOW-3600s；mtime=NOW-60s（重建晚于启动 59min）→ warn
+    const r = checkStaleRuntime(NOW, 3600, NOW - 60_000);
     expect(r.name).toBe("stale_runtime");
     expect(r.status).toBe("warn");
     expect(r.detail).toContain("pre-rebuild code");
@@ -179,18 +182,18 @@ describe("doctor #42 stale_runtime —— 载旧码一键裁决（阻塞-3）", 
   });
 
   it("进程刚启动（mtime 早于启动）→ pass + current code", () => {
-    // 启动于「现在」：模块 mtime（历史构建）恒早于 now → pass
-    const r = checkStaleRuntime(Date.now(), 0.001);
+    // 启动于 NOW；mtime=NOW-10min（构建早于进程）→ pass
+    const r = checkStaleRuntime(NOW, 0.001, NOW - 600_000);
     expect(r.status).toBe("pass");
     expect(r.detail).toContain("current code");
   });
 
-  it("5s 容忍窗内 → pass（重建与启动同刻的竞态不误报）", () => {
-    // 启动 = mtime 前 2s（容差内）→ pass
-    const r = checkStaleRuntime(Date.now(), 0.001);
-    expect(r.status).toBe("pass"); // 真实模块 mtime 远早于 now——同刻竞态由 +5s 守
-    // 容差语义锚（源码）：+5_000 在案
-    const src = read("src/doctor/doctor.ts");
-    expect(src).toContain("mtimeMs > startedAt + 5_000");
+  it("5s 容忍窗内 → pass（重建与启动同刻的竞态不误报）——行为级", () => {
+    // 启动于 NOW；mtime=NOW+2s（晚于启动但在容忍窗内）→ pass（非仅源码锚）
+    const r = checkStaleRuntime(NOW, 0.001, NOW + 2_000);
+    expect(r.status).toBe("pass");
+    // 恰越窗（mtime=NOW+6s）→ warn（行为级钉容差边界）
+    const r2 = checkStaleRuntime(NOW, 0.001, NOW + 6_000);
+    expect(r2.status).toBe("warn");
   });
 });

@@ -2561,14 +2561,22 @@ function checkChromeLedgerInventory(): DoctorCheck {
 export function checkStaleRuntime(
   now = Date.now(),
   uptimeSec = process.uptime(),
+  mtimeMsOverride?: number,
 ): DoctorCheck {
   const startedAt = now - uptimeSec * 1000;
   let mtimeMs: number;
   try {
-    // 形态双候选：dist=doctor.js（生产 MCP/CLI）；vitest 直跑源=doctor.ts
-    //（同批构建/提交产物——mtime 语义同构）
-    const cand = path.join(__dirname, "doctor.js");
-    mtimeMs = statSync(existsSync(cand) ? cand : path.join(__dirname, "doctor.ts")).mtimeMs;
+    if (mtimeMsOverride !== undefined) {
+      // 测试注入缝（fresh 审查条件清偿，2026-09-23）：spec 原依赖宿主仓库
+      // mtime「刚提交」——checkout 静置 >1h 后 warn 分支落 pass（审查实证
+      // 回拨 mtime 即红）。注入参使三分支密闭，宿主状态零依赖。
+      mtimeMs = mtimeMsOverride;
+    } else {
+      // 形态双候选：dist=doctor.js（生产 MCP/CLI）；vitest 直跑源=doctor.ts
+      //（同批构建/提交产物——mtime 语义同构）
+      const cand = path.join(__dirname, "doctor.js");
+      mtimeMs = statSync(existsSync(cand) ? cand : path.join(__dirname, "doctor.ts")).mtimeMs;
+    }
   } catch {
     return {
       name: "stale_runtime",
