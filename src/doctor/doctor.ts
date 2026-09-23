@@ -184,7 +184,7 @@ import { detectAria2, detectYtDlp } from "../download/engines/bootstrap.js";
 // BUG-14（2026-09-23）：#41 chrome_ledger_inventory 台账清单（零触网）
 import { readLedgerSync } from "../launcher/chrome-ledger.js";
 
-export const LASSO_VERSION = "1.30.0";
+export const LASSO_VERSION = "1.30.1";
 
 // ============================================================
 // 类型
