@@ -30,6 +30,8 @@ import type { McpClient } from "../subprocess/McpClient.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { logger } from "../util/logger.js";
+// BUG-13 §7-2：版本回显单一真源（doctor 的 LASSO_VERSION）
+import { LASSO_VERSION } from "../doctor/doctor.js";
 import { HighRiskGate } from "../browse/HighRiskGate.js";
 import type { HighRiskGateLike } from "../browse/StepEngine.js";
 import type { ElicitationPort } from "../interact/ElicitationPort.js";
@@ -225,7 +227,19 @@ export class LoggedInChannel extends BrowseChannel {
       // 显式 LASSO_CDP_PORT 恒赢（第 1 层）；发现失败 → 原错误如实（第 3 层，
       // 不被自动发现污染）。
       const rescued = await this.respawnOnDiscoveredPort();
-      if (rescued === null) throw e;
+      if (rescued === null) {
+        // BUG-13 §7-2（2026-09-23 可诊断性）：失败错误附「已试端口+发现状态+
+        // server 版本」——封堵「旧进程载旧码无判据」面（09-22 消费方失败无逐字
+        // 签名可裁决根因；版本回显是唯一缓解，风险=版本串进日志——可接受）。
+        const orig = String(e instanceof Error ? e.message : e).slice(0, 200);
+        throw new Error(
+          `logged_in attach failed: tried port ${this.effectiveCdpPort}` +
+            (this.cdpPortExplicit
+              ? " (LASSO_CDP_PORT explicit — ledger auto-discovery disabled)"
+              : " (default 9222; ledger auto-discovery found no live alternative)") +
+            `; lasso ${LASSO_VERSION}; original: ${orig}`,
+        );
+      }
       c = rescued;
     }
     // v1.10（parse18 §2.6 机制一）：browse 活动打点（reaper touch；先于快照/预建——

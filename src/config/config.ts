@@ -395,7 +395,10 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   STAGEHAND_API_KEY: "",
   LASSO_COOKIE_PASSPHRASE: "",
   ZHIPU_ENDPOINT: "",
-  LASSO_CDP_PORT: 9222,
+  // 🔴 BUG-13 §7-1（2026-09-23 模板毒化修复）：预填 9222 会让 init 用户被
+  // index.ts 键存在性判「显式」→ BUG-08 E-1 自动发现被默认值永久禁用。
+  // 留空 = 键可见（用户知道可配）且 parseCdpPort("")→默认 9222 非显式。
+  LASSO_CDP_PORT: "",
   LASSO_CACHE_DIR: "",
   LASSO_SEARCH_FREE_ONLY: "L4",
   LASSO_VLM_ENDPOINT: "",

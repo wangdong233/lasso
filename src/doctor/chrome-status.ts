@@ -312,6 +312,10 @@ export const AGENT_DIRECTIVES: Record<
     must_report: false,
   },
   ledger_user_owned: {
+    // BUG-14 §6-2（2026-09-23 撤回记录）：曾补 chrome-hide 进 allowed_commands
+    // ——INV-88 红桩定罪（「除 zombie/stale 外占用分支命令恒空」是 BUG-04 决议 A
+    // 的消费方信任基线，禁被实施反向削弱）。收尾治理面由 doctor #41
+    // chrome_ledger_inventory 承载（warn+chrome-hide 一行——发现面非执行面）。
     allowed_commands: [],
     must_report: true,
     never_kill_user_asset: true,

@@ -344,11 +344,12 @@ export const BROWSE_HEADLESS_DESCRIPTION = [
 // BROWSE_LOGGED_IN
 // ============================================================
 export const BROWSE_LOGGED_IN_DESCRIPTION = [
-  "Reuses your already-logged-in local Chrome via CDP port 9222",
-  "(chrome-devtools-mcp --browser-url=http://localhost:9222).",
+  "Reuses your already-logged-in local Chrome via CDP (default port 9222;",
+  "override with LASSO_CDP_PORT — non-default instances you launched with",
+  "launch-chrome --port N are auto-discovered from the ledger when 9222 fails).",
   "",
   "REQUIREMENTS:",
-  "  1. Chrome started with --remote-debugging-port=9222",
+  "  1. Chrome started with --remote-debugging-port=<port> (9222 default)",
   "  2. You have completed login (including any 2FA) in that Chrome",
   "",
   "IF CHROME IS NOT RUNNING you get outcome=unknown + error like",

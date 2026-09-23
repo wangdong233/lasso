@@ -596,9 +596,11 @@ async function runMcpServer(): Promise<void> {
       chromeReaper?.touch(port);
       void touchChromePort(port, (p) => logger.info(p)).catch(() => {});
     },
-    // BUG-08 决议 E-1：LASSO_CDP_PORT 显式标记（file→env 合并视图键存在性——
-    // 显式恒赢，自动发现永不介入）
-    "LASSO_CDP_PORT" in doctorServerEnv,
+    // BUG-08 决议 E-1：LASSO_CDP_PORT 显式标记（显式恒赢，自动发现永不介入）。
+    // 🔴 BUG-13 §7-1（2026-09-23）：判定从「键存在」收紧为「键存在且非空」——
+    // 旧 CONFIG_TEMPLATE 曾预填 9222，已 init 用户被键存在性误判显式=自动发现
+    // 被默认值永久禁用（模板毒化）；空值语义交给 parseCdpPort 回退默认。
+    Boolean((doctorServerEnv.LASSO_CDP_PORT ?? "").trim()),
   );
   // v1.9（parse17 §4.4 机制三）：idle 回收 logged_in spec 前 hook —— 机制一回收
   // logged_in 的 mcp 子进程前先恢复用户 tab 列表（「浏览器用完收尾」完整语义）。

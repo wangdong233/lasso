@@ -170,8 +170,17 @@ describe("loadConfigFileEnv — 零配置 + 解析", () => {
   it("LASSO_CONFIG_PATH 空 / 仅空白 → 退化默认路径（~/.lasso/config.json）", () => {
     // 空字符串 / 全空白应退化默认（避免误把空当路径）
     // 注：不验具体路径（os.homedir 依赖运行环境），只验不抛 + 返对象
-    expect(loadConfigFileEnv({ LASSO_CONFIG_PATH: "" })).toEqual({});
-    expect(loadConfigFileEnv({ LASSO_CONFIG_PATH: "   " })).toEqual({});
+    // 🔴 宿主状态依赖修复（BUG-13 批定罪，2026-09-23）：原 toEqual({}) 断言
+    // 依赖「宿主 ~/.lasso/config.json 不存在」——本机该文件被合法写入
+    // LASSO_CDP_PORT:9225 后即红（cc-status-dot CI 教训同款：测试禁依赖宿主
+    // 机器状态）。且宿主有 config 时返回其内容恰是退化默认路径的**正确行为**
+    // ——os.homedir() 在 macOS 走 getpwuid（HOME env / spyOn 均不可注入，
+    // node:os namespace frozen 实测），故断言语义修正为：不抛 + 返对象
+    //（空字符串不被误当路径使用——本用例的真实契约）。
+    const out1 = loadConfigFileEnv({ LASSO_CONFIG_PATH: "" });
+    const out2 = loadConfigFileEnv({ LASSO_CONFIG_PATH: "   " });
+    expect(typeof out1).toBe("object");
+    expect(typeof out2).toBe("object");
   });
 });
 
@@ -461,7 +470,9 @@ describe("writeConfigTemplate — init 模板生成", () => {
     expect(body._comment.length).toBeGreaterThan(0);
     expect(body.ZHIPU_API_KEY).toBe("");
     expect(body.LASSO_ALLOW_CLOUD_BROWSER).toBe(false);
-    expect(body.LASSO_CDP_PORT).toBe(9222);
+    // 🔴 BUG-13 §7-1 模板毒化守卫锚：LASSO_CDP_PORT 模板值禁回填 9222——
+    // 预填默认值 + index 键存在性判显式 = init 用户自动发现被永久禁用
+    expect(body.LASSO_CDP_PORT).toBe("");
   });
 
   it("文件已存在 → 不覆盖（created=false）保用户手改内容", async () => {

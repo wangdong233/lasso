@@ -344,6 +344,8 @@ lasso chrome-hide                    # 3. 登录完转回后台静默（登录�
 
 第 3 步报「找不到台账目标」时（Chrome 由旧版 lasso 启动、台账被清）：`lasso chrome-hide --pid <进程号>` 按进程号直达（`lasso chrome-show --pid <进程号>` 同）——只认 lasso 自己 profile 的 Chrome，你手动开的日常 Chrome 一律拒绝。
 
+**要第二个/非默认端口的 Chrome 实例**（比如一个日常 9222、一个专门登录某站 9225）：`lasso launch-chrome --port 9225 --mode visible` 起实例（profile 登录态独立保存）→ 用 `browse_logged_in` 交互时两种方式指向它：①什么都不配——默认 9222 连不上时 lasso 自动发现台账里最新活着的实例（v1.26+）；②钉死更稳：`~/.lasso/config.json` 配 `"LASSO_CDP_PORT": 9225`（或 env）后重启 Claude 会话。**visible 调试用完记得收尾**：`lasso chrome-hide --port 9225` 把窗口收回后台（实例和登录态都保留，永不自动收——`doctor` 的 `chrome_ledger_inventory` 检查会提醒你）。
+
 之后**一行命令**就行——默认零窗口静默档直接继承上次的登录态：
 
 ```bash

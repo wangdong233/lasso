@@ -62,6 +62,8 @@
  *  40. download_engines                    — v1.30（doc/bugs/12 §五/D10）：aria2c/yt-dlp 在位性+版本
  *                                    （缺失=warn 非阻断——下载是可选能力，同 #37/#39 永不 fail 范式；
  *                                    undici 降级路径内建恒在，http kind 至少可用）
+ *  41. chrome_ledger_inventory              — BUG-14（2026-09-23）：台账活实例清单；visible+idle-0
+ *                                    → warn + chrome-hide 收尾一行（永不 fail / 不代动，INV-82）
  *
  * v0.3.5 关键设计（parse4 §3.4）：
  *  - 默认 desktopChecks=false：doctor CLI 走 #1-#14，#15-#21 全 warn skip（无 RustBridge 装配）
@@ -179,6 +181,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // v1.30（doc/bugs/12）：#40 download_engines 探测（engines/bootstrap 检测序复用）
 import { detectAria2, detectYtDlp } from "../download/engines/bootstrap.js";
+// BUG-14（2026-09-23）：#41 chrome_ledger_inventory 台账清单（零触网）
+import { readLedgerSync } from "../launcher/chrome-ledger.js";
 
 export const LASSO_VERSION = "1.30.0";
 
@@ -857,6 +861,10 @@ export async function runDoctor(
   //   - **永不 fail**（同 #37/#39 范式：引擎缺失是可引导状态，不是 ready 阻断项）
   checks.push(checkDownloadEngines());
 
+  // #41 chrome_ledger_inventory（BUG-14 §6-1）：台账活实例治理清单——visible+
+  // idle-0 → warn+chrome-hide 收尾一行（永不 fail/不代动，INV-82 红线）。
+  checks.push(checkChromeLedgerInventory());
+
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
   // ---- v0.6 M0.6：runtime_state section（parse7 §2.2 + §6.2）----
@@ -1113,7 +1121,11 @@ async function checkCdp9222(
           `CDP :${port} /json/version returned HTTP ${versionResp.status} — ` +
           "HTTP answered but not a healthy CDP endpoint (a wedged DevTools endpoint or a " +
           "non-CDP HTTP server can answer like this); ownership/pid evidence: see next_step",
-        next_step: await classifyPortOccupierNextStep(port, deps),
+        next_step:
+          (port === 9222
+            ? "BUG-13 hint: browse_logged_in auto-discovers a live ledger Chrome when default 9222 fails (v1.26+); pin a non-default instance via LASSO_CDP_PORT (e.g. 9225) + restart the MCP server. "
+            : "BUG-13 hint: doctor probes LASSO_CDP_PORT when set; browse_logged_in attaches this port explicitly. ") +
+          (await classifyPortOccupierNextStep(port, deps)),
       };
     }
     // C3：200 ≠ 健康——body 必须可解析（实测形态：连接接受但空响应）
@@ -1124,7 +1136,11 @@ async function checkCdp9222(
         name: "cdp_9222_logged_in",
         status: "fail",
         detail: `CDP :${port} /json/version: connection accepted, empty/invalid body`,
-        next_step: await classifyPortOccupierNextStep(port, deps),
+        next_step:
+          (port === 9222
+            ? "BUG-13 hint: browse_logged_in ledger auto-discovery covers this case (v1.26+); see LASSO_CDP_PORT to pin. "
+            : "BUG-13 hint: LASSO_CDP_PORT pins the probed port for browse too. ") +
+          (await classifyPortOccupierNextStep(port, deps)),
       };
     }
     // C3-r1：/json（tabs）面同规——不落外层 catch 被误标成 /json/version 形态
@@ -2465,6 +2481,60 @@ function checkDownloadEngines(): DoctorCheck {
     next_step: both
       ? "引擎齐备；yt-dlp extractor 腐烂是生态常态——stream 站点失效时重引导 latest（download_start 的 exit-1 extractor 诊断会自动提示）"
       : "brew install aria2 或等首个 download 调用自动引导 yt-dlp（~/.cache/lasso/bin/，pin+sha256）",
+  };
+}
+
+// ============================================================
+// BUG-14（2026-09-23）：#41 chrome_ledger_inventory——台账活实例治理清单
+// ============================================================
+/**
+ * 41. chrome_ledger_inventory —— 零触网台账清单 check（BUG-14 真缺口①）。
+ *
+ * 语义（永不 fail——#37/#39/#40 可选能力范式；长驻 visible 是显式合法形态）：
+ *  - 台账空 → pass；有活实例 → detail 列 port/mode/idle/age。
+ *  - visible + idleMs===0（跨会话滞留形态，BUG-14 消费方案）→ warn +
+ *    next_step 带 `chrome-hide --port N` 收尾一行——只提示不代动（INV-82）。
+ */
+function checkChromeLedgerInventory(): DoctorCheck {
+  let records: ReturnType<typeof readLedgerSync> = [];
+  try {
+    records = readLedgerSync();
+  } catch {
+    return {
+      name: "chrome_ledger_inventory",
+      status: "warn",
+      detail: "ledger read failed in this runtime",
+      next_step: "run `lasso-mcp chrome-status` for the authoritative inventory",
+    };
+  }
+  if (records.length === 0) {
+    return {
+      name: "chrome_ledger_inventory",
+      status: "pass",
+      detail: "no live ledger instances",
+      next_step: "launch via `lasso-mcp launch-chrome` when a logged-in instance is needed",
+    };
+  }
+  const now = Date.now();
+  const parts = records.map(
+    (r) =>
+      `:${r.port} ${r.launchMode ?? "?"} idle=${r.idleMs ?? "?"}ms age=${Math.round((now - r.launchedAt) / 60000)}min`,
+  );
+  const strays = records.filter((r) => r.launchMode === "visible" && r.idleMs === 0);
+  if (strays.length > 0) {
+    const hint = strays.map((r) => `chrome-hide --port ${r.port}`).join("; ");
+    return {
+      name: "chrome_ledger_inventory",
+      status: "warn",
+      detail: `live: ${parts.join(" | ")} — visible+idle-0 stays visible across sessions (explicit choice, by design)`,
+      next_step: `debug session done? run: lasso-mcp ${hint} (returns it to background; never auto-hidden)`,
+    };
+  }
+  return {
+    name: "chrome_ledger_inventory",
+    status: "pass",
+    detail: `live: ${parts.join(" | ")}`,
+    next_step: "chrome-status for per-instance ownership verdicts",
   };
 }
 
