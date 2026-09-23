@@ -483,6 +483,8 @@ lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解�
 
 要钉死端口（禁自动发现）：`LASSO_CDP_PORT=9223`（env 或 `~/.lasso/config.json` 同名键）。
 
+**热生效（v1.30.1+，bugs/13 §9 阻塞-2 修复）**：config.json 的 `LASSO_CDP_PORT` 写入即生效——**运行中的 server 不用重启**，下一次 `browse_logged_in` 调用失败时自动换口（连接失败签名判定 → config 热读换口 → 台账发现兜底；env 显式设置仍恒赢）。调用期连接失败（`nav_error:Could not connect to Chrome` 形态）同样触发自救+重试一次（阻塞-1 修复）。
+
 ### 10.2 headless 被拉黑：freshProfile 换脸逃生门
 
 被服务端指纹拉黑后重新 navigate / `no_cache` / 等待全部无效（惩罚按浏览器上下文隔离）。正解是整套换身份：

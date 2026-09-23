@@ -138,3 +138,25 @@ describe("bugs/13+14 批实施锚（源码形态在案）", () => {
     expect(tpl).not.toMatch(/LASSO_CDP_PORT:\s*9222/);
   });
 });
+
+// ============================================================
+// 3. doctor #41 chrome_ledger_inventory 最小 spec（审查 F4 顺手清偿）
+//    ——check 为模块私有，源码锚范式钉三分支语义（回退即红）
+// ============================================================
+describe("doctor #41 chrome_ledger_inventory（BUG-14 治理面）", () => {
+  it("三分支语义在案：空台账 pass / visible+idle-0 warn+chrome-hide 收尾 / 正常 pass", () => {
+    const src = read("src/doctor/doctor.ts");
+    // 分支 1：台账空 → pass
+    expect(src).toContain('detail: "no live ledger instances"');
+    // 分支 2：visible+idleMs===0 → warn + chrome-hide 收尾一行（永不 fail/不代动）
+    expect(src).toContain('r.launchMode === "visible" && r.idleMs === 0');
+    // hint 行字面在案（strays 分支）+ warn 态同分支（顺序不耦合——hint 变量在 return 前）
+    expect(src).toContain("strays.map((r) => `chrome-hide --port ${r.port}`)");
+    expect(src).toMatch(/strays\.length > 0\) \{[\s\S]{0,500}status: "warn"/);
+    expect(src).toContain("never auto-hidden");
+    // 分支 3：正常活实例 → pass（无 strays）
+    expect(src).toMatch(/status: "pass",\s*\n\s*detail: `live: \$\{parts\.join\(" \| "\)\}`/);
+    // check 名稳定（doctor 消费方按名匹配——同 cdp_9222 契约纪律）
+    expect(src.match(/name: "chrome_ledger_inventory"/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+});
