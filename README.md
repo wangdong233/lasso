@@ -233,7 +233,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.30.1**（更新日志见本节末尾折叠块）。
+**当前版本 v1.30.2**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -248,8 +248,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **给其它 AI 工具当确定性渲染浏览器（渲染档）**：如果你在用 media-gen-mcp 这类要求「同一输入必须产出同一像素」的渲染工具，装好 lasso 后只需一行 `npx -y lasso-mcp render-chrome --ensure`——它会在 9224 端口拉起一个确定性 headless Chrome（冻结旗标快照 + 独立临时 profile），输出消费方直连用的 `wsEndpoint`；**消费方进程被强杀浏览器也照常存活**（生命周期归属 lasso），空闲 10 分钟自动回收并连带清理 profile（`LASSO_RENDER_IDLE_MS` 可调）。配套：`render-chrome --status` 自省 / `--stop` 收尾（认 `LASSO_RENDER_PORT`：显式设 port 只收该 port，未设=全部 render 记录，非法值 exit 1；全局收口仍可用 `chrome-stop --modes render`）/ `render-chrome doctor [--clean]` 孤儿与陈年 profile 清理（默认只报告；认 `LASSO_RENDER_PORT`，同 `--stop`：显式设 port 只判该 port，未设=全扫，非法值 exit 1；touch 心跳 10 分钟内的在用实例豁免不判孤儿）。**同机多 agent 并行验收**（多个 agent 各自清场会互杀对方实例）需配三 env 契命名空间隔离：`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`，配齐后并行互不可见，配方与清场纪律见 [doc/渲染档-并行验收隔离配方.md](doc/渲染档-并行验收隔离配方.md)。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.30.1，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.30.2，点开看每版改了什么）</summary>
 
+- **v1.30.2**（bugs/13 §10）：**载旧码一键裁决探针**——新 doctor check `stale_runtime`：本地 dist 开发模式下，运行中的 MCP server 是长命进程，dist 重建后旧进程仍载旧码（新修复不生效且症状可能是新形态错误）。现在调 `doctor` 工具即见：模块 mtime 晚于进程启动（+5s 容忍）→ `warn: carries pre-rebuild code` + 重连提示（CC 侧 `/mcp` reconnect 即恢复；勿 kill server 进程——有工具失联风险；CLI `lasso-mcp doctor` 恒 pass 是正确语义：新进程永载新码）。判据用 mtime 而非版本号——同版本号内多次重建也能判。配套 TROUBLESHOOTING §2.24。
 - **v1.30.1**（bugs/13+14+lovart 阻塞批）：**CDP 端口断层修复**——①🔴 config 模板毒化（init 模板曾预填 `LASSO_CDP_PORT:9222`+键存在性判显式=自动发现被默认值永久禁用；模板留空+判显式收紧双修）；② 连接失败可诊断性（错误附已试端口+发现状态+lasso 版本）；③ **惰性 attach 调用期自救**（lovart 阻塞-1：chrome-devtools-mcp spawn 成功后首次工具调用才连 CDP，该失败形态此前不进自动发现——browse 连接失败签名判定→自救→重试恰一次）；④ **config 热生效**（lovart 阻塞-2：运行中的 server 热读 `~/.lasso/config.json` 的 `LASSO_CDP_PORT`，写入即生效不用重启；优先于台账发现，env 显式仍恒赢）；⑤ doctor 新 check `chrome_ledger_inventory`（台账活实例清单；visible+idle-0 跨会话滞留 → warn+`chrome-hide --port N` 收尾提示——永不自动收，INV-82）；⑥ doctor 失败分支提示+描述文档对齐（README/KEY-GUIDE/TROUBLESHOOTING §10.1 非默认端口三步配方+热生效段）。审查循环 fresh PASS-WITH-CONDITIONS 六条件全清偿（变异实证守卫补钉）。
 - **v1.30.0**（下载器批，doc/bugs/12）：新工具 **`download(action:start|status|wait|cancel)`**——通用下载器四动作（kind=auto 自动路由：直链→aria2c 多线程断点续传 / 流媒体站点→yt-dlp（音频+词级 json3 字幕）/ 磁力与 .torrent→BT 通道）。任务表磁盘持久（`~/.cache/lasso/downloads/`，lasso 重启后 `status` 收养续查）；`status:"all"` 返回产物绝对路径清单（跨会话交付物本体）；`wait` ≤120s 帽+轮询教学；cancel 只杀「台账在案+归属验证」的引擎树（kill 红线）。治理三件套：doctor 引擎 check+idle 硬顶 24h+活跃总量帽 16。安全面：http/stream 首跳 SSRF 守门、out_dir 白名单（默认 ~/Downloads）、filename 强制 basename、max_bytes 超帽 watchdog（杀树+oversize 态）。**BT 诚实诊断**：本机网络（广东移动）经真机四重实证为运营商 DPI 定向封锁（非 DNS 污染主因——DoH 同污染，IP 直写才是解）——60s 零 peer 报双因（死种 OR DPI）+三条出路建议；aria2 内置 IP 直写 DHT bootstrap+冻结 tracker 表。引擎引导：yt-dlp 缺失时首个 stream 下载自动拉取（pin 2026.08.19+sha256 校验）；aria2 缺失时 HTTP 走 undici 内建降级。同 source 续传复用（.aria2 控制文件字节级续传）。审查循环三轮闭环（fresh 审查+mutation 红证）。
 - **v1.29.2**：文档批——type/press 输入原语（v1.29.0 引入）的调用示例补进工具描述 EXAMPLES 段与 README 用户向介绍；`input_guard_suspected` 信号的「三条合法出路」说明同步。纯文档/description 增强，无行为变化。
