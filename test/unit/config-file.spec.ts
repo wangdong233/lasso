@@ -177,10 +177,11 @@ describe("loadConfigFileEnv — 零配置 + 解析", () => {
     // ——os.homedir() 在 macOS 走 getpwuid（HOME env / spyOn 均不可注入，
     // node:os namespace frozen 实测），故断言语义修正为：不抛 + 返对象
     //（空字符串不被误当路径使用——本用例的真实契约）。
+    // F6（审查条件，2026-09-23）：typeof 弱断言升级为等价对——空串/空白两种
+    // 退化形态的返回必须**等价**（同走默认路径），且不依赖宿主文件具体内容
     const out1 = loadConfigFileEnv({ LASSO_CONFIG_PATH: "" });
     const out2 = loadConfigFileEnv({ LASSO_CONFIG_PATH: "   " });
-    expect(typeof out1).toBe("object");
-    expect(typeof out2).toBe("object");
+    expect(out1).toEqual(out2);
   });
 });
 

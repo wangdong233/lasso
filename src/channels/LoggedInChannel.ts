@@ -25,11 +25,13 @@
  */
 import { BrowseChannel } from "./BrowseChannel.js";
 // BUG-08 决议 C：freshProfile 拒绝语义的类型面
-import type { BrowseResult, InteractResult } from "../types.js";
+import type { BrowseOptions, BrowseResult, InteractResult } from "../types.js";
 import type { McpClient } from "../subprocess/McpClient.js";
 import type { SubprocessManager } from "../subprocess/SubprocessManager.js";
 import { LOCKED_CDP_MCP_VERSION } from "../subprocess/SubprocessManager.js";
 import { logger } from "../util/logger.js";
+// 阻塞-2（2026-09-23）：config file 热读（browse 自救路径）
+import { loadConfigFileEnv } from "../config/config.js";
 // BUG-13 §7-2：版本回显单一真源（doctor 的 LASSO_VERSION）
 import { LASSO_VERSION } from "../doctor/doctor.js";
 import { HighRiskGate } from "../browse/HighRiskGate.js";
@@ -56,6 +58,30 @@ const TWOFA_KEYWORDS = [
   "enter the code",
   "authenticator",
 ];
+
+/**
+ * 连接期失败签名判定（media-gen-mcp lovart 评估阻塞-1，2026-09-23）：
+ * chrome-devtools-mcp spawn 成功但**惰性 attach**——首次工具调用（导航等）
+ * 才连 CDP，失败以 nav_error/原始工具错误上抛、不进 getMcpClient 的
+ * ensureRunning catch（E-1 三层解析在此形态结构性失效）。识别「连接失败」
+ * 形态（严格签名——非连接错误原样上抛不污染）。模块级纯函数（测试面）。
+ */
+export function isConnectPhaseError(e: unknown): boolean {
+  const msg = String((e as { message?: unknown })?.message ?? e);
+  // 上游直说连不上（spawn 期/调用期同款文案）——最强签名
+  if (/Could not connect to Chrome/i.test(msg)) return true;
+  // 版本探针（/json/version）在场 ∧ 连接失败词在场——**顺序无关**
+  //（实测形态：ECONNREFUSED 可在探针前（connect ECONNREFUSED ...:9222
+  // /json/version）也可在后（.../json/version: fetch failed）——首轮实现的
+  // 顺序依赖正则漏前一种，实测红后改组合判定）
+  const hasVersionProbe = /\/json\/version/.test(msg);
+  const hasConnFailure =
+    /(fetch failed|not found|ECONNREFUSED|ECONNRESET|connection refused)/i.test(msg);
+  if (hasVersionProbe && hasConnFailure) return true;
+  // InteractResult 形态（nav_error 包装）：错误串嵌在 error 字段
+  if (/nav_error:[\s\S]*\/json\/version/i.test(msg) && hasConnFailure) return true;
+  return false;
+}
 
 export class LoggedInChannel extends BrowseChannel {
   readonly name = "browse_logged_in";
@@ -345,6 +371,94 @@ export class LoggedInChannel extends BrowseChannel {
    * CDP /json/version 探活（chrome-status defaultCdpVersionFn 同款：200+JSON
    * 才算活；2s 超时）。只绑 127.0.0.1（与 --remote-debugging-port 一致）。
    */
+  /**
+   * 换口整 respaw 共用体（E-1 台账发现 / 阻塞-2 config 热生效两路复用）：
+   * 清旧 spec（树杀+post-kill 链）→ effectiveCdpPort 迁移 → spec 强制重建
+   * （lastSpecName 置空驱动 ensureProfileSpec）→ ensureRunning + retrieval 标注。
+   * @param tag retrieval_method 标注前缀（auto_discovered_port / config_hot_reload_port）
+   */
+  private async respawnOnPort(
+    newPort: number,
+    tag: "auto_discovered_port" | "config_hot_reload_port",
+  ): Promise<McpClient | null> {
+    try {
+      const oldPort = this.effectiveCdpPort;
+      const oldSpec = this.lastSpecName;
+      if (oldSpec) {
+        try {
+          await this.subproc.forgetSpec(oldSpec);
+        } catch {
+          // 旧 spawn 尝试已在失败路径——best-effort
+        }
+      }
+      this.autoDiscoveredOnce = true;
+      this.effectiveCdpPort = newPort;
+      this.tabSession = new TabSession(newPort);
+      this.lastSpecName = null;
+      await this.ensureProfileSpec();
+      const c = await this.subproc.ensureRunning(this.lastSpecName!);
+      this.noteRetrieval(`${tag}:${newPort}`);
+      logger.warn({
+        evt: "logged_in_port_switched",
+        from_port: oldPort,
+        to_port: newPort,
+        source: tag,
+      });
+      return c;
+    } catch (e) {
+      logger.warn({ evt: "logged_in_port_switch_failed", error: String(e) });
+      return null;
+    }
+  }
+
+  /**
+   * 阻塞-2（config 热生效）+ 阻塞-1（调用期发现）联合自救（2026-09-23）：
+   * 优先级 = config file 热读的 LASSO_CDP_PORT（非 env 显式时热生效——运行中
+   * server 消费方的唯一运行时切换口）→ 台账自动发现（E-1 原路）。
+   * 失败返 null（调用方保持原错误——E-1 第 3 层「不被自救污染」纪律不变）。
+   */
+  private async respawnWithConfigOrDiscovery(): Promise<McpClient | null> {
+    // ① config file 热读（阻塞-2）：file 键非空 + 合法 + ≠当前口 + 非 env 显式
+    //（env LASSO_CDP_PORT 显式时恒赢——file 不覆盖 env，与 loadConfig 合并序同向）
+    if (!this.cdpPortExplicit) {
+      const fileEnv = loadConfigFileEnv(process.env);
+      const raw = (fileEnv.LASSO_CDP_PORT ?? "").trim();
+      const parsed = parseInt(raw, 10);
+      if (
+        raw !== "" &&
+        Number.isFinite(parsed) &&
+        parsed > 0 &&
+        parsed <= 65_535 &&
+        parsed !== this.effectiveCdpPort
+      ) {
+        const c = await this.respawnOnPort(parsed, "config_hot_reload_port");
+        if (c !== null) return c;
+      }
+    }
+    // ② 台账自动发现（E-1 原路——含全部四条件守卫与 autoDiscoveredOnce 幂等）
+    return this.respawnOnDiscoveredPort();
+  }
+
+  /**
+   * browse 包装（阻塞-1 注入点，2026-09-23）：调用期连接失败（惰性 attach 形态）
+   * → respawnWithConfigOrDiscovery 自救一次 → 原请求重试恰一次；救不回=原错误
+   * 如实上抛（签名外的错误零干预——不吞不换不重试）。
+   */
+  override async browse(
+    url: string | undefined,
+    action: string,
+    options: BrowseOptions,
+  ): Promise<InteractResult<BrowseResult>> {
+    try {
+      return await super.browse(url, action, options);
+    } catch (e) {
+      if (!isConnectPhaseError(e)) throw e;
+      const rescued = await this.respawnWithConfigOrDiscovery();
+      if (rescued === null) throw e;
+      return await super.browse(url, action, options);
+    }
+  }
+
   private async probeCdpAlive(port: number): Promise<boolean> {
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/json/version`, {
@@ -391,30 +505,7 @@ export class LoggedInChannel extends BrowseChannel {
         }
       }
       if (discovered === null) return null;
-      // 换口整 respaw：清旧 spec（树杀 + post-kill 链）→ effectiveCdpPort 迁移
-      // → spec 强制重建（lastSpecName 置空驱动 ensureProfileSpec）→ ensureRunning
-      const oldSpec = this.lastSpecName;
-      if (oldSpec) {
-        try {
-          await this.subproc.forgetSpec(oldSpec);
-        } catch {
-          // 旧 spawn 尝试已在失败路径——best-effort
-        }
-      }
-      this.autoDiscoveredOnce = true;
-      this.effectiveCdpPort = discovered;
-      this.tabSession = new TabSession(discovered);
-      this.lastSpecName = null;
-      await this.ensureProfileSpec();
-      const c = await this.subproc.ensureRunning(this.lastSpecName!);
-      this.noteRetrieval(`auto_discovered_port:${discovered}`);
-      logger.warn({
-        evt: "logged_in_auto_discovered_port",
-        from_port: 9222,
-        to_port: discovered,
-        note: "default 9222 attach failed (no CDP); ledger auto-discovery engaged — set LASSO_CDP_PORT to pin explicitly",
-      });
-      return c;
+      return this.respawnOnPort(discovered, "auto_discovered_port");
     } catch (e) {
       logger.warn({ evt: "logged_in_auto_discover_failed", error: String(e) });
       return null;

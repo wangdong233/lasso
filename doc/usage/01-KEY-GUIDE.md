@@ -128,6 +128,8 @@
 > lasso launch-chrome --mode visible   # 1. 弹出窗口（默认 hidden 是零窗口，没法登录）
 > #    2. 在窗口里登录账号（2FA 自己解）
 > lasso chrome-hide                    # 3. 登录完转回后台静默（登录态留在 profile）
+
+**第二实例 / 非默认端口（BUG-13，2026-09-23）**：`lasso launch-chrome --port 9225 --mode visible` 起独立实例（profile 登录态独立）后，`browse_logged_in` 两种方式指向它：① 什么都不配——默认 9222 失败时自动发现台账最新活实例（v1.26+；调用期连接失败也会触发，v1.30.1+）；② 写 `~/.lasso/config.json` 的 `"LASSO_CDP_PORT": "9225"`——**运行中的 server 也会热生效**（下次 browse 调用即换口，v1.30.1+；env 显式设置仍恒赢）。**visible 调试用毕收尾**：`lasso chrome-hide --port 9225`（实例/登录态保留，永不自动收——`doctor` 的 `chrome_ledger_inventory` 会提醒）。
 > ```
 >
 > **姿势二（自动，v1.18 新增，默认关）——两步**：在 `~/.lasso/config.json` 配
