@@ -535,3 +535,13 @@ lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解�
 ### 2.24 「lasso 修复了但行为没变」——运行中 server 载旧码（2026-09-23，bugs/13 §10 doubao 阻塞-3）
 
 本地 dist 开发模式（CC 配 `node <lasso仓>/dist/index.js`）下，MCP server 是 CC 会话启动的**长命进程**——dist 重建后旧进程仍载旧码，任何新修复都不生效（症状可能是新形态错误而非修复前旧错误，更迷惑）。**一键裁决**：调 `doctor` MCP 工具看 `stale_runtime` check——模块 mtime 晚于进程启动 → warn「carries pre-rebuild code」。**恢复**：CC 侧 `/mcp` reconnect（或会话重启）让 server 以新 dist 重启；不要 kill server 进程（有本会话 lasso 工具永久失联风险）。CLI `lasso-mcp doctor` 恒 pass 是正常的——CLI 是新进程永载新码，它不是被裁决对象。
+
+### 2.25 系统重启后 lasso 工具从工具列表消失（2026-09-30，bugs/13 §11）
+
+**形态**（本机 09-30 实锤，根因链与 09-29 SSD panic 排查报告吻合）：系统重启/崩溃恢复后，resume 的旧会话里 lasso 工具全部消失——**server 本身通常没死**（stdio MCP 连接随旧 CC 进程死亡，会话 resume 不自动重连）。三步速查：
+
+1. **先试零成本恢复**：CC 里 `/mcp` → reconnect lasso（server 健康时秒回；其它会话的 lasso 进程在跑≠本会话连接活）；
+2. **入口健康自检**：`node <lasso仓>/dist/index.js --version`（3s 内答版本=入口好；答不出=dist 损伤→`npm run build` 重建）；
+3. **全面诊断**：`node <lasso仓>/dist/index.js doctor`（`stale_runtime` check 另管「载旧码」形态，见 §2.24）。
+
+**可选预防件**：`scripts/hooks/check-lasso-mcp-on-start.mjs`——SessionStart hook，入口不可启动时当场提醒（连接层归 CC 管，hook 补的是入口损伤的即时可见性）。装法见脚本头注。
