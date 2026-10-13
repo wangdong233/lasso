@@ -129,6 +129,8 @@
 > #    2. 在窗口里登录账号（2FA 自己解）
 > lasso chrome-hide                    # 3. 登录完转回后台静默（登录态留在 profile）
 
+**登录态 profile 的身份与副产物（bugs/15 第 1 轮，2026-10-13）**：`launch-chrome` 起的日常档 profile 是**你亲手 2FA 登录的身份资产**（跨会话持久是设计）。要知道的三件事：① 在里面登录 Google 账号后 Chrome 可能自动开 **sync**——全量书签/关联域列表会被拉到该 profile（既是负载也是隐私面，属登录的副产物，lasso 不替你决定开关）；② 想收紧：`lasso launch-chrome --extra-args "--disable-sync"`（cookie 登录态不受影响——gemini/flow 渠道照常用）；③ 该实例定位是**登录态渠道实例**不是「你的第二浏览器」——当日常浏览器开十几个 tab 用，健康责任就溢出 lasso 边界了（chrome-status 的 health 附注会提示，但管不了你怎么用它）。
+
 **第二实例 / 非默认端口（BUG-13，2026-09-23）**：`lasso launch-chrome --port 9225 --mode visible` 起独立实例（profile 登录态独立）后，`browse_logged_in` 两种方式指向它：① 什么都不配——默认 9222 失败时自动发现台账最新活实例（v1.26+；调用期连接失败也会触发，v1.30.1+）；② 写 `~/.lasso/config.json` 的 `"LASSO_CDP_PORT": "9225"`——**运行中的 server 也会热生效**（下次 browse 调用即换口，v1.30.1+；env 显式设置仍恒赢）。**visible 调试用毕收尾**：`lasso chrome-hide --port 9225`（实例/登录态保留，永不自动收——`doctor` 的 `chrome_ledger_inventory` 会提醒）。
 > ```
 >

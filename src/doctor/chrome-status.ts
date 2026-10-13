@@ -74,6 +74,12 @@ export type PortOccupierClassification =
 export interface PortOccupierEvidence {
   /** lsof 实测监听 pid（R2：与台账 rec.pid 的等值是唯一实例级凭据）。 */
   pid?: number;
+  /**
+   * bugs/15 第 1 轮（2026-10-13，F2 定夺「降级分类·宿主压力基轴」）：实例
+   * 健康附注——宿主 memory pressure 非 normal 或 pages 超阈值时一行提示。
+   * 纯 evidence 附注（不动分类枚举=消费方契约 L3-04；不进 kill 路径 L4）。
+   */
+  health_note?: string;
   /** 进程名（ps command 首 token 的 basename）。 */
   pname?: string;
   /** 进程已运行秒数（ps etime）。 */
@@ -169,7 +175,8 @@ export interface ClassifyPortOccupierDeps {
    */
   touchStatFn?: (port: number) => number | undefined;
   /** BUG-06 决议 B：硬顶值注入（默认 parseLaunchHardCapMs 折算 env/config 层）。 */
-  hardCapMs?: number;
+  hardCapMs?: number;  /** bugs/15 第 1 轮：宿主内存压力探测（默认 sysctl；测试注入缝）。 */
+  hostPressureFn?: () => string | null;
 }
 
 // ============================================================
@@ -387,6 +394,39 @@ function isChromeProcess(cmdline: string): boolean {
  *  5. 无台账 → 实际占口者身份：lasso 指纹（含 render 遗留）→ orphan；
  *     Chrome → user_asset_suspected；其余 → external_occupier。
  */
+/**
+ * 宿主内存压力探测解析（bugs/15 第 1 轮 A-最小形态）：
+ * sysctl -n kern.memorystatus_vm_pressure_level → 1=normal 2=warn 3=critical。
+ * 失败/空/非数字 → "unknown"（L4-03 空输出≠空属性——不可探测如实说）。
+ */
+export function parseHostMemoryPressure(
+  raw: string | null,
+): "normal" | "warn" | "critical" | "unknown" {
+  if (raw === null) return "unknown";
+  const n = parseInt(raw.trim(), 10);
+  if (n === 1) return "normal";
+  if (n === 2) return "warn";
+  if (n === 3) return "critical";
+  return "unknown";
+}
+
+/** 默认宿主压力探测（spawnSync 无 shell 层——PERF-5 纪律）。 */
+function defaultHostPressureFn(): string | null {
+  try {
+    const r = spawnSync(
+      "sysctl",
+      ["-n", "kern.memorystatus_vm_pressure_level"],
+      { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return r.status === 0 ? r.stdout : null;
+  } catch {
+    return null;
+  }
+}
+
+/** pages 异常提示阈值（bugs/15 现场=14 tab 重载；12=温和提示线，非硬闸）。 */
+export const PAGES_ADVISORY_THRESHOLD = 12;
+
 export async function classifyPortOccupier(
   port: number,
   deps: ClassifyPortOccupierDeps = {},
@@ -400,6 +440,8 @@ export async function classifyPortOccupier(
   const aliveFn = deps.aliveFn ?? defaultAliveFn;
   const now = deps.now ?? Date.now;
   const touchStatFn = deps.touchStatFn ?? ((p: number) => chromeTouchMtimeSync(p));
+  // bugs/15 第 1 轮：宿主压力（注入缝同 deps 家族）
+  const hostPressureFn = deps.hostPressureFn ?? defaultHostPressureFn;
   // 折算经 mergedEnv（config.json 扁平层 + env）——与 reaper 装配侧 loadConfig
   // 同一合并顺序，watch 口径与执行口径一致（R-CI-02 单一真源精神）
   const hardCapMs =
@@ -505,7 +547,26 @@ export async function classifyPortOccupier(
       );
       if (evidence.ownership_verified) {
         if (isUserOwnedRecord(rec)) return finalize("ledger_user_owned", rec);
-        if (evidence.cdp.reachable) return finalize("lasso_live", rec);
+        if (evidence.cdp.reachable) {
+          // bugs/15 第 1 轮：健康附注（宿主压力+pages 异常——纯提示非分类）
+          const notes: string[] = [];
+          const pressure = parseHostMemoryPressure(hostPressureFn());
+          if (pressure === "warn" || pressure === "critical") {
+            notes.push(
+              `host memory pressure=${pressure} — instance adds to a pressed host; close heavy tabs or chrome-hide --port ${port} when done`,
+            );
+          }
+          if (
+            evidence.cdp.pages !== undefined &&
+            evidence.cdp.pages > PAGES_ADVISORY_THRESHOLD
+          ) {
+            notes.push(
+              `pages=${evidence.cdp.pages} (> ${PAGES_ADVISORY_THRESHOLD} advisory) — heavy tab load on one instance`,
+            );
+          }
+          if (notes.length > 0) evidence.health_note = notes.join(" | ");
+          return finalize("lasso_live", rec);
+        }
         if (isLaunchingRecord(rec, now())) return finalize("lasso_launching", rec);
         if (rec.launchMode === "render") {
           // render 档 = render-guardian 自管域（日常档入口不越权，A2 门同款排除）；
@@ -591,6 +652,7 @@ export function buildUserPastePack(
     `cmdline: ${ev.cmdline_excerpt ?? "(unavailable)"}`,
     `cdp: reachable=${ev.cdp.reachable}${ev.cdp.browser_field ? ` browser=${ev.cdp.browser_field}` : ""}${ev.cdp.pages !== undefined ? ` pages=${ev.cdp.pages}` : ""}`,
   ];
+  if (ev.health_note) lines.push(`health: ${ev.health_note}`);
   if (ev.ledger_record) {
     const r = ev.ledger_record;
     lines.push(
