@@ -51,14 +51,14 @@ describe("chrome-status 健康附注集成（bugs/15 R1——源码锚+行为面
     expect(src).toContain("evidence.cdp.pages > PAGES_ADVISORY_THRESHOLD");
     expect(src).toContain('evidence.health_note = notes.join(" | ")');
   });
-  it("附注只在 lasso_live 路径（user_owned/launching/zombie 等零挂）", () => {
-    const liveIdx = src.indexOf('if (evidence.cdp.reachable) {');
+  it("附注覆盖 lasso_live + ledger_user_owned 两路径（深度自查 1b 修复锚）", () => {
     const noteIdx = src.indexOf("evidence.health_note = notes.join");
-    const zombieIdx = src.indexOf('finalize("ledger_zombie_collectible"');
-    // 附注代码块在 lasso_live 分支内（reachable 块之后、zombie finalize 之前）
-    expect(liveIdx).toBeGreaterThan(-1);
-    expect(noteIdx).toBeGreaterThan(liveIdx);
-    expect(zombieIdx).toBeGreaterThan(noteIdx);
+    const userOwnedIdx = src.indexOf('finalize("ledger_user_owned"');
+    const liveIdx = src.indexOf('finalize("lasso_live"');
+    // 附注构造在 user_owned finalize 之前（1b：提前到共用位）
+    expect(noteIdx).toBeGreaterThan(-1);
+    expect(userOwnedIdx).toBeGreaterThan(noteIdx);
+    expect(liveIdx).toBeGreaterThan(noteIdx);
   });
   it("契约守卫：分类枚举零新值（十分类钉死——L3-04 消费方契约）", () => {
     for (const cls of [
@@ -81,5 +81,13 @@ describe("chrome-status 健康附注集成（bugs/15 R1——源码锚+行为面
   });
   it("paste pack 渲染 health 行", () => {
     expect(src).toContain("if (ev.health_note) lines.push(`health: ${ev.health_note}`);");
+  });
+});
+
+describe("R2 CLI NOTE 守卫（深查 F4——M2 变异证实零守卫）", () => {
+  it("CLI_USAGE launch-chrome 块含身份契约 NOTE（删即红）", () => {
+    const src = readFileSync(`${HERE}/../../src/index.ts`, "utf8");
+    expect(src).toContain("an asset, not a second browser");
+    expect(src).toContain('--disable-sync');
   });
 });

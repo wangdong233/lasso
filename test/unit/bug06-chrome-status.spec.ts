@@ -68,6 +68,8 @@ function baseDeps(overrides: Partial<ClassifyPortOccupierDeps> = {}): ClassifyPo
     aliveFn: () => true,
     now: () => nowMs,
     touchStatFn: () => undefined, // 无外部信号（hermetic）
+    // bugs/15 深查 F3：hostPressureFn 注入（隔离漂移修复——原缺省跑真 sysctl）
+    hostPressureFn: () => "1",
     hardCapMs: CAP,
     ...overrides,
   };

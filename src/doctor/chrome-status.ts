@@ -546,14 +546,17 @@ export async function classifyPortOccupier(
         (pid) => (pid === lsofPid ? `${ps.command}\n` : ""),
       );
       if (evidence.ownership_verified) {
-        if (isUserOwnedRecord(rec)) return finalize("ledger_user_owned", rec);
+        // bugs/15 深度自查 1b 修复（2026-10-13）：健康附注提前到两分支共用——
+        // ledger_user_owned（visible 即 user-owned，bugs/15 现场形态）与 lasso_live
+        // 都是「实例活着且归属确认」，健康提示对两者同等有意义（R1 原实施挂在
+        // lasso_live 分支内、被 user_owned 先 return 跳过——最需要提示的形态
+        // 反而缺失）。纯 evidence 附注语义不变（不进分类枚举/kill 路径）。
         if (evidence.cdp.reachable) {
-          // bugs/15 第 1 轮：健康附注（宿主压力+pages 异常——纯提示非分类）
           const notes: string[] = [];
           const pressure = parseHostMemoryPressure(hostPressureFn());
           if (pressure === "warn" || pressure === "critical") {
             notes.push(
-              `host memory pressure=${pressure} — instance adds to a pressed host; close heavy tabs or chrome-hide --port ${port} when done`,
+              `host memory pressure=${pressure} — instance adds to a pressed host; close heavy tabs when done`,
             );
           }
           if (
@@ -565,6 +568,9 @@ export async function classifyPortOccupier(
             );
           }
           if (notes.length > 0) evidence.health_note = notes.join(" | ");
+        }
+        if (isUserOwnedRecord(rec)) return finalize("ledger_user_owned", rec);
+        if (evidence.cdp.reachable) {
           return finalize("lasso_live", rec);
         }
         if (isLaunchingRecord(rec, now())) return finalize("lasso_launching", rec);

@@ -346,6 +346,8 @@ lasso chrome-hide                    # 3. 登录完转回后台静默（登录�
 
 第 3 步报「找不到台账目标」时（Chrome 由旧版 lasso 启动、台账被清）：`lasso chrome-hide --pid <进程号>` 按进程号直达（`lasso chrome-show --pid <进程号>` 同）——只认 lasso 自己 profile 的 Chrome，你手动开的日常 Chrome 一律拒绝。
 
+**实例健康与身份契约（bugs/15，2026-10-13）**：`chrome-status` 对活实例新增**健康附注**（`evidence.health_note`）——宿主内存压力 warn/critical 或单实例 pages>12 时提示一行（纯提示，永不因此杀实例/不动分类契约）。`launch-chrome` 起的日常档 profile 是**你亲手 2FA 的身份资产**：登录 Google 后 sync 会拉全量书签/关联域（登录副产物，想收紧用 `--extra-args "--disable-sync"`，cookie 登录态不受影响）；实例定位是**登录态渠道实例**不是第二浏览器——当日常浏览器重度使用，健康责任就溢出 lasso 边界了（详见 KEY-GUIDE）。
+
 **要第二个/非默认端口的 Chrome 实例**（比如一个日常 9222、一个专门登录某站 9225）：`lasso launch-chrome --port 9225 --mode visible` 起实例（profile 登录态独立保存）→ 用 `browse_logged_in` 交互时两种方式指向它：①什么都不配——默认 9222 连不上时 lasso 自动发现台账里最新活着的实例（v1.26+）；②钉死更稳：`~/.lasso/config.json` 配 `"LASSO_CDP_PORT": 9225`（或 env）后重启 Claude 会话。**visible 调试用完记得收尾**：`lasso chrome-hide --port 9225` 把窗口收回后台（实例和登录态都保留，永不自动收——`doctor` 的 `chrome_ledger_inventory` 检查会提醒你）。
 
 之后**一行命令**就行——默认零窗口静默档直接继承上次的登录态：

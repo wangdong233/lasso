@@ -71,6 +71,8 @@ function baseDeps(overrides: Partial<ClassifyPortOccupierDeps> = {}): ClassifyPo
     lsofFn: async () => 66111,
     psFn: (pid: number) => ({ command: CHROME_CMD, etimeS: 900 }),
     aliveFn: () => true,
+    // bugs/15 深查 F3：hostPressureFn 注入（隔离漂移修复——原缺省跑真 sysctl）
+    hostPressureFn: () => "1",
     ...overrides,
   };
 }
