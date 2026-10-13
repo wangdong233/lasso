@@ -233,7 +233,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.30.3**（更新日志见本节末尾折叠块）。
+**当前版本 v1.30.4**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -248,7 +248,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **给其它 AI 工具当确定性渲染浏览器（渲染档）**：如果你在用 media-gen-mcp 这类要求「同一输入必须产出同一像素」的渲染工具，装好 lasso 后只需一行 `npx -y lasso-mcp render-chrome --ensure`——它会在 9224 端口拉起一个确定性 headless Chrome（冻结旗标快照 + 独立临时 profile），输出消费方直连用的 `wsEndpoint`；**消费方进程被强杀浏览器也照常存活**（生命周期归属 lasso），空闲 10 分钟自动回收并连带清理 profile（`LASSO_RENDER_IDLE_MS` 可调）。配套：`render-chrome --status` 自省 / `--stop` 收尾（认 `LASSO_RENDER_PORT`：显式设 port 只收该 port，未设=全部 render 记录，非法值 exit 1；全局收口仍可用 `chrome-stop --modes render`）/ `render-chrome doctor [--clean]` 孤儿与陈年 profile 清理（默认只报告；认 `LASSO_RENDER_PORT`，同 `--stop`：显式设 port 只判该 port，未设=全扫，非法值 exit 1；touch 心跳 10 分钟内的在用实例豁免不判孤儿）。**同机多 agent 并行验收**（多个 agent 各自清场会互杀对方实例）需配三 env 契命名空间隔离：`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`，配齐后并行互不可见，配方与清场纪律见 [doc/渲染档-并行验收隔离配方.md](doc/渲染档-并行验收隔离配方.md)。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.30.3，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.30.4，点开看每版改了什么）</summary>
+
+- **v1.30.4**（版本号前进，内容与 v1.30.3 完全一致）：npm 平台新政「staged publishing」在发布时占用了 1.30.3 版本号（staged 记录未 approve 前同名版本不可再发布，且本账户未开 2FA 无法处置 staged 记录），同内容改以 1.30.4 发布。发版侧备注：granular token 的包权限现分「Read and write」（可直接发布）与「Read and write (stage only)」（仅能进 staging 审批区）两型，自动化发版请选前者。
 
 - **v1.30.3**（bugs/15 飞轮批）：长驻 Chrome 实例**健康附注与身份契约**——① `chrome-status` 对活实例新增 `evidence.health_note`：宿主内存压力 warn/critical 或单实例 pages>12 时一行提示（覆盖正常使用与用户接管两种形态；纯提示，永不因此杀实例/不动分类契约/不进 kill 路径）；② 身份契约三面披露（KEY-GUIDE/CLI --help/README）：launch-chrome 的日常档 profile 是你亲手 2FA 的身份资产——Google 登录会经 sync 拉全量书签/关联域（想收紧 `--extra-args "--disable-sync"`，cookie 登录态不受影响）；实例定位是登录态渠道实例不是第二浏览器，重度日常使用健康责任溢出 lasso 边界；③ 飞轮工作流两轮+深查（多 agent 隔离分析→否定重查推翻 3.5/6 项→简单架构单点收敛→测试先行→对照判定→飞轮自审——防过度工程，砍掉 doctor 新 check/CDP 扩方法/iframe 治理三处过度候选）；④ 新增 `doc/usage/05-lasso审查清单`（L1-L4 四组 15 条，基于架构想法 01/02/03 定制）。
 - **v1.30.2**（bugs/13 §10）：**载旧码一键裁决探针**——新 doctor check `stale_runtime`：本地 dist 开发模式下，运行中的 MCP server 是长命进程，dist 重建后旧进程仍载旧码（新修复不生效且症状可能是新形态错误）。现在调 `doctor` 工具即见：模块 mtime 晚于进程启动（+5s 容忍）→ `warn: carries pre-rebuild code` + 重连提示（CC 侧 `/mcp` reconnect 即恢复；勿 kill server 进程——有工具失联风险；CLI `lasso-mcp doctor` 恒 pass 是正确语义：新进程永载新码）。判据用 mtime 而非版本号——同版本号内多次重建也能判。配套 TROUBLESHOOTING §2.24。
