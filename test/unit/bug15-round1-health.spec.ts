@@ -2,7 +2,7 @@
  * bug15-round1-health.spec.ts（飞轮第 1 轮 F4 测试用例——先于实施确认，
  * 实施后对照判定；bugs/15 §F3/F4）
  *
- * 覆盖：
+ * 覆盖（深查 R2 后：健康附注覆盖 user_owned+lasso_live 两路径——1b 修复）：
  *  1. parseHostMemoryPressure 四态表（1/2/3/空/非数字——L4-03 空≠属性）
  *  2. chrome-status lasso_live 健康附注集成（压力 warn/critical → 附注在场；
  *     normal → 无附注；pages > 12 → pages 附注；两者叠加 join）
@@ -10,7 +10,7 @@
  *     （allowed_commands 恒空——INV-88 面）+ health_note 只在 lasso_live 路径挂
  *  4. paste pack 渲染 health 行
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
@@ -89,5 +89,85 @@ describe("R2 CLI NOTE 守卫（深查 F4——M2 变异证实零守卫）", () =
     const src = readFileSync(`${HERE}/../../src/index.ts`, "utf8");
     expect(src).toContain("an asset, not a second browser");
     expect(src).toContain('--disable-sync');
+  });
+});
+
+// ============================================================
+// 深查 R2-A1 补：1b 行为用例（bug04 DI 范式——不再只靠源码排序锚）
+// ============================================================
+import { classifyPortOccupier } from "../../src/doctor/chrome-status.js";
+import { recordLaunch, readLedgerSync } from "../../src/launcher/chrome-ledger.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+describe("1b 行为面：user_owned/lasso_live 两路径健康附注（DI 全链）", () => {
+  const PROFILE = `${os.homedir()}/.cache/lasso/chrome-profile-default`;
+  const CHROME_CMD = `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${PROFILE} --remote-debugging-port=9222`;
+  let ledgerDir = "";
+  const origEnv = process.env.LASSO_LAUNCHED_CHROMES_PATH;
+
+  beforeEach(() => {
+    ledgerDir = mkdtempSync(path.join(os.tmpdir(), "lasso-15b-"));
+    process.env.LASSO_LAUNCHED_CHROMES_PATH = path.join(ledgerDir, "chromes.json");
+  });
+  afterEach(() => {
+    if (origEnv === undefined) delete process.env.LASSO_LAUNCHED_CHROMES_PATH;
+    else process.env.LASSO_LAUNCHED_CHROMES_PATH = origEnv;
+    rmSync(ledgerDir, { recursive: true, force: true });
+  });
+
+  function deps(over: Record<string, unknown> = {}) {
+    return {
+      tcpFn: async () => true,
+      cdpVersionFn: async () => ({ ok: true, browser: "Chrome/150" }),
+      cdpListFn: async () => 14,
+      lsofFn: async () => 66333,
+      psFn: () => ({ command: CHROME_CMD, etimeS: 900 }),
+      aliveFn: () => true,
+      hostPressureFn: () => "3", // critical
+      touchStatFn: () => undefined, // hermetic（无外部 touch 信号）
+      ...over,
+    };
+  }
+
+  /** 陈年记录（避 launching 窗口——bug04 范式） */
+  const OLD = Date.now() - 3_600_000 * 10;
+
+  it("visible（user_owned）+critical 压力+14 pages → health_note 双附注在场（1b 修复的行为级钉）", async () => {
+    await recordLaunch({
+      port: 9222, pid: 66333,
+      profileDir: PROFILE,
+      launchedAt: OLD, status: "ready" as const,
+      launchMode: "visible", idleMs: 0,
+    });
+    const r = await classifyPortOccupier(9222, deps() as never);
+    expect(r.classification).toBe("ledger_user_owned"); // visible 即 user-owned
+    expect(r.evidence.health_note).toContain("host memory pressure=critical");
+    expect(r.evidence.health_note).toContain("pages=14");
+  });
+
+  it("hidden（lasso_live）+normal 压力+few pages → 无附注", async () => {
+    await recordLaunch({
+      port: 9222, pid: 66333,
+      profileDir: PROFILE,
+      launchedAt: OLD, status: "ready" as const,
+      launchMode: "hidden", idleMs: 3_600_000,
+    });
+    const r = await classifyPortOccupier(9222, deps({ hostPressureFn: () => "1", cdpListFn: async () => 3 }) as never);
+    expect(r.classification).toBe("lasso_live");
+    expect(r.evidence.health_note).toBeUndefined();
+  });
+
+  it("CDP 不可达的 user_owned → 无附注（reachable 包裹守卫）", async () => {
+    await recordLaunch({
+      port: 9222, pid: 66333,
+      profileDir: PROFILE,
+      launchedAt: OLD, status: "ready" as const,
+      launchMode: "visible", idleMs: 0,
+    });
+    const r = await classifyPortOccupier(9222, deps({ cdpVersionFn: async () => ({ ok: false }) }) as never);
+    expect(r.classification).toBe("ledger_user_owned");
+    expect(r.evidence.health_note).toBeUndefined();
   });
 });

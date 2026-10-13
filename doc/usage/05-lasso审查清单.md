@@ -17,7 +17,7 @@
 | # | 规则 | 检测 | 级别 |
 |---|---|---|---|
 | L2-01 | 一切 lasso spawn 的进程/长驻资源必须有：台账登记 + 归属验证的 kill 路径 + 收敛出口（idle 帽/硬顶/收尾命令三选一以上） | spawn 点逐个对照台账/kill/收敛三件套 | 🔴 |
-| L2-02 | 长驻豁免（idle-0/visible/never-kill）资源必须有**健康观测面**（doctor 可见：资源占用/活跃度/异常态）——豁免不等于失明（BUG-15 教训） | doctor check 覆盖对照 | 🟡 |
+| L2-02 | 长驻豁免（idle-0/visible/never-kill）资源必须有**健康观测面**（doctor/admin 可见：资源占用/活跃度/异常态——chrome-status evidence.health_note 先例）——豁免不等于失明（BUG-15 教训） | doctor check 覆盖对照 | 🟡 |
 | L2-03 | stdio/管道生命周期与宿主解耦设计要显式裁定（H1 文件化教训：禁 pipe 自毁形态）；跨重启存活须有 reconcile/收养路径 | spawn 形态审计 | 🔴 |
 | L2-04 | 资源劣化（内存压力/缓存膨胀/句柄累积）要有「可感知出口」——agent 或用户能在劣化变成故障前看到信号 | doctor/admin 输出面审计 | 🟡 |
 
