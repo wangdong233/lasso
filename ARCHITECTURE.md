@@ -90,6 +90,8 @@ Lasso 的真实部署形态是**单用户、本地、stdio MCP**：一个用户�
 
 > **v1.19+ 增补**：分层图之外新增两组面——① `src/render/`（v1.19.0 渲染档，5 文件：render-launcher / render-flags 冻结旗标单一真源 / render-guardian detached 执守 / render-doctor / 配套，`launchMode:"render"` 走台账 7 落点，与日常档机制天然隔离）；② Subprocess 层 sidecar 治理（v1.26.0 BUG-08 决议 B：chrome-devtools-mcp 栈 spawn 即登记 sidecar + 任意 spawn 前孤儿扫除 pid 归并/lstart 交叉核对 + `admin browser_recycle` 受控重启正门）。详见 §16。
 
+> **v1.31 增补**：`src/login-bridge/`（登录接力档，5+1 文件）——**lasso 首个入站监听面**（哑 TCP relay，仅 `login_bridge start` 后按需存在，无常开监听；INV-108 钉 posture 红线）。台账扩第五档 `launchMode:"login"`（chrome-ledger/chrome-stop 值域同步）；doctor #43；续跑复用 LoggedInChannel `--browser-url` attach（零新通道）。设计定谳与实施记录见 doc/方案-login_bridge-登录接力-v1-2026-10-17.md（飞轮：F2 反方以「Chrome ws URL 从 Host 头生成」定谳砍 token relay，哑透传为唯一自洽形态）。
+
 `src/subprocess/SubprocessManager.ts` 的 `LOCKED_CDP_MCP_VERSION = "1.7.0"` 是唯一真源，启动时经 `npx -y chrome-devtools-mcp@1.7.0` 自动拉取。v1.11 从 0.3.0 → 1.7.0 的一次性迁移（11 个月 / 57 个上游版本）要点：
 
 - `--chromeArg` 透传机制解锁：launch 级 `--user-agent` / `--viewport` / `--accept-lang` 直达 Chromium（stealth 与反节流都靠它）
@@ -455,6 +457,7 @@ $ lasso launch-chrome
 | FallbackDecider | src/fallback/FallbackDecider.ts | ~350 |
 | Launcher | src/launcher/{launch-chrome,chrome-paths,chrome-stop,chrome-idle-reaper,chrome-ledger,chrome-hide,chrome-hideshow-cli,chrome-touch,desired-hide-state,desired-hide-watchdog,desired-hide-enforcer}.ts（INV-64 不引新 npm dep；chrome-touch / desired-hide-* = v1.18.3~v1.18.6 bug02 链） | 11 文件共 ~2900 |
 | Render 档 | src/render/{render-chrome,render-launcher,render-flags,render-guardian,render-doctor}.ts（v1.19-1.20 五文件；冻结旗标单一真源 + detached 执守 + reused 四条件门，见 §16.2） | — |
+| Login 档 | src/login-bridge/{login-flags,relay,host,detect,launcher}.ts + src/tools/login-bridge.ts（v1.31 五+一文件；台账第五档 launchMode:"login" + **lasso 首个入站监听**〔哑 TCP relay，仅 start 后按需存在，INV-108 posture 红线〕+ 绑定三序解析 + cookieDelta 检测；doc/方案-login_bridge） | — |
 | Doctor | src/doctor/doctor.ts（doctor CLI 默认 34 项实跑核；MCP doctor tool / DesktopChannel 装配 desktopChecks:true 时加 #15-#21 共 41 项；--deep 加 #11b brave_deep_probe；#21 event-synthesis / #36 machine_mcp / #37 steel / #38 creepjs / #39 stagehand / zhipu_keys_retired） | ~3060 |
 | Invariants | src/invariants/check-invariants.mjs（实装 100 条 INV；85-96 = BUG-03~08 五批，97-100 = BUG-09 批（98 驱逐哨兵真锚 + 100 链真值），2026-09-16 合并轮实跑全 PASS） | ~6320 |
 | INV 自测 | scripts/inv-selftest.mjs（20 样本红转复证） | ~410 |

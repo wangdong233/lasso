@@ -158,6 +158,12 @@ Reuses **your locally-logged-in Chrome** — you handle 2FA once; Lasso takes ov
 
 > 🛡️ **In-turn confirmation for high-risk actions** (v1.17): when an automated action hits a high-risk pattern (rich-text editors, drag-and-drop, transient toasts…), clients that support elicitation (Claude Code ≥ 2.1.76) get an in-turn prompt — "continue / skip / abort" — and the step only runs if you choose continue, instead of aborting the whole run. Older clients keep the exact current behavior (safe block). **Confirmation is per-hit only**: you'll be asked again every time; nothing is remembered.
 
+### Remote-Machine Login Handoff (new in v1.31)
+
+> You: "grab that site I'm logged into, on this Linux box" → one link; you open it, log in once, it does the rest
+
+When lasso runs on a Linux/LAN machine (your Tailscale cloud host, say) and the target needs a login: `login_bridge` returns a URL — open it in the browser on **your own machine**, log in by hand inside the screencast, and the login state lands directly in the **remote** Chrome's persistent profile (zero cookie syncing, zero local setup). The agent watches the `cookieDelta` to know the login landed, then keeps driving the same Chrome headless with the session. Four steps: `start` (get the link) → you log in → `status` (confirm) → `browse_logged_in` continues (`LASSO_CDP_PORT` attach; see [Configure](#configure)). Honest limits: no CJK IME / no local password-manager inside the screencast (type the password); Google-account logins on headless remain unreliable; the relay is unauthenticated (internal-network use; Tailscale ACL advised). Full troubleshooting: [TROUBLESHOOTING §11](doc/usage/02-TROUBLESHOOTING.md) (Chinese).
+
 ### Fetch Raw Bytes (fastest, cheapest)
 
 > You: "GET this JSON endpoint" → raw bytes
