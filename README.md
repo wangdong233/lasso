@@ -243,6 +243,20 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
+**运行时依赖一览**（哪些能力要装什么、缺了会怎样——`lasso doctor` 一键检查在位性）：
+
+| 依赖 | 服务的能力 | 必需性 | 怎么满足 | 缺了的行为 |
+|---|---|---|---|---|
+| Node.js ≥ 20 | 全部 | **硬前提** | 手装（[nodejs.org](https://nodejs.org)） | 无法运行 |
+| MCP 客户端（如 Claude Code） | 接入面 | **硬前提** | `claude mcp add` 见下 | 无调用方 |
+| Chrome / Chromium 浏览器 | `browse_logged_in`（复用你本机 Chrome）/ 渲染档 / 登录接力档（`login_bridge`） | 这三面需要 | 手装（doctor #5 `chrome_binary` 检查） | **`browse_headless` 不需要预装**（chrome-devtools-mcp 首跑自动拉 bundled Chromium 到 `~/.cache/puppeteer`）；渲染/登录档缺 Chrome 时给可教学错误（提示装 Chrome 或先跑一次 `browse_headless` 让缓存落盘） |
+| aria2c | `download` 直链多线程 / 磁力链接 | 可选 | 手装（macOS `brew install aria2` / Debian `apt install aria2`；doctor #40） | HTTP 下载**自动降级** undici 单流引擎仍可用；**磁力链接显式不可用**（unavailable + 引导提示） |
+| yt-dlp | `download` 流媒体 / 字幕 / 纯音频 | 可选 | **首次用到时 lazy 引导下载**（SHA256 钉版校验，doctor #40）或手装 | stream 类任务触发引导；拒绝引导则该类不可用 |
+| lasso-rust-helper（二进制） | **仅 macOS** `desktop` 桌面控制 | 仅桌面需要 | **预编译二进制单独分发，刻意不进 npm 包**（见仓库 `rust-helper/` 构建；`LASSO_RUST_HELPER_PATH` env 可指任意路径；doctor #15/#16 引导 + TCC 权限） | desktop 返 `rust_helper_crashed` 四态自诊断（[TROUBLESHOOTING §2.16](doc/usage/02-TROUBLESHOOTING.md)）；Linux/Windows 桌面走 UIA/AT-SPI 路线（编译可证） |
+| key 类（Brave 等） | 搜索第二源等增强面 | 全部可选 | 见 [KEY-GUIDE](doc/usage/01-KEY-GUIDE.md) / [费用一览](#-费用一览) | 零 key 即装即用（默认通道全免费） |
+
+> 一句话：**零依赖也能跑**（headless 浏览器自动拉、桌面外全本地）；要登录态/渲染/桌面/磁力/流媒体时才按上表补对应依赖。
+
 ```bash
 claude mcp add lasso -- npx -y lasso-mcp
 ```

@@ -234,6 +234,20 @@ Goes to the Internet Archive (Wayback Machine) to find the last archived copy of
 
 Prerequisites: Node.js ≥ 20 + Claude Code (or any MCP-capable client).
 
+**Runtime dependency matrix** (which capability needs what, and what happens when it's missing — `lasso doctor` checks all of them in one run):
+
+| Dependency | Powers | Required? | How to satisfy | Behavior when missing |
+|---|---|---|---|---|
+| Node.js ≥ 20 | everything | **hard** | install from [nodejs.org](https://nodejs.org) | nothing runs |
+| an MCP client (e.g. Claude Code) | the entry point | **hard** | `claude mcp add` below | no caller |
+| Chrome / Chromium | `browse_logged_in` (reuses your local Chrome) / render tier / login-bridge tier (`login_bridge`) | those three only | install it (doctor #5 `chrome_binary`) | **`browse_headless` needs NO pre-installed Chrome** (chrome-devtools-mcp auto-fetches a bundled Chromium into `~/.cache/puppeteer` on first run); render/login tiers fail with a teachable error (install Chrome, or run any `browse_headless` call once to populate the cache) |
+| aria2c | `download` multi-threaded direct links / magnet links | optional | install (`brew install aria2` / `apt install aria2`; doctor #40) | HTTP downloads **auto-fallback** to the undici single-stream engine; **magnet links explicitly unavailable** (with a guided hint) |
+| yt-dlp | `download` streaming / subtitles / audio-only | optional | **lazy guided download on first use** (SHA256-pinned; doctor #40) or install | stream-kind tasks trigger the bootstrap; decline and that kind is unavailable |
+| lasso-rust-helper (binary) | `desktop` control, **macOS only** | desktop only | **pre-built binary is distributed separately and deliberately NOT in the npm package** (build from the repo's `rust-helper/`; `LASSO_RUST_HELPER_PATH` env points anywhere; doctor #15/#16 guide TCC permissions) | desktop returns `rust_helper_crashed` with four-state self-diagnosis ([TROUBLESHOOTING §2.16](doc/usage/02-TROUBLESHOOTING.md), Chinese); Linux/Windows desktop take the UIA/AT-SPI routes |
+| API keys (Brave etc.) | search second source and other enhancements | all optional | see [KEY-GUIDE](doc/usage/01-KEY-GUIDE.md) (Chinese) / [Costs](#-costs) | zero-key works out of the box (default channels are all free) |
+
+> One line: **zero dependencies still runs** (headless browser auto-fetched; everything outside desktop is local); add per the table only when you need login-state / render / desktop / magnets / streaming.
+
 ```bash
 claude mcp add lasso -- npx -y lasso-mcp
 ```
