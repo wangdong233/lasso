@@ -239,7 +239,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.31.0**（更新日志见本节末尾折叠块）。
+**当前版本 v1.31.1**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -268,7 +268,9 @@ claude mcp add lasso -- npx -y lasso-mcp
 **给其它 AI 工具当确定性渲染浏览器（渲染档）**：如果你在用 media-gen-mcp 这类要求「同一输入必须产出同一像素」的渲染工具，装好 lasso 后只需一行 `npx -y lasso-mcp render-chrome --ensure`——它会在 9224 端口拉起一个确定性 headless Chrome（冻结旗标快照 + 独立临时 profile），输出消费方直连用的 `wsEndpoint`；**消费方进程被强杀浏览器也照常存活**（生命周期归属 lasso），空闲 10 分钟自动回收并连带清理 profile（`LASSO_RENDER_IDLE_MS` 可调）。配套：`render-chrome --status` 自省 / `--stop` 收尾（认 `LASSO_RENDER_PORT`：显式设 port 只收该 port，未设=全部 render 记录，非法值 exit 1；全局收口仍可用 `chrome-stop --modes render`）/ `render-chrome doctor [--clean]` 孤儿与陈年 profile 清理（默认只报告；认 `LASSO_RENDER_PORT`，同 `--stop`：显式设 port 只判该 port，未设=全扫，非法值 exit 1；touch 心跳 10 分钟内的在用实例豁免不判孤儿）。**同机多 agent 并行验收**（多个 agent 各自清场会互杀对方实例）需配三 env 契命名空间隔离：`LASSO_RENDER_PORT` + `LASSO_LAUNCHED_CHROMES_PATH` + `LASSO_RENDER_GUARDIAN_PID_PATH`，配齐后并行互不可见，配方与清场纪律见 [doc/渲染档-并行验收隔离配方.md](doc/渲染档-并行验收隔离配方.md)。
 
 <details>
-<summary>📋 更新日志（v1.8 → v1.31.0，点开看每版改了什么）</summary>
+<summary>📋 更新日志（v1.8 → v1.31.1，点开看每版改了什么）</summary>
+
+- **v1.31.1**（依赖清单能力补齐）：README 双语新增**「运行时依赖一览」矩阵**——依赖 × 服务能力 × 必需性 × 满足方式 × 缺失行为七行全表（Node/MCP 客户端/Chrome/aria2c/yt-dlp/lasso-rust-helper/key 类），全部源码级核实：`browse_headless` 免预装浏览器（chrome-devtools-mcp 首跑自动拉 bundled Chromium）；aria2c 缺失时 http 降级 undici/磁力显式 unavailable；yt-dlp lazy 引导下载（SHA256 钉版）；rust-helper 刻意不进 npm 包（单独分发+`LASSO_RUST_HELPER_PATH`）；收尾一句话「零依赖也能跑，按需补装」。`lasso doctor` 一键检查全部在位性。纯文档版（零代码变更，为此单独发版使 npmjs.com 包页同步呈现）。
 
 - **v1.31.0**（login_bridge 登录接力档）：**远端无头浏览器登录接力**——Linux/内网机上跑 lasso 遇登录墙时，`login_bridge({action:"start"})` 返回一条 URL，你在本机浏览器打开、在 DevTools screencast 投屏里亲手登录，登录态直接落在远端 Chrome 的持久 profile（零 cookie 同步），agent 轮询 `status` 看 `cookieDelta`（按域新增非噪声 cookie——启发式事实）即知登录落位，随后 `browse_logged_in` 经 `LASSO_CDP_PORT` attach 同一 Chrome 带登录态续跑；`stop`（可 `wipe:true` 连登录资产一并清）。实现四件：登录档 Chrome（持久 profile+台账第五档 launchMode "login"+单飞锁+收尸委托）/**哑 TCP 转发**（~30 行字节透传，lasso 首个入站监听——只在 start 后存在；F2 对抗定谳：Chrome ws URL 从 Host 头生成，哑透传天然全链自洽，token 中继是结构性矛盾故砍）/绑定地址三序解析（env 显式含 0.0.0.0 自担→tailscale CGNAT→私网兜底）/doctor #43。诚实披露面：投屏内中文输入法与本机密码管理器不可用（手输 ASCII 密码）；Google 系登录对 headless 不稳（云 IP 信誉自担）；relay 无鉴权=绑定接口内任意进程可全控（tailnet 私有性防线，建议 Tailscale ACL）；登录 cookie 明文落盘。配套：fleet 预算帽 62,250→64,500（单主题提帽先例链）、INV-108 posture 红线、46 例新测试、方案与调研文档（doc/方案-login_bridge*/doc/调研-远端无头浏览器登录接力*）。
 
