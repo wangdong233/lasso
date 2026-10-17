@@ -186,8 +186,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { detectAria2, detectYtDlp } from "../download/engines/bootstrap.js";
 // BUG-14（2026-09-23）：#41 chrome_ledger_inventory 台账清单（零触网）
 import { readLedgerSync } from "../launcher/chrome-ledger.js";
+// v1.31（doc/方案-login_bridge）：#43 login_bridge 的 relay 绑定预览（三源解析）
+import { resolveBridgeHost } from "../login-bridge/host.js";
 
-export const LASSO_VERSION = "1.30.4";
+export const LASSO_VERSION = "1.31.0";
 
 // ============================================================
 // 类型
@@ -871,6 +873,10 @@ export async function runDoctor(
   // #42 stale_runtime（bugs/13 §10 doubao 阻塞-3）：载旧码探针——MCP 形态暴露
   // 「dist 重建晚于进程启动」；CLI 形态恒 pass（新进程）。永不 fail。
   checks.push(checkStaleRuntime());
+
+  // #43 login_bridge（v1.31 方案 §二 C6）：登录接力档观测面——台账清单+绑定预览
+  // +披露两行。永不 fail（纯观测，L2-02）。
+  checks.push(checkLoginBridge());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2598,6 +2604,49 @@ export function checkStaleRuntime(
     status: "pass",
     detail: `runtime started ${new Date(startedAt).toISOString()} (at/after last build ${new Date(mtimeMs).toISOString()}) — current code`,
     next_step: "if behavior still looks stale, verify the MCP entry path matches the dist you rebuilt",
+  };
+}
+
+// ============================================================
+/**
+ * 43. login_bridge —— 登录接力档体检（v1.31，doc/方案-login_bridge 2026-10-17）。
+ *
+ * 观测面（L2-02：长驻豁免资源须可感知）：登录档台账清单（ns/端口/touch 龄）+
+ * relay 绑定地址预览（tailscale/interface/env 三源）+ 披露两行（明文 cookie 落盘 /
+ * relay 无鉴权=tailnet 私有性防线）。永不 fail（纯观测+教学，INV-82 同族语义）。
+ */
+export function checkLoginBridge(relayPortPreview?: number): DoctorCheck {
+  const lines: string[] = [];
+  let records: ReturnType<typeof readLedgerSync> = [];
+  try {
+    records = readLedgerSync().filter((r) => r.launchMode === "login");
+  } catch {
+    lines.push("ledger unreadable (run from source?)");
+  }
+  const now = Date.now();
+  for (const r of records) {
+    const ageMin = Math.round((now - r.launchedAt) / 60_000);
+    lines.push(`login chrome port=${r.port} ns=${path.basename(r.profileDir)} age=${ageMin}min${r.status === "cdp_not_ready" ? " (cdp_not_ready)" : ""}`);
+  }
+  if (records.length === 0) lines.push("no login-tier chromes in ledger (dormant)");
+  try {
+    // 绑定地址预览（relay 尚未起时也如实报解析源——env 覆写用户可见）
+    const host = resolveBridgeHost({ relayPort: relayPortPreview ?? 9226 });
+    if (host) {
+      lines.push(`relay bind preview: ${host.host} (source=${host.source})`);
+    } else {
+      lines.push("relay bind preview: NO host detected — set LASSO_LOGIN_BRIDGE_HOST before login_bridge start");
+    }
+  } catch {
+    lines.push("relay bind preview: resolution errored (env value invalid?)");
+  }
+  lines.push("disclosure: login cookies stored PLAINTEXT in the Linux profile (no keyring); login_bridge stop wipe=true erases");
+  lines.push("disclosure: relay is unauthenticated — any process on the bound interface controls the login Chrome (tailnet ACL advised)");
+  return {
+    name: "login_bridge",
+    status: "pass",
+    detail: lines.join(" | "),
+    next_step: "login_bridge({action:\"start\"}) to begin a login handoff; chrome-stop --modes login to collect",
   };
 }
 

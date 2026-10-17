@@ -96,3 +96,11 @@ token 门（共享 tailnet 威胁模型出现再做，且须先解 Host 生成�
 1. F2 的 Host 头发现把 v0 四组件砍到一件——**哑管道的正确性来自「不聪明」**，与 02 清单「最简单的正确形态」直接互证。
 2. relay=lasso 首个入站监听（createServer=0 实测）——posture 变化被显式识别并配 INV+默认 off，未滑进「顺手就加了」。
 3. 本方案与调研文档构成完整证据链；实施轮直接从 §二/§六 起步，无需重新侦察。
+
+## 十、实施轮记录（F4/F5，2026-10-17，用户 GO + 两处放宽）
+
+**用户裁决**：①不做 env 门控——工具常注册可用（relay 只在 start 后按需监听，无常开监听面，两全）；②绑定/来源灵活最大化——`LASSO_LOGIN_BRIDGE_HOST` 显式覆写允许任意值含 0.0.0.0（内网形态合法化，用户自担；默认序不变：tailscale→私网兜底）。原 §五-3「默认 off」由「按需监听」语义替代；INV-108 相应改为锚定「env 先行+非 env 源有界」。
+
+**F4 对照（46 测试 + INV-108 + 真机 e2e）**：relay 字节透传/idle 自关/占用错误；host 三序+0.0.0.0 多 origins；detect 噪声过滤+增量语义；launcher 旗标全集/复用门/收尸重拉/foreign/超时诚实记录/单飞锁；工具 start/status/stop/wipe 全行为+负向守卫四条源码锚。**真机 e2e PASS**（本机真 tailscale 接口 100.118.98.120：经 relay 的 ws URL 自动指回 relay 面=Host 自洽性直接证明；DevTools 前端 200；doctor #43 就位；台账收尸+profile 清除干净）。
+
+**F5 落点**：src/login-bridge/ 四模块（flags/relay/host/detect/launcher）+ tools/login-bridge.ts + descriptions（fleet 帽 62,250→64,500 单主题提帽）+ annotations + index 三处联动 + doctor #43 + chrome-ledger launchMode 第五值 + chrome-stop 值域/联合扩 login + doc/usage/04 B 表 E20-E22 + KEY-GUIDE §11 + TROUBLESHOOTING §11 + README 双语 changelog。

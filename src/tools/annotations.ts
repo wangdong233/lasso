@@ -353,3 +353,12 @@ export const downloadAnnotations: ToolAnnotations = {
   readOnlyHint: false,
   openWorldHint: true,
 };
+
+/**
+ * v1.31（doc/方案-login_bridge 2026-10-17）：login_bridge——拉起登录档 Chrome +
+ * 入站 relay（spawn+listen 双面，非只读）；openWorld（tailnet 交互面）。
+ */
+export const loginBridgeAnnotations: ToolAnnotations = {
+  readOnlyHint: false,
+  openWorldHint: true,
+};

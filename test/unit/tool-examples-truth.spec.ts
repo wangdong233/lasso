@@ -36,6 +36,7 @@ import {
   downloadSchema,
   BT_ZERO_PEER_DIAGNOSIS,
 } from "../../src/tools/download.js";
+import { loginBridgeSchema } from "../../src/tools/login-bridge.js";
 import {
   BROWSE_ACTIONS,
   CONSUMED_OPTIONS,
@@ -44,7 +45,7 @@ import {
 } from "../../src/channels/BrowseChannel.js";
 
 // ============================================================
-// 常量登记（20 个 descriptions.ts 常量 + read_text 金标准）
+// 常量登记（21 个 descriptions.ts 常量 + read_text 金标准）
 // ============================================================
 const CONSTANTS: Record<string, string> = {
   SEARCH_DESCRIPTION: D.SEARCH_DESCRIPTION,
@@ -68,6 +69,8 @@ const CONSTANTS: Record<string, string> = {
   SEARCH_LOCAL_DESCRIPTION: D.SEARCH_LOCAL_DESCRIPTION,
   // v1.30（doc/bugs/12 决议 §五）：download 工具族入驻
   DOWNLOAD_DESCRIPTION: D.DOWNLOAD_DESCRIPTION,
+  // v1.31（doc/方案-login_bridge 2026-10-17）：login_bridge 工具入驻
+  LOGIN_BRIDGE_DESCRIPTION: D.LOGIN_BRIDGE_DESCRIPTION,
   READ_TEXT_DESCRIPTION,
 };
 
@@ -100,6 +103,11 @@ const ROW_TARGETS: Record<string, string[]> = {
   E17: ["DOWNLOAD_DESCRIPTION"],
   E18: ["DOWNLOAD_DESCRIPTION"],
   E19: ["DOWNLOAD_DESCRIPTION"],
+  // v1.31（doc/方案-login_bridge 2026-10-17）：login_bridge 三示例（E20 start
+  // 起桥 / E21 status 轮询 / E22 stop+wipe 登录资产清零）
+  E20: ["LOGIN_BRIDGE_DESCRIPTION"],
+  E21: ["LOGIN_BRIDGE_DESCRIPTION"],
+  E22: ["LOGIN_BRIDGE_DESCRIPTION"],
 };
 
 interface DocRow {
@@ -225,8 +233,10 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
   screenshot: screenshotSchema as unknown as Record<string, unknown>,
   admin: adminSchema as unknown as Record<string, unknown>,
   read_text: readTextSchema as unknown as Record<string, unknown>,
-  // v1.30：download（E17/E18/E19 的 call-shape ⊆ schema 消费面）
+  // v1.30（doc/bugs/12 决议 §五）：download（E17/E18/E19 的 call-shape ⊆ schema 消费面）
   download: downloadSchema as unknown as Record<string, unknown>,
+  // v1.31（doc/方案-login_bridge 2026-10-17）：login_bridge（E20/E21/E22）
+  login_bridge: loginBridgeSchema as unknown as Record<string, unknown>,
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -342,9 +352,15 @@ describe("闸 1c · 示例引用的 action ∈ 合法词汇表", () => {
     const legalDownload = new Set(
       (downloadSchema as any).action._def.values as readonly string[],
     );
+    // v1.31：login_bridge 同款派生（start/status/stop 是第四套词汇表——与
+    // browse/admin/download 分立）
+    const legalLoginBridge = new Set(
+      (loginBridgeSchema as any).action._def.values as readonly string[],
+    );
     const VOCAB: Record<string, Set<string>> = {
       ADMIN_DESCRIPTION: legalAdmin,
       DOWNLOAD_DESCRIPTION: legalDownload,
+      LOGIN_BRIDGE_DESCRIPTION: legalLoginBridge,
     };
     for (const [name, text] of Object.entries(CONSTANTS)) {
       const legal = VOCAB[name] ?? legalBrowse;
@@ -451,14 +467,14 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     }
   });
 
-  it("L1 fleet：descriptions.ts 20 常量 Σ ≤ 62,250 chars（v1.30 提帽 +2,400：download 工具族入驻[红队红 A4/预算复核 2026-09-20]——单主题提帽先行，描述实写 ≤2,200 留 slack；bug11 §5.1-3 先例 +950）", () => {
+  it("L1 fleet：descriptions.ts 21 常量 Σ ≤ 64,500 chars（v1.31 提帽 +2,250：login_bridge 工具入驻[doc/方案-login_bridge 2026-10-17]——单主题提帽先例链：v1.30 +2,400 download / bug11 §5.1-3 +950；login_bridge 描述实写 ≤2,100 留 slack）", () => {
     const fleet = Object.entries(CONSTANTS)
       .filter(([k]) => k !== "READ_TEXT_DESCRIPTION")
       .reduce((n, [, v]) => n + v.length, 0);
     expect(
       fleet,
-      `fleet = ${fleet}（20 常量，read_text 不计）`,
-    ).toBeLessThanOrEqual(62_250);
+      `fleet = ${fleet}（21 常量，read_text 不计）`,
+    ).toBeLessThanOrEqual(64_500);
   });
 
   it("EXAMPLES 段 ≤5 行/工具（只数 EXAMPLES 块内非头行；内联段落不计）", () => {

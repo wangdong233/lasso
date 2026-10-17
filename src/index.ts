@@ -133,6 +133,10 @@ import { registerSearchLocalTool } from "./search-local/register-search-local-to
 // 同函数同 config）。
 import { registerDownloadTools, wireDownloadTools } from "./tools/download.js";
 import { buildDownloadDeps } from "./download/deps.js";
+// v1.31（doc/方案-login_bridge 2026-10-17）：login_bridge 独立工具——远端无头浏览器
+// 登录接力（登录档 Chrome + 哑 TCP relay）。defaultDeps 自足（无跨 worktree 接线面），
+// 故无 wire 调用；四处联动第 1/3 处在本文件（import+注册+channel 映射）。
+import { registerLoginBridgeTools } from "./tools/login-bridge.js";
 import { SearchCache } from "./search/SearchCache.js";
 import { RootRegistry } from "./forest/RootRegistry.js";
 import { InteractDispatcher } from "./forest/InteractDispatcher.js";
@@ -259,7 +263,7 @@ const fsReadFile = fsPromises.readFile;
  *   INV-76（v1.7 INV-1..75 零回归）→ 1.8.0
  * 与 package.json version + doctor.ts LASSO_VERSION 三处对齐（grep 验；INV-63 守）。
  */
-const LASSO_SERVER_VERSION = "1.30.4";
+const LASSO_SERVER_VERSION = "1.31.0";
 
 /**
  * cloud 浏览器双重解锁判定（parse5 §3.4 + INV-25）。
@@ -1009,6 +1013,10 @@ async function runMcpServer(): Promise<void> {
   // wireDownloadTools 前置 null 检查承载——本调用后即永久在位。
   wireDownloadTools(buildDownloadDeps(ssrfConfig));
   registerDownloadTools(server, ssrfConfig);
+  // v1.31（doc/方案-login_bridge §三）：login_bridge 注册——四处联动第 2 处。
+  // relay 是 lasso 首个入站监听（posture 变化，方案 §四）：只在 start 后按需存在，
+  // 本注册本身零监听面。
+  registerLoginBridgeTools(server);
   // doctor tool opts 提为命名变量（v0.6 M0.6 parse7 §2.2 + §6.2）：v0.6 接线段在装配尾部
   // 经此变量注入 runtimeState provider，让 doctor 报告含 runtime_state section（零回归：
   // runtimeState 是可选字段；未注入时行为完全等价 v0.5）。
@@ -1137,6 +1145,10 @@ async function runMcpServer(): Promise<void> {
     // caller-tier 隔离用；引擎进程是 per-task detached spawn，归下载任务表治理
     // （四要素杀谓词），不经 SubprocessManager。四处联动第 3 处）
     download: "download",
+    // v1.31（doc/方案-login_bridge §三）：login_bridge 归独立虚拟 channel（download
+    // 同范式——caller-tier 隔离用；登录档 Chrome 走台账治理，relay 是进程内组件，
+    // 均不经 SubprocessManager。四处联动第 3 处）
+    login_bridge: "login_bridge",
     doctor: "doctor",
   };
   const sdkRegisteredTools = (server as unknown as {
@@ -1640,7 +1652,7 @@ const CLI_USAGE = [
   "                                               wanted; see doc/usage/01-KEY-GUIDE.md)",
   "  lasso-mcp chrome-stop [--port N | --all]     Close lasso-launched Chrome(s) recorded in the",
   "                                               on-disk ledger (pid ownership verified via cmdline;",
-  "                                               --modes hidden|visible|render|headless filters",
+  "                                               --modes hidden|visible|render|headless|login filters",
   "                                               by launch mode; no --modes --all = stop incl.",
   "                                               render tier — intentional full-stop escape hatch;",
   "                                               --zombie-gate (requires --port N, exclusive",

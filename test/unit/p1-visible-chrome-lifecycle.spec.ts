@@ -42,8 +42,8 @@ describe("P1 visible Chrome 生命周期保护", () => {
     expect(src).toMatch(/opts\.modes[\s\S]{0,200}launchMode \?\? "hidden"/);
     // 接口暴露 modes 选项（v1.19 渲染档设计决议 3.1 落点 2：扩第三值 "render"
     // ——精确匹配语义不变，--modes hidden 仍不动 visible/render；BUG-03 B2 扩
-    // 第四值 "headless"——同款精确匹配）
-    expect(src).toMatch(/modes\?: Array<"hidden" \| "visible" \| "render" \| "headless">/);
+    // 第四值 "headless"——同款精确匹配；v1.31 扩第五值 "login"——登录接力档）
+    expect(src).toMatch(/modes\?: Array<"hidden" \| "visible" \| "render" \| "headless" \| "login">/);
   });
 
   it("index.ts 停机收尾只关 hidden（P1 修复锚点；P2 处置轮删死 all 字段后无 port = --all）", () => {

@@ -48,8 +48,11 @@ export interface LaunchedChromeRecord {
    * 证伪 B2 原始声明「不占 Dock 槽位」——激活仍被同 bundle id 单实例吸收（见
    * launch-chrome headless_dock_slot_caveat）；无法 chrome-show（登录交互流破碎），
    * 故不切默认，有人用的机器用 hidden。
+   * v1.31（doc/方案-login_bridge 2026-10-17）：扩第五值 "login"——登录接力档
+   * （持久 profile 的 headless Chrome + CDP 口 + 哑 TCP relay 暴露给 tailnet；
+   * 复用 render 的台账/touch/收割骨架，idle 走常规非 render 路径）。
    */
-  launchMode?: "hidden" | "visible" | "render" | "headless";
+  launchMode?: "hidden" | "visible" | "render" | "headless" | "login";
   /**
    * v1.10（parse18 §2.5）：per-launch idle 覆盖（CLI --idle-ms 传入）。
    * undefined = 用全局默认（config.launchIdleMs）；显式 0 = 该记录禁用回收。
@@ -205,9 +208,11 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
       // 同步三值——漏改则 render 记录被静默读成 undefined，chrome-ledger.spec
       // 「render 写读往返」用例钉死）
       // BUG-03 B2：扩第四值 "headless"（守卫同步——同上漏改风险）
+      // v1.31：扩第五值 "login"（登录接力档；守卫同步——漏改则 login 记录被静默
+      // 降级 undefined=按 hidden 处理，reaper 仍能收但 chrome-status 分类失真）
       launchMode:
         typeof r.launchMode === "string" &&
-        (r.launchMode === "hidden" || r.launchMode === "visible" || r.launchMode === "render" || r.launchMode === "headless")
+        (r.launchMode === "hidden" || r.launchMode === "visible" || r.launchMode === "render" || r.launchMode === "headless" || r.launchMode === "login")
           ? r.launchMode
           : undefined,
       idleMs: typeof r.idleMs === "number" && Number.isFinite(r.idleMs) ? r.idleMs : undefined,

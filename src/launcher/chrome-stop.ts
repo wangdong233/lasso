@@ -55,7 +55,7 @@ export interface ChromeStopOptions {
    * v1.19（渲染档设计决议 3.1 落点 2 / 3.5）：扩第三值 "render"——
    * `--modes render` 可单独收渲染档；`--modes hidden` 因精确匹配不动渲染档。
    */
-  modes?: Array<"hidden" | "visible" | "render" | "headless">;
+  modes?: Array<"hidden" | "visible" | "render" | "headless" | "login">;
   /**
    * BUG-03 决议 A1（doc/bugs/03 §4 A1，消费方③连坐死根治）：归属限定——只收
    * `ownerPid === 本值` 的记录。**任何进程退出只许收自己拉起的 Chrome**：
@@ -106,7 +106,7 @@ export interface ChromeStopResult {
     port: number;
     pid: number;
     action: ChromeStopAction;
-    launchMode?: "hidden" | "visible" | "render" | "headless";
+    launchMode?: "hidden" | "visible" | "render" | "headless" | "login";
   }>;
   /**
    * BUG-04 决议 A2b：`--zombie-gate` 被门排除的记录（userTakenAt 已认领 /
@@ -117,7 +117,7 @@ export interface ChromeStopResult {
     port: number;
     pid: number;
     reason: string;
-    launchMode?: "hidden" | "visible" | "render" | "headless";
+    launchMode?: "hidden" | "visible" | "render" | "headless" | "login";
   }>;
 }
 
@@ -234,7 +234,7 @@ const GRACE_TOTAL_MS = 2_000;
 function stopRow(
   rec: LaunchedChromeRecord,
   action: ChromeStopAction,
-): { port: number; pid: number; action: ChromeStopAction; launchMode?: "hidden" | "visible" | "render" | "headless" } {
+): { port: number; pid: number; action: ChromeStopAction; launchMode?: "hidden" | "visible" | "render" | "headless" | "login" } {
   return {
     port: rec.port,
     pid: rec.pid,
@@ -372,7 +372,7 @@ export interface ChromeStopSyncOptions {
    * 任何 server 进程退出（优雅 shutdown 之外的 exit 钩子兜底路径）都无权关闭它。
    * P1（v1.17.3）只修了优雅停机路径；本参数把同一裁决补到 exit 钩子。
    */
-  modes?: Array<"hidden" | "visible" | "render" | "headless">;
+  modes?: Array<"hidden" | "visible" | "render" | "headless" | "login">;
   /** BUG-03 A1：归属限定（与 async 版同款；index.ts exit 钩子传 process.pid）。 */
   ownerPid?: number;
   /** BUG-03 A1 第三维：userTakenAt 豁免（与 async 版同款）。 */
@@ -452,7 +452,7 @@ export function stopLaunchedChromesSync(
  * 无 --modes 的 --all 语义 = 全停（含渲染档），属有意「全停」出口，文档化。
  * 单独导出便于单测（不 spawn 真进程）。
  */
-const CHROME_STOP_MODE_VALUES = ["hidden", "visible", "render", "headless"] as const;
+const CHROME_STOP_MODE_VALUES = ["hidden", "visible", "render", "headless", "login"] as const;
 
 export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
   const opts: ChromeStopOptions = {};
@@ -470,15 +470,15 @@ export function parseChromeStopArgs(argv: string[]): ChromeStopOptions {
       // 接受 --all flag 但不写字段：无 port = --all（P2 处置轮删除死 all 字段）。
     } else if (a === "--modes") {
       const v = argv[i + 1] ?? "";
-      const modes: Array<"hidden" | "visible" | "render" | "headless"> = [];
+      const modes: Array<"hidden" | "visible" | "render" | "headless" | "login"> = [];
       for (const piece of v.split(",").map((s) => s.trim()).filter(Boolean)) {
         if (!(CHROME_STOP_MODE_VALUES as readonly string[]).includes(piece)) {
           throw new Error(
-            `invalid --modes value "${piece}" (expected hidden|visible|render|headless, CSV)`,
+            `invalid --modes value "${piece}" (expected hidden|visible|render|headless|login, CSV)`,
           );
         }
-        if (!modes.includes(piece as "hidden" | "visible" | "render" | "headless")) {
-          modes.push(piece as "hidden" | "visible" | "render" | "headless");
+        if (!modes.includes(piece as "hidden" | "visible" | "render" | "headless" | "login")) {
+          modes.push(piece as "hidden" | "visible" | "render" | "headless" | "login");
         }
       }
       if (modes.length > 0) opts.modes = modes;

@@ -417,4 +417,10 @@ lasso doctor
 
 ---
 
+## 11. login_bridge：远端机的登录态接力（v1.31.0，零 key）
+
+lasso 跑在 Linux/内网机时的登录态入口：`login_bridge({action:"start"})` 返回一条 url——本机浏览器打开、DevTools 投屏里亲手登录，登录态落远端持久 profile，agent 经 `LASSO_CDP_PORT` attach 续跑。env：`LASSO_LOGIN_BRIDGE_HOST`（绑定地址；默认 tailscale IP→私网兜底；`0.0.0.0`=显式全接口自担）/`LASSO_LOGIN_BRIDGE_PORT`（9226）/`LASSO_LOGIN_BRIDGE_CDP_PORT`（9225）/`LASSO_LOGIN_BRIDGE_NS`（并行 agent 的 profile 命名空间）/`LASSO_LOGIN_BRIDGE_IDLE_MS`（relay 自关）/`LASSO_LOGIN_CHROME_IDLE_MS`（台账回收）。安全与死穴详见 [TROUBLESHOOTING §11](02-TROUBLESHOOTING.md)。
+
+---
+
 > 配置遇到问题？先看 [TROUBLESHOOTING.md](02-TROUBLESHOOTING.md)；想懂内部架构见 [../ARCHITECTURE.md](../../ARCHITECTURE.md)。

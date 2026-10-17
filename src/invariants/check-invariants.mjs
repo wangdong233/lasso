@@ -6526,6 +6526,37 @@ const assertions = [
       return true;
     },
   },
+  {
+    id: "INV-108-login-bridge-posture",
+    desc:
+      "v1.31（doc/方案-login_bridge 2026-10-17）：登录接力档 posture 红线——(1) relay 是 lasso 首个入站监听，createServer 只许存在于函数体内（无模块级监听=无常开面）；(2) 绑定地址解析 env 先行（LASSO_LOGIN_BRIDGE_HOST 判定先于 tailscale CLI），非 env 路径永不产 0.0.0.0；(3) wipe 的 rmSync 必须经 LOGIN_PROFILE_PREFIX 归属守卫（chrome-stop cleanupRenderProfile 同款三重验证）；(4) 四处联动闭环（index.ts 注册+channel 映射+descriptions+doctor #43 名称）",
+    check: () => {
+      const relay = SRC.find((s) => /login-bridge\/relay\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!relay) return false;
+      const cs = [...relay.text.matchAll(/createServer\(/g)];
+      if (cs.length !== 1) return false;
+      if (/^createServer\(/m.test(relay.text)) return false;
+      const host = SRC.find((s) => /login-bridge\/host\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!host) return false;
+      const envIdx = host.text.indexOf("LASSO_LOGIN_BRIDGE_HOST");
+      if (envIdx < 0 || envIdx > host.text.indexOf('["ip", "-4"]')) return false;
+      // 非 env 源是有界函数：tailscale→CGNAT 解析 / 兜底→私网枚举（isPrivateIPv4
+      // 排除 0.0.0.0）——0.0.0.0 只能经 env 显式进入（行为钉见 login-bridge-host.spec INV 用例）
+      if (!/parseTailscaleIps\(/.test(host.text)) return false;
+      if (!/interfaceIpv4s\(interfacesFn\)/.test(host.text)) return false;
+      const tool = SRC.find((s) => /tools\/login-bridge\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!tool || !/LOGIN_PROFILE_PREFIX/.test(tool.text)) return false;
+      if (!/parent !== LOGIN_PROFILE_PREFIX/.test(tool.text)) return false;
+      const ix = SRC.find((s) => /(^|\/)index\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!ix || !/registerLoginBridgeTools\(server\)/.test(ix.text)) return false;
+      if (!/login_bridge: "login_bridge"/.test(ix.text)) return false;
+      const desc = SRC.find((s) => /tools\/descriptions\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!desc || !/LOGIN_BRIDGE_DESCRIPTION = /.test(desc.text)) return false;
+      const doc = SRC.find((s) => /doctor\/doctor\.ts$/.test(s.f.replace(/\\/g, "/")));
+      if (!doc || !/name: "login_bridge"/.test(doc.text)) return false;
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

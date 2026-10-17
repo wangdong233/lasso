@@ -545,3 +545,25 @@ lasso launch-chrome --port 9223 --mode visible   # 首次登录（2FA 自己解�
 3. **全面诊断**：`node <lasso仓>/dist/index.js doctor`（`stale_runtime` check 另管「载旧码」形态，见 §2.24）。
 
 **可选预防件**：`scripts/hooks/check-lasso-mcp-on-start.mjs`——SessionStart hook，入口不可启动时当场提醒（连接层归 CC 管，hook 补的是入口损伤的即时可见性）。装法见脚本头注。
+
+## 11. 远端机的登录态：login_bridge 登录接力（v1.31.0）
+
+场景：lasso 跑在 Linux/内网机（无显示器），agent 遇登录墙。
+
+1. `login_bridge({action:"start"})` → 返回 `url`（`http://<绑定IP>:<relay口>/`）+操作指引；
+2. 你在本机浏览器打开 url → 点页面目标 → DevTools 设备工具栏开 screencast → **在投屏里亲手登录**（登录态直接落远端 Chrome 持久 profile，零 cookie 同步）；
+3. agent 轮询 `login_bridge({action:"status"})`：`cookieDelta`（按域新增非噪声 cookie——启发式事实，agent 结合目标站登录标志终判）非零即登录落位；
+4. 续跑：`LASSO_CDP_PORT=<返回的 cdpPort>`（热生效）→ `browse_logged_in` attach 同一 Chrome；
+5. 收尾：`login_bridge({action:"stop"})`（relay 关，Chrome 留守台账回收）；`stop wipe:true` 连登录资产一并清。
+
+**投屏内不可用**：中文输入法（ASCII 手输）、本机密码管理器、剪贴板/文件框。**Google 系登录对 headless 不稳**（云 IP 信誉风险自担；Xvfb+headed 变体未内置）。
+
+**排障**：
+- `start` 报 `login_bridge_host_not_found`：三序解析（env `LASSO_LOGIN_BRIDGE_HOST` → `tailscale ip -4` → 首个私网 IPv4）全 miss——显式设 env。
+- `login_relay_port_in_use`：9226 被占——`LASSO_LOGIN_BRIDGE_PORT` 换口。
+- `login_chrome_not_found`：机器无 Chrome/Chromium——装之，或先跑任一 `browse_headless` 调用（puppeteer 缓存落盘后可复用）。
+- Mac 打开 url 白屏/握手 403：确认用的是 **IP 字面量**（`http://100.x.y.z:port`）而非 MagicDNS 主机名（Chrome Host 校验拒域名）；DevTools 需手动开 screencast（无 URL 参数自动开）。
+- 端口连通但页面列表空：Chrome 未就绪——`status` 看 `chromeHealthy`。
+- server 崩溃后登录档 Chrome 滞留：`doctor` #43 可见；`lasso-mcp chrome-stop --modes login` 显式收（下次 server 启动 reaper 也会按 idle 收）。
+
+**安全两行**：relay 无鉴权——绑定接口内任意进程可全控该 Chrome（建议 Tailscale ACL；`0.0.0.0` 仅 env 显式自担）；登录 cookie 明文落盘于 Linux profile（无 keyring；`stop wipe:true` 关闭即删）。
