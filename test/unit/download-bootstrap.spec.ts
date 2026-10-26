@@ -6,6 +6,9 @@
  * 缺失则 skip（describeOrSkip 先例）。
  */
 import { describe, it, expect } from "vitest";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileP = promisify(execFile);
 import { promises as fsp } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -93,6 +96,17 @@ describe("probeVersion 记忆化", () => {
         { mode: 0o755 },
       );
       const env = { LASSO_YTDLP_PATH: bin, PATH: "/nonexistent" };
+      // 机器病理预热（2026-10-27 实测发现）：本机 syspolicyd（Gatekeeper 行为
+      // 评估）劣化时，**每个新文件的首次 exec** 付 ~4.5s 零 CPU 等待（按文件
+      // 缓存；shell 直执同状、二次 7ms）——探针 5s timeout 与之刀锋竞速致
+      // 确定性假红。预热一次吸收评估延迟后清零计数，被测语义（缓存去重）不变。
+      await new Promise<void>((resolve) => {
+        execFileP(bin, ["--warmup"], { timeout: 30_000 }).then(
+          () => resolve(),
+          () => resolve(),
+        );
+      });
+      await fsp.writeFile(counter, "0");
       // 并发形态（审查 B2-🔵5）：Promise 缓存的存在理由 = 并发首探共享同一
       // in-flight promise（cache stampede 去重）——顺序形态测不出该语义
       const [r1, r2] = await Promise.all([detectYtDlp(env), detectYtDlp(env)]);
