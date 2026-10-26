@@ -439,12 +439,20 @@ async function runMcpServer(): Promise<void> {
   // 消费）经 checkDownloadEngines 内 detect*(mergedEnv()) 覆盖。INV-91 精神：
   // 不同步 = config-file 死键。
   const downloadChainFileEnv = loadConfigFileEnv(process.env);
+  // 2026-10-27 执法闭环批增补（白名单诚实化前置）：LASSO_ALLOW_CLOUD_BROWSER
+  // （策略门 INV-25——index.ts readCloudBrowserEnv 与 doctor 兜底双面死键，
+  // 第 5 例）与 LASSO_VLM_ENDPOINT（desktopVlmEndpoint plumb 无赋值点 +
+  // ScreenshotVlmProvider 常量间接读，第 6 例）。密钥类键（如
+  // LASSO_COOKIE_PASSPHRASE）**禁入抬升清单**——passphrase 进 process.env 会
+  // 泄漏进全部子进程（SubprocessManager 整拷 env）；密钥走消费点 mergedEnv。
   for (const key of [
     "LASSO_YTDLP_PATH",
     "LASSO_BIN_DIR",
     "LASSO_PROXY",
     "LASSO_DOWNLOADS_PATH",
     "LASSO_DOWNLOAD_DIR_ALLOWLIST",
+    "LASSO_ALLOW_CLOUD_BROWSER",
+    "LASSO_VLM_ENDPOINT",
   ] as const) {
     if (downloadChainFileEnv[key] && !process.env[key]) {
       process.env[key] = downloadChainFileEnv[key];

@@ -19,6 +19,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
 import * as os from "node:os";
+import { mergedEnv } from "../config/config.js";
 
 const execFileP = promisify(execFile);
 
@@ -115,7 +116,10 @@ async function fetchFromDarwinKeychain(): Promise<string> {
 }
 
 async function fetchFromEnv(): Promise<string> {
-  const env = process.env[ENV_PASSPHRASE];
+  // 2026-10-27 死键第 7 例修复（执法闭环批）：passphrase 经 mergedEnv 消费
+  // （env > config 文件）——**刻意不走 index.ts 抬升清单**：密钥类禁抬升
+  // （抬升 = passphrase 进 process.env → 泄漏进全部子进程 env）。
+  const env = mergedEnv(process.env)[ENV_PASSPHRASE];
   if (!env || env.length < MIN_PASSPHRASE_LEN) {
     throw new Error(
       `master_key_unavailable: configure macOS Keychain (auto) or set ${ENV_PASSPHRASE} (>=${MIN_PASSPHRASE_LEN} chars)`,

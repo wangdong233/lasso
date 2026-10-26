@@ -560,6 +560,9 @@ describe("config parity 白盒锚：下载链键两消费面", () => {
     expect(src).toContain("downloadChainFileEnv");
     expect(src).toContain('"LASSO_YTDLP_PATH"');
     expect(src).toContain('"LASSO_DOWNLOADS_PATH"');
+    // 2026-10-27 执法闭环批：第 5/6 例（ALLOW_CLOUD_BROWSER/VLM_ENDPOINT）入抬升
+    expect(src).toContain('"LASSO_ALLOW_CLOUD_BROWSER"');
+    expect(src).toContain('"LASSO_VLM_ENDPOINT"');
     // env 既有值恒赢守卫形态
     expect(src).toMatch(/downloadChainFileEnv\[key\] && !process\.env\[key\]/);
   });
@@ -569,5 +572,19 @@ describe("config parity 白盒锚：下载链键两消费面", () => {
     expect(src).toContain("await detectAria2(env)");
     expect(src).toContain("await detectYtDlp(env)");
     expect(src).toContain("const env = mergedEnv(process.env)");
+  });
+});
+
+// ============================================================
+// 2026-10-27 执法闭环批：死键第 7/8 例锚
+// ============================================================
+describe("死键第 7/8 例锚：passphrase 消费点 mergedEnv + PROVIDERS_FILE 模板除名", () => {
+  it("keychain fetchFromEnv 经 mergedEnv（密钥类判据：禁抬升——防 env 泄漏进子进程）", () => {
+    const src = readFileSync("src/logged-in/keychain.ts", "utf8");
+    expect(src).toContain("mergedEnv(process.env)[ENV_PASSPHRASE]");
+  });
+
+  it("LASSO_PROVIDERS_FILE 已从 CONFIG_TEMPLATE 除名（env-only by design——index.ts 注释明言运维显式 export）", () => {
+    expect(CONFIG_TEMPLATE).not.toHaveProperty("LASSO_PROVIDERS_FILE");
   });
 });

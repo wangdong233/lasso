@@ -55,3 +55,34 @@ describe("markdown 别名（v1.14.0）", () => {
     expect(src).toMatch(/\.\.\.\(partial\.markdown_engine\s*\?\s*\{\s*markdown:\s*truncatePreviewKeepingRefs\(partial\.preview/);
   });
 });
+
+// ============================================================
+// 2026-10-27 死键第 4 例修复锚：LASSO_SEARCH_FREE_ONLY 的 config.json 路径
+// 此前是死键（v1.14 注释假声称 loadConfig 会合并进 process.env）——经
+// mergedEnv 消费修复；env 恒赢语义保留
+// ============================================================
+describe("resolveFreeOnly — config.json parity（死键第 4 例修复）", () => {
+  it("config 文件设 L2（无 env）→ 生效；env 与文件并存 → env 赢", async () => {
+    const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "lasso-fo-parity-"));
+    const cfg = join(dir, "config.json");
+    writeFileSync(cfg, JSON.stringify({ LASSO_SEARCH_FREE_ONLY: "L2" }));
+    try {
+      delete process.env.LASSO_SEARCH_FREE_ONLY;
+      const prevCfg = process.env.LASSO_CONFIG_PATH;
+      process.env.LASSO_CONFIG_PATH = cfg;
+      const { resolveFreeOnly } = await import("../../src/tools/search.js");
+      expect(resolveFreeOnly(undefined)).toBe("L2"); // config 文件路径生效
+      process.env.LASSO_SEARCH_FREE_ONLY = "L3";
+      expect(resolveFreeOnly(undefined)).toBe("L3"); // env 恒赢
+      delete process.env.LASSO_SEARCH_FREE_ONLY;
+      if (prevCfg === undefined) delete process.env.LASSO_CONFIG_PATH;
+      else process.env.LASSO_CONFIG_PATH = prevCfg;
+    } finally {
+      delete process.env.LASSO_SEARCH_FREE_ONLY;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

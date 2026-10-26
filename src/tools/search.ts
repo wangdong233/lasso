@@ -59,6 +59,8 @@ import type { BraveChannel } from "../channels/BraveChannel.js";
 //            → channelOrder 不含 search.machine_mcp（零回归 byte-identical）
 import type { MachineMcpSearchChannel } from "../channels/MachineMcpSearchChannel.js";
 import type { ProviderRegistry } from "../config/provider-registry.js";
+// 2026-10-27 死键第 4 例修复：freeOnly 经 mergedEnv（env > config 文件）
+import { mergedEnv } from "../config/config.js";
 import type { FallbackDecider } from "../fallback/FallbackDecider.js";
 import type { ChannelExecutor } from "../fallback/FallbackDecider.js";
 import type { BrowseExec } from "../serp/extract.js";
@@ -150,15 +152,18 @@ export const searchSchema = {
  * @param recordingStore      v0.9 可选：RecordingStore（全源熔断时 replay 最后兜底）
  */
 /**
- * F-1（v1.14.0 收尾）：free_only 最终生效值——args 显式传参 > LASSO_SEARCH_FREE_ONLY env
- * （loadConfig 启动期已把 config 文件合并进 process.env，故 config 文件同路径生效）>
- * undefined（缺省 L4 全允许，由下游 `freeOnly ?? "L4"` 兜底）。导出供单测。
+ * F-1（v1.14.0 收尾；2026-10-27 执法闭环批订正）：free_only 最终生效值——args 显式
+ * 传参 > LASSO_SEARCH_FREE_ONLY（**经 mergedEnv 消费**：env > config.json 文件，
+ * 单一合并真源；v1.14 注释曾声称「loadConfig 启动期已把 config 合并进
+ * process.env」——该机制不存在（零双向写设计），config 文件路径此前是死键，
+ * 死键类第 4 例，本批修复）> undefined（缺省 L4 全允许，由下游 `freeOnly ?? "L4"`
+ * 兜底）。导出供单测。
  */
 export function resolveFreeOnly(
   argFreeOnly: FreeTierLevel | undefined,
 ): FreeTierLevel | undefined {
   if (argFreeOnly) return argFreeOnly;
-  const env = process.env.LASSO_SEARCH_FREE_ONLY;
+  const env = mergedEnv(process.env).LASSO_SEARCH_FREE_ONLY;
   return env === "L1" || env === "L2" || env === "L3" || env === "L4"
     ? env
     : undefined;

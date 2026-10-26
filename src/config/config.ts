@@ -404,7 +404,9 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   LASSO_VLM_ENDPOINT: "",
   LASSO_RECORD_SEARCH: false,
   LASSO_CALLER_CAP_DEFAULT: 100,
-  LASSO_PROVIDERS_FILE: "",
+  // 2026-10-27 执法闭环批：LASSO_PROVIDERS_FILE 模板除名——index.ts:1497-1499
+  // 注释明言「仅当运维显式 export」（SIGHUP 热更新装载器），env-only by design；
+  // 在册模板 = 毒面（config 文件路径本就无消费）。死键类第 8 例（模板侧）。
   LASSO_HEADLESS_IDLE_MS: 300000,
   // BUG-08 决议 A-2（doc/bugs/08，2026-09-15）：单次 evaluate 的 MCP 调用超时
   // （缺省 120s = DEFAULT_EVAL_CALL_TIMEOUT_MS；NaN/负回默认）。config 文件值经
