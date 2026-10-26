@@ -66,6 +66,10 @@ import { hideChromeByPidAsync, type ChromeHideResult } from "./chrome-hide.js";
 import { addDesiredHidden } from "./desired-hide-state.js";
 import { ensureHideEnforcerRunning } from "./desired-hide-enforcer.js";
 import { touchChromePort } from "./chrome-touch.js";
+// R1（2026-10-26 需求单，提案 v2）：locale → profile Preferences 写入器
+// （Chrome 155 起 intl 两键优先级高于一切命令行开关——同目录共享模块，
+// INV-64 圈内 node:* + 同目录 import）
+import { localePrefValues, writeProfileLocalePrefs } from "./chrome-profile-prefs.js";
 
 // ============================================================
 // 类型
@@ -177,6 +181,17 @@ export interface LaunchChromeOptions {
   aliveFn?: (pid: number) => boolean;
   /** A2 测试注入：ps cmdline（归属验证；默认 spawnSync ps）。 */
   psFn?: (pid: number) => string;
+  /**
+   * R1（2026-10-26 需求单）：locale tag（如 zh-CN）。合法时两动作——
+   *  1. profile Preferences 写入 intl.accept_languages/selected_languages
+   *     （Chrome 155 起优先级高于 --lang；写入点在 spawn 前=结构执法；
+   *     台账守卫：同 profileDir 活记录在案则跳过——写入也会被在跑 Chrome
+   *     退出 flush 覆盖）
+   *  2. args 追加 `--lang=<tag>`（UI/Intl 缺省 locale 双保险）
+   * best-effort 非门禁：非法 tag / profile 忙 / 写失败 → 结构化日志后继续
+   * 启动（locale 缺位可见于日志，不阻断）。
+   */
+  locale?: string;
   /** 结构化日志注入（默认 stderr 单行 JSON；index.ts 侧可用 logger 包）。 */
   logFn?: LedgerLogFn;
 }
@@ -576,12 +591,61 @@ export async function launchChrome(
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
   }
+  // R1：locale 合法 → --lang 双保险（UI/Intl 缺省 locale；dedupeArgs 兜底去重）。
+  // 非法 tag 不加（写 prefs 处打 invalid_tag 日志——localePrefValues 单点判定）。
+  const localePrefs =
+    opts.locale !== undefined ? localePrefValues(opts.locale) : null;
+  if (localePrefs) {
+    args.push(`--lang=${localePrefs.selectedLanguages}`);
+  }
   const finalArgs = dedupeArgs(args);
   // 隔离 profile 目录 best-effort 创建（不存在时 Chrome 会自建，失败不阻断）
   try {
     await fs.mkdir(profileDir, { recursive: true });
   } catch {
     /* best-effort */
+  }
+
+  // R1：locale → profile Preferences 写入（结构执法：嵌于 spawn 路径，调用方
+  // 无绕过面）。best-effort 非门禁——三条降级路径全部结构化日志后放行：
+  //  - 非法 tag（如 zh_CN 下划线误配形态）→ failed{reason:invalid_tag}
+  //  - 台账守卫命中（同 profileDir 且 pid 活 = profile 正被在跑 Chrome 持有，
+  //    典型场景=本文件 port_in_use 错误文案建议的「换口重试」）→
+  //    skipped_profile_busy（写入也会被在跑 Chrome 退出 flush 覆盖，跳过）
+  //  - 写失败（不可解析/IO 错）→ failed{reason:error}
+  if (opts.locale !== undefined) {
+    if (localePrefs === null) {
+      log({
+        evt: "chrome_locale_prefs_failed",
+        reason: "invalid_tag",
+        locale: opts.locale,
+        port,
+      });
+    } else {
+      const localeAliveFn =
+        opts.aliveFn ??
+        ((pid: number) => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      const profileBusy = readLedgerSync().some(
+        (r) => r.profileDir === profileDir && localeAliveFn(r.pid),
+      );
+      if (profileBusy) {
+        log({ evt: "chrome_locale_prefs_skipped_profile_busy", port, profileDir });
+      } else {
+        const w = writeProfileLocalePrefs(profileDir, localePrefs);
+        if (w.ok) {
+          log({ evt: "chrome_locale_prefs_written", port, profileDir });
+        } else {
+          log({ evt: "chrome_locale_prefs_failed", reason: w.error, port, profileDir });
+        }
+      }
+    }
   }
 
   // 5. 单次 spawn + CDP 探活 attempt（v1.10 抽出为本地闭包以支撑 hidden 档 fallback 链）
@@ -840,6 +904,16 @@ export interface LaunchChromeCliDefaults {
   tcpProbeFn?: (port: number) => Promise<boolean>;
   helpText?: string;
   spawnFn?: LaunchChromeOptions["spawnFn"];
+  /**
+   * R1（2026-10-26 需求单）：locale / 附加 args 的 config 层默认
+   * （env LASSO_LAUNCH_LOCALE / LASSO_LAUNCH_EXTRA_ARGS——index.ts 装配层
+   * 经 mergedEnv 读入后传入）。合并语义（提案 v2 单一陈述）：
+   *  - locale：argv-wins（单值字段）
+   *  - extraArgs：并集（config 层与 CLI 层是叠加面；同 flag 去重交由
+   *    launchChrome 的 dedupeArgs）
+   */
+  locale?: string;
+  extraArgs?: string[];
 }
 
 export async function runLaunchChromeCli(
@@ -881,7 +955,25 @@ export function mergeLaunchDefaults(
   }
   // #5（v1.18.7）：测试注入 spawnFn 透传（生产不传；spec 断言 --help 短路不 spawn 用）
   if (!opts.spawnFn && defaults?.spawnFn) opts.spawnFn = defaults.spawnFn;
+  // R1（2026-10-26 需求单）：locale argv-wins；extraArgs 并集（叠加面语义）
+  if (!opts.locale && defaults?.locale) opts.locale = defaults.locale;
+  if (defaults?.extraArgs && defaults.extraArgs.length > 0) {
+    opts.extraArgs = [...(opts.extraArgs ?? []), ...defaults.extraArgs];
+  }
   return opts;
+}
+
+/**
+ * R1：config/env 层 `LASSO_LAUNCH_EXTRA_ARGS` 值的拆分——**空白符**（shell 形态）。
+ *
+ * 刻意不同于 CLI `--extra-args` 的逗号拆分（提案 v2 审查 B-F1/C-1 双确认）：
+ * 需求方参数集第一项 `--window-size=1920,1080` 自身含逗号——逗号拆分会产出
+ * 残缺 flag + 裸位置参数（被 Chrome 当 URL 打开）。CLI 语义向后兼容不动；
+ * config 层用空白拆分，逗号值天然保真。
+ */
+export function parseExtraArgsEnvValue(v: string | undefined): string[] {
+  if (!v) return [];
+  return v.split(/\s+/).filter(Boolean);
 }
 
 /**
@@ -932,6 +1024,10 @@ export function parseLaunchChromeArgs(
       opts.hardCapExempt = true;
     } else if (a === "--incognito") {
       extra.push("--incognito");
+    } else if (a === "--locale") {
+      // R1：locale tag（合法性由 localePrefValues 单点判定——非法 → 日志放行）
+      opts.locale = argv[i + 1];
+      i++;
     } else if (a === "--extra-args") {
       const v = argv[i + 1] ?? "";
       for (const piece of v.split(",").map((s) => s.trim()).filter(Boolean)) {

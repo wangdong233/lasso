@@ -14,10 +14,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs, mkdtempSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { loadConfig } from "../../src/config/config.js";
+import { loadConfig, loadConfigFileEnv } from "../../src/config/config.js";
 import {
   parseLaunchChromeArgs,
   mergeLaunchDefaults,
+  parseExtraArgsEnvValue,
 } from "../../src/launcher/launch-chrome.js";
 
 let dir: string;
@@ -75,5 +76,43 @@ describe("launch-chrome config 层叠（argv > env > config.json > 内置默认�
     });
     expect(cfg.launchMode).toBe("hidden"); // env 赢
     expect(cfg.launchIdleMs).toBe(300_000); // 5min 保留语义路径
+  });
+
+  // R1（2026-10-26 需求单，提案 v2）：locale / EXTRA_ARGS 的 config 层默认。
+  // index.ts 装配路径同款组合：loadConfigFileEnv（file 层）→ mergedEnv 同式合并
+  // → parseExtraArgsEnvValue（空白拆分）→ defaults → argv merge。
+  it("28c. config.json LASSO_LAUNCH_LOCALE/EXTRA_ARGS → defaults 生效；argv --locale 覆盖；window-size 逗号参数保真", () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({
+        LASSO_LAUNCH_LOCALE: "zh-CN",
+        // 需求方参数集验收锚（审查 B-F1/C-1）：window-size 含逗号——空白拆分保真
+        LASSO_LAUNCH_EXTRA_ARGS: "--window-size=1920,1080 --proxy-server=127.0.0.1:7897",
+      }),
+    );
+    const envSource = { LASSO_CONFIG_PATH: configFile } as NodeJS.ProcessEnv;
+    // mergedEnv 同式：{...loadConfigFileEnv(env), ...env}
+    const merged = { ...loadConfigFileEnv(envSource), ...envSource };
+    const extraArgsDefault = parseExtraArgsEnvValue(merged.LASSO_LAUNCH_EXTRA_ARGS);
+    expect(extraArgsDefault).toEqual([
+      "--window-size=1920,1080",
+      "--proxy-server=127.0.0.1:7897",
+    ]);
+
+    // CLI 无 flag → 文件层默认透传（locale argv-wins；extraArgs 叠加面）
+    const noFlag = mergeLaunchDefaults(parseLaunchChromeArgs([]), {
+      locale: merged.LASSO_LAUNCH_LOCALE,
+      extraArgs: extraArgsDefault,
+    });
+    expect(noFlag.locale).toBe("zh-CN");
+    expect(noFlag.extraArgs).toEqual(extraArgsDefault);
+
+    // argv --locale ja-JP → 覆盖文件层（单值字段 argv-wins）；extraArgs 不受影响
+    const withFlag = mergeLaunchDefaults(
+      parseLaunchChromeArgs(["--locale", "ja-JP"]),
+      { locale: merged.LASSO_LAUNCH_LOCALE, extraArgs: extraArgsDefault },
+    );
+    expect(withFlag.locale).toBe("ja-JP");
+    expect(withFlag.extraArgs).toEqual(extraArgsDefault);
   });
 });

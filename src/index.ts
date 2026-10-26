@@ -180,7 +180,7 @@ import { ProfileRegistry } from "./logged-in/ProfileRegistry.js";
 import { CookieStore } from "./logged-in/CookieStore.js";
 // v1.0 Phase C/D（parse11 §3.2 + §3.3 + §7.2）：launcher + replay-baseline 子命令
 // INV-64 守：launcher/*.ts 不引新 npm dep（仅 node:* 内置）；index.ts 仅 import 子命令入口
-import { runLaunchChromeCli, tcpConnectable } from "./launcher/launch-chrome.js";
+import { runLaunchChromeCli, tcpConnectable, parseExtraArgsEnvValue } from "./launcher/launch-chrome.js";
 import { runChromeHideShowCli } from "./launcher/chrome-hideshow-cli.js";
 // bug02：hide-enforcer 独立执守进程 CLI 主体（hide 成功/hidden 出生自动拉起）
 // 注：此处不带版本号字面量——inv-selftest INV-63 样本对 index.ts 首个 "x.y.z"
@@ -1634,6 +1634,14 @@ const CLI_USAGE = [
   "  lasso-mcp launch-chrome [--port N] [--profile <dir>]",
   "                                               [--mode hidden|visible|headless]",
   "                                               [--idle-ms N] [--no-hard-cap]",
+  "                                               [--locale <tag>]",
+  "                                               (R1: writes profile Preferences intl",
+  "                                               accept/selected languages + --lang;",
+  "                                               takes effect on cold start — stop any",
+  "                                               running instance first; persists via",
+  "                                               config LASSO_LAUNCH_LOCALE /",
+  "                                               LASSO_LAUNCH_EXTRA_ARGS keys — see",
+  "                                               doc/usage/01-KEY-GUIDE.md)",
   "                                               (headless: unattended-only;",
   "                                               still absorbs Dock activation on macOS;",
   "                                               no chrome-show login flow)",
@@ -1757,14 +1765,21 @@ async function main(): Promise<void> {
   // 收」；收割宿主 = hide-enforcer 执守第二职责（server 不在也活着）。
   if (process.argv[2] === "launch-chrome") {
     const cliCfg = loadConfig({ runId: "launch-chrome-cli" });
-    const rawIdle = mergedEnv().LASSO_LAUNCH_IDLE_MS;
+    const launchEnv = mergedEnv();
+    const rawIdle = launchEnv.LASSO_LAUNCH_IDLE_MS;
     const idleDefault =
       rawIdle !== undefined && String(rawIdle).trim() !== ""
         ? cliCfg.launchIdleMs
         : CLI_LAUNCH_IDLE_DEFAULT_MS;
+    // R1（2026-10-26 需求单）：locale / 附加 args 的 config 层默认（file→env 合并）。
+    // EXTRA_ARGS 空白拆分（parseExtraArgsEnvValue 单点——window-size 类含逗号参数
+    // 保真；CLI --extra-args 的逗号语义仅 CLI 层，向后兼容不动）。
+    const launchExtraArgs = parseExtraArgsEnvValue(launchEnv.LASSO_LAUNCH_EXTRA_ARGS);
     await runLaunchChromeCli(process.argv.slice(3), {
       launchMode: cliCfg.launchMode,
       idleMs: idleDefault,
+      ...(launchEnv.LASSO_LAUNCH_LOCALE ? { locale: launchEnv.LASSO_LAUNCH_LOCALE } : {}),
+      ...(launchExtraArgs.length > 0 ? { extraArgs: launchExtraArgs } : {}),
       // P3（v1.17.3）：CLI 装配层注入真实 TCP 探测（核心缺省关闭保测试语义）
       tcpProbeFn: tcpConnectable,
       // #5（v1.18.7 审查 P2 修复）：--help/-h 时打印的 usage 单一真源（CLI_USAGE

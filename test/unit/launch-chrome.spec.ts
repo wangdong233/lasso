@@ -24,11 +24,13 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import * as path from "node:path";
 import * as os from "node:os";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { recordLaunch } from "../../src/launcher/chrome-ledger.js";
 import {
   launchChrome,
   parseLaunchChromeArgs,
   mergeLaunchDefaults,
+  parseExtraArgsEnvValue,
   runLaunchChromeCli,
   fileUrlToPathSafe,
 } from "../../src/launcher/launch-chrome.js";
@@ -988,7 +990,8 @@ describe("bug02 · hidden 档出生写粘滞账 + 自 touch + 执守启动（v1.
   it("B7. 白盒：index.ts CLI 显式拉起默认 idle=30min 单一真源（BUG-03 A1；显式配置仍优先）", () => {
     const src = readFileSync("src/index.ts", "utf8");
     // mergedEnv 读原始 key：显式配置（env/config.json）存在才透传 cliCfg.launchIdleMs
-    expect(src).toMatch(/const rawIdle = mergedEnv\(\)\.LASSO_LAUNCH_IDLE_MS;/);
+    //（R1 起 launchEnv = mergedEnv() 单调用复用——rawIdle 从其取，语义不变）
+    expect(src).toMatch(/const launchEnv = mergedEnv\(\);\n\s*const rawIdle = launchEnv\.LASSO_LAUNCH_IDLE_MS;/);
     expect(src).toMatch(/\? cliCfg\.launchIdleMs\n\s*: CLI_LAUNCH_IDLE_DEFAULT_MS;/);
   });
 });
@@ -1203,5 +1206,178 @@ describe("fileUrlToPathSafe —— import.meta.url → file path", () => {
   it("非法 URL → 返原字符串（不抛错）", () => {
     const p = fileUrlToPathSafe("not-a-url");
     expect(p).toBe("not-a-url");
+  });
+});
+
+// ============================================================
+// R1（2026-10-26 需求单，doc/提案-需求单R1-R4裁定与R1实施 v2 Task 2）
+// locale 配置化：--locale / prefs 写入 / 台账守卫 / best-effort 语义
+// ============================================================
+describe("R1 · launchChrome locale（提案 v2）", () => {
+  it("--locale zh-CN → spawn args 含 --lang=zh-CN + Preferences 写入 intl 两键", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "lasso-r1-locale-"));
+    try {
+      const events: Array<Record<string, unknown>> = [];
+      const result = await launchChrome({
+        platform: "mac",
+        profileDir,
+        locale: "zh-CN",
+        probeExists: makeMockProbe(existing),
+        spawnFn: mockSpawn.spawnFn,
+        logFn: (p) => events.push(p),
+        ...FAST_PROBE,
+        ...makeMockFetchSafe(),
+      });
+      expect(result.ok).toBe(true);
+      expect(mockSpawn.calls[0].args).toContain("--lang=zh-CN");
+      const prefs = JSON.parse(
+        readFileSync(path.join(profileDir, "Default", "Preferences"), "utf8"),
+      );
+      expect(prefs.intl.accept_languages).toBe("zh-CN,zh;q=0.9");
+      expect(prefs.intl.selected_languages).toBe("zh-CN");
+      expect(events.some((e) => e.evt === "chrome_locale_prefs_written")).toBe(true);
+    } finally {
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  it("--locale zh-cn → 大小写规范化为 zh-CN（args 与写入值）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "lasso-r1-norm-"));
+    try {
+      await launchChrome({
+        platform: "mac",
+        profileDir,
+        locale: "zh-cn",
+        probeExists: makeMockProbe(existing),
+        spawnFn: mockSpawn.spawnFn,
+        ...FAST_PROBE,
+        ...makeMockFetchSafe(),
+      });
+      expect(mockSpawn.calls[0].args).toContain("--lang=zh-CN");
+      const prefs = JSON.parse(
+        readFileSync(path.join(profileDir, "Default", "Preferences"), "utf8"),
+      );
+      expect(prefs.intl.selected_languages).toBe("zh-CN");
+    } finally {
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  it("台账守卫：同 profileDir 且 pid 活的记录在案 → 零写入 + skipped_profile_busy 日志", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "lasso-r1-busy-"));
+    try {
+      // 预置台账：同 profileDir、pid 55501（aliveFn 注入恒活——生产为 process.kill 探活）
+      await recordLaunch({
+        port: 9777,
+        pid: 55501,
+        profileDir,
+        launchedAt: Date.now(),
+        status: "ready",
+        launchMode: "hidden",
+      });
+      const events: Array<Record<string, unknown>> = [];
+      await launchChrome({
+        platform: "mac",
+        profileDir,
+        locale: "zh-CN",
+        aliveFn: () => true,
+        probeExists: makeMockProbe(existing),
+        spawnFn: mockSpawn.spawnFn,
+        logFn: (p) => events.push(p),
+        ...FAST_PROBE,
+        ...makeMockFetchSafe(),
+      });
+      expect(existsSync(path.join(profileDir, "Default", "Preferences"))).toBe(false);
+      expect(
+        events.some((e) => e.evt === "chrome_locale_prefs_skipped_profile_busy"),
+      ).toBe(true);
+    } finally {
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  it("无 locale → 零 prefs 写入 + args 无 --lang（缺省路径零写入零变更锚）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "lasso-r1-none-"));
+    try {
+      await launchChrome({
+        platform: "mac",
+        profileDir,
+        probeExists: makeMockProbe(existing),
+        spawnFn: mockSpawn.spawnFn,
+        ...FAST_PROBE,
+        ...makeMockFetchSafe(),
+      });
+      expect(existsSync(path.join(profileDir, "Default", "Preferences"))).toBe(false);
+      expect(mockSpawn.calls[0].args.some((a) => a.startsWith("--lang="))).toBe(false);
+    } finally {
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  it("非法 locale（zh_CN 下划线形态）→ failed{reason:invalid_tag} + 无 --lang + 启动仍 ok（best-effort 非门禁）", async () => {
+    const mockSpawn = makeMockSpawn();
+    const existing = new Set([MACOS_CHROME_CANDIDATES[0].path]);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "lasso-r1-badtag-"));
+    try {
+      const events: Array<Record<string, unknown>> = [];
+      const result = await launchChrome({
+        platform: "mac",
+        profileDir,
+        locale: "zh_CN",
+        probeExists: makeMockProbe(existing),
+        spawnFn: mockSpawn.spawnFn,
+        logFn: (p) => events.push(p),
+        ...FAST_PROBE,
+        ...makeMockFetchSafe(),
+      });
+      expect(result.ok).toBe(true);
+      expect(mockSpawn.calls[0].args.some((a) => a.startsWith("--lang="))).toBe(false);
+      expect(existsSync(path.join(profileDir, "Default", "Preferences"))).toBe(false);
+      const failed = events.find((e) => e.evt === "chrome_locale_prefs_failed");
+      expect(failed?.reason).toContain("invalid_tag");
+    } finally {
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  it("--locale 解析：parseLaunchChromeArgs --locale <tag> → opts.locale", () => {
+    expect(parseLaunchChromeArgs(["--locale", "zh-CN"]).locale).toBe("zh-CN");
+    expect(parseLaunchChromeArgs([]).locale).toBeUndefined();
+  });
+
+  it("mergeLaunchDefaults R1 语义：locale = argv-wins；extraArgs = 并集（去重交由 spawn 前 dedupeArgs）", () => {
+    // locale 单值字段：argv 赢
+    expect(mergeLaunchDefaults({ locale: "zh-CN" }, { locale: "ja-JP" }).locale).toBe("zh-CN");
+    // locale 缺省：继承 defaults
+    expect(mergeLaunchDefaults({}, { locale: "ja-JP" }).locale).toBe("ja-JP");
+    // extraArgs 叠加面：argv + defaults 并集（同 flag 去重在 launchChrome dedupeArgs）
+    const merged = mergeLaunchDefaults(
+      { extraArgs: ["--a=1"] },
+      { extraArgs: ["--b=2", "--a=1"] },
+    );
+    expect(merged.extraArgs).toEqual(["--a=1", "--b=2", "--a=1"]);
+    // defaults extraArgs 缺省：不注入 undefined
+    expect(mergeLaunchDefaults({ extraArgs: ["--a=1"] }, {}).extraArgs).toEqual(["--a=1"]);
+  });
+
+  it("parseExtraArgsEnvValue：空白符拆分（需求方参数集验收锚——逗号参数保真）", () => {
+    // 需求单 R1 当前参数集：window-size 含逗号——空白拆分下完整保留为单 flag
+    expect(
+      parseExtraArgsEnvValue("  --window-size=1920,1080  --proxy-server=127.0.0.1:7897 "),
+    ).toEqual(["--window-size=1920,1080", "--proxy-server=127.0.0.1:7897"]);
+    expect(parseExtraArgsEnvValue("")).toEqual([]);
+    expect(parseExtraArgsEnvValue(undefined)).toEqual([]);
+    // 逗号值不受拆分影响（对照：CLI --extra-args 逗号拆分语义仅 CLI 层）
+    expect(parseExtraArgsEnvValue("--window-size=1920,1080")).toEqual([
+      "--window-size=1920,1080",
+    ]);
   });
 });
