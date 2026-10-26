@@ -189,7 +189,7 @@ import { readLedgerSync } from "../launcher/chrome-ledger.js";
 // v1.31（doc/方案-login_bridge）：#43 login_bridge 的 relay 绑定预览（三源解析）
 import { resolveBridgeHost } from "../login-bridge/host.js";
 
-export const LASSO_VERSION = "1.31.1";
+export const LASSO_VERSION = "1.32.0";
 
 // ============================================================
 // 类型
