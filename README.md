@@ -239,7 +239,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 
 ## 安装
 
-**当前版本 v1.31.1**（更新日志见本节末尾折叠块）。
+**当前版本 v1.32.0**（更新日志见本节末尾折叠块）。
 
 前提：Node.js ≥ 20 + Claude Code（或任何支持 MCP 的客户端）。
 
@@ -270,6 +270,7 @@ claude mcp add lasso -- npx -y lasso-mcp
 <details>
 <summary>📋 更新日志（v1.8 → v1.31.1，点开看每版改了什么）</summary>
 
+- **v1.32.0**（launch-chrome locale 配置化与参数保真·R1）：2026-10-26 需求单（make-money 飞轮，登录态采集五站）四项裁定 + R1 实施——① **locale 配置化**：`lasso launch-chrome --locale zh-CN` 或 config 键 `LASSO_LAUNCH_LOCALE`——launch 前写入托管 profile 的 `Default/Preferences`（`intl.accept_languages`/`selected_languages`，Chrome 155 起优先级高于一切命令行开关——需求方三条命令行路径实测全灭的根因）+ `--lang` 双保险；本机冒烟实测 **Accept-Language 头 `zh-CN,zh;q=0.9` 与 `navigator.language==="zh-CN"` 双口径逐字节达标**（Chrome 会把预种值规范化为存储形态 `zh-CN`，网络栈自动派生 `,zh;q=0.9` 回退——与真实中文用户同形态，良性）；② **参数保真**：config 键 `LASSO_LAUNCH_EXTRA_ARGS` 持久化自定义 flags（**空白符拆分**——`--window-size=1920,1080` 类含逗号参数完整保真；与 CLI `--extra-args` 逗号语义并存）；两键**双档生效**（日常档 launch-chrome + 登录档 login_bridge；locale 类跨档语义键不分档——与 idle 分档五键惯例的显式偏离决策，login-flags owner 对照登记）；③ **best-effort 非门禁**：非法 tag（`zh_CN` 下划线误配形态）/ profile 被在跑实例持有（写前台账守卫）/ Preferences 写失败 → 结构化日志放行不阻断；实例复用时打点 `chrome_locale_prefs_skipped_reused`（locale 冷启生效，先 chrome-stop）；原子写（tmp+rename）保护登录态资产；④ 同单 R2（rebrowser 化）/**R3（humanize 行为模拟）维持既有 rejected-by-design 裁定**（R2 重启条件=「CDP patch 后通过 tm 类站点」可复现 L3 实证非厂商自述——需求单证据全为机制存在性证据；R3 双重否决 + 意图伞论证），R4（doctor 指纹体检）暂缓（重启路径在册）——裁定与 5 路隔离审查（正确性/需求覆盖/最简等价解/纪律/简单架构，膨胀系数 1:1）全记录见 `doc/提案-需求单R1-R4裁定与R1实施-2026-10-26.md`；⑤ 新增 `chrome-profile-prefs` 共享模块 + 15 例新测试（覆盖既有 en-US 值=需求方第一真实路径/台账守卫/零变更锚）。
 - **v1.31.1**（依赖清单能力补齐）：README 双语新增**「运行时依赖一览」矩阵**——依赖 × 服务能力 × 必需性 × 满足方式 × 缺失行为七行全表（Node/MCP 客户端/Chrome/aria2c/yt-dlp/lasso-rust-helper/key 类），全部源码级核实：`browse_headless` 免预装浏览器（chrome-devtools-mcp 首跑自动拉 bundled Chromium）；aria2c 缺失时 http 降级 undici/磁力显式 unavailable；yt-dlp lazy 引导下载（SHA256 钉版）；rust-helper 刻意不进 npm 包（单独分发+`LASSO_RUST_HELPER_PATH`）；收尾一句话「零依赖也能跑，按需补装」。`lasso doctor` 一键检查全部在位性。纯文档版（零代码变更，为此单独发版使 npmjs.com 包页同步呈现）。
 
 - **v1.31.0**（login_bridge 登录接力档）：**远端无头浏览器登录接力**——Linux/内网机上跑 lasso 遇登录墙时，`login_bridge({action:"start"})` 返回一条 URL，你在本机浏览器打开、在 DevTools screencast 投屏里亲手登录，登录态直接落在远端 Chrome 的持久 profile（零 cookie 同步），agent 轮询 `status` 看 `cookieDelta`（按域新增非噪声 cookie——启发式事实）即知登录落位，随后 `browse_logged_in` 经 `LASSO_CDP_PORT` attach 同一 Chrome 带登录态续跑；`stop`（可 `wipe:true` 连登录资产一并清）。实现四件：登录档 Chrome（持久 profile+台账第五档 launchMode "login"+单飞锁+收尸委托）/**哑 TCP 转发**（~30 行字节透传，lasso 首个入站监听——只在 start 后存在；F2 对抗定谳：Chrome ws URL 从 Host 头生成，哑透传天然全链自洽，token 中继是结构性矛盾故砍）/绑定地址三序解析（env 显式含 0.0.0.0 自担→tailscale CGNAT→私网兜底）/doctor #43。诚实披露面：投屏内中文输入法与本机密码管理器不可用（手输 ASCII 密码）；Google 系登录对 headless 不稳（云 IP 信誉自担）；relay 无鉴权=绑定接口内任意进程可全控（tailnet 私有性防线，建议 Tailscale ACL）；登录 cookie 明文落盘。配套：fleet 预算帽 62,250→64,500（单主题提帽先例链）、INV-108 posture 红线、46 例新测试、方案与调研文档（doc/方案-login_bridge*/doc/调研-远端无头浏览器登录接力*）。
