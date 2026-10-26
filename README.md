@@ -377,6 +377,8 @@ lasso chrome-hide                    # 3. 登录完转回后台静默（登录�
 
 **要第二个/非默认端口的 Chrome 实例**（比如一个日常 9222、一个专门登录某站 9225）：`lasso launch-chrome --port 9225 --mode visible` 起实例（profile 登录态独立保存）→ 用 `browse_logged_in` 交互时两种方式指向它：①什么都不配——默认 9222 连不上时 lasso 自动发现台账里最新活着的实例（v1.26+）；②钉死更稳：`~/.lasso/config.json` 配 `"LASSO_CDP_PORT": 9225`（或 env）后重启 Claude 会话。**visible 调试用完记得收尾**：`lasso chrome-hide --port 9225` 把窗口收回后台（实例和登录态都保留，永不自动收——`doctor` 的 `chrome_ledger_inventory` 检查会提醒你）。
 
+**给采集/登录实例配 locale 与启动参数（R1，2026-10-26）**：中文平台账号（小红书/B站/知乎/抖音）的登录态采集，浏览器环境必须是 zh-CN——`lasso launch-chrome --locale zh-CN` 或 config 键 `"LASSO_LAUNCH_LOCALE": "zh-CN"`（写入 lasso 托管 profile 的 `Preferences`，Chrome 155 起其优先级高于一切命令行开关）。自定义启动参数（分辨率等）持久化：config 键 `"LASSO_LAUNCH_EXTRA_ARGS": "--window-size=1920,1080"`——**空白符分隔多个参数**（参数自身含逗号如 window-size 不受影响）。两键**双档生效**（日常档 launch-chrome + 登录档 login_bridge）。locale 冷启生效：实例在跑时先 `chrome-stop` 再启动（有日志诚实打点，不静默）；配错 tag（如 `zh_CN` 下划线形态）日志提示后放行。详见 [KEY-GUIDE](./doc/usage/01-KEY-GUIDE.md)。
+
 之后**一行命令**就行——默认零窗口静默档直接继承上次的登录态：
 
 ```bash

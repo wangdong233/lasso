@@ -416,6 +416,12 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // BUG-06 决议 A-1（doc/bugs/06，2026-09-10）：idle=0 语义的 24h 硬顶天花板
   // （0 = 部署级禁用；NaN/负数 parse 回退默认——失效方向偏有顶）
   LASSO_LAUNCH_HARD_CAP_MS: 86400000,
+  // R1（2026-10-26 需求单）：locale / 附加 args——**双档生效**（日常 launch-chrome
+  // CLI + 登录档 login_bridge；locale 类跨档语义键不分档，login-flags owner 对照
+  // 有登记）。LOCALE 写托管 profile 的 Preferences intl 两键（冷启生效）；
+  // EXTRA_ARGS **空白符拆分**（非逗号）——window-size=1920,1080 类含逗号参数保真
+  LASSO_LAUNCH_LOCALE: "",
+  LASSO_LAUNCH_EXTRA_ARGS: "",
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,

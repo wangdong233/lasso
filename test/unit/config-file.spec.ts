@@ -425,6 +425,10 @@ describe("loadConfig — file→env 合并", () => {
     expect(cfg.launchHardCapMs).toBe(0);
     // CONFIG_TEMPLATE 含新键（init 模板补全）
     expect(CONFIG_TEMPLATE.LASSO_LAUNCH_HARD_CAP_MS).toBe(86400000);
+    // R1（2026-10-26 需求单，提案 v2 Task 4）：双档 locale/extraArgs 键入模板
+    //（LASSO_LAUNCH_* 家族既定流程——init 用户可见可配；空串=等价未设）
+    expect(CONFIG_TEMPLATE.LASSO_LAUNCH_LOCALE).toBe("");
+    expect(CONFIG_TEMPLATE.LASSO_LAUNCH_EXTRA_ARGS).toBe("");
   });
 });
 
