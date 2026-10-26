@@ -147,7 +147,7 @@ import { CDP_UPSTREAM_TOOL_NAMES } from "../browse/cdp-actions.js";
 import { AxBackendFactory } from "../desktop/AxBackendFactory.js";
 // v1.3 Phase A：config 文件机制（#35 config_file doctor check）
 // 守 INV-71：doctor.ts 经 config.js 顶级函数读 ~/.lasso/config.json 元数据（不解析业务语义）
-import { getConfigFilePath, loadConfigFileEnv, parseCdpPort } from "../config/config.js";
+import { getConfigFilePath, loadConfigFileEnv, mergedEnv, parseCdpPort } from "../config/config.js";
 // W2（doc/bugs/09）：headed 档生命周期阈值解析（单一真源 config.ts）
 import {
   parseHeadedHardCapMs,
@@ -2474,8 +2474,13 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
  *    「过期」阈值——报事实不报判断）。
  */
 async function checkDownloadEngines(): Promise<DoctorCheck> {
-  const aria2 = await detectAria2();
-  const ytdlp = await detectYtDlp();
+  // 移交1（2026-10-26，config parity）：detect* 经 mergedEnv（chrome-status.ts
+  // parseLaunchHardCapMs(mergedEnv()) 同款 doctor 域消费先例；R-CI-02 单一合并
+  // 真源——禁手搓 {...fileEnv, ...env} 内联）。doctor 与下载引擎链是两个进程/
+  // 两类消费面，此半面独立覆盖（引擎链半面经 index.ts 装配层抬升）。
+  const env = mergedEnv(process.env);
+  const aria2 = await detectAria2(env);
+  const ytdlp = await detectYtDlp(env);
   const parts: string[] = [];
   parts.push(
     aria2.path

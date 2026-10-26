@@ -430,6 +430,27 @@ async function runMcpServer(): Promise<void> {
     process.env.LASSO_EVAL_TIMEOUT_MS = fileOnlyEvalTimeout;
   }
 
+  // 移交1（2026-10-26，config parity）：下载引擎链键的 file-only 值抬升——上方
+  // EVAL_TIMEOUT_MS 单点同步同款形态。这些键的消费方深在引擎链
+  // （startEngineDownload 缺省 env=process.env；store/filename 裸读），且
+  // staging.ts 的 `env === process.env` 恒等分支是承载设计（历史实锤：staging
+  // 与任务表读数漂移 → 搬运扑空——逐消费点换 mergedEnv 会破恒等致 split-brain），
+  // 故在装配层抬升（file→env，env 既有值恒赢，零双向写）。doctor 半面（独立
+  // 消费）经 checkDownloadEngines 内 detect*(mergedEnv()) 覆盖。INV-91 精神：
+  // 不同步 = config-file 死键。
+  const downloadChainFileEnv = loadConfigFileEnv(process.env);
+  for (const key of [
+    "LASSO_YTDLP_PATH",
+    "LASSO_BIN_DIR",
+    "LASSO_PROXY",
+    "LASSO_DOWNLOADS_PATH",
+    "LASSO_DOWNLOAD_DIR_ALLOWLIST",
+  ] as const) {
+    if (downloadChainFileEnv[key] && !process.env[key]) {
+      process.env[key] = downloadChainFileEnv[key];
+    }
+  }
+
   // 让 state-store 知道 run_id + cache_dir（channel 写盘时用）
   setStateStoreContext({ runId, cacheDir: config.cacheDir });
 

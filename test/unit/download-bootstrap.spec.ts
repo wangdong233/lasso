@@ -18,6 +18,10 @@ import {
   YT_DLP_MACOS_PINNED_TAG,
 } from "../../src/download/engines/bootstrap.js";
 import { resolveExecutable } from "../../src/download/engines/spawn.js";
+import { mergedEnv } from "../../src/config/config.js";
+import { promises as fspNs } from "node:fs";
+import * as osNs from "node:os";
+import * as pathNs from "node:path";
 import { existsSync } from "node:fs";
 
 describe("resolveExecutable", () => {
@@ -99,6 +103,36 @@ describe("probeVersion 记忆化", () => {
       expect((await fsp.readFile(counter, "utf8")).trim()).toBe("1");
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ============================================================
+// 移交1（2026-10-26，config parity）：config.json 键 → mergedEnv → detect*
+// 组合断言（FT-DEF-1 双层先例的 unit 层；引擎链半面经 index.ts 抬升另锚）
+// ============================================================
+describe("config parity：config.json 下载链键经 mergedEnv 可见", () => {
+  it("file LASSO_YTDLP_PATH → detectYtDlp(mergedEnv) source=env（env 显式意志归因）", async () => {
+    // 唯一假路径：probeVersion 按 bin 路径缓存（含失败 null）——跨用例不串
+    const fakeBin = pathNs.join(
+      osNs.tmpdir(),
+      `lasso-parity-fake-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const cfgDir = await fspNs.mkdtemp(pathNs.join(osNs.tmpdir(), "lasso-parity-cfg-"));
+    const cfgFile = pathNs.join(cfgDir, "config.json");
+    await fspNs.writeFile(cfgFile, JSON.stringify({ LASSO_YTDLP_PATH: fakeBin }));
+    try {
+      const envSource = { LASSO_CONFIG_PATH: cfgFile } as NodeJS.ProcessEnv;
+      const merged = mergedEnv(envSource);
+      expect(merged.LASSO_YTDLP_PATH).toBe(fakeBin); // file 层键可见（FT-DEF-1）
+      const r = await detectYtDlp({ ...merged, PATH: "/nonexistent" });
+      expect(r.source).toBe("env"); // 显式意志归因（直信不验 X_OK）
+      expect(r.path).toBe(fakeBin);
+      // env 既有值恒赢（file→env 合并序）
+      const mergedEnvWins = mergedEnv({ LASSO_CONFIG_PATH: cfgFile, LASSO_YTDLP_PATH: "/env/wins" } as NodeJS.ProcessEnv);
+      expect(mergedEnvWins.LASSO_YTDLP_PATH).toBe("/env/wins");
+    } finally {
+      await fspNs.rm(cfgDir, { recursive: true, force: true });
     }
   });
 });

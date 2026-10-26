@@ -31,6 +31,7 @@ import {
   mkdtempSync,
   writeFileSync,
   existsSync,
+  readFileSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -542,5 +543,28 @@ describe("LASSO_EVAL_TIMEOUT_MS — evaluate 单调用预算键（BUG-08 A-2）"
     expect(parseEvalTimeoutMs("300000")).toBe(300_000);
     expect(parseEvalTimeoutMs("not-a-number")).toBe(120_000);
     expect(parseEvalTimeoutMs("-1")).toBe(120_000);
+  });
+});
+
+// ============================================================
+// 移交1（2026-10-26，config parity）：下载链键消费锚——引擎链半面经
+// index.ts 装配层抬升（EVAL_TIMEOUT_MS 先例形态）；doctor 半面经
+// checkDownloadEngines 内 mergedEnv 消费（chrome-status 同款先例）
+// ============================================================
+describe("config parity 白盒锚：下载链键两消费面", () => {
+  it("index.ts 抬升段在位（file-only 键 → process.env，env 恒赢；staging 恒等分支不受扰）", () => {
+    const src = readFileSync("src/index.ts", "utf8");
+    expect(src).toContain("downloadChainFileEnv");
+    expect(src).toContain('"LASSO_YTDLP_PATH"');
+    expect(src).toContain('"LASSO_DOWNLOADS_PATH"');
+    // env 既有值恒赢守卫形态
+    expect(src).toMatch(/downloadChainFileEnv\[key\] && !process\.env\[key\]/);
+  });
+
+  it("doctor.ts checkDownloadEngines 经 mergedEnv 消费（禁手搓内联——INV-71/R-CI-02）", () => {
+    const src = readFileSync("src/doctor/doctor.ts", "utf8");
+    expect(src).toContain("await detectAria2(env)");
+    expect(src).toContain("await detectYtDlp(env)");
+    expect(src).toContain("const env = mergedEnv(process.env)");
   });
 });
