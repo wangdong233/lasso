@@ -864,7 +864,8 @@ export async function runDoctor(
   //   - yt-dlp 缺 → warn（stream kind 引导提示；首个 download 调用会 lazy bootstrap）
   //   - 双在位 → pass（detail 报版本+来源 PATH/bin-cache）
   //   - **永不 fail**（同 #37/#39 范式：引擎缺失是可引导状态，不是 ready 阻断项）
-  checks.push(checkDownloadEngines());
+  // P31 第二轮（2026-10-26）：checkDownloadEngines async 化（探针异步）——await
+  checks.push(await checkDownloadEngines());
 
   // #41 chrome_ledger_inventory（BUG-14 §6-1）：台账活实例治理清单——visible+
   // idle-0 → warn+chrome-hide 收尾一行（永不 fail/不代动，INV-82 红线）。
@@ -2472,9 +2473,9 @@ function checkCdpMcpNetworkObserverAvailable(): DoctorCheck {
  *    判断发布龄（extractor 周更级腐烂是 yt-dlp 生态特性，doctor 不替用户定
  *    「过期」阈值——报事实不报判断）。
  */
-function checkDownloadEngines(): DoctorCheck {
-  const aria2 = detectAria2();
-  const ytdlp = detectYtDlp();
+async function checkDownloadEngines(): Promise<DoctorCheck> {
+  const aria2 = await detectAria2();
+  const ytdlp = await detectYtDlp();
   const parts: string[] = [];
   parts.push(
     aria2.path

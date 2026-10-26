@@ -13,7 +13,8 @@
  * aria2 引导（conda-forge）：v1 不自动拉——返回结构化手动提示（本机 brew
  * 已在，检测序命中，此路径低优先）。
  */
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -23,6 +24,9 @@ import { resolveExecutable } from "./spawn.js";
 import { resolveYtDlpPath } from "./ytdlp.js";
 import { ytDlpBinDir } from "./bin-dir.js";
 import { makeProxyDispatcher } from "./proxy.js";
+
+/** doctor.ts:181 同款先例（P31 形态：异步 execFile 替代请求路径 spawnSync）。 */
+const execFileP = promisify(execFile);
 
 // ============================================================
 // 检测
@@ -35,52 +39,70 @@ export interface EngineDetectResult {
 }
 
 /**
- * probeVersion 每进程记忆化（2026-10-26 doctor-v10 预存超时根因修复）：
- * 同一 bin 路径的 `--version` 结果缓存（含失败 null——版本探测语义 per-process
- * 稳定）。根因实锤：慢启动二进制（本机 zipapp 病变的 yt-dlp_macos 每次执行
- * ~30s 墙钟、97% 空等子进程）使探针 timeout 5000 每次打满；runDoctor 无网络
- * 路径被钉到 ~5.2s 且零缓存重复重付 → doctor-v10 spec 17 次全量 doctor 逐个
- * 付 5s → 4 用例越 vitest 默认 5s 超时。键 = bin 绝对路径（进程生命周期内版本
- * 不变；Map 尺度 ≤ 遇到的不同二进制数）。
+ * probeVersion 异步化 + Promise 缓存（2026-10-26 两轮收口）：
+ *
+ * 第一轮（81c09dd）：每进程记忆化——doctor-v10 预存超时根因（慢启动二进制
+ * 探针 timeout 5000 每次打满 ×17 次重复重付）。
+ *
+ * 第二轮（本批，P31 类补执法漏点）：spawnSync → 异步 execFile。doctor tool
+ * （tools/doctor-tool.ts）在 **server 进程内**可达本探针——同步形态 = 首探
+ * 最长 5s 冻结整个事件循环（卡死全部并发 MCP 请求/下载泵），与 launch-chrome
+ * P31（osascript 2s → hideChromeByPidAsync）同机制同阻塞面，先例已立法。
+ * 「server 可达路径异步 / CLI 短命路径同步」双轨 = chrome-hide.ts P31 同款。
+ *
+ * 缓存形态 = **Promise 缓存**（并发去重 + 记忆化一体）：同 bin 并发首探共享
+ * 同一 in-flight promise；失败同样缓存（resolve null）。**永不 reject**——
+ * rejection（超时/ENOENT/非零退出）无条件 resolve null 且禁从 error.stdout
+ * 捞版本串（保旧 spawnSync 语义：非零退出 → null，即便 stdout 可解析）——
+ * checkDownloadEngines 是 never-fail 可选能力（#40），探针异常不得上抛丢
+ * 整份 doctor 报告。键 = bin 绝对路径。
+ *
+ * INV-106 红线遵守：不写 stdio 字段（短命探针不在其打击面，写了即 grep 红）。
  */
-const probedVersionCache = new Map<string, string | null>();
+const probedVersionCache = new Map<string, Promise<string | null>>();
 
 /** `--version` 输出首个语义行抽版本号（aria2 本地化输出「aria2 版本 1.37.0」也命中）。 */
-function probeVersion(bin: string): string | null {
-  if (probedVersionCache.has(bin)) {
-    return probedVersionCache.get(bin) ?? null;
-  }
-  let version: string | null = null;
-  try {
-    const r = spawnSync(bin, ["--version"], { timeout: 5000, encoding: "utf8" });
-    if (!r.error && r.status === 0) {
+function probeVersion(bin: string): Promise<string | null> {
+  const cached = probedVersionCache.get(bin);
+  if (cached) return cached;
+  // catch 先于入缓存——缓存的是 always-resolving promise（审查 A2 🟡-1 必守）
+  const p = execFileP(bin, ["--version"], {
+    timeout: 5000,
+    encoding: "utf8",
+    // chrome-hide.ts P31 同款：病态子进程 SIGTERM 可能不 reaping
+    killSignal: "SIGKILL",
+  })
+    .then((r) => {
       const m = /(\d+\.\d+\.\d+)/.exec(r.stdout ?? "");
-      version = m ? m[1] : null;
-    }
-  } catch {
-    /* 失败同样缓存（null） */
-  }
-  probedVersionCache.set(bin, version);
-  return version;
+      return m ? m[1] : null;
+    })
+    .catch(() => null);
+  probedVersionCache.set(bin, p);
+  return p;
 }
 
-/** aria2c：PATH → bin 缓存 `<binDir>/aria2c`。 */
-export function detectAria2(env: NodeJS.ProcessEnv = process.env): EngineDetectResult {
+/** aria2c：PATH → bin 缓存 `<binDir>/aria2c`。（P31 第二轮起 async——探针异步化） */
+export async function detectAria2(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<EngineDetectResult> {
   const fromPath = resolveExecutable("aria2c", env);
   if (fromPath) {
-    return { path: fromPath, version: probeVersion(fromPath), source: "path" };
+    return { path: fromPath, version: await probeVersion(fromPath), source: "path" };
   }
   const cached = path.join(ytDlpBinDir(env), "aria2c");
   try {
     fs.accessSync(cached, fs.constants.X_OK);
-    return { path: cached, version: probeVersion(cached), source: "bin-cache" };
+    return { path: cached, version: await probeVersion(cached), source: "bin-cache" };
   } catch {
     return { path: null, version: null, source: null };
   }
 }
 
-/** yt-dlp：resolveYtDlpPath 三级 + source 归因（env 直信不验 X_OK——用户显式意志）。 */
-export function detectYtDlp(env: NodeJS.ProcessEnv = process.env): EngineDetectResult {
+/** yt-dlp：resolveYtDlpPath 三级 + source 归因（env 直信不验 X_OK——用户显式意志）。
+ * （P31 第二轮起 async——探针异步化） */
+export async function detectYtDlp(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<EngineDetectResult> {
   const p = resolveYtDlpPath(env);
   if (!p) return { path: null, version: null, source: null };
   const source: EngineDetectResult["source"] = (env.LASSO_YTDLP_PATH ?? "").trim()
@@ -88,7 +110,7 @@ export function detectYtDlp(env: NodeJS.ProcessEnv = process.env): EngineDetectR
     : p === path.join(ytDlpBinDir(env), "yt-dlp_macos")
       ? "bin-cache"
       : "path";
-  return { path: p, version: probeVersion(p), source };
+  return { path: p, version: await probeVersion(p), source };
 }
 
 // ============================================================

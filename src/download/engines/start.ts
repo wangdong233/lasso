@@ -92,7 +92,7 @@ export async function startEngineDownload(
   const proxyUsed = resolveProxy(opts.proxy, env);
 
   if (opts.kind === "http" || opts.kind === "torrent") {
-    const aria2 = detectAria2(env);
+    const aria2 = await detectAria2(env);
     if (aria2.path) {
       const plan = planAria2Spawn(
         {
