@@ -91,6 +91,14 @@ export function loginChromeIdleMs(): number {
  *   （调研 §二源码级定谳）。
  * - --password-store=basic：云 Linux 无 keyring 时防密钥库弹窗挂死（N1 披露面：
  *   cookie 落盘为明文，方案 §五-4）。
+ *
+ * R1 键属主对照（2026-10-26 需求单，提案 v2 §2.2 偏离决策登记）：
+ * LASSO_LAUNCH_LOCALE / LASSO_LAUNCH_EXTRA_ARGS **双档（日常+登录）生效**——
+ * locale 类跨档语义键不分档（与 idle 的分档五键惯例有意偏离：idle 各档默认值
+ * 与收割域不同必须分档，locale 无档位默认值差异，分档=同一决策两处，配一漏一
+ * 恰制造档间不一致）。日常档消费点 index.ts launch-chrome CLI；登录档消费点
+ * tools/login-bridge.ts（均经 mergedEnv）。勿按分档惯例加
+ * LASSO_LOGIN_BRIDGE_LOCALE 第二套。
  */
 export const LOGIN_FLAGS: readonly string[] = [
   "--headless=new",

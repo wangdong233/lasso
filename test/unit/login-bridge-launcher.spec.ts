@@ -7,7 +7,7 @@
  * （bug04/15 范式）。
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -215,5 +215,92 @@ describe("chrome-stop 集成面（--modes 值域扩 login）", () => {
   });
   it("非法值仍拒（值域护栏不弱化）", () => {
     expect(() => parseChromeStopArgs(["--modes", "bogus"])).toThrow(/expected hidden\|visible\|render\|headless\|login/);
+  });
+});
+
+// ============================================================
+// R1（2026-10-26 需求单，提案 v2 Task 3）：locale / extraArgs
+// ============================================================
+describe("R1 · ensureLoginChrome locale / extraArgs（提案 v2）", () => {
+  it("locale zh-CN → args 含 --lang=zh-CN + Preferences 写入 + extraArgs 于 about:blank 前", async () => {
+    spawnCalls.length = 0;
+    const r = await ensureLoginChrome(
+      deps({ locale: "zh-CN", extraArgs: ["--window-size=1920,1080"] }),
+    );
+    expect(r.ok).toBe(true);
+    const args = spawnCalls[0]!.args;
+    expect(args).toContain("--lang=zh-CN");
+    // 需求方参数集验收锚：window-size 含逗号完整单 flag，且在位置参数前
+    const wsIdx = args.indexOf("--window-size=1920,1080");
+    const blankIdx = args.indexOf("about:blank");
+    expect(wsIdx).toBeGreaterThan(-1);
+    expect(blankIdx).toBeGreaterThan(wsIdx);
+    // Preferences 写入（真 fs——profile 在 tmp baseDir）
+    const prefs = JSON.parse(
+      readFileSync(path.join(profile(), "Default", "Preferences"), "utf8"),
+    );
+    expect(prefs.intl.accept_languages).toBe("zh-CN,zh;q=0.9");
+    expect(prefs.intl.selected_languages).toBe("zh-CN");
+  });
+
+  it("无 locale/extraArgs → 零写入 + 无 --lang（缺省路径零写入零变更锚）", async () => {
+    spawnCalls.length = 0;
+    await ensureLoginChrome(deps());
+    expect(spawnCalls[0]!.args.some((a) => a.startsWith("--lang="))).toBe(false);
+    expect(existsSync(path.join(profile(), "Default", "Preferences"))).toBe(false);
+  });
+
+  it("非法 locale（zh_CN）→ failed{invalid_tag} 日志 + 无 --lang + 启动仍 ok（best-effort 非门禁）", async () => {
+    spawnCalls.length = 0;
+    const events: Array<Record<string, unknown>> = [];
+    const r = await ensureLoginChrome(
+      deps({ locale: "zh_CN", logFn: (p: Record<string, unknown>) => events.push(p) }),
+    );
+    expect(r.ok).toBe(true);
+    expect(spawnCalls[0]!.args.some((a) => a.startsWith("--lang="))).toBe(false);
+    expect(
+      events.some(
+        (e) => e.evt === "chrome_locale_prefs_failed" && String(e.reason).includes("invalid_tag"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reused + locale → chrome_locale_prefs_skipped_reused 诚实打点（不补写）", async () => {
+    await recordLaunch({
+      port: 9225,
+      pid: 4242,
+      profileDir: profile(),
+      launchedAt: OLD,
+      status: "ready",
+      launchMode: "login",
+      idleMs: 1_800_000,
+    });
+    spawnCalls.length = 0;
+    const events: Array<Record<string, unknown>> = [];
+    const r = await ensureLoginChrome(
+      deps({ fetchFn: fetchAfter(0), locale: "zh-CN", logFn: (p: Record<string, unknown>) => events.push(p) }),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.reused).toBe(true);
+    expect(events.some((e) => e.evt === "chrome_locale_prefs_skipped_reused")).toBe(true);
+  });
+
+  it("台账守卫：同 profileDir 活记录（异端口 9777 在案）→ 跳过写入 + skipped_profile_busy", async () => {
+    await recordLaunch({
+      port: 9777,
+      pid: 4242,
+      profileDir: profile(),
+      launchedAt: Date.now(),
+      status: "ready",
+      launchMode: "login",
+      idleMs: 1_800_000,
+    });
+    spawnCalls.length = 0;
+    const events: Array<Record<string, unknown>> = [];
+    await ensureLoginChrome(
+      deps({ locale: "zh-CN", logFn: (p: Record<string, unknown>) => events.push(p) }),
+    );
+    expect(existsSync(path.join(profile(), "Default", "Preferences"))).toBe(false);
+    expect(events.some((e) => e.evt === "chrome_locale_prefs_skipped_profile_busy")).toBe(true);
   });
 });

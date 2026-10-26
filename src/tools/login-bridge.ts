@@ -36,6 +36,8 @@ import {
   LOGIN_PROFILE_PREFIX,
 } from "../login-bridge/login-flags.js";
 import { resolveBridgeHost } from "../login-bridge/host.js";
+import { mergedEnv } from "../config/config.js";
+import { parseExtraArgsEnvValue } from "../launcher/launch-chrome.js";
 import { createLoginRelay, type LoginRelayHandle } from "../login-bridge/relay.js";
 import { ensureLoginChrome } from "../login-bridge/launcher.js";
 import { snapshotCookieKeys, cookieDelta, type CookieDelta } from "../login-bridge/detect.js";
@@ -197,7 +199,17 @@ async function handle(
           "login_bridge_host_not_found:no tailscale/private interface IP detected — set LASSO_LOGIN_BRIDGE_HOST explicitly (e.g. your LAN/tailnet IP)",
       });
     }
-    const chrome = await d.ensureChrome({ port: cdpPort, ns, allowOrigins: hostRes.allowOrigins });
+    // R1：跨档单键（与日常档 launch-chrome CLI 同键同源——mergedEnv file→env 合并；
+    // EXTRA_ARGS 空白拆分：window-size 类含逗号参数保真）
+    const launchEnv = mergedEnv();
+    const launchExtra = parseExtraArgsEnvValue(launchEnv.LASSO_LAUNCH_EXTRA_ARGS);
+    const chrome = await d.ensureChrome({
+      port: cdpPort,
+      ns,
+      allowOrigins: hostRes.allowOrigins,
+      ...(launchEnv.LASSO_LAUNCH_LOCALE ? { locale: launchEnv.LASSO_LAUNCH_LOCALE } : {}),
+      ...(launchExtra.length > 0 ? { extraArgs: launchExtra } : {}),
+    });
     if (!chrome.ok) {
       return envelope("didnt", { error: chrome.error });
     }

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleLoginBridgeAction, type LoginBridgeDeps } from "../../src/tools/login-bridge.js";
 import type { LoginRelayHandle } from "../../src/login-bridge/relay.js";
@@ -75,6 +76,11 @@ describe("单流程：start → status → stop（模块状态生命周期）", 
     delete process.env.LASSO_LOGIN_BRIDGE_CDP_PORT;
     delete process.env.LASSO_LOGIN_BRIDGE_PORT;
     delete process.env.LASSO_LOGIN_BRIDGE_NS;
+    // R1（提案 v2）：start 处理段经 mergedEnv 读 LASSO_LAUNCH_*（file→env 合并）——
+    // 清 env 键 + 把 config 文件指到不存在路径，防开发机 ~/.lasso/config.json 污染
+    delete process.env.LASSO_LAUNCH_LOCALE;
+    delete process.env.LASSO_LAUNCH_EXTRA_ARGS;
+    process.env.LASSO_CONFIG_PATH = path.join(HERE, "nonexistent-r1-isolation.json");
   });
 
   it("start：worked + url/指引/attachHint 契约字段齐备", async () => {
@@ -196,5 +202,49 @@ describe("负向守卫（源码锚——方案 §五 INV 红线）", () => {
     const doctorSrc = readFileSync(`${HERE}/../../src/doctor/doctor.ts`, "utf8");
     expect(doctorSrc).toContain('name: "login_bridge"');
     expect(descSrc).toContain("login_bridge (v1.31");
+  });
+});
+
+// ============================================================
+// R1（2026-10-26 需求单，提案 v2 Task 3）：start 透传跨档键到 ensureChrome
+// ============================================================
+describe("R1 · start 透传 LASSO_LAUNCH_LOCALE / EXTRA_ARGS（跨档单键，mergedEnv）", () => {
+  it("env 两键 → ensureChrome 收到 locale + extraArgs（空白拆分，window-size 逗号保真）", async () => {
+    // 模块级 bridge state 复位（stop 幂等——未激活时也 worked）
+    await handleLoginBridgeAction({ action: "stop" });
+    process.env.LASSO_LAUNCH_LOCALE = "zh-CN";
+    process.env.LASSO_LAUNCH_EXTRA_ARGS = "--window-size=1920,1080 --proxy-server=127.0.0.1:7897";
+    const calls: Calls = { touched: 0, stopped: 0, removed: [], cookies: [] };
+    let captured: { locale?: string; extraArgs?: string[] } | null = null;
+    const base = makeDeps(calls);
+    const baseEnsure = base.ensureChrome;
+    const d = {
+      ...base,
+      resolveHost: hostOk(),
+      ensureChrome: async (opts: never) => {
+        captured = opts as { locale?: string; extraArgs?: string[] };
+        return baseEnsure(opts as never);
+      },
+    };
+    try {
+      const r = await handleLoginBridgeAction({ action: "start" }, d);
+      expect(r.outcome).toBe("worked");
+      expect(captured?.locale).toBe("zh-CN");
+      expect(captured?.extraArgs).toEqual([
+        "--window-size=1920,1080",
+        "--proxy-server=127.0.0.1:7897",
+      ]);
+    } finally {
+      delete process.env.LASSO_LAUNCH_LOCALE;
+      delete process.env.LASSO_LAUNCH_EXTRA_ARGS;
+      await handleLoginBridgeAction({ action: "stop" });
+    }
+  });
+
+  it("白盒：start 处理段经 mergedEnv 读两键（跨档单键消费点登记锚）", () => {
+    const src2 = readFileSync(`${HERE}/../../src/tools/login-bridge.ts`, "utf8");
+    expect(src2).toContain("mergedEnv()");
+    expect(src2).toContain("LASSO_LAUNCH_LOCALE");
+    expect(src2).toContain("parseExtraArgsEnvValue");
   });
 });

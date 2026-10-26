@@ -26,6 +26,9 @@ import { recordLaunch, readLedgerSync, type LedgerLogFn } from "../launcher/chro
 import { stopLaunchedChromes, verifyOwnership } from "../launcher/chrome-stop.js";
 import { touchChromePort } from "../launcher/chrome-touch.js";
 import { LOGIN_FLAGS, LOGIN_PROFILE_PREFIX, loginChromeIdleMs } from "./login-flags.js";
+// R1（2026-10-26 需求单，提案 v2）：locale → profile Preferences 写入器（日常档
+// launch-chrome.ts 同款接入——../launcher/* 共享原语轨道第四例之外的第五件）
+import { localePrefValues, writeProfileLocalePrefs } from "../launcher/chrome-profile-prefs.js";
 
 // ============================================================
 // 类型与常量
@@ -63,6 +66,16 @@ export interface LoginChromeOptions {
   allowOrigins: string[];
   /** 台账 idle（默认 loginChromeIdleMs()）。 */
   idleMs?: number;
+  /**
+   * R1（2026-10-26 需求单）：locale tag（如 zh-CN）——与日常档 launch-chrome 同语义：
+   * freshLaunch 内 spawn 前 Preferences 写入（结构执法）+ --lang 双保险 +
+   * best-effort 三降级（invalid_tag / profile_busy / 写失败）结构化日志放行。
+   * 跨档单键 LASSO_LAUNCH_LOCALE 由工具层 mergedEnv 读入注入（login-flags
+   * owner 注释族有登记——locale 类跨档语义键不分档）。
+   */
+  locale?: string;
+  /** R1：附加 Chrome flags（LASSO_LAUNCH_EXTRA_ARGS 空白拆分后注入；拼装于 about:blank 前）。 */
+  extraArgs?: string[];
   platform?: "mac" | "win" | "linux" | "unknown";
   profileBaseDir?: string;
   lockDir?: string;
@@ -246,6 +259,17 @@ export async function ensureLoginChrome(opts: LoginChromeOptions): Promise<Login
   const nowFn = opts.nowFn ?? (() => Date.now());
   const deadline = nowFn() + (opts.launchTimeoutMs ?? LOGIN_LAUNCH_TIMEOUT_MS);
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // R1：配置了 locale 且实例被复用 → 诚实打点（locale 于下次冷启生效——先
+  // chrome-stop 再 start 才应用；不建 reused 补写机制，提案 R4 拒绝清单⑤）。
+  const logLocaleDeferred = (): void => {
+    if (opts.locale !== undefined) {
+      log({
+        evt: "chrome_locale_prefs_skipped_reused",
+        port,
+        note: "locale takes effect on next cold start; chrome-stop the running instance to apply now",
+      });
+    }
+  };
 
   // ---- 1. 二进制探测（chrome-paths 单一真源）----
   const candidates = chromeCandidatesForPlatform({ platform: opts.platform });
@@ -290,6 +314,7 @@ export async function ensureLoginChrome(opts: LoginChromeOptions): Promise<Login
   const gate0 = await reuseGate();
   if (gate0.pass) {
     await touchChromePort(port);
+    logLocaleDeferred();
     log({ evt: "login_ensure_reused", port, pid: gate0.pid });
     return { ok: true, reused: true, port, pid: gate0.pid, wsEndpoint: gate0.wsEndpoint, profileDir, startedAt: gate0.startedAt };
   }
@@ -298,6 +323,7 @@ export async function ensureLoginChrome(opts: LoginChromeOptions): Promise<Login
     const recheck = await reuseGate();
     if (recheck.pass) {
       await touchChromePort(port);
+      logLocaleDeferred();
       return { ok: true, reused: true, port, pid: recheck.pid, wsEndpoint: recheck.wsEndpoint, profileDir, startedAt: recheck.startedAt };
     }
     if (recheck.cdpUp && recheck.reasons.includes("no_ledger_record")) {
@@ -328,11 +354,37 @@ export async function ensureLoginChrome(opts: LoginChromeOptions): Promise<Login
       } catch {
         /* best-effort：Chrome 会自建 */
       }
+      // R1：locale → Preferences 写入（spawn 前=结构执法；best-effort 三降级
+      // 同日常档——invalid_tag / 台账守卫 profile_busy / 写失败，全部日志放行）
+      const localePrefs = opts.locale !== undefined ? localePrefValues(opts.locale) : null;
+      if (opts.locale !== undefined) {
+        const prefs = localePrefs;
+        if (prefs === null) {
+          log({ evt: "chrome_locale_prefs_failed", reason: "invalid_tag", locale: opts.locale, port });
+        } else {
+          const profileBusy = readLedgerSync().some(
+            (r) => r.profileDir === profileDir && aliveFn(r.pid),
+          );
+          if (profileBusy) {
+            log({ evt: "chrome_locale_prefs_skipped_profile_busy", port, profileDir });
+          } else {
+            const w = writeProfileLocalePrefs(profileDir, prefs);
+            if (w.ok) {
+              log({ evt: "chrome_locale_prefs_written", port, profileDir });
+            } else {
+              log({ evt: "chrome_locale_prefs_failed", reason: w.error, port, profileDir });
+            }
+          }
+        }
+      }
       const args = [
         ...LOGIN_FLAGS,
         `--user-data-dir=${profileDir}`,
         `--remote-debugging-port=${port}`,
         ...(opts.allowOrigins.length > 0 ? [`--remote-allow-origins=${opts.allowOrigins.join(",")}`] : []),
+        // R1：--lang 双保险（UI/Intl 缺省 locale）+ extraArgs（位置参数 about:blank 前）
+        ...(localePrefs ? [`--lang=${localePrefs.selectedLanguages}`] : []),
+        ...(opts.extraArgs ?? []),
         "about:blank",
       ];
       const spawnFn =
@@ -403,6 +455,7 @@ export async function ensureLoginChrome(opts: LoginChromeOptions): Promise<Login
     const gate = await reuseGate();
     if (gate.pass) {
       await touchChromePort(port);
+      logLocaleDeferred();
       log({ evt: "login_ensure_reused", port, pid: gate.pid, note: "single_flight_promoted" });
       return { ok: true, reused: true, port, pid: gate.pid, wsEndpoint: gate.wsEndpoint, profileDir, startedAt: gate.startedAt };
     }
