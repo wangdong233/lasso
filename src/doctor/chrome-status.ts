@@ -37,7 +37,14 @@
  * launcher 侧依赖走既有 doctor→launcher import 面（readLedgerSync /
  * verifyOwnership，doctor.ts 先例）。
  */
-import { spawnSync } from "node:child_process";
+// P31 移交2（2026-10-26）：execFile=异步探针（lsof）；spawnSync 保留给
+// fast-native 豁免类（defaultPsFn 的 ps ×2 / defaultHostPressureFn 的 sysctl
+// ——实测 2-50ms，第 3 期移交单见 commit message；审查 B3-D4(b) 缩小范围裁定）
+import { execFile, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
+
+/** doctor.ts:181 同款先例（P31 形态；A3-D5：维持文件私有副本）。 */
+const execFileP = promisify(execFile);
 import * as net from "node:net";
 import process from "node:process";
 import {
@@ -229,12 +236,16 @@ async function defaultCdpListFn(port: number): Promise<number | null> {
   }
 }
 
+/** P31 移交2（2026-10-26）：spawnSync → 异步 execFile——本函数原先是与 DI 类型
+ * （Promise 型）意图相悖的假异步（spawnSync 在 async 函数体内同步冻结事件循环，
+ * chrome_status admin 工具路径可达）。catch/非零退（lsof 无匹配 exit 1）→ null，
+ * 保 R1「空输出 ≠ 无占用者——证据断链」语义（审查 B3-D6）。 */
 async function defaultLsofFn(port: number): Promise<number | null> {
   try {
-    const r = spawnSync(
+    const r = await execFileP(
       "lsof",
       ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
-      { encoding: "utf8", timeout: 2_000 },
+      { encoding: "utf8", timeout: 2_000, killSignal: "SIGKILL" },
     );
     const out = (r.stdout ?? "").trim();
     if (!out) return null; // R1：空输出 ≠ 无占用者——证据断链

@@ -7,7 +7,8 @@
  * **隐私红线（INV-81 钉死）**：
  *  - 只读元数据：输出 { path, modified_at? }——**不读文件内容**（stat 只取 mtime）；
  *  - 日志只记 query_len，永不记查询原文与结果集（INV-81(e)）；
- *  - 零网络调用（INV-81(d)）；child_process 只用 spawnSync（INV-64 同款纪律）。
+ *  - 零网络调用（INV-81(d)）；子进程经异步 execFile（P31 移交2，2026-10-26——
+ *    search_local 工具在 server 进程可达，spawnSync 5s 上限冻结事件循环）。
  *
  * **诚实降级**：非 darwin → didnt + reason:"mdfind_darwin_only"（不伪装空结果）；
  * mdfind 非零退 / maxBuffer 超限 → didnt + 原因；0 行 → didnt + no_matches。
@@ -16,10 +17,14 @@
  * （com.apple.notes）——files 源天然覆盖部分笔记**标题**搜索，
  * 是 §5.4 Notes 全文源推迟到 v2 的过渡缓解。
  *
- * 借鉴：launcher/chrome-hide.ts（spawnSync + execFn 注入范式）。
+ * 借鉴：launcher/chrome-hide.ts（execFn 注入范式）；bootstrap.ts（P31 异步形态）。
  */
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { statSync } from "node:fs";
+
+/** bootstrap.ts:29 同款先例（P31 形态：server 可达路径异步 execFile）。 */
+const execFileP = promisify(execFile);
 import type { InteractResult } from "../types.js";
 import { logger } from "../util/logger.js";
 
@@ -54,8 +59,9 @@ export interface MdfindExecResult {
 export interface MdfindDeps {
   /** 平台覆盖（默认 process.platform） */
   platform?: string;
-  /** mdfind 执行器注入（默认 spawnSync("mdfind", [query])；测试 mock 点） */
-  execFn?: (args: string[]) => MdfindExecResult;
+  /** mdfind 执行器注入（默认异步 execFile；测试 mock 点——返回 Promise 或裸
+   * 结果均可，launch-chrome.ts:153 P31 先例同款联合形态） */
+  execFn?: (args: string[]) => MdfindExecResult | Promise<MdfindExecResult>;
   /** stat 注入（默认 fs.statSync；返回 ms 时间戳） */
   statFn?: (path: string) => { mtimeMs: number };
 }
@@ -69,10 +75,10 @@ export interface MdfindQuery {
 // 入口：searchMdfind
 // ============================================================
 
-export function searchMdfind(
+export async function searchMdfind(
   q: MdfindQuery,
   deps: MdfindDeps = {},
-): InteractResult<MdfindData> {
+): Promise<InteractResult<MdfindData>> {
   const platform = deps.platform ?? process.platform;
   const notReady = (error: string, data: MdfindData | null = null): InteractResult<MdfindData> => ({
     outcome: "didnt",
@@ -87,18 +93,28 @@ export function searchMdfind(
     return notReady("mdfind_darwin_only");
   }
 
+  // P31 移交2（2026-10-26）：spawnSync → 异步 execFile。catch 映射回
+  // MdfindExecResult：非零退出 err.code=数字 → status=N（保 mdfind_exit_N 诚实
+  // 错误串形态，search-local.spec:387 钉死）；ENOENT/超时（SIGKILL）→ null →
+  // mdfind_exit_null。timeout 5s / maxBuffer 1MB 原值（parse24 §5.3 上限）。
   const execFn =
     deps.execFn ??
-    ((args: string[]) => {
-      const r = spawnSync("mdfind", args, {
-        encoding: "utf8",
-        timeout: 5_000,
-        maxBuffer: 1024 * 1024, // 1MB（parse24 §5.3 上限）
-      });
-      return { status: r.status, stdout: r.status === 0 ? String(r.stdout ?? "") : "" };
+    (async (args: string[]) => {
+      try {
+        const r = await execFileP("mdfind", args, {
+          encoding: "utf8",
+          timeout: 5_000,
+          maxBuffer: 1024 * 1024, // 1MB（parse24 §5.3 上限）
+          killSignal: "SIGKILL",
+        });
+        return { status: 0, stdout: String(r.stdout ?? "") };
+      } catch (e) {
+        const code = (e as { code?: unknown }).code;
+        return { status: typeof code === "number" ? code : null, stdout: "" };
+      }
     });
 
-  const r = execFn([q.query]);
+  const r = await execFn([q.query]);
   if (r.status !== 0) {
     return notReady(`mdfind_exit_${r.status ?? "null"}`);
   }

@@ -16,7 +16,7 @@ import {
 } from "../../src/login-bridge/host.js";
 
 describe("纯函数：CGNAT/私网判定", () => {
-  it("100.64.0.0/10 段：100.64-127.x ✓；100.0/100.128+/101+ ✗", () => {
+  it("100.64.0.0/10 段：100.64-127.x ✓；100.0/100.128+/101+ ✗", async () => {
     expect(isTailscaleCgnatIPv4("100.64.1.2")).toBe(true);
     expect(isTailscaleCgnatIPv4("100.127.255.254")).toBe(true);
     expect(isTailscaleCgnatIPv4("100.63.1.2")).toBe(false);
@@ -24,11 +24,11 @@ describe("纯函数：CGNAT/私网判定", () => {
     expect(isTailscaleCgnatIPv4("101.1.1.1")).toBe(false);
     expect(isTailscaleCgnatIPv4("not-an-ip")).toBe(false);
   });
-  it("parseTailscaleIps：多行取 CGNAT 段（噪声行/空行容忍）", () => {
+  it("parseTailscaleIps：多行取 CGNAT 段（噪声行/空行容忍）", async () => {
     const out = parseTailscaleIps("100.120.87.40\n\n192.168.1.5\n100.64.0.1\n");
     expect(out).toEqual(["100.120.87.40", "100.64.0.1"]);
   });
-  it("isPrivateIPv4：10/8、172.16/12、192.168/16 ✓；公网/loopback ✗", () => {
+  it("isPrivateIPv4：10/8、172.16/12、192.168/16 ✓；公网/loopback ✗", async () => {
     expect(isPrivateIPv4("10.0.0.1")).toBe(true);
     expect(isPrivateIPv4("172.16.0.1")).toBe(true);
     expect(isPrivateIPv4("172.31.255.254")).toBe(true);
@@ -47,8 +47,8 @@ describe("resolveBridgeHost 三序", () => {
   });
   const noTs = () => ({ status: 1, stdout: "" });
 
-  it("env 显式优先（source=env；IP 字面量直用）", () => {
-    const r = resolveBridgeHost({
+  it("env 显式优先（source=env；IP 字面量直用）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: { LASSO_LOGIN_BRIDGE_HOST: "100.120.87.40" },
       runFn: noTs,
@@ -58,8 +58,8 @@ describe("resolveBridgeHost 三序", () => {
     expect(r!.allowOrigins).toEqual(["http://100.120.87.40:9226"]);
   });
 
-  it("env=0.0.0.0 合法化但 allowOrigins 枚举全部私网接口（用户自担形态）", () => {
-    const r = resolveBridgeHost({
+  it("env=0.0.0.0 合法化但 allowOrigins 枚举全部私网接口（用户自担形态）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: { LASSO_LOGIN_BRIDGE_HOST: "0.0.0.0" },
       runFn: noTs,
@@ -70,8 +70,8 @@ describe("resolveBridgeHost 三序", () => {
     expect(r!.allowOrigins).toEqual(["http://192.168.1.5:9226", "http://10.0.0.9:9226"]);
   });
 
-  it("tailscale CLI 成功 → CGNAT 首个 IP（source=tailscale）", () => {
-    const r = resolveBridgeHost({
+  it("tailscale CLI 成功 → CGNAT 首个 IP（source=tailscale）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: {},
       runFn: (_cmd, args) => (args[0] === "ip" ? { status: 0, stdout: "100.120.87.40\n" } : { status: 1, stdout: "" }),
@@ -80,8 +80,8 @@ describe("resolveBridgeHost 三序", () => {
     expect(r).toMatchObject({ host: "100.120.87.40", source: "tailscale" });
   });
 
-  it("tailscale 失败 → interface 兜底（source=interface 如实标注，不冒充）", () => {
-    const r = resolveBridgeHost({
+  it("tailscale 失败 → interface 兜底（source=interface 如实标注，不冒充）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: {},
       runFn: noTs,
@@ -90,8 +90,8 @@ describe("resolveBridgeHost 三序", () => {
     expect(r).toMatchObject({ host: "192.168.1.5", source: "interface" });
   });
 
-  it("全 miss → null（调用方给可教学错误）", () => {
-    const r = resolveBridgeHost({
+  it("全 miss → null（调用方给可教学错误）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: {},
       runFn: noTs,
@@ -100,15 +100,15 @@ describe("resolveBridgeHost 三序", () => {
     expect(r).toBeNull();
   });
 
-  it("INV：tailscale/interface 路径永不产 0.0.0.0（仅 env 显式可）", () => {
-    const r = resolveBridgeHost({
+  it("INV：tailscale/interface 路径永不产 0.0.0.0（仅 env 显式可）", async () => {
+    const r = await resolveBridgeHost({
       relayPort: 9226,
       env: {},
       runFn: () => ({ status: 0, stdout: "100.64.0.1\n" }),
       interfacesFn: ifaces,
     });
     expect(r!.host).not.toBe("0.0.0.0");
-    const r2 = resolveBridgeHost({ relayPort: 9226, env: {}, runFn: noTs, interfacesFn: ifaces });
+    const r2 = await resolveBridgeHost({ relayPort: 9226, env: {}, runFn: noTs, interfacesFn: ifaces });
     expect(r2!.host).not.toBe("0.0.0.0");
   });
 });

@@ -90,7 +90,9 @@ export async function doSearchLocal(
 
   try {
     if (args.source === "files") {
-      return searchMdfind({ query: args.query, limit: args.limit }, deps.files);
+      // 契约项（三审确认）：必须 return await——裸 return 的 rejected promise
+      // 逃出本层 try/catch，绕过 tri-state「意外异常→unknown」信封（parse24 §5.1）
+      return await searchMdfind({ query: args.query, limit: args.limit }, deps.files);
     }
 
     // history（默认源）

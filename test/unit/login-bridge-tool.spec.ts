@@ -60,10 +60,11 @@ function makeDeps(calls: Calls, relay?: LoginRelayHandle): LoginBridgeDeps {
   };
 }
 
-/** resolveHost 成功桩（三序皆可，这里直给 tailscale 形态）。⚠️ 同步函数——
- * 与 resolveBridgeHost 签名一致（async 桩会返回 Promise→truthy→.host undefined）。 */
+/** resolveHost 成功桩（三序皆可，这里直给 tailscale 形态）。⚠️ async 函数——
+ * P31 移交2（2026-10-26）起 resolveBridgeHost 为 async：消费面 await 后 async 桩
+ * 是唯一类型正确形态（同步裸对象桩不再通过 LoginBridgeDeps.resolveHost 类型）。 */
 function hostOk() {
-  return () => ({ host: "100.1.2.3", origin: "http://100.1.2.3:9226", allowOrigins: ["http://100.1.2.3:9226"], source: "tailscale" });
+  return async () => ({ host: "100.1.2.3", origin: "http://100.1.2.3:9226", allowOrigins: ["http://100.1.2.3:9226"], source: "tailscale" as const });
 }
 
 describe("单流程：start → status → stop（模块状态生命周期）", () => {
@@ -135,8 +136,8 @@ describe("错误路径与 wipe", () => {
   it("start 时 host 解析失败 → didnt + 可教学错误（env 名点名）", async () => {
     const calls: Calls = { touched: 0, stopped: 0, removed: [], cookies: [] };
     const deps = { ...makeDeps(calls), resolveHost: hostOk() };
-    // 覆盖 resolveHost 返回 null（同步桩——见 hostOk 注）
-    const nullHost = () => null as never;
+    // 覆盖 resolveHost 返回 null（async 桩——P31 移交2 后联合类型下形态自洽）
+    const nullHost = async () => null;
     const r = await handleLoginBridgeAction({ action: "start" }, { ...deps, resolveHost: nullHost });
     expect(r.outcome).toBe("didnt");
     expect((r.data as Record<string, unknown>).error).toContain("LASSO_LOGIN_BRIDGE_HOST");

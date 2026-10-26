@@ -877,7 +877,8 @@ export async function runDoctor(
 
   // #43 login_bridge（v1.31 方案 §二 C6）：登录接力档观测面——台账清单+绑定预览
   // +披露两行。永不 fail（纯观测，L2-02）。
-  checks.push(checkLoginBridge());
+  // P31 移交2：checkLoginBridge async 化（resolveBridgeHost 异步——审查 A3-D1/B3-D-1）
+  checks.push(await checkLoginBridge());
 
   const blockers = checks.filter((c) => c.status === "fail").map((c) => c.name);
 
@@ -2621,7 +2622,7 @@ export function checkStaleRuntime(
  * relay 绑定地址预览（tailscale/interface/env 三源）+ 披露两行（明文 cookie 落盘 /
  * relay 无鉴权=tailnet 私有性防线）。永不 fail（纯观测+教学，INV-82 同族语义）。
  */
-export function checkLoginBridge(relayPortPreview?: number): DoctorCheck {
+export async function checkLoginBridge(relayPortPreview?: number): Promise<DoctorCheck> {
   const lines: string[] = [];
   let records: ReturnType<typeof readLedgerSync> = [];
   try {
@@ -2637,7 +2638,7 @@ export function checkLoginBridge(relayPortPreview?: number): DoctorCheck {
   if (records.length === 0) lines.push("no login-tier chromes in ledger (dormant)");
   try {
     // 绑定地址预览（relay 尚未起时也如实报解析源——env 覆写用户可见）
-    const host = resolveBridgeHost({ relayPort: relayPortPreview ?? 9226 });
+    const host = await resolveBridgeHost({ relayPort: relayPortPreview ?? 9226 });
     if (host) {
       lines.push(`relay bind preview: ${host.host} (source=${host.source})`);
     } else {

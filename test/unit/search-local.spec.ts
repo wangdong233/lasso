@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { doSearchLocal } from "../../src/search-local/register-search-local-tool.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
@@ -149,19 +150,19 @@ async function standardFixture() {
 // 纯函数：时间换算 / LIKE 转义
 // ============================================================
 describeOrSkip("search_local / chrome-history 纯函数", () => {
-  it("chromeTimeToIso 与 isoToChromeUs 互逆（1601 纪元微秒 → ISO）", () => {
+  it("chromeTimeToIso 与 isoToChromeUs 互逆（1601 纪元微秒 → ISO）", async () => {
     expect(chromeTimeToIso(isoToChromeUs("2026-08-17T00:00:00.000Z"))).toBe("2026-08-17T00:00:00.000Z");
     // 真实样本量级：1.32e16 微秒 ≈ 2019-04（Chrome 时间戳超 MAX_SAFE_INTEGER 的实况）
     expect(chromeTimeToIso(13200000000000000n)).toMatch(/^2019-04-17T/);
   });
 
-  it("chromeTimeToIso：0 / 非法 / 负 Unix 时间 → undefined（不 throw）", () => {
+  it("chromeTimeToIso：0 / 非法 / 负 Unix 时间 → undefined（不 throw）", async () => {
     expect(chromeTimeToIso(0)).toBeUndefined();
     expect(chromeTimeToIso(-5)).toBeUndefined();
     expect(chromeTimeToIso(Number.NaN)).toBeUndefined();
   });
 
-  it("escapeLikePattern：\\ % _ 三元字符转义（配 ESCAPE '\\' 子句防通配注入）", () => {
+  it("escapeLikePattern：\\ % _ 三元字符转义（配 ESCAPE '\\' 子句防通配注入）", async () => {
     expect(escapeLikePattern("100%")).toBe("100\\%");
     expect(escapeLikePattern("a_b")).toBe("a\\_b");
     expect(escapeLikePattern("c\\d")).toBe("c\\\\d");
@@ -371,7 +372,7 @@ describeOrSkip("search_local / files 源（mdfind）", () => {
     const f2 = join(dir, "b.md");
     writeFileSync(f1, "x");
     writeFileSync(f2, "y");
-    const r = searchMdfind(
+    const r = await searchMdfind(
       { query: "invoice", limit: 2 },
       { execFn: () => ({ status: 0, stdout: `${f1}\n${f2}\n\n${f1}\n${dir}/c.pdf\n` }) },
     );
@@ -383,26 +384,26 @@ describeOrSkip("search_local / files 源（mdfind）", () => {
     expect(r.retrieval_method).toBe("spotlight_mdfind");
   });
 
-  it("mdfind 非零退 → didnt + mdfind_exit_*", () => {
-    const r = searchMdfind({ query: "x", limit: 5 }, { execFn: () => ({ status: 1, stdout: "" }) });
+  it("mdfind 非零退 → didnt + mdfind_exit_*", async () => {
+    const r = await searchMdfind({ query: "x", limit: 5 }, { execFn: () => ({ status: 1, stdout: "" }) });
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("mdfind_exit_1");
   });
 
-  it("0 行输出 → didnt + no_matches（诚实，不 worked 空数组）", () => {
-    const r = searchMdfind({ query: "x", limit: 5 }, { execFn: () => ({ status: 0, stdout: "\n\n" }) });
+  it("0 行输出 → didnt + no_matches（诚实，不 worked 空数组）", async () => {
+    const r = await searchMdfind({ query: "x", limit: 5 }, { execFn: () => ({ status: 0, stdout: "\n\n" }) });
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("no_matches");
   });
 
-  it("非 darwin → didnt + mdfind_darwin_only", () => {
-    const r = searchMdfind({ query: "x", limit: 5 }, { platform: "linux", execFn: () => ({ status: 0, stdout: "p" }) });
+  it("非 darwin → didnt + mdfind_darwin_only", async () => {
+    const r = await searchMdfind({ query: "x", limit: 5 }, { platform: "linux", execFn: () => ({ status: 0, stdout: "p" }) });
     expect(r.outcome).toBe("didnt");
     expect(r.error).toBe("mdfind_darwin_only");
   });
 
-  it("stat 失败 → 条目保留、modified_at 省略（不吞条目不伪装时间）", () => {
-    const r = searchMdfind(
+  it("stat 失败 → 条目保留、modified_at 省略（不吞条目不伪装时间）", async () => {
+    const r = await searchMdfind(
       { query: "x", limit: 5 },
       {
         execFn: () => ({ status: 0, stdout: "/gone/file.txt\n" }),
@@ -415,8 +416,8 @@ describeOrSkip("search_local / files 源（mdfind）", () => {
     expect(r.data?.results[0]).toEqual({ path: "/gone/file.txt" });
   });
 
-  it("隐私字段白名单：文件命中只有 path/modified_at —— 无内容读取", () => {
-    const r = searchMdfind(
+  it("隐私字段白名单：文件命中只有 path/modified_at —— 无内容读取", async () => {
+    const r = await searchMdfind(
       { query: "x", limit: 5 },
       { execFn: () => ({ status: 0, stdout: "/a/b.txt\n" }) },
     );
@@ -572,21 +573,21 @@ describeOrSkip("search_local / 四处联动装配", () => {
   const annoSrc = readFileSync(join(REPO_ROOT, "src", "tools", "annotations.ts"), "utf8");
   const regSrc = readFileSync(join(REPO_ROOT, "src", "search-local", "register-search-local-tool.ts"), "utf8");
 
-  it("index.ts：import + registerSearchLocalTool(server) 调用", () => {
+  it("index.ts：import + registerSearchLocalTool(server) 调用", async () => {
     expect(indexSrc).toContain('from "./search-local/register-search-local-tool.js"');
     expect(indexSrc).toMatch(/registerSearchLocalTool\(server/);
   });
 
-  it("index.ts：V5_TOOL_TO_CHANNEL 含 search_local 项（ToolManager caller-tier 隔离）", () => {
+  it("index.ts：V5_TOOL_TO_CHANNEL 含 search_local 项（ToolManager caller-tier 隔离）", async () => {
     expect(indexSrc).toMatch(/search_local:\s*"search_local"/);
   });
 
-  it("descriptions.ts：SEARCH_LOCAL_DESCRIPTION 导出且含 notes_deferred_v2（CC 可见诚实）", () => {
+  it("descriptions.ts：SEARCH_LOCAL_DESCRIPTION 导出且含 notes_deferred_v2（CC 可见诚实）", async () => {
     expect(descSrc).toContain("SEARCH_LOCAL_DESCRIPTION");
     expect(descSrc).toContain("notes_deferred_v2");
   });
 
-  it("annotations.ts：searchLocalAnnotations 只读 + 非 openWorld（纯本地档）", () => {
+  it("annotations.ts：searchLocalAnnotations 只读 + 非 openWorld（纯本地档）", async () => {
     expect(annoSrc).toContain("searchLocalAnnotations");
     const block = annoSrc.match(/export const searchLocalAnnotations[\s\S]*?\};/)?.[0] ?? "";
     expect(block).toContain("readOnlyHint: true");
@@ -596,5 +597,29 @@ describeOrSkip("search_local / 四处联动装配", () => {
   it("注册器：server.tool(\"search_local\") 且 schema limit 硬顶 50", () => {
     expect(regSrc).toMatch(/server\.tool\(\s*\n?\s*"search_local"/);
     expect(regSrc).toMatch(/limit\s*:\s*z\.number\(\)\.int\(\)\.min\(1\)\.max\(50\)/);
+  });
+});
+
+// ============================================================
+// P31 移交2（2026-10-26）契约钉：execFn reject → unknown 信封
+// （register 层 return await 语义——裸 return 会让 rejection 逃出 try/catch
+// 绕过 tri-state 转换；三审 A3-D2/B3-D3/C3 确认为契约项）
+// ============================================================
+describe("mdfind 契约：execFn 意外异常 → outcome=unknown 信封", () => {
+  it("doSearchLocal(files) 桩 reject → unknown + retrieval_method=spotlight_mdfind（不被裸 return 旁路）", async () => {
+    const r = await doSearchLocal(
+      { query: "x", limit: 5, source: "files" } as never,
+      {
+        files: {
+          platform: "darwin",
+          execFn: async () => {
+            throw new Error("boom-unexpected");
+          },
+        },
+      } as never,
+    );
+    expect(r.outcome).toBe("unknown");
+    expect(r.retrieval_method).toBe("spotlight_mdfind");
+    expect(String(r.error)).toContain("boom-unexpected");
   });
 });

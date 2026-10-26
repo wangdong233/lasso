@@ -192,7 +192,9 @@ async function handle(
     const cdpPort = loginCdpPort();
     const relayPort = loginRelayPort();
     const ns = loginProfileNs();
-    const hostRes = d.resolveHost({ relayPort });
+    // P31 移交2：resolveBridgeHost 异步化（host.ts）——await（B3 核验 :204 的
+    // mergedEnv() 白盒锚不受本行影响）
+    const hostRes = await d.resolveHost({ relayPort });
     if (!hostRes) {
       return envelope("didnt", {
         error:

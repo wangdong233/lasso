@@ -18,9 +18,13 @@
  *
  * INV-64 精神：只 import node:* 内置。
  */
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as os from "node:os";
 import process from "node:process";
+
+/** bootstrap.ts:29 同款先例（P31 形态：server 可达路径异步 execFile）。 */
+const execFileP = promisify(execFile);
 
 export interface BridgeHostResolution {
   host: string;
@@ -35,8 +39,12 @@ export interface ResolveBridgeHostOptions {
   relayPort: number;
   /** DI：env 读取（默认 process.env）。 */
   env?: Record<string, string | undefined>;
-  /** DI：CLI 执行器（默认 spawnSync；测试注入桩）。 */
-  runFn?: (cmd: string, args: string[]) => { status: number | null; stdout: string };
+  /** DI：CLI 执行器（默认异步 execFile——P31 移交2，2026-10-26；测试注入桩，
+   * 返回 Promise 或裸结果均可——launch-chrome.ts:153 P31 先例同款联合形态）。 */
+  runFn?: (
+    cmd: string,
+    args: string[],
+  ) => { status: number | null; stdout: string } | Promise<{ status: number | null; stdout: string }>;
   /** DI：网卡枚举（默认 os.networkInterfaces）。 */
   interfacesFn?: () => NodeJS.Dict<os.NetworkInterfaceInfo[]>;
 }
@@ -68,10 +76,21 @@ export function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
-function defaultRunFn(cmd: string, args: string[]): { status: number | null; stdout: string } {
+/** P31 移交2（2026-10-26）：spawnSync → 异步 execFile（login_bridge start 与
+ * doctor #43 双 server 路径可达，3s 同步冻结事件循环）。catch 映射 status:null
+ * ——ENOENT/超时/非零退出统一走「本二进制 miss」语义，保 Tailscale.app 退路
+ * 循环（审查 A3-D3）；killSignal 对齐 bootstrap.ts P31 家族先例。 */
+async function defaultRunFn(
+  cmd: string,
+  args: string[],
+): Promise<{ status: number | null; stdout: string }> {
   try {
-    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 3_000 });
-    return { status: r.status, stdout: r.stdout ?? "" };
+    const r = await execFileP(cmd, args, {
+      encoding: "utf8",
+      timeout: 3_000,
+      killSignal: "SIGKILL",
+    });
+    return { status: 0, stdout: r.stdout ?? "" };
   } catch {
     return { status: null, stdout: "" };
   }
@@ -93,9 +112,9 @@ function interfaceIpv4s(interfacesFn: () => NodeJS.Dict<os.NetworkInterfaceInfo[
  * 解析 relay 绑定地址（三序；全 miss 返回 null——调用方给可教学错误）。
  * 恒不返回 0.0.0.0 除非 env 显式（INV 红线：默认面永不全接口）。
  */
-export function resolveBridgeHost(
+export async function resolveBridgeHost(
   opts: ResolveBridgeHostOptions,
-): BridgeHostResolution | null {
+): Promise<BridgeHostResolution | null> {
   const env = opts.env ?? process.env;
   const runFn = opts.runFn ?? defaultRunFn;
   const interfacesFn = opts.interfacesFn ?? (() => os.networkInterfaces());
@@ -117,7 +136,7 @@ export function resolveBridgeHost(
   // 2. tailscale CLI（darwin GUI 装机无 PATH CLI → app 二进制退路）
   const tsBinaries = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
   for (const bin of tsBinaries) {
-    const r = runFn(bin, ["ip", "-4"]);
+    const r = await runFn(bin, ["ip", "-4"]);
     if (r.status === 0) {
       const ips = parseTailscaleIps(r.stdout);
       if (ips.length > 0) return make(ips[0], "tailscale");
