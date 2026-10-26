@@ -34,16 +34,34 @@ export interface EngineDetectResult {
   source: "path" | "bin-cache" | "env" | null;
 }
 
+/**
+ * probeVersion 每进程记忆化（2026-10-26 doctor-v10 预存超时根因修复）：
+ * 同一 bin 路径的 `--version` 结果缓存（含失败 null——版本探测语义 per-process
+ * 稳定）。根因实锤：慢启动二进制（本机 zipapp 病变的 yt-dlp_macos 每次执行
+ * ~30s 墙钟、97% 空等子进程）使探针 timeout 5000 每次打满；runDoctor 无网络
+ * 路径被钉到 ~5.2s 且零缓存重复重付 → doctor-v10 spec 17 次全量 doctor 逐个
+ * 付 5s → 4 用例越 vitest 默认 5s 超时。键 = bin 绝对路径（进程生命周期内版本
+ * 不变；Map 尺度 ≤ 遇到的不同二进制数）。
+ */
+const probedVersionCache = new Map<string, string | null>();
+
 /** `--version` 输出首个语义行抽版本号（aria2 本地化输出「aria2 版本 1.37.0」也命中）。 */
 function probeVersion(bin: string): string | null {
+  if (probedVersionCache.has(bin)) {
+    return probedVersionCache.get(bin) ?? null;
+  }
+  let version: string | null = null;
   try {
     const r = spawnSync(bin, ["--version"], { timeout: 5000, encoding: "utf8" });
-    if (r.error || r.status !== 0) return null;
-    const m = /(\d+\.\d+\.\d+)/.exec(r.stdout ?? "");
-    return m ? m[1] : null;
+    if (!r.error && r.status === 0) {
+      const m = /(\d+\.\d+\.\d+)/.exec(r.stdout ?? "");
+      version = m ? m[1] : null;
+    }
   } catch {
-    return null;
+    /* 失败同样缓存（null） */
   }
+  probedVersionCache.set(bin, version);
+  return version;
 }
 
 /** aria2c：PATH → bin 缓存 `<binDir>/aria2c`。 */

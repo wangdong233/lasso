@@ -6,6 +6,9 @@
  * 缺失则 skip（describeOrSkip 先例）。
  */
 import { describe, it, expect } from "vitest";
+import { promises as fsp } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   detectAria2,
   detectYtDlp,
@@ -64,5 +67,37 @@ describe("detectYtDlp / 引导提示面", () => {
     const r = bootstrapAria2();
     expect(r.ok).toBe(false);
     expect(r.hint).toMatch(/brew install aria2|conda/i);
+  });
+});
+
+// ============================================================
+// probeVersion 每进程记忆化（2026-10-26 doctor-v10 预存超时根因修复）
+// 根因链：慢启动二进制（如 quarantine/zipapp 病变的 yt-dlp_macos）探针 timeout
+// 5s 打满 × 每次调用重付 → runDoctor 无网络路径 ~5.2s → spec 17 次全量 doctor
+// 逐个付 5s → 4 用例越 vitest 默认 5s。记忆化 = 同一 bin 每进程只探一次。
+// ============================================================
+describe("probeVersion 记忆化", () => {
+  it("同一 bin 路径重复 detect 只 spawn 一次（计数脚本实证），失败结果同样缓存", async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "lasso-probe-memo-"));
+    try {
+      const bin = path.join(dir, "fake-versioned-bin");
+      const counter = path.join(dir, "counter");
+      // 计数脚本：每次被 exec 计数 +1（shell 内自目录写文件）
+      await fsp.writeFile(
+        bin,
+        ["#!/bin/sh", `n=$(cat ${counter} 2>/dev/null || echo 0)`, `echo $((n+1)) > ${counter}`, 'echo "fake 9.9.9"', ""].join("\n"),
+        { mode: 0o755 },
+      );
+      const env = { LASSO_YTDLP_PATH: bin, PATH: "/nonexistent" };
+      const r1 = detectYtDlp(env);
+      const r2 = detectYtDlp(env);
+      expect(r1.version).toBe("9.9.9");
+      expect(r2.version).toBe("9.9.9");
+      expect(r2.path).toBe(bin);
+      // 记忆化断言：两次 detect 只真正 spawn 了一次
+      expect((await fsp.readFile(counter, "utf8")).trim()).toBe("1");
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
   });
 });
