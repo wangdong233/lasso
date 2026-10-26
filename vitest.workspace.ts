@@ -21,6 +21,11 @@ const SLOW_SPECS = [
   // fixture 变体用例越默认 5s。同级 doctor spec（deep-probe/v17/cli-config）
   // 均在桶内，本 spec 属同类「doctor 冷启动/多 section 探测」漏配。
   "test/unit/doctor-v10-phase-cd.spec.ts",
+  // 2026-10-27（执法闭环批门控实测）：desktop-action-enum 的 doctor 用例跑全量
+  // runDoctor({desktopChecks:true})（#15-#20 含 VLM/子进程探针）——全量并行下
+  // 老机器 5s 边界 flake（5006ms 实锤两轮；单跑/基线均 25/25 过=纯负载）。
+  // 同类 doctor 全量 spec（deep-probe/v17/cli-config/v10）全在桶内，此文件漏配。
+  "test/integration/desktop-action-enum.spec.ts",
   "test/integration/doctor-cli-config-file.spec.ts",
   "test/integration/stdin-eof-shutdown.spec.ts",
   "test/unit/launch-chrome.spec.ts",
