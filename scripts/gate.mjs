@@ -65,6 +65,9 @@ const vSum = vitestSummary(vitest.out);
 const vitestOk = vitest.ok && !vitest.abnormal && vSum.failedFiles === 0 && vSum.failedTests === 0;
 
 const inv = run("check-invariants", "node", ["src/invariants/check-invariants.mjs"]);
+// 2026-10-27 执法闭环批（审查 🟡-8）：inv-selftest 进门禁——「pin 必须红过一次」
+// 才有强制力（此前仅手动跑；INV-91/82 在案注释自证过锚点漂移让样本注不进的实锤）
+const invSelftest = run("inv-selftest", "node", ["scripts/inv-selftest.mjs"]);
 const readme = run("check-readme-sync", "node", ["scripts/check-readme-sync.mjs"]);
 
 // vitest 失败时回放失败块（Failed Tests 起 80 行）——不用管道，直接打印
@@ -79,6 +82,7 @@ for (const g of [
   { ...build, label: `npm run build` },
   { ...vitest, ok: vitestOk, label: "vitest run（全量，双源判绿）" },
   inv,
+  invSelftest,
   readme,
 ]) {
   console.log(`${g.ok ? "✓" : "✗"} ${g.label} (exit ${g.status})`);
@@ -89,7 +93,7 @@ if (vSum.files || vSum.tests) {
   if (vSum.tests) console.log(`    ${vSum.tests}`);
 }
 if (beltNote) console.log(`  🔴 ${beltNote}`);
-const anyRed = [build, { ok: vitestOk }, inv, readme].some((g) => !g.ok);
+const anyRed = [build, { ok: vitestOk }, inv, invSelftest, readme].some((g) => !g.ok);
 console.log(`\n判绿纪律：读上面汇总行（failed=0），不信管道退出码。`);
 console.log(anyRed ? "GATE RED —— 存在失败门，禁收编/交付" : "GATE GREEN —— build/vitest/invariants/readme 四面全绿");
 process.exit(anyRed ? 1 : 0);

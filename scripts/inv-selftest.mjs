@@ -433,7 +433,25 @@ const VIOLATION_SAMPLES = [
     file: "desktop/desktop-doctor-checks.ts",
     mutation: { replaceAll: ["iohid_post_event", "iohidPostEventDead"] },
   },
-];
+  // ---- 2026-10-27 执法闭环批（INV-109/110：pin 必须红过一次）----
+  {
+    inv: "INV-109",
+    desc: "冻结名单文件内新增同步子进程站点（计数漂移 1→2 未修订名单）",
+    file: "download/kill.ts",
+    mutation: { append: "\n// evil probe\nfunction evilSyncProbe() { const r = spawnSync(\"curl\", [\"--version\"]); return r; }\n" },
+  },
+  {
+    inv: "INV-109",
+    desc: "src 下新增 .mjs 可执行脚本（非 .ts 盲通道藏 spawnSync）",
+    file: "evil-blind-channel.mjs",
+    mutation: { append: "import { spawnSync } from \"node:child_process\";\nconst r = spawnSync(\"ls\", [\"-la\"]);\n" },
+  },
+  {
+    inv: "INV-110",
+    desc: "白名单外新 LASSO_ 直读（config parity 死键类的引入形态）",
+    file: "channels/evil-env-read.ts",
+    mutation: { append: "\nexport const evilRead = () => process.env.LASSO_EVIL_NEW_KEY;\n" },
+  },];
 
 // ============================================================
 // 工具

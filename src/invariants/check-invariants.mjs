@@ -141,7 +141,7 @@
  * 本身就是发现（不可证伪 → 应重写）。运行：npm run inv-selftest 或
  * npm run check-invariants -- --selftest（对 src 临时副本注入，工作树零污染）。
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative, isAbsolute } from "node:path";
 
@@ -6557,6 +6557,145 @@ const assertions = [
       return true;
     },
   },
+  // ============================================================
+  // 2026-10-27 执法闭环批（两 bug 类 3+/5 次复发后机械化；C3 提案经隔离审查
+  // 裁定「合法适应度函数非刻度膨胀」——结构执法不可行亲证：零 lint 工具链且
+  // TS 无法禁 child_process 导入，搭乘本 checker = 唯一机械路径）
+  // ============================================================
+  {
+    id: "INV-109-sync-subprocess-freeze",
+    desc:
+      "2026-10-27 执法闭环（P31 类机械化——probeVersion 5s/lsof 2s/tailscale 3s/" +
+      "mdfind 5s/osascript 2s 五站已立法修复后冻结名单）：src/**/*.ts 注释剥离后的" +
+      "同步子进程调用（spawnSync/execFileSync/execSync）站点数逐文件 == 冻结名单" +
+      "（合计 19 站，机生数字）。红 = 停下裁决非 CI 坏了：新站必须异步 execFile" +
+      "（bootstrap.ts P31 家族形态）或修订本名单（一次裁决一处登记：附二进制延迟" +
+      "实测+豁免理由）。语料：仅 src/**/*.ts；src/invariants/（本 checker 自身 .mjs，" +
+      "--selftest 委托 spawnSync）唯一豁免；scripts/*.mjs 非请求路径不在语料。" +
+      "零容忍（不进名单即红）：execSync、别名导入（spawnSync as X）、src 下 " +
+      "invariants/ 外的非 .ts 文件（src/foo.mjs=全盲通道）。豁免理由（2026-10-27 " +
+      "实测）：fast-native=ps/pgrep 10-50ms、sysctl 2ms、chrome --version 59ms；" +
+      "CLI 双轨=chrome-hide sync 孪生（Async 版在侧，消费面仅短命 CLI/看门狗进程）；" +
+      "独立进程=enforcer/watchdog/render 档；第 3 期移交在案=chrome-status ps×2+" +
+      "sysctl（bug04 spec 10a 锚钉 spawnSync≥2）与 headless-stack-ledger ps。",
+    check: () => {
+      const FREEZE = {
+        "doctor/chrome-status.ts": 3,
+        "doctor/doctor.ts": 1,
+        "download/kill.ts": 1,
+        "launcher/chrome-hide.ts": 2,
+        "launcher/chrome-hideshow-cli.ts": 2,
+        "launcher/chrome-stop.ts": 1,
+        "launcher/desired-hide-enforcer.ts": 1,
+        "launcher/desired-hide-watchdog.ts": 1,
+        "launcher/launch-chrome.ts": 1,
+        "login-bridge/launcher.ts": 1,
+        "render/render-doctor.ts": 1,
+        "render/render-guardian.ts": 1,
+        "render/render-launcher.ts": 1,
+        "subprocess/headless-stack-ledger.ts": 1,
+        "util/kill-tree.ts": 1,
+      };
+      const SYNC_RE = /\b(?:spawnSync|execFileSync|execSync)\s*\(/g;
+      const ALIAS_RE = /\b(?:spawnSync|execFileSync|execSync)\s+as\s+[A-Za-z_$]/;
+      const actual = {};
+      for (const s of SRC) {
+        const code = stripComments(s.text);
+        const norm = s.f.replace(/\\/g, "/");
+        if (ALIAS_RE.test(code)) return false;
+        const n = (code.match(SYNC_RE) || []).length;
+        if (n > 0) actual[norm] = n;
+      }
+      for (const f of Object.keys(actual)) {
+        if (!(f in FREEZE)) return false;
+        if (FREEZE[f] !== actual[f]) return false;
+      }
+      for (const f of Object.keys(FREEZE)) {
+        if (!(f in actual)) return false;
+      }
+      // src 下可执行脚本盲通道零容忍：.js/.mjs/.cjs/.mts/.cts 文件（能藏
+      // spawnSync 的非 .ts 形态；recursive readdir 含目录——statSync 过滤；
+      // README/fixtures 等**数据/文档文件豁免**——非可执行）
+      const SCRIPT_RE = /\.(js|mjs|cjs|mts|cts)$/;
+      const nonTsScripts = readdirSync(SRC_ROOT, { recursive: true })
+        .map((p) => String(p))
+        .filter(
+          (p) =>
+            !p.startsWith("invariants") &&
+            SCRIPT_RE.test(p) &&
+            !p.endsWith(".ts") &&
+            statSync(join(SRC_ROOT, p)).isFile(),
+        );
+      if (nonTsScripts.length > 0) return false;
+      return true;
+    },
+  },
+  {
+    id: "INV-110-env-direct-read-whitelist",
+    desc:
+      "2026-10-27 执法闭环（config parity 死键类机械化——FT-DEF-1→BUG-08 E-1→" +
+      "移交1→第 4-8 例（SEARCH_FREE_ONLY/ALLOW_CLOUD_BROWSER/VLM_ENDPOINT/" +
+      "COOKIE_PASSPHRASE/PROVIDERS_FILE），五次复发后人肉纪律失效）：" +
+      "src/**/*.ts 注释剥离后的 process.env.LASSO_* 直读（含同文件 const 常量间接 " +
+      "process.env[X]，X=\"LASSO_*\"）逐文件键集 == 白名单（修复后快照，精确相等" +
+      "双向——陈旧条目也红）。红 = 停下裁决：新直读应改经 mergedEnv（消费点）、" +
+      "env 参数（调用方注入）、或 index.ts 装配层抬升清单（深引擎链恒等约束时）；" +
+      "确属 env-only 设计的键入名单登记理由。模式判据（2026-10-27 批入账）：" +
+      "深引擎链恒等约束（staging env===process.env）→装配层抬升；工具 handler " +
+      "轻读→消费点 mergedEnv；密钥类（passphrase 类）→禁抬升（process.env 整拷进" +
+      "全部子进程）只走消费点 mergedEnv。已知盲区（如实声明）：跨文件常量间接与" +
+      "动态键名 process.env[key] 不受检。理由摘要：index.ts=装配层合法家（抬升清单+" +
+      "单点同步）；login-bridge/render/台账路径键=env-only by design（不入模板）；" +
+      "McpClient=深消费方（EVAL_TIMEOUT_MS 已抬升 parity 通；HANDSHAKE 键不在模板）；" +
+      "desktop-doctor-checks/ScreenshotVlmProvider=opts 兜底/常量间接（VLM 键经抬升，" +
+      "第 6 例修复）；doctor.ts 七键=opts 兜底（装配层覆盖；HEADED 两键 :1330 手搓" +
+      "合并为登记在案旧形态）；benchmark=非生产路径。",
+    check: () => {
+      const WHITELIST = {
+        "benchmark/run-ab-benchmark.ts": ["LASSO_BENCH_REAL"],
+        "desktop/desktop-doctor-checks.ts": ["LASSO_VLM_ENDPOINT", "LASSO_DOCTOR_INPUT_SELFTEST"],
+        "desktop/ScreenshotVlmProvider.ts": ["LASSO_VLM_ENDPOINT"],
+        "download/filename.ts": ["LASSO_DOWNLOAD_DIR_ALLOWLIST"], // 常量间接；键在 index.ts 抬升清单 parity 通
+        "doctor/doctor.ts": [
+          "LASSO_CDP_PORT", "LASSO_PROXY", "LASSO_DOCTOR_DEEP",
+          "LASSO_ALLOW_CLOUD_BROWSER", "LASSO_ALLOW_FILE_FROM",
+          "LASSO_HEADED_IDLE_MS", "LASSO_HEADED_HARD_CAP_MS",
+        ],
+        "index.ts": ["LASSO_ALLOW_CLOUD_BROWSER", "LASSO_EVAL_TIMEOUT_MS", "LASSO_PROVIDERS_FILE"],
+        "launcher/chrome-ledger.ts": ["LASSO_LAUNCHED_CHROMES_PATH"],
+        "launcher/chrome-touch.ts": ["LASSO_CHROME_TOUCH_DIR"],
+        "launcher/desired-hide-enforcer.ts": ["LASSO_HIDE_ENFORCER_PID_PATH"],
+        "launcher/desired-hide-state.ts": ["LASSO_DESIRED_HIDDEN_PATH"],
+        "login-bridge/login-flags.ts": [
+          "LASSO_LOGIN_BRIDGE_CDP_PORT", "LASSO_LOGIN_BRIDGE_PORT",
+          "LASSO_LOGIN_BRIDGE_NS", "LASSO_LOGIN_BRIDGE_IDLE_MS",
+          "LASSO_LOGIN_CHROME_IDLE_MS",
+        ],
+        "render/render-flags.ts": ["LASSO_RENDER_PORT", "LASSO_RENDER_IDLE_MS"],
+        "render/render-guardian.ts": ["LASSO_RENDER_GUARDIAN_PID_PATH", "LASSO_RENDER_REAPER_INTERVAL_MS"],
+        "subprocess/McpClient.ts": ["LASSO_MCP_HANDSHAKE_TIMEOUT_MS", "LASSO_EVAL_TIMEOUT_MS"],
+        "subprocess/headless-stack-ledger.ts": ["LASSO_HEADLESS_STACKS_PATH"],
+      };
+      const DIRECT_RE = /process\.env\.LASSO_[A-Z_]+/g;
+      const CONST_DEF_RE = /(?:export\s+)?const\s+([A-Z_][A-Z0-9_]*)\s*=\s*"(LASSO_[A-Z_]+)"/g;
+      for (const s of SRC) {
+        const code = stripComments(s.text);
+        const norm = s.f.replace(/\\/g, "/");
+        const found = new Set(
+          (code.match(DIRECT_RE) ?? []).map((m) => m.replace("process.env.", "")),
+        );
+        for (const m of code.matchAll(CONST_DEF_RE)) {
+          const re = new RegExp("process\\.env\\[" + m[1] + "\\]");
+          if (re.test(code)) found.add(m[2]);
+        }
+        const allowed = new Set(WHITELIST[norm] ?? []);
+        if (found.size === 0 && allowed.size === 0) continue;
+        for (const k of found) if (!allowed.has(k)) return false;
+        for (const k of allowed) if (!found.has(k)) return false;
+      }
+      return true;
+    },
+  }
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）
