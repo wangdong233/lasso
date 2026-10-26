@@ -16,6 +16,11 @@ const SLOW_SPECS = [
   // 真实 spawn 子进程（node dist / rust-helper / Chrome 探测）
   "test/integration/cli-conventions.spec.ts",
   "test/unit/doctor-deep-probe.spec.ts",
+  // 2026-10-26（doctor-v10 预存超时收口）：17 用例各跑全量 runDoctor——本机
+  // 慢启动 yt-dlp 探针 5s 打满（probeVersion 已记忆化，首例仍付一次）+
+  // fixture 变体用例越默认 5s。同级 doctor spec（deep-probe/v17/cli-config）
+  // 均在桶内，本 spec 属同类「doctor 冷启动/多 section 探测」漏配。
+  "test/unit/doctor-v10-phase-cd.spec.ts",
   "test/integration/doctor-cli-config-file.spec.ts",
   "test/integration/stdin-eof-shutdown.spec.ts",
   "test/unit/launch-chrome.spec.ts",
