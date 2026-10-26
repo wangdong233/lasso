@@ -422,6 +422,10 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // EXTRA_ARGS **空白符拆分**（非逗号）——window-size=1920,1080 类含逗号参数保真
   LASSO_LAUNCH_LOCALE: "",
   LASSO_LAUNCH_EXTRA_ARGS: "",
+  // 移交1（2026-10-26 config parity 落地后登记）：下载引擎链 yt-dlp 二进制覆盖
+  // （检测序①显式意志，压过 bin-cache②）。**必须留空**——resolveYtDlpPath 以
+  // 非空判「显式」，预填值=BUG-13 §7-1 模板毒化形态（config-file.spec 守卫锚）
+  LASSO_YTDLP_PATH: "",
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,

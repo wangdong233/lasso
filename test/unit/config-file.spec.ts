@@ -430,6 +430,9 @@ describe("loadConfig — file→env 合并", () => {
     //（LASSO_LAUNCH_* 家族既定流程——init 用户可见可配；空串=等价未设）
     expect(CONFIG_TEMPLATE.LASSO_LAUNCH_LOCALE).toBe("");
     expect(CONFIG_TEMPLATE.LASSO_LAUNCH_EXTRA_ARGS).toBe("");
+    // 移交1（2026-10-26 parity 落地后登记）：yt-dlp 覆盖键入模板——**必须留空**
+    // （resolveYtDlpPath 非空=显式意志；预填=BUG-13 §7-1 模板毒化形态）
+    expect(CONFIG_TEMPLATE.LASSO_YTDLP_PATH).toBe("");
   });
 });
 
