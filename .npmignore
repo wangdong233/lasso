@@ -43,9 +43,6 @@ probe-*
 output/
 # 2026-10-27 本地复原位（doc/ 下）——git ignore 之外的第二道闸
 doc/得到课程全量抓取*/
-doc/dedao-extract/
-doc/dedao-scout/
-doc/probe-dedao/
 
 # ----- ProfileRegistry 运行态（P2 处置轮：防 dev 残留再混入发布包）-----
 profiles/
