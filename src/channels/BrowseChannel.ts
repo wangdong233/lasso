@@ -90,6 +90,7 @@ import {
   doNetwork,
   ACTION_TO_UPSTREAM_TOOL,
   CDP_UPSTREAM_TOOL_NAMES,
+  parseConsoleMessageLines,
 } from "../browse/cdp-actions.js";
 // v1.17 Phase F（parse24 §6.2 C2）：include_refs opt-in——refs 注入/附录/click-by-ref
 //   纯函数 helper（expr 构造 + 附录格式化；无 SDK 依赖，单测友好）
@@ -1083,6 +1084,11 @@ export abstract class BrowseChannel extends UiChannel {
           ...(partial.markdown_engine
             ? { markdown_engine: partial.markdown_engine }
             : {}),
+          // P2（2026-10-28 game 反馈批）：console_errors advisory 透传（最终信封
+          // 是字段挑拣式组装——partial 里的新字段不同步此层 = 静默丢弃；第四层触点）
+          ...(partial.console_errors
+            ? { console_errors: partial.console_errors }
+            : {}),
           // v1.14.0：markdown 档正文别名字段——文档语义一直是 data.markdown，但实现只给
           // preview（搜索方案重审 verify 时两拨人先后读错字段误判「markdown 空」）。
           // 纯增量：raw 档无此字段（byte-identical 不变），markdown* 档=preview 同值。
@@ -1855,6 +1861,36 @@ async function doSnapshot(
   return { title, preview: text, final_url: extractRootWebAreaUrl(text) };
 }
 
+/**
+ * P2（2026-10-28 game 反馈批，doc/提案-game升级反馈P1-P4裁定）：screenshot 的
+ * error 级 console 摘要——**best-effort advisory**（渲染正确性信号：如 Godot
+ * 特性缺失报错页，截图本身"成功"但内容是错误页——需求方被迫自建 png_probe
+ * 才定位的事故形态）。骑既有上游 list_console_messages（零新依赖；doConsole
+ * 同款调用形态）。**语义（三审查钉死）**：①只在 error 条数 >0 时返回对象，
+ * 零条/抓取失败（含 BUG-04 楔死签名族）→ undefined（字段缺省——零条与不可知
+ * 诚实两态）；②advisory 永不影响 screenshot 本身的成败。
+ */
+async function collectConsoleErrors(
+  c: McpClient,
+): Promise<{ count: number; first?: string } | undefined> {
+  try {
+    const r = (await c.callTool(
+      CDP_UPSTREAM_TOOL_NAMES.console_log,
+      {},
+    )) as UpstreamContentResult;
+    if (r.isError) return undefined; // 上游错误：无观测，不猜（不伪装零条）
+    const messages = parseConsoleMessageLines(firstText(r) ?? "");
+    const errors = messages.filter((m) => m.type === "error");
+    if (errors.length === 0) return undefined;
+    return {
+      count: errors.length,
+      first: errors[0]?.text.slice(0, 200),
+    };
+  } catch {
+    return undefined; // 楔死/断连/任何失败 → 字段缺省（best-effort 契约）
+  }
+}
+
 async function doScreenshot(
   c: McpClient,
   _url: string,
@@ -1970,7 +2006,10 @@ async function doScreenshot(
           if (!st2.isFile() || st2.size !== tmpBuf.length) {
             throw new Error(`empty_or_missing_file:${target}`);
           }
-          return { preview: `screenshot saved to ${target}` };
+          return {
+            preview: `screenshot saved to ${target}`,
+            console_errors: await collectConsoleErrors(c),
+          };
         }
       }
       throw new Error("screenshot_write_failed:no_image_block_from_upstream");
@@ -2015,7 +2054,10 @@ async function doScreenshot(
     throw new Error(`screenshot_write_failed:${String(e).slice(0, 200)}`);
   }
 
-  return { preview: `screenshot saved to ${target}` };
+  return {
+    preview: `screenshot saved to ${target}`,
+    console_errors: await collectConsoleErrors(c),
+  };
 }
 
 async function doExtract(

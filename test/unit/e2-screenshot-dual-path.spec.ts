@@ -268,3 +268,95 @@ describe("E② · doScreenshot 双路径", () => {
     expect(r.error).toMatch(/screenshot_write_failed:upstream_is_error/);
   });
 });
+
+// ============================================================
+// P2（2026-10-28 game 反馈批，doc/提案-game升级反馈P1-P4裁定）：screenshot
+// 的 console_errors advisory——best-effort 语义（三审查钉死）：
+//  ①error>0 才出现（零条=字段缺省）；②console 抓取失败→缺省且 screenshot
+//  本身照常成功（楔死签名族含 "The selected page has been closed"）
+//  ③独立 screenshot 工具信封透传（第三层触点）
+// ============================================================
+function makeClientWithConsole(
+  takeScreenshot: ScreenshotHandler,
+  consoleTool: (name: string) => Promise<unknown> | unknown,
+): McpClient {
+  return {
+    callTool: vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === "take_screenshot") return takeScreenshot(args) as never;
+      if (name === "list_console_messages") return consoleTool(name) as never;
+      return textContent(`stubbed ${name}`);
+    }),
+    listTools: vi.fn(async () => []),
+    close: vi.fn(async () => {}),
+    pid: 99999,
+    stderr: null,
+    isConnected: true,
+  } as unknown as McpClient;
+}
+
+/** image-block 成功截图桩（走路径 2 image-block 解码落盘） */
+const pngShot = () => {
+  // 1x1 最小合法 PNG（base64）——doScreenshot 的 PNG magic + ≥100B 校验要过，
+  // 补足到 100+ 字节（IEND 后零填充不破坏 magic 头 8 字节校验）
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "base64",
+  );
+  return Buffer.concat([png, Buffer.alloc(60)]);
+};
+
+describe("P2 · console_errors advisory（best-effort 语义）", () => {
+  it("console 有 error → 字段出现（count + first 截断）", async () => {
+    const c = makeClientWithConsole(
+      () => ({
+        content: [{ type: "image", data: pngShot().toString("base64") }],
+      }),
+      async () =>
+        textContent(
+          "## Console messages\nmsgid=1 [error] Could not create WebGL context (0 args)\nmsgid=2 [log] hello (0 args)",
+        ),
+    );
+    const ch = new TestBrowseChannel(c);
+    const r = await ch.browse("https://example.com", "screenshot", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.console_errors).toEqual({
+      count: 1,
+      first: "Could not create WebGL context",
+    });
+  });
+
+  it("console 零 error → 字段缺省（零条与不可知诚实两态）", async () => {
+    const c = makeClientWithConsole(
+      () => ({ content: [{ type: "image", data: pngShot().toString("base64") }] }),
+      async () => textContent("## Console messages\nmsgid=1 [log] only info here (0 args)"),
+    );
+    const ch = new TestBrowseChannel(c);
+    const r = await ch.browse("https://example.com", "screenshot", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.console_errors).toBeUndefined();
+  });
+
+  it("console 抓取失败（楔死签名族）→ 字段缺省且 screenshot 照常成功", async () => {
+    const c = makeClientWithConsole(
+      () => ({ content: [{ type: "image", data: pngShot().toString("base64") }] }),
+      async () => {
+        throw new Error("The selected page has been closed");
+      },
+    );
+    const ch = new TestBrowseChannel(c);
+    const r = await ch.browse("https://example.com", "screenshot", {});
+    expect(r.outcome).toBe("worked"); // advisory 失败绝不拖垮 screenshot
+    expect(r.data?.console_errors).toBeUndefined();
+  });
+
+  it("console 上游 isError → 字段缺省（不伪装零条）", async () => {
+    const c = makeClientWithConsole(
+      () => ({ content: [{ type: "image", data: pngShot().toString("base64") }] }),
+      async () => ({ content: [{ type: "text", text: "boom" }], isError: true }),
+    );
+    const ch = new TestBrowseChannel(c);
+    const r = await ch.browse("https://example.com", "screenshot", {});
+    expect(r.outcome).toBe("worked");
+    expect(r.data?.console_errors).toBeUndefined();
+  });
+});

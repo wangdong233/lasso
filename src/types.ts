@@ -145,6 +145,13 @@ export interface BrowseResult {
   /** markdown 档：服务引擎名（"defuddle+turndown" / fallback "turndown-only"） */
   markdown_engine?: string;
   /**
+   * P2（2026-10-28 game 反馈批）：screenshot 的渲染正确性 advisory——error 级
+   * console 条数与首条截断文本（如 Godot 特性缺失报错页）。**best-effort**：
+   * console 抓取失败/无 error 时字段缺省（缺省 ≠ 零条——零条与不可知是两态，
+   * 诚实区分）；只在 error>0 时出现（=最优条件信号，不加常驻教学 hint）。
+   */
+  console_errors?: { count: number; first?: string };
+  /**
    * v1.17 Phase F（parse24 §6.2 C2 + 冲突 #8）：extract_mode 未传/"raw" 且
    * options.include_refs=true 时填 true——raw 档运行时忽略 include_refs 并诚实
    * 标注（宽松进严格出，schema 不拒）。缺省关时无此字段（byte-identical）。
@@ -581,6 +588,9 @@ export interface ScreenshotResult {
   preview?: string;
   /** BrowseChannel.browse() 写盘的 state 短指针 */
   state_id?: string;
+  /** P2（game 反馈批）：error 级 console 摘要（BrowseResult.console_errors 透传；
+   * best-effort——console 抓取失败时缺省，screenshot 本身不受影响） */
+  console_errors?: { count: number; first?: string };
 }
 
 /**

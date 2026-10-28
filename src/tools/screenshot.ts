@@ -137,6 +137,11 @@ export async function doScreenshotTool(
           ...(result.data.state_id
             ? { state_id: result.data.state_id }
             : {}),
+          // P2（game 反馈批）：渲染正确性 advisory 透传（第三层触点——本信封是
+          // 挑拣式组装，BrowseChannel 加了字段而这里不同步 = 静默丢弃）
+          ...(result.data.console_errors
+            ? { console_errors: result.data.console_errors }
+            : {}),
         }
       : null,
     served_by: result.served_by,
