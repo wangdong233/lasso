@@ -474,7 +474,12 @@ describe("预算帽 · L1 chars / EXAMPLES 行数 / L2 describe chars", () => {
     expect(
       fleet,
       `fleet = ${fleet}（21 常量，read_text 不计）`,
-    ).toBeLessThanOrEqual(64_500);
+    // 2026-10-28 单主题提帽 +400（64500→64900）：P2 render-sanity 信号入驻
+    // SCREENSHOT_DESCRIPTION（game 反馈批，doc/提案-game升级反馈P1-P4裁定）——
+    // 提帽时点 fleet=64478（余 22，任何有义句必爆）。先例链：v1.30 +2,400
+    // download / bug11 §5.1-3 +950 / v1.31 +2,250 login_bridge。先于功能 commit
+    // 合入（禁功能 commit 顺手改帽——帽是膨胀红线不是橡皮筋）。
+    ).toBeLessThanOrEqual(64_900);
   });
 
   it("EXAMPLES 段 ≤5 行/工具（只数 EXAMPLES 块内非头行；内联段落不计）", () => {
