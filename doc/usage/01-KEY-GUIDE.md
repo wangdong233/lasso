@@ -313,8 +313,8 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_CDP_PORT` | 登录态 Chrome 的调试端口 | `9222` | 端口被其他程序占用 |
 | `LASSO_CACHE_DIR` | 缓存 / 状态文件根目录 | `~/.cache/lasso` | 想换存储位置（如放外置盘） |
 | `LASSO_SEARCH_FREE_ONLY` | 是否禁用付费搜索源 | `L4`（全部允许） | 设 `L2` 只用免费源：Brave 计量计费属 L4 会被排除；machine_mcp 复用是 L1 零成本、**永远保留**（v1.17 起 registry 内唯一 API 源是 Brave，L1/L2/L3 档由 machine_mcp 兜底；无机器 MCP 时诚实返空结果） |
-| `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR） | 内置安全默认 | 公司内网 / 特殊代理环境 |
-| `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR） | 内置安全默认 | 需要额外封禁某段 |
+| `LASSO_SSRF_ALLOW_RANGES` | 允许访问的内网 IP 段（CIDR）。**config.json 通道**（2026-10-28 P4）：env 与 config 文件双通道（env 恒赢），**重启 MCP server 生效**（一跳守卫为装配期快照；ContentSecondHop/undici/http-serp 二跳 fallback 逐调用热）——内网联调临时放行时改 config 后 /mcp 重连一次即可 | 内置安全默认 | 公司内网 / 特殊代理环境 |
+| `LASSO_SSRF_DENY_RANGES` | 禁止访问的 IP 段（CIDR）。config 通道与重启语义同上键（P4 联动获益） | 内置安全默认 | 需要额外封禁某段 |
 | `LASSO_ALLOW_FILE_FROM` | `file://` 导航目录白名单（**冒号分隔**；仅 `browse_headless` / `browse_logged_in` / `browse_headed` 三工具生效（W2 起含 headed 档）） | 空（`file://` 默认拒） | 测本地单文件 HTML 交付物时配，如 `LASSO_ALLOW_FILE_FROM=/Users/you/Documents/project`。只放行指定目录**子树**（realpath 规范化 + 边界匹配：`../` 穿越 / symlink 逃逸 / 目录前缀伪造全封口；不存在条目装载时丢弃）；`fetch_url` / `screenshot` 等其余工具保持 http(s)-only。拒绝 payload 带 opt-in hint；`lasso doctor` 的 `ssrf_config` 回显 `fileFrom=<n>`，丢弃条目会降级 warn 提示 |
 | `LASSO_SCREENSHOT_DIR` | `options.screenshot.filePath` 截图落盘**写根**（冒号分隔；仅 browse 两工具的截图 action 生效） | 空（显式 filePath 恒拒；缺省管理路径 `/tmp/lasso-screenshot-*.png` 不受影响） | 要自选截图落盘位置时配，如 `LASSO_SCREENSHOT_DIR=/Users/you/shots`。默认拒是收紧「任意路径写盘」暴露面（防注入的 agent 覆写 `~/.zshrc` 类文件）；写根内嵌套父目录自动创建；写根外 / `../` 出根 / symlink 逃逸全拒。`lasso doctor` 回显 `shotDir=<n>` |
 | `LASSO_DOCTOR_INPUT_SELFTEST` | doctor #22 `cgevent_delivery_selftest` 投递自检开关（bugs/10） | 空（默认 skip——自检会**真实移动你的光标 7px 后复位**，未经部署者明示的位移不开） | 怀疑合成鼠标事件没送达（`desktop act` 坐标动作零效果 / `cgevent_no_landing`）时配 `=1` 再跑 `desktop(action:"doctor")`：读光标 → wiggle 7px → 判 landed → 复位回原位 → 复读确认；失败会定位到层（helper 层 / 投递层）。这是部署级一次性 consent——doctor 可被 agent 触发，默认关是伦理红线不是遗漏 |

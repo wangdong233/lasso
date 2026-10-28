@@ -436,6 +436,10 @@ describe("loadConfig — file→env 合并", () => {
     // P1（2026-10-28）：浏览器路径覆盖键——必须留空（通道侧空即不加旗标，
     // 缺省行为字节级不变；预填=BUG-13 毒化）
     expect(CONFIG_TEMPLATE.LASSO_CHROME_PATH).toBe("");
+    // P4（2026-10-28）：SSRF 三键——必须留空（CSV/冒号键空=内置安全默认）
+    expect(CONFIG_TEMPLATE.LASSO_SSRF_ALLOW_RANGES).toBe("");
+    expect(CONFIG_TEMPLATE.LASSO_SSRF_DENY_RANGES).toBe("");
+    expect(CONFIG_TEMPLATE.LASSO_ALLOW_FILE_FROM).toBe("");
   });
 });
 
@@ -589,5 +593,46 @@ describe("死键第 7/8 例锚：passphrase 消费点 mergedEnv + PROVIDERS_FILE
 
   it("LASSO_PROVIDERS_FILE 已从 CONFIG_TEMPLATE 除名（env-only by design——index.ts 注释明言运维显式 export）", () => {
     expect(CONFIG_TEMPLATE).not.toHaveProperty("LASSO_PROVIDERS_FILE");
+  });
+});
+
+// ============================================================
+// P4（2026-10-28 game 反馈批）：SSRF 三键 config 通道——装配点
+// loadSsrfConfig(mergedEnv(process.env)) 组合验证（重启生效语义在
+// index.ts 装配层，本组合锚钉 config 文件值能进 SsrfConfig）
+// ============================================================
+describe("P4：SSRF config 通道（loadSsrfConfig × mergedEnv 组合）", () => {
+  it("config 文件三键 → SsrfConfig 生效（env 恒赢不变）", async () => {
+    const { writeFileSync, rmSync, mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { loadSsrfConfig } = await import("../../src/ssrf/ssrf-guard.js");
+    const { mergedEnv } = await import("../../src/config/config.js");
+    const dir = mkdtempSync(join(tmpdir(), "lasso-p4-ssrf-"));
+    const cfg = join(dir, "config.json");
+    writeFileSync(cfg, JSON.stringify({
+      LASSO_SSRF_ALLOW_RANGES: "192.168.0.0/16",
+      LASSO_SSRF_DENY_RANGES: "10.0.0.0/8",
+      LASSO_ALLOW_FILE_FROM: "/tmp/safe-dir",
+    }));
+    try {
+      delete process.env.LASSO_SSRF_ALLOW_RANGES;
+      const prevCfg = process.env.LASSO_CONFIG_PATH;
+      process.env.LASSO_CONFIG_PATH = cfg;
+      const c = loadSsrfConfig(mergedEnv(process.env));
+      expect(c.allowRanges).toContain("192.168.0.0/16");
+      expect(c.denyRanges ?? []).toContain("10.0.0.0/8");
+      // env 恒赢
+      process.env.LASSO_SSRF_ALLOW_RANGES = "172.16.0.0/12";
+      const c2 = loadSsrfConfig(mergedEnv(process.env));
+      expect(c2.allowRanges).toContain("172.16.0.0/12");
+      expect(c2.allowRanges).not.toContain("192.168.0.0/16");
+      delete process.env.LASSO_SSRF_ALLOW_RANGES;
+      if (prevCfg === undefined) delete process.env.LASSO_CONFIG_PATH;
+      else process.env.LASSO_CONFIG_PATH = prevCfg;
+    } finally {
+      delete process.env.LASSO_SSRF_ALLOW_RANGES;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

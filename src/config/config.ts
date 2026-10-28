@@ -432,6 +432,12 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // 完整 Chrome——headless-shell 无窗口）。**必须留空**——通道侧 (x ?? "").trim()
   // 空即不加旗标（缺省行为字节级不变）；预填值=BUG-13 §7-1 模板毒化形态
   LASSO_CHROME_PATH: "",
+  // P4（2026-10-28 game 反馈批）：SSRF 三键 config 通道（重启生效——见
+  // index.ts 装配点注释）。**必须留空**——CSV/冒号键空=内置安全默认（预填
+  // 值在用户不知情时改安全面=毒化形态）
+  LASSO_SSRF_ALLOW_RANGES: "",
+  LASSO_SSRF_DENY_RANGES: "",
+  LASSO_ALLOW_FILE_FROM: "",
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,

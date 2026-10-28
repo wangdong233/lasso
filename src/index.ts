@@ -874,7 +874,14 @@ async function runMcpServer(): Promise<void> {
   );
 
   // ----- 装配 SSRF -----
-  const ssrfConfig = loadSsrfConfig();
+  // P4（2026-10-28 game 反馈批，doc/提案-game升级反馈P1-P4裁定 v2）：SSRF 三键
+  // （ALLOW/DENY_RANGES + ALLOW_FILE_FROM）的 config.json 通道——装配期经
+  // mergedEnv 读一次（**重启生效**，诚实声明：一跳入口守卫全部吃这份装配快照，
+  // 三处 ?? loadSsrfConfig() 回退在生产装配态不触发——三审查 A4-F-2/B4-F-C/
+  // C4-F-1 联合定谳，v1 的「一线改=逐调用热生效」是假修复，方案 A thunk 化
+  // ~15 处登记为升级路径）。安全等价：config.json 与 env 同为用户显式意志域
+  //（env 恒赢）；「可扩展不能缩小」不变（DEFAULT_ALLOW_RANGES 永远生效）。
+  const ssrfConfig = loadSsrfConfig(mergedEnv(process.env));
 
   // ----- 跨模态 fallback 用的 browse 执行器（serpScrapeFallback 用）-----
   // 把 HeadlessChannel.browse 的 InteractResult<BrowseResult> 降形为
