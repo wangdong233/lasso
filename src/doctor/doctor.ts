@@ -1042,7 +1042,7 @@ async function checkChromeBinary(): Promise<DoctorCheck> {
     detail:
       "未找到系统 Chrome（browse_headless/headed 上游只查系统装位——bundled chromium 通道在锁定 1.7.0 下不可达；browse_logged_in 需要真实 Chrome）",
     next_step:
-      '装 Chrome，或在 ~/.lasso/config.json 配 "LASSO_CHROME_PATH" 指向任意可执行 Chrome 二进制（Chrome for Testing 便携版亦可：解压后 chrome-linux64/chrome 或 chrome-headless-shell）——配置后 admin browser_recycle 生效',
+      '装 Chrome，或在 ~/.lasso/config.json 配 "LASSO_CHROME_PATH" 指向任意可执行 Chrome 二进制（仅装了 Firefox 的机器：Chrome for Testing 便携版（googlechromelabs.github.io/chrome-for-testing/）解压即用，无需 root）——配置后 admin browser_recycle 生效',
   };
 }
 
