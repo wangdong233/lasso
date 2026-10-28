@@ -141,7 +141,7 @@
  * 本身就是发现（不可证伪 → 应重写）。运行：npm run inv-selftest 或
  * npm run check-invariants -- --selftest（对 src 临时副本注入，工作树零污染）。
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative, isAbsolute } from "node:path";
 
@@ -154,6 +154,23 @@ const SRC_ROOT = __invOverride
       ? __invOverride
       : fileURLToPath(new URL(__invOverride, import.meta.url)))
   : fileURLToPath(new URL("../", import.meta.url));
+
+// v1.33.1（2026-10-28 白盒根因修复）：npm 包形态检测——SKIP 第三态的依据。
+// 背景：4 项 INV（76/77/101/103）的证据文件在 rust-helper/ 与 test/ 下，而 npm
+// tarball 刻意不含两者（v1.31.1 设计：rust-helper 单独分发、test/ 不入包）→ 包
+// 形态下 readFileSync 必抛 → 旧代码 catch { return false } 把「证据文件缺席」
+// 误当「断言被证伪」→ npx 用户的 doctor 恒报 4 红（ready:false 假阳性）。
+// 判据：**两者同时缺席** = npm 安装形态（git clone 必含两者）；只缺其一 = 仓库
+// 损坏 → 维持红（防静默降级）。
+// 锚点纪律：锚**本文件自身位置**（import.meta.url），绝不锚 SRC_ROOT——inv-
+// selftest 的 LASSO_INV_SRC_ROOT 临时副本不含 rust-helper/test，锚 SRC_ROOT 会
+// 误判包形态 → 4 项 INV 在 selftest 下静默跳过 = CI 防线削弱。
+const __selfDir = fileURLToPath(new URL("./", import.meta.url));
+const PKG_FORM =
+  !existsSync(join(__selfDir, "../../rust-helper/src")) &&
+  !existsSync(join(__selfDir, "../../test/helpers"));
+// SKIP 哨兵：check() 返回它 = 本项证据文件不在场、不适用（非 PASS 非 FAIL）。
+const SKIP = Symbol("inv-skip-package-form");
 
 function listTsFiles(root) {
   return readdirSync(root, { recursive: true })
@@ -3810,6 +3827,8 @@ const assertions = [
           "utf8",
         );
       } catch {
+        // v1.33.1：包形态（rust-helper 不随 tarball）→ SKIP；仓库形态缺文件 = 红
+        if (PKG_FORM) return SKIP;
         return false;
       }
       if (!/params\.get\("screenshot_region"\)/.test(rustShot)) return false;
@@ -4002,6 +4021,11 @@ const assertions = [
           "utf8",
         );
       } catch {
+        // v1.33.1：包形态（test/ 不随 tarball）→ SKIP；仓库形态缺文件 = 红。
+        // 注：inv-selftest 临时副本（LASSO_INV_SRC_ROOT）会走到这个 catch（其
+        // SRC_ROOT 相对路径无 test/helpers）但**走不到 SKIP 分支**——PKG_FORM
+        // 锚本文件自身位置（真仓库）恒 false → 维持原 fail（既有容忍噪声）。
+        if (PKG_FORM) return SKIP;
         return false;
       }
       if (!/before\(\)/.test(meterSrc)) return false;
@@ -6305,6 +6329,8 @@ const assertions = [
           "utf8",
         );
       } catch {
+        // v1.33.1：包形态（rust-helper 不随 tarball）→ SKIP；仓库形态缺文件 = 红
+        if (PKG_FORM) return SKIP;
         return false;
       }
       // (1) landing_receipt 定义 + ≥4 个调用点（click/move/drag/scroll×2）
@@ -6404,6 +6430,8 @@ const assertions = [
           "utf8",
         );
       } catch {
+        // v1.33.1：包形态（rust-helper 不随 tarball）→ SKIP；仓库形态缺文件 = 红
+        if (PKG_FORM) return SKIP;
         return false;
       }
       // (1) 版本注入门控纯函数：<15 早退 false（永不门控分支是第一裁决）
@@ -6710,6 +6738,7 @@ if (process.argv.includes("--selftest")) {
 }
 
 let failed = 0;
+let skipped = 0;
 for (const a of assertions) {
   let ok;
   try {
@@ -6717,6 +6746,13 @@ for (const a of assertions) {
   } catch (e) {
     ok = false;
     console.error(`[check-error] ${a.id}: ${e}`);
+  }
+  if (ok === SKIP) {
+    skipped++;
+    console.log(
+      `SKIP  ${a.id}  —  package form：证据文件（rust-helper/ 或 test/）未随 npm tarball 分发（v1.31.1 设计），本项不适用；仓库/CI 形态照常执法`,
+    );
+    continue;
   }
   console.log(`${ok ? "PASS" : "FAIL"}  ${a.id}  —  ${a.desc}`);
   if (!ok) failed++;
@@ -6726,4 +6762,10 @@ if (failed > 0) {
   console.error(`\n${failed} invariant(s) FAILED — CI red`);
   process.exit(1);
 }
-console.log(`\nAll ${assertions.length} invariants passed.`);
+if (skipped > 0) {
+  console.log(
+    `\nAll ${assertions.length - skipped} invariants passed, ${skipped} skipped (package form).`,
+  );
+} else {
+  console.log(`\nAll ${assertions.length} invariants passed.`);
+}

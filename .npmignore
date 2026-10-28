@@ -1,8 +1,36 @@
-# Lasso .npmignore —— 控制 npm publish 时打包的文件
-# 原则：保 src/（check-invariants.mjs + .ts 源码供 deep-read）+ dist/（编译后 JS，bin 入口）
-#       + 文档 + fixtures；排除 Rust 源码（pre-built binary 单独分发）+ 测试 + dev scripts
+# ===== 发布白名单（v1.33.1：游离文件防泄漏——根级与 doc/ 子树两级根治）=====
+# 惯用法：/* 全忽略 + ! 精确重入（gitignore 语义，last-match-wins——本块必须在最前，
+# 下方既有黑名单规则对重入目录内部继续生效）。
+# 类修复背景：dedao blob（git 史）/1.18.4 tarball/1.33.0 tarball（用户私有事故
+# 记录实发 registry）三次复发同根因——黑名单语义下新增文件默认入包。
+# 有意 drop（历来顺带入包，白名单化后剔除；无运行时消费方——bin→dist，src 仅供
+# deep-read）：tsconfig.json、vitest.workspace.ts。
+/* 
+!/README.md
+!/README.en.md
+!/ARCHITECTURE.md
+!/LICENSE
+!/package.json
+!/src/
+!/dist/
+!/doc/
+!/fixtures/
 
-# ----- Rust helper（pre-built binary 单独分发；不打包 Rust 源码 + Cargo 文件）-----
+# ----- doc/ 子树下钻（敏感资产驻地——得到课程全量抓取/ 在此层）：
+# doc/* 默认全忽略；只重入 6 个公开子目录 + 顶层 *.md（新提案 md 自动入包；
+# 新建子目录默认排除——须显式重入才可发布）。
+doc/*
+!doc/*.md
+!doc/architecture/
+!doc/assets/
+!doc/bugs/
+!doc/governance/
+!doc/testing/
+!doc/usage/
+
+# ----- 残余面（在案接受）：src/ dist/ fixtures/ 内部仍为黑名单语义——
+# 这三目录是代码/构建物/检查证据，stray 风险由 code review 把关。
+
 rust-helper/
 
 # ----- 开发测试（端用户不需要）-----

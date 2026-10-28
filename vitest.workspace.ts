@@ -13,6 +13,10 @@ import { defineWorkspace } from "vitest/config";
 
 /** 时序敏感 / 真实 spawn 子进程的 spec（testTimeout 15s + hookTimeout 15s）。 */
 const SLOW_SPECS = [
+  // 2026-10-28（包形态门）：npm pack + tar + 2× 全量 checker spawn——beforeAll
+  // 实测 ~8.5s（有 180s 保护），两个 checker it 平时 ~0.5s 但全量并行负载下
+  // 逼近 5s 默认帽（deep-probe/v10 同型 spawn 判据；本仓两次立法防的假红类）。
+  "test/unit/npm-tarball-package-form.spec.ts",
   // 真实 spawn 子进程（node dist / rust-helper / Chrome 探测）
   "test/integration/cli-conventions.spec.ts",
   "test/unit/doctor-deep-probe.spec.ts",
