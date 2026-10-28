@@ -15,6 +15,9 @@
  * 即 bot 标记）；--viewport 与 profile.viewport 同源。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as fsSync from "node:fs";
 import { promises as fs, mkdtempSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -239,5 +242,60 @@ describe("T2 — headless 通道 launch 级 UA/viewport（经 1.7.0 chromeArg �
     expect(spec.args).toContain(
       `--chromeArg=--user-agent=${STEALTH_PROFILES.mac_safari_17.userAgent}`,
     );
+  });
+});
+
+// ============================================================
+// P1（2026-10-28 game 反馈批，doc/提案-game升级反馈P1-P4裁定）：LASSO_CHROME_PATH
+// 旗标契约锚——上游 yargs 无 .strict()，拼错静默哑弹回落 channel='stable' 死法，
+// 本锚是硬要求（审查 B4-F-E；proxy-egress.spec 形态：设值 toContain 精确前缀 +
+// 未设零旗标 byte-identical 负测）
+// ============================================================
+describe("P1：LASSO_CHROME_PATH 旗标契约（--executablePath 透传）", () => {
+  const ISOLATED_CFG = path.join(os.tmpdir(), `lasso-p1-cfg-${Date.now()}.json`);
+  beforeEach(() => {
+    fsSync.writeFileSync(ISOLATED_CFG, "{}");
+    process.env.LASSO_CONFIG_PATH = ISOLATED_CFG;
+  });
+  afterEach(() => {
+    delete process.env.LASSO_CHROME_PATH;
+    delete process.env.LASSO_CONFIG_PATH;
+  });
+
+  it("env 设值 → spec args 含精确前缀 --executablePath=<v>（headless）", () => {
+    process.env.LASSO_CHROME_PATH = "/opt/cft/chrome";
+    const cap = new LockedInSpecCapture();
+    new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
+    const spec = cap.get("headless");
+    expect(spec.args).toContain("--executablePath=/opt/cft/chrome");
+    // 上游旗标位序：在包名之后（npm exec 旗标解析——与 chromeArg 族同区）
+    expect(spec.args.indexOf("--executablePath=/opt/cft/chrome")).toBeGreaterThan(
+      spec.args.indexOf(`chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`),
+    );
+  });
+
+  it("未设值 → 零旗标（缺省行为字节级不变锚）", () => {
+    const cap = new LockedInSpecCapture();
+    new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
+    const spec = cap.get("headless");
+    expect(spec.args.some((a: string) => a.startsWith("--executablePath="))).toBe(false);
+  });
+
+  it("config.json 设值 → 同样透传（消费点 mergedEnv 读——config 通道验证）", () => {
+    fsSync.writeFileSync(ISOLATED_CFG, JSON.stringify({ LASSO_CHROME_PATH: "/from/config.json" }));
+    const cap = new LockedInSpecCapture();
+    new HeadlessChannel(cap.subproc as unknown as SubprocessManager);
+    expect(cap.get("headless").args).toContain("--executablePath=/from/config.json");
+  });
+
+  it("懒重读：freshProfile 后改值 → 新 spec 用新路径（非构造冻结锚）", async () => {
+    process.env.LASSO_CHROME_PATH = "/old/path";
+    const cap = new LockedInSpecCapture();
+    const ch = new HeadlessChannel(cap.subproc as unknown as SubprocessManager, undefined, undefined, undefined, path.join(os.tmpdir(), `lasso-p1-base-${Date.now()}`));
+    expect(cap.get("headless").args).toContain("--executablePath=/old/path");
+    process.env.LASSO_CHROME_PATH = "/new/path";
+    await ch.freshProfile();
+    expect(cap.get("headless").args).toContain("--executablePath=/new/path");
+    expect(cap.get("headless").args.some((a: string) => a.includes("/old/path"))).toBe(false);
   });
 });

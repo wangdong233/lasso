@@ -61,6 +61,7 @@ import { parseEvalResult } from "../browse/upstream-response.js";
 import {
   DEFAULT_HEADED_HARD_CAP_MS,
   DEFAULT_HEADED_IDLE_MS,
+  mergedEnv,
 } from "../config/config.js";
 import { logger } from "../util/logger.js";
 import type { BrowseResult, InteractResult } from "../types.js";
@@ -173,6 +174,14 @@ export class HeadedChannel extends BrowseChannel {
    * 必含 lasso-owned --user-data-dir / --no-usage-statistics / automation 面两抹）。
    */
   private registerHeadedSpec(profileDir: string): void {
+    // P1（2026-10-28 game 反馈批）：LASSO_CHROME_PATH 消费点懒读（HeadlessChannel
+    // 同款；本函数=headed 栈唯一 spec 注册点，重建即重读）。**headed 需完整
+    // Chrome**——chrome-headless-shell 无窗口能力，指给本通道必坏（审查 A4-F-5），
+    // KEY-GUIDE 已写明。cloud 通道（Browserbase/Steel/LoggedIn）不透传——上游
+    // browserUrl/wsEndpoint 与 executablePath 互斥（attach 形态本就不涉本机二进制）。
+    const chromePath = (mergedEnv(process.env).LASSO_CHROME_PATH ?? "").trim();
+    // 预构建（args 字面量内禁内联数组字面量——INV-97 args 块正则保护）
+    const chromePathArgs: string[] = chromePath ? [`--executablePath=${chromePath}`] : [];
     this.subproc.registerSpec(this.specName, {
       command: "npx",
       args: [
@@ -182,6 +191,7 @@ export class HeadedChannel extends BrowseChannel {
         `chrome-devtools-mcp@${LOCKED_CDP_MCP_VERSION}`,
         // —— 无 --headless（本通道的存在意义）——
         "--no-usage-statistics",
+        ...chromePathArgs,
         // A.4③：automation 面仅做「抹痕迹」，禁 StealthEngine 注入（真实环境=真实指纹）
         "--chromeArg=--disable-blink-features=AutomationControlled",
         "--ignoreDefaultChromeArg=--enable-automation",

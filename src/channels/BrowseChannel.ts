@@ -1733,6 +1733,15 @@ async function doNavigate(
     })) as NavigateResult;
   } catch (e) {
     const msg = String(e);
+    // P1（2026-10-28 game 反馈批）：chrome-missing 教学两步指引——上游报错串直达
+    // 此处（浏览器懒启动在首导航触发）。无系统 Chrome 机器必踩（F3 定谳：上游
+    // channel='stable' 只查系统装位），指引给 LASSO_CHROME_PATH + recycle 出路。
+    if (/Could not find Google Chrome executable|Browser was not found at the configured executablePath/i.test(msg)) {
+      throw new Error(
+        `chrome_missing:${msg.slice(0, 160)} — FIX: 在 ~/.lasso/config.json 配 "LASSO_CHROME_PATH" 指向可执行 Chrome 二进制` +
+          `（Chrome for Testing 便携版亦可），然后 admin {action:"browser_recycle"} 重建 headless 栈（或等 idle 回收 ~5min）再重试；见 doctor #5`,
+      );
+    }
     // W1-DEF-5：上游 navigate 直接抛导航错（DNS / 连接失败）→ 显式 dns_or_nav_error
     if (NAV_ERROR_SIGNATURES.test(msg)) {
       throw new Error(`dns_or_nav_error:${msg.slice(0, 200)}`);
@@ -1742,6 +1751,14 @@ async function doNavigate(
 
   if (r.isError) {
     const detail = firstText(r) ?? "navigate_is_error";
+    // P1：chrome-missing 教学同款（上游 navigate 以 isError 形态回浏览器拉起失败
+    // ——game 反馈实测走本分支；与上方 catch 分支双覆盖）
+    if (/Could not find Google Chrome executable|Browser was not found at the configured executablePath/i.test(detail)) {
+      throw new Error(
+        `chrome_missing:${detail.slice(0, 160)} — FIX: 在 ~/.lasso/config.json 配 "LASSO_CHROME_PATH" 指向可执行 Chrome 二进制` +
+          `（Chrome for Testing 便携版亦可），然后 admin {action:"browser_recycle"} 重建 headless 栈（或等 idle 回收 ~5min）再重试；见 doctor #5`,
+      );
+    }
     if (NAV_ERROR_SIGNATURES.test(detail)) {
       throw new Error(`dns_or_nav_error:${detail.slice(0, 200)}`);
     }

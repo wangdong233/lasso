@@ -428,6 +428,10 @@ export const CONFIG_TEMPLATE: Record<string, unknown> = {
   // （检测序①显式意志，压过 bin-cache②）。**必须留空**——resolveYtDlpPath 以
   // 非空判「显式」，预填值=BUG-13 §7-1 模板毒化形态（config-file.spec 守卫锚）
   LASSO_YTDLP_PATH: "",
+  // P1（2026-10-28 game 反馈批）：浏览器路径覆盖（headless/headed 栈；headed 需
+  // 完整 Chrome——headless-shell 无窗口）。**必须留空**——通道侧 (x ?? "").trim()
+  // 空即不加旗标（缺省行为字节级不变）；预填值=BUG-13 §7-1 模板毒化形态
+  LASSO_CHROME_PATH: "",
   // C2（v1.18，doc/governance/09 D-2）：登录完成自动转后台静默（opt-in；默认 false）
   LASSO_AUTO_HIDE_AFTER_LOGIN: false,
   LASSO_AUTO_HIDE_AFTER_LOGIN_DELAY_MS: 10000,

@@ -41,6 +41,9 @@ import {
   nextHostApplicableProfile,
   type StealthProfileName,
 } from "../browse/stealth-profiles.js";
+// P1（2026-10-28 game 反馈批）：LASSO_CHROME_PATH 消费点 mergedEnv 读（config
+// 层单一合并真源；HeadedChannel 同款先例已 import config——无 INV 障碍）
+import { mergedEnv } from "../config/config.js";
 import {
   buildFreshProfileDirName,
   headlessProfileBaseDir,
@@ -132,6 +135,16 @@ export class HeadlessChannel extends BrowseChannel {
     proxyUrl?: string,
   ): void {
     const profile = STEALTH_PROFILES[profileName];
+    // P1（2026-10-28 game 反馈批，doc/提案-game升级反馈P1-P4裁定）：浏览器路径覆盖
+    // ——消费点懒读（INV-110 消费点模式），**非**构造注入（proxyUrl 先例是构造期
+    // 冻结=假热换——三审查 A4-F-3/B4-F-A/C4-F-2 联合钉死）。三条栈重建路径（首
+    // 注册/freshProfile/idle 回收重注册）全部经本函数 → config.json 变更自动吸收
+    //（idle 收割默认 5min = 免操作的吸收通道）。上游 --executablePath 与本 spec 的
+    // --headless/--isolated 兼容（互斥仅 browserUrl/wsEndpoint/channel）。
+    const chromePath = (mergedEnv(process.env).LASSO_CHROME_PATH ?? "").trim();
+    // 预构建（args 字面量内禁内联数组字面量——INV-97 的 args 块正则按首个 ]
+    // 惰性截断，内联 [...?:[]] 形态会切碎断言面）
+    const chromePathArgs: string[] = chromePath ? [`--executablePath=${chromePath}`] : [];
     this.subproc.registerSpec("headless", {
       command: "npx",
       args: [
@@ -145,6 +158,10 @@ export class HeadlessChannel extends BrowseChannel {
         "--headless",
         "--isolated",
         "--no-usage-statistics",
+        // P1：路径覆盖透传（上游原生旗标；缺省不加 = 现行为字节级不变）。
+        // yargs 无 .strict()——拼错静默哑弹回落 channel='stable' 死法，旗标契约
+        // 由 cdp-mcp-170-migration spec 的 P1 锚测试钉死（审查 B4-F-E）
+        ...chromePathArgs,
         "--chromeArg=--disable-blink-features=AutomationControlled",
         `--chromeArg=--user-agent=${profile.userAgent}`,
         // T3-1（round3 v1.13）：HTTP Accept-Language 头与 JS 层对齐。--user-agent

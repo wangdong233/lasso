@@ -990,6 +990,27 @@ async function checkCdpMcpInstallable(): Promise<DoctorCheck> {
 
 /** 5. Chrome 二进制存在（macOS 优先路径）。 */
 async function checkChromeBinary(): Promise<DoctorCheck> {
+  // P1（2026-10-28 game 反馈批，F3 定谳配套）：LASSO_CHROME_PATH 覆盖回显 + X_OK
+  // 校验（checkProxyConfig 回显先例）——配置了覆盖键时以覆盖键为权威面。
+  const chromePathOverride = (mergedEnv(process.env).LASSO_CHROME_PATH ?? "").trim();
+  if (chromePathOverride !== "") {
+    try {
+      await fs.access(chromePathOverride, fsConstants.X_OK);
+      return {
+        name: "chrome_binary",
+        status: "pass",
+        detail: `${chromePathOverride}（LASSO_CHROME_PATH 覆盖，headless/headed 栈生效）`,
+      };
+    } catch {
+      return {
+        name: "chrome_binary",
+        status: "warn",
+        detail: `LASSO_CHROME_PATH=${chromePathOverride} 不可执行（X_OK 校验失败）——browse_headless/headed 将无法启动浏览器`,
+        next_step:
+          "修正 LASSO_CHROME_PATH 到可执行的 Chrome 二进制（headed 需完整 Chrome；headless 可用 chrome-headless-shell）；Chrome for Testing 便携版亦可",
+      };
+    }
+  }
   const candidates = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -1014,8 +1035,14 @@ async function checkChromeBinary(): Promise<DoctorCheck> {
   return {
     name: "chrome_binary",
     status: "warn",
-    detail: "未找到 Chrome（browse_headless 仍可用 chrome-devtools-mcp 的 bundled chromium；browse_logged_in 需要真实 Chrome）",
-    next_step: "安装 Google Chrome（macOS 放到 /Applications）",
+    // F3 定谳订正（2026-10-28，doc/提案-game升级反馈P1-P4裁定）：旧文案「仍可用
+    // bundled chromium」**无条件为假**——上游 1.7.0 middleware 四空恒置
+    // channel='stable'，puppeteer-core channel 分支只查系统装位（cache 下载分支
+    // 结构性不可达）。无系统 Chrome 的机器上 LASSO_CHROME_PATH 是唯一通路。
+    detail:
+      "未找到系统 Chrome（browse_headless/headed 上游只查系统装位——bundled chromium 通道在锁定 1.7.0 下不可达；browse_logged_in 需要真实 Chrome）",
+    next_step:
+      '装 Chrome，或在 ~/.lasso/config.json 配 "LASSO_CHROME_PATH" 指向任意可执行 Chrome 二进制（Chrome for Testing 便携版亦可：解压后 chrome-linux64/chrome 或 chrome-headless-shell）——配置后 admin browser_recycle 生效',
   };
 }
 

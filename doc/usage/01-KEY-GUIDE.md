@@ -333,6 +333,7 @@ sudo apt install at-spi2-core     # Debian/Ubuntu
 | `LASSO_FALLBACK_CROSS_CHANNEL` | `browse_headless` 失败时是否自动回退到 `browse_logged_in`（跨通道边，C3 改判默认**关**） | `false`（边已移除） | 回退 v1.26.0 行为配 `1`。默认关的理由：登录态通道须你显式选择 + 无 9222 环境必死加时 + 跨通道错误串染（headless 超时被 logged_in 连接错误掩盖，marathon 误判事故根） |
 | `LASSO_PROXY` | 浏览器出口代理（v1.11 新增） | 空（直连） | 反封锁 / 代理网络环境。**只影响 `browse_headless`（`--proxy-server`）和 Steel 云浏览器（session `proxyUrl`）**；`browse_logged_in` 永不读取——你真实 Chrome 的出口保持原样。例：`"LASSO_PROXY": "http://127.0.0.1:7890"`。配没配可用 `lasso doctor` 看 `proxy_config` 回显 |
 | `LASSO_YTDLP_PATH` | 下载引擎 yt-dlp 二进制路径覆盖（检测序①用户显式意志→bin-cache②→PATH③；doctor #40 与下载引擎链双消费面——引擎链经 index.ts 启动抬升、doctor 经 mergedEnv） | 空（用 bin-cache/PATH 解析） | 本机 bin-cache 二进制病变时指向快替代（如 zipapp 包装器）；env 与 config.json 双通道等价（env 恒赢） |
+| `LASSO_CHROME_PATH` | 浏览器路径覆盖（P1，2026-10-28 game 反馈批）：headless/headed 浏览栈 spawn 时透传上游 `--executablePath`——**无系统 Chrome 机器的唯一通路**（上游只查系统装位，bundled 通道不可达）。消费点懒读 → 三条栈重建路径（首注册/freshProfile/idle 回收 ~5min）自动吸收 config 变更；生效前须 `admin browser_recycle` 或等 idle 回收 | 空（走上游系统装位发现） | Chrome for Testing 便携版可（解压后 chrome-linux64/chrome 或 chrome-headless-shell——**headless-shell 仅限 headless 栈**，headed 需完整 Chrome）；launch-chrome/登录档自有发现链不受此键影响；cloud 通道（browserbase/steel/logged_in attach）不消费此键 |
 | `LASSO_CALLER_CAP_DEFAULT` | 单个 Claude Code 会话 60s 内最多调用 Lasso 工具的次数（自控防失控循环） | **不限制**（`Infinity`，v1.18.1 起） | 担心失控循环烧配额时显式设一个数（如 `120`）；计数照常记录（`admin` 可查），只是默认不再拦截 |
 | `ZHIPU_ENDPOINT` | ~~智谱端点覆盖~~ **已退役（v1.17）** | ——（不再被消费） | 无；历史配置静默忽略（与 `ZHIPU_API_KEY` 同批退役，`zhipu_keys_retired` 提示删除） |
 

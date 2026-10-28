@@ -249,7 +249,7 @@ macOS 上能控 Finder / Mail / Safari / Notes / 系统设置等任何原生 app
 |---|---|---|---|---|
 | Node.js ≥ 20 | 全部 | **硬前提** | 手装（[nodejs.org](https://nodejs.org)） | 无法运行 |
 | MCP 客户端（如 Claude Code） | 接入面 | **硬前提** | `claude mcp add` 见下 | 无调用方 |
-| Chrome / Chromium 浏览器 | `browse_logged_in`（复用你本机 Chrome）/ 渲染档 / 登录接力档（`login_bridge`） | 这三面需要 | 手装（doctor #5 `chrome_binary` 检查） | **`browse_headless` 不需要预装**（chrome-devtools-mcp 首跑自动拉 bundled Chromium 到 `~/.cache/puppeteer`）；渲染/登录档缺 Chrome 时给可教学错误（提示装 Chrome 或先跑一次 `browse_headless` 让缓存落盘） |
+| Chrome / Chromium 浏览器 | `browse_logged_in`（复用你本机 Chrome）/ 渲染档 / 登录接力档（`login_bridge`）/ `browse_headless` + `browse_headed` | 全部需要（headless 例外见缺失行为） | 手装，或 headless/headed 栈经 `LASSO_CHROME_PATH` 指向任意可执行 Chrome 二进制（Chrome for Testing 便携版亦可；doctor #5 检查） | 无系统 Chrome 时 `browse_headless`/`browse_headed` 会启动失败并给出两步教学（配 `LASSO_CHROME_PATH` → `admin browser_recycle` 重试）。**勘误（2026-10-28）**：早期版本声称 headless「免预装自动拉 bundled Chromium」——该通道在锁定的上游 1.7.0 下结构性不可达（channel 恒被默认为 stable，仅查系统装位），声明作废；渲染/登录档缺 Chrome 时给可教学错误 |
 | aria2c | `download` 直链多线程 / 磁力链接 | 可选 | 手装（macOS `brew install aria2` / Debian `apt install aria2`；doctor #40） | HTTP 下载**自动降级** undici 单流引擎仍可用；**磁力链接显式不可用**（unavailable + 引导提示） |
 | yt-dlp | `download` 流媒体 / 字幕 / 纯音频 | 可选 | **首次用到时 lazy 引导下载**（SHA256 钉版校验，doctor #40）或手装 | stream 类任务触发引导；拒绝引导则该类不可用 |
 | lasso-rust-helper（二进制） | **仅 macOS** `desktop` 桌面控制 | 仅桌面需要 | **预编译二进制单独分发，刻意不进 npm 包**（见仓库 `rust-helper/` 构建；`LASSO_RUST_HELPER_PATH` env 可指任意路径；doctor #15/#16 引导 + TCC 权限） | desktop 返 `rust_helper_crashed` 四态自诊断（[TROUBLESHOOTING §2.16](doc/usage/02-TROUBLESHOOTING.md)）；Linux/Windows 桌面走 UIA/AT-SPI 路线（编译可证） |
