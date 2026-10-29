@@ -4182,8 +4182,9 @@ const assertions = [
       if (!recBlock) return false;
       if (!/launchMode\??:/.test(recBlock[0])) return false;
       if (!/idleMs\??:/.test(recBlock[0])) return false;
+      // 2026-10-29（提案 v2 读点对账）：解析守卫随拆分迁 readLedgerRawSync——锚随迁
       const readBody = ledgerSrc.match(
-        /export function readLedgerSync\(\)[\s\S]*?\n\}/,
+        /function readLedgerRawSync\(\)[\s\S]*?\n\}/,
       );
       if (!readBody) return false;
       if (!/typeof r\.launchMode === "string"/.test(readBody[0])) return false;
@@ -4708,8 +4709,9 @@ const assertions = [
       for (const f of ["ownerKind", "ownerPid", "userTakenAt"]) {
         if (!new RegExp(`${f}\\??:`).test(recBlock[0])) return false;
       }
+      // 2026-10-29（提案 v2 读点对账）：解析守卫随拆分迁 readLedgerRawSync——锚随迁
       const readBody = ledgerSrc.match(
-        /export function readLedgerSync\(\)[\s\S]*?\n\}/,
+        /function readLedgerRawSync\(\)[\s\S]*?\n\}/,
       );
       if (!readBody) return false;
       if (!/typeof r\.ownerPid === "number"/.test(readBody[0])) return false;
@@ -6557,7 +6559,7 @@ const assertions = [
   {
     id: "INV-108-login-bridge-posture",
     desc:
-      "v1.31（doc/方案-login_bridge 2026-10-17）：登录接力档 posture 红线——(1) relay 是 lasso 首个入站监听，createServer 只许存在于函数体内（无模块级监听=无常开面）；(2) 绑定地址解析 env 先行（LASSO_LOGIN_BRIDGE_HOST 判定先于 tailscale CLI），非 env 路径永不产 0.0.0.0；(3) wipe 的 rmSync 必须经 LOGIN_PROFILE_PREFIX 归属守卫（chrome-stop cleanupRenderProfile 同款三重验证）；(4) 四处联动闭环（index.ts 注册+channel 映射+descriptions+doctor #43 名称）",
+      "v1.31（doc/方案-login_bridge 2026-10-17）：登录接力档 posture 红线——(1) relay 是 lasso 首个入站监听，createServer 只许存在于函数体内（无模块级监听=无常开面）；(2) 绑定地址解析 env 先行（LASSO_LOGIN_BRIDGE_HOST 判定先于 tailscale CLI），非 env 路径永不产 0.0.0.0；(3) wipe 的 rmSync 必须经 LOGIN_PROFILE_PREFIX 归属守卫（chrome-ledger cleanupRenderProfile 同款三重验证）；(4) 四处联动闭环（index.ts 注册+channel 映射+descriptions+doctor #43 名称）",
     check: () => {
       const relay = SRC.find((s) => /login-bridge\/relay\.ts$/.test(s.f.replace(/\\/g, "/")));
       if (!relay) return false;
@@ -6723,7 +6725,78 @@ const assertions = [
       }
       return true;
     },
-  }
+  },
+  // ============================================================
+  // 2026-10-29（京东云僵尸台账根治，doc/提案-台账生命周期读点对账-2026-10-29.md v2）
+  // INV-111 —— 台账读点对账（INV-L：凡 readLedgerSync 返回的记录 pid 必活）
+  // ============================================================
+  // 守（四子断言全部正则可锚）：
+  //  INV-111 读点对账不变量：
+  //  (a) 对账段存在性：readLedgerSync 体内含 ESRCH-only 判死 + evt
+  //      ledger_stale_reconciled + 落盘经 writeLedgerAtomicSync 单实现；
+  //  (b) 防递归：五个写原语（recordLaunch/removeLedgerEntries/
+  //      removeLedgerEntriesSync/markUserTakenByPid/clearUserTakenByPid）
+  //      体内禁调对账版 readLedgerSync（只许 readLedgerRawSync——读-销互递归
+  //      即栈溢出，首条死条目触发，F1 blocker 回潮防线）；
+  //  (c) 对账 mode-blind：readLedgerSync 函数体禁出现 isUserOwnedRecord/
+  //      userTakenAt/launchMode（销账与 kill 豁免正交——死 pid 不是资产，
+  //      销账零 kill；K3 根因「销账豁免误用 kill 豁免谓词」回潮防线）；
+  //  (d) 测试钩子生产不可达：__setLedgerAliveFnForTests 在 src/**/*.ts
+  //      只出现于 chrome-ledger.ts 定义处（生产零调用）。
+  {
+    id: "INV-111-ledger-read-point-reconciliation",
+    desc:
+      "2026-10-29（京东云僵尸台账根治）：台账读点对账——（a）readLedgerSync 内建探活销账（仅 ESRCH 判死，EPERM/异常保守判活；evt ledger_stale_reconciled；落盘经 writeLedgerAtomicSync 单实现）；（b）五写原语体内禁调对账版 readLedgerSync（防读-销互递归——raw 拆分是结构义务）；（c）对账 mode-blind（不看 launchMode/userTakenAt——销账与 kill 豁免正交）；（d）__setLedgerAliveFnForTests 生产代码零调用",
+    check: () => {
+      const byPath = (re) => SRC.find((s) => re.test(s.f.replace(/\\/g, "/")));
+      const ledgerSrc = byPath(/^launcher\/chrome-ledger\.ts$/)?.text ?? "";
+
+      // ----- (a) 对账段存在性 -----
+      const recBody = ledgerSrc.match(
+        /export function readLedgerSync\([^)]*\)[\s\S]*?\n\}/,
+      );
+      if (!recBody) return false;
+      if (!/isAliveStrict/.test(recBody[0])) return false;
+      if (!/ledger_stale_reconciled/.test(recBody[0])) return false;
+      if (!/writeLedgerAtomicSync\(/.test(recBody[0])) return false;
+      const strictBody = ledgerSrc.match(
+        /function isAliveStrict\([^)]*\)[\s\S]*?\n\}/,
+      );
+      if (!strictBody) return false;
+      if (!/ESRCH/.test(strictBody[0])) return false;
+
+      // ----- (b) 防递归：写原语体内禁调对账版 -----
+      for (const fnName of [
+        "recordLaunch",
+        "removeLedgerEntries",
+        "removeLedgerEntriesSync",
+        "markUserTakenByPid",
+        "clearUserTakenByPid",
+      ]) {
+        const fnBody = ledgerSrc.match(
+          new RegExp(
+            "(?:export )?(?:async )?function " + fnName + "\\([^)]*\\)[\\s\\]*?\\{[\\s\\S]*?\n\\}",
+          ),
+        );
+        if (!fnBody) return false;
+        // readLedgerSync( 精确匹配不含 readLedgerRawSync(（子串不同）
+        if (/readLedgerSync\(/.test(fnBody[0])) return false;
+      }
+
+      // ----- (c) 对账 mode-blind（readLedgerSync 体内零豁免谓词）-----
+      if (/isUserOwnedRecord|userTakenAt|launchMode/.test(recBody[0])) return false;
+
+      // ----- (d) 测试钩子生产不可达 -----
+      const hookCallers = SRC.filter(
+        (s) =>
+          s.f.replace(/\\/g, "/") !== "launcher/chrome-ledger.ts" &&
+          s.text.includes("__setLedgerAliveFnForTests"),
+      );
+      if (hookCallers.length > 0) return false;
+
+      return true;
+    },
+  },
 ];
 
 // v1.11（round1 T13）：--selftest → 委托 scripts/inv-selftest.mjs（mutation 自检）

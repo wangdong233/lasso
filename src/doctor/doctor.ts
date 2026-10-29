@@ -2536,6 +2536,8 @@ async function checkDownloadEngines(): Promise<DoctorCheck> {
 // ============================================================
 /**
  * 41. chrome_ledger_inventory —— 零触网台账清单 check（BUG-14 真缺口①）。
+ * 2026-10-29（提案 v2）：readLedgerSync 内建读点对账——死 pid 条目在读取时自动
+ * 销账（账面自愈，非网络操作；本 check 读到的即活账，不再列报死条目）。
  *
  * 语义（永不 fail——#37/#39/#40 可选能力范式；长驻 visible 是显式合法形态）：
  *  - 台账空 → pass；有活实例 → detail 列 port/mode/idle/age。

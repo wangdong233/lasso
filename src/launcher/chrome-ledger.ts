@@ -17,7 +17,7 @@
  *  - 读侧文件损坏 / 不存在 → []（不 throw；未知字段忽略，前向兼容）
  *  - tmp+rename 原子写（并发 chrome-stop / 停机收尾读不到半截 JSON）
  */
-import { promises as fsp, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { promises as fsp, readFileSync, writeFileSync, renameSync, mkdirSync, rmSync } from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import process from "node:process";
@@ -168,14 +168,15 @@ function defaultLog(payload: Record<string, unknown>): void {
 }
 
 // ============================================================
-// 读（容错解析）
+// 读（容错解析）+ 读点对账（京东云僵尸台账根治，2026-10-29 提案 v2）
 // ============================================================
 /**
- * 同步读台账（exit 钩子路径用；chrome-stop CLI 也用）。
- * 文件不存在 / JSON 损坏 / 顶层非数组 → []（不 throw）。
- * 未知字段忽略（前向兼容）；单条形状不对（缺 port/pid number）跳过。
+ * **readLedgerRawSync（私有）**：纯解析，零对账——**仅供本模块五个写原语体内使用**
+ * （recordLaunch / removeLedgerEntries / removeLedgerEntriesSync / markUserTakenByPid /
+ * clearUserTakenByPid）。写原语禁调对账版 readLedgerSync：对账版体内会销账落盘，
+ * 写原语「先读后写」若走对账版 → 读-销互递归（首条死条目即栈溢出）——INV-111(b) 防递归锚。
  */
-export function readLedgerSync(): LaunchedChromeRecord[] {
+function readLedgerRawSync(): LaunchedChromeRecord[] {
   let body: string;
   try {
     body = readFileSync(launchedChromesPath(), "utf8");
@@ -234,6 +235,131 @@ export function readLedgerSync(): LaunchedChromeRecord[] {
   return out;
 }
 
+/**
+ * **对账判活（仅 ESRCH 判死）**：kill(pid,0) 成功=活；ESRCH=死（pid 不存在）；
+ * EPERM/其他异常=**活**（保守——pid 可能被复用给高权进程，读点不做无证据销账，
+ * 留给 chrome-stop 循环的 verifyOwnership cmdline 证据链处置）。
+ * 注：与 chrome-stop defaultAliveFn（catch-all 判死）刻意分工——读点=高频保守面，
+ * stop=显式操作宽销账面（提案 v2 诚实边界 5）。
+ */
+function isAliveStrict(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ESRCH" ? false : true;
+  }
+}
+
+/** 测试钩子覆盖（undefined=真实探活）。生产代码禁调——INV-111(d) 锚。 */
+let testAliveFnOverride: ((pid: number) => boolean) | undefined;
+
+/**
+ * 仅测试装配用：覆盖读点对账的判活函数（全局恒活=恢复旧 readLedgerSync 语义，
+ * 27 个既有 spec 零适配的机制基础）。**src/ 生产代码零调用**（INV-111(d)）。
+ */
+export function __setLedgerAliveFnForTests(fn?: (pid: number) => boolean): void {
+  testAliveFnOverride = fn;
+}
+
+/**
+ * **同步原子写单实现**（tmp+rename）——removeLedgerEntriesSync 与读点对账共用，
+ * 禁第二份实现（INV-111(a)）。
+ */
+function writeLedgerAtomicSync(records: LaunchedChromeRecord[]): void {
+  const target = launchedChromesPath();
+  const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(tmp, JSON.stringify(records, null, 2) + "\n", "utf8");
+  renameSync(tmp, target);
+}
+
+/**
+ * 同步读台账（**含读点对账**——京东云僵尸台账根治，2026-10-29 提案 v2）。
+ *
+ * 不变量 INV-L1：**凡本函数返回的记录，pid 必活**——「死 pid 记为 ready」的寿命
+ * ≤ 一次读取。Chrome 在 lasso 生命周期外死亡（任务时限硬杀/OOM/整机重启）后，
+ * 台账死条目在下一次任意消费方读取时自动销账（ESRCH-only；render 档连带盘清理）。
+ * 对账 mode-blind：不看 launchMode/userTakenAt（销账与 kill 豁免正交——INV-111(c)；
+ * 死 pid 不是资产，销账零 kill）。
+ *
+ * 解析容错同旧版：文件不存在 / JSON 损坏 / 顶层非数组 → []（不 throw）。
+ */
+export function readLedgerSync(): LaunchedChromeRecord[] {
+  const records = readLedgerRawSync();
+  const aliveFn = testAliveFnOverride ?? isAliveStrict;
+  // 每条探活恰一次（dead/remaining 共用判定结果——微秒级 syscall 也不双付）
+  const aliveFlags = records.map((r) => aliveFn(r.pid));
+  const dead = records.filter((_, i) => !aliveFlags[i]);
+  if (dead.length === 0) return records;
+  const remaining = records.filter((_, i) => aliveFlags[i]);
+  try {
+    writeLedgerAtomicSync(remaining);
+    defaultLog({
+      evt: "ledger_stale_reconciled",
+      count: dead.length,
+      pids: dead.map((r) => r.pid),
+      ports: dead.map((r) => r.port),
+    });
+    for (const r of dead) cleanupRenderProfile(r, defaultLog, "read_reconcile");
+  } catch (e) {
+    // 销账落盘失败 → 保守返回过滤后视图（消费方语义仍满足 INV-L1；下次读取重试落盘）
+    defaultLog({ evt: "ledger_stale_reconcile_error", error: String(e) });
+  }
+  return remaining;
+}
+
+// ============================================================
+// render 档临时 profile 收尸（自 chrome-stop.ts 搬入——2026-10-29 提案 v2：
+// 读点对账销 render 死条目时连带盘清理；依赖方向保持 stop→ledger 单向）
+// ============================================================
+/**
+ * 渲染档临时 profile 前缀（rmSync 的「归属验证」镜像——删目录与杀进程同红线：
+ * 只删验证归属的 profile）。真源在 src/render/render-flags.ts RENDER_PROFILE_PREFIX；
+ * launcher 禁反向引 render（INV-64 修订 b）→ 本地镜像字面量，
+ * test/unit/render-flags.spec.ts tripwire 断言两处一致（v2 起镜像随本函数挂本文件）。
+ */
+const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";
+
+/**
+ * render 记录收割后清理其临时 profile 目录（设计决议 3.4：仅对 launchMode==="render"；
+ * 日常档持久 profile 是设计，勿全局改）。
+ *
+ * 调用时机（与杀路径的验证强度对齐）：
+ *  - killed（归属验证通过后杀掉）→ 清理；
+ *  - already_dead（pid 探活已死 = 渲染档 Chrome 确已不在）→ 清理（设计决议 3.6 收尸）；
+ *  - pid_reused_skipped → **不清理**（pid 被无关进程占用 = 无法确认 profile 无主；
+ *    陈年目录交 render-chrome doctor 的 24h 陈年扫描兜底）；
+ *  - read_reconcile（读点对账销账，v2 新增）→ 清理（ESRCH 确死 = 同 already_dead 证据强度）。
+ * basename 前缀守卫：手工污染/损坏的台账指向任意路径时拒绝删除（等价 verifyOwnership
+ * 的前缀拼接防线）。best-effort：rmSync 失败 warn 不影响退出路径。
+ */
+export function cleanupRenderProfile(
+  rec: LaunchedChromeRecord,
+  log: LedgerLogFn,
+  trigger: string,
+): void {
+  if (rec.launchMode !== "render") return;
+  const base = path.basename(rec.profileDir);
+  if (!base.startsWith(RENDER_PROFILE_BASENAME_PREFIX)) {
+    log({
+      evt: "render_profile_cleanup_skipped",
+      port: rec.port,
+      pid: rec.pid,
+      profileDir: rec.profileDir,
+      reason: "basename_prefix_mismatch",
+      trigger,
+    });
+    return;
+  }
+  try {
+    rmSync(rec.profileDir, { recursive: true, force: true });
+    log({ evt: "render_profile_removed", port: rec.port, pid: rec.pid, profileDir: rec.profileDir, trigger });
+  } catch (e) {
+    log({ evt: "render_profile_remove_error", port: rec.port, pid: rec.pid, error: String(e), trigger });
+  }
+}
+
 // ============================================================
 // 写（tmp + rename 原子；best-effort）
 // ============================================================
@@ -248,7 +374,7 @@ export async function recordLaunch(
   try {
     const target = launchedChromesPath();
     await fsp.mkdir(path.dirname(target), { recursive: true });
-    const existing = readLedgerSync().filter((r) => r.port !== rec.port);
+    const existing = readLedgerRawSync().filter((r) => r.port !== rec.port);
     const next = [...existing, rec];
     const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
     await fsp.writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
@@ -265,7 +391,7 @@ export async function removeLedgerEntries(
   logFn: LedgerLogFn = defaultLog,
 ): Promise<void> {
   try {
-    const remaining = readLedgerSync().filter((r) => !ports.includes(r.port));
+    const remaining = readLedgerRawSync().filter((r) => !ports.includes(r.port));
     const target = launchedChromesPath();
     const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
     await fsp.writeFile(tmp, JSON.stringify(remaining, null, 2) + "\n", "utf8");
@@ -281,12 +407,8 @@ export function removeLedgerEntriesSync(
   logFn: LedgerLogFn = defaultLog,
 ): void {
   try {
-    const remaining = readLedgerSync().filter((r) => !ports.includes(r.port));
-    const target = launchedChromesPath();
-    const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
-    mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(tmp, JSON.stringify(remaining, null, 2) + "\n", "utf8");
-    renameSync(tmp, target);
+    const remaining = readLedgerRawSync().filter((r) => !ports.includes(r.port));
+    writeLedgerAtomicSync(remaining);
   } catch (e) {
     logFn({ evt: "chrome_ledger_remove_error", error: String(e), ports });
   }
@@ -311,7 +433,7 @@ export async function markUserTakenByPid(
 ): Promise<void> {
   try {
     const target = launchedChromesPath();
-    const next = readLedgerSync().map((r) =>
+    const next = readLedgerRawSync().map((r) =>
       r.pid === pid && r.userTakenAt === undefined ? { ...r, userTakenAt: Date.now() } : r,
     );
     const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
@@ -348,7 +470,7 @@ export async function clearUserTakenByPid(
   logFn: LedgerLogFn = defaultLog,
 ): Promise<void> {
   try {
-    const current = readLedgerSync();
+    const current = readLedgerRawSync();
     if (!current.some((r) => r.pid === pid && r.userTakenAt !== undefined)) return;
     const target = launchedChromesPath();
     const next = current.map((r) => {

@@ -81,7 +81,7 @@ function defaultDeps(): LoginBridgeDeps {
     touch: touchChromePort,
     stopChromes: stopLaunchedChromes,
     removeProfile: (profileDir: string, ns: string) => {
-      // 归属守卫（chrome-stop cleanupRenderProfile 范式）：父目录名=LOGIN_PROFILE_PREFIX
+      // 归属守卫（chrome-ledger cleanupRenderProfile 范式）：父目录名=LOGIN_PROFILE_PREFIX
       // 且叶子=ns（loginProfileNs 已禁分隔符/..）——三重验证后才 rm
       const parent = path.basename(path.dirname(profileDir));
       const leaf = path.basename(profileDir);

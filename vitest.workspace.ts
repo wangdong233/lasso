@@ -17,6 +17,10 @@ const SLOW_SPECS = [
   // 实测 ~8.5s（有 180s 保护），两个 checker it 平时 ~0.5s 但全量并行负载下
   // 逼近 5s 默认帽（deep-probe/v10 同型 spawn 判据；本仓两次立法防的假红类）。
   "test/unit/npm-tarball-package-form.spec.ts",
+  // 2026-10-29（环境劣化第三型）：download-bootstrap probeVersion 记忆化——真 spawn
+  // 计数链在本机 syspolicyd 持续劣化下打满 5s（stash 基线同样红=零代码因果；25s 帽
+  // 全绿）。doctor 族两次同型立规（deep-probe/v10/desktop-action-enum）第三次。
+  "test/unit/download-bootstrap.spec.ts",
   // 真实 spawn 子进程（node dist / rust-helper / Chrome 探测）
   "test/integration/cli-conventions.spec.ts",
   "test/unit/doctor-deep-probe.spec.ts",
@@ -85,6 +89,8 @@ export default defineWorkspace([
       pool: ORPHAN_GUARD_POOL,
       include: ["test/**/*.spec.ts", "test/**/*.test.ts"],
       exclude: ["node_modules/**", "dist/**", ...SLOW_SPECS],
+      // 2026-10-29（提案 v2）：台账读点对账全局恒活——假 pid 播种的既有 spec 零适配
+      setupFiles: ["test/setup-ledger.ts"],
     },
   },
   {
@@ -98,6 +104,8 @@ export default defineWorkspace([
       // 30s 不掩盖死挂（死挂语义远超 30s）；CI 余量充足（当前 1-2min/门）。
       testTimeout: 30_000,
       hookTimeout: 30_000,
+      // 2026-10-29（提案 v2）：同 default 桶——读点对账全局恒活
+      setupFiles: ["test/setup-ledger.ts"],
     },
   },
 ]);

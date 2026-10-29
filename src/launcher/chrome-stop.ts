@@ -26,14 +26,13 @@
  * 共享 lifecycle 原语；INV-64 (b) 白名单）+ ./chrome-ledger.js 同目录互引。
  */
 import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import * as path from "node:path";
 import process from "node:process";
 import { killTreeSync } from "../util/kill-tree.js";
 import {
   readLedgerSync,
   removeLedgerEntries,
   removeLedgerEntriesSync,
+  cleanupRenderProfile,
   type LaunchedChromeRecord,
   type LedgerLogFn,
 } from "./chrome-ledger.js";
@@ -177,50 +176,10 @@ function defaultAliveFn(pid: number): boolean {
 // v1.19（渲染档设计决议 3.4）：render 记录收割连带临时 profile 清理
 // ============================================================
 /**
- * 渲染档临时 profile 前缀（rmSync 的「归属验证」镜像——删目录与杀进程同红线：
- * 只删验证归属的 profile）。真源在 src/render/render-flags.ts RENDER_PROFILE_PREFIX；
- * launcher 禁反向引 render（INV-64 修订 b）→ 本地镜像字面量，
- * test/unit/render-flags.spec.ts tripwire 断言两处一致。
+ * 渲染档临时 profile 前缀与收尸函数已迁 chrome-ledger.ts（2026-10-29 提案 v2：
+ * 读点对账销 render 死条目时连带盘清理——RENDER_PROFILE_BASENAME_PREFIX 镜像与
+ * cleanupRenderProfile 本体在彼处，render-flags.spec tripwire 随迁）。
  */
-const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";
-
-/**
- * render 记录收割后清理其临时 profile 目录（设计决议 3.4：仅对 launchMode==="render"；
- * 日常档持久 profile 是设计，勿全局改）。
- *
- * 调用时机（与杀路径的验证强度对齐）：
- *  - killed（归属验证通过后杀掉）→ 清理；
- *  - already_dead（pid 探活已死 = 渲染档 Chrome 确已不在）→ 清理（设计决议 3.6 收尸）；
- *  - pid_reused_skipped → **不清理**（pid 被无关进程占用 = 无法确认 profile 无主；
- *    陈年目录交 render-chrome doctor 的 24h 陈年扫描兜底）。
- * basename 前缀守卫：手工污染/损坏的台账指向任意路径时拒绝删除（等价 verifyOwnership
- * 的前缀拼接防线）。best-effort：rmSync 失败 warn 不影响退出路径。
- */
-function cleanupRenderProfile(
-  rec: LaunchedChromeRecord,
-  log: LedgerLogFn,
-  trigger: string,
-): void {
-  if (rec.launchMode !== "render") return;
-  const base = path.basename(rec.profileDir);
-  if (!base.startsWith(RENDER_PROFILE_BASENAME_PREFIX)) {
-    log({
-      evt: "render_profile_cleanup_skipped",
-      port: rec.port,
-      pid: rec.pid,
-      profileDir: rec.profileDir,
-      reason: "basename_prefix_mismatch",
-      trigger,
-    });
-    return;
-  }
-  try {
-    rmSync(rec.profileDir, { recursive: true, force: true });
-    log({ evt: "render_profile_removed", port: rec.port, pid: rec.pid, profileDir: rec.profileDir, trigger });
-  } catch (e) {
-    log({ evt: "render_profile_remove_error", port: rec.port, pid: rec.pid, error: String(e), trigger });
-  }
-}
 
 async function defaultSleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));

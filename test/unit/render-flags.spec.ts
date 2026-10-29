@@ -146,13 +146,15 @@ describe("render-flags —— 常量与 env（设计决议 3.2/3.10/3.11）", ()
     expect(renderIdleDefaultMs()).toBe(600_000);
   });
 
-  it("profile 前缀常量 + chrome-stop.ts rmSync 守卫镜像一致（跨文件 tripwire）", () => {
+  it("profile 前缀常量 + chrome-ledger.ts rmSync 守卫镜像一致（跨文件 tripwire）", () => {
+    // 2026-10-29（提案 v2）：cleanupRenderProfile 迁 chrome-ledger（读点对账连带
+    // 盘清理）——镜像常量随迁，tripwire 挂载点同步。
     expect(RENDER_PROFILE_PREFIX).toBe("render-chrome-profile-");
-    const stopSrc = readFileSync(
-      fileURLToPath(new URL("../../src/launcher/chrome-stop.ts", import.meta.url)),
+    const ledgerSrc = readFileSync(
+      fileURLToPath(new URL("../../src/launcher/chrome-ledger.ts", import.meta.url)),
       "utf8",
     );
-    expect(stopSrc).toContain(`"${RENDER_PROFILE_PREFIX}"`);
+    expect(ledgerSrc).toContain(`"${RENDER_PROFILE_PREFIX}"`);
   });
 });
 

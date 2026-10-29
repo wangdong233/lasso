@@ -45,7 +45,9 @@ describeOrSkip("render-guardian —— 进程级持活与账空自退（r2 真�
         JSON.stringify([
           {
             port: 9224,
-            pid: 999999,
+            // 2026-10-29（提案 v2）：读点对账——guardian 子进程真实探活，假 pid 种子
+            // 会被读点销账 → 账空自退提前触发。种子用测试进程自身 pid（真活）。
+            pid: process.pid,
             profileDir: path.join(tmpDir, "render-chrome-profile-seed"),
             launchedAt: Date.now(),
             status: "ready",

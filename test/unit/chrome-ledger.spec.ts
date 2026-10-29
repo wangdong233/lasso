@@ -438,11 +438,12 @@ describe("chrome-stop render 收割（渲染档设计决议 3.4/3.5）", () => {
     expect(readLedgerSync()).toEqual([]);
   });
 
-  it("chrome-stop.ts 的 render 前缀镜像与 src/render/render-flags.ts 真源一致（tripwire）", () => {
-    const stopSrc = readFileSync(
-      new URL("../../src/launcher/chrome-stop.ts", import.meta.url),
+  it("chrome-ledger.ts 的 render 前缀镜像与 src/render/render-flags.ts 真源一致（tripwire）", () => {
+    // 2026-10-29（提案 v2）：cleanupRenderProfile 迁 chrome-ledger——镜像随迁
+    const ledgerSrc = readFileSync(
+      new URL("../../src/launcher/chrome-ledger.ts", import.meta.url),
       "utf8",
     );
-    expect(stopSrc).toContain('const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";');
+    expect(ledgerSrc).toContain('const RENDER_PROFILE_BASENAME_PREFIX = "render-chrome-profile-";');
   });
 });
